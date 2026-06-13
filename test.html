@@ -5,6 +5,7 @@
             import init, {
                 risk_level,
                 risk_label,
+                risk_desc,
             } from "./pkg/safely_extension.js";
 
             async function run() {
@@ -19,6 +20,12 @@
                 console.log(risk_label("low"));
                 console.log(risk_label("caution"));
                 console.log(risk_label("high"));
+
+                console.log("-------");
+
+                console.log(risk_desc("low"));
+                console.log(risk_desc("caution"));
+                console.log(risk_desc("high"));
             }
 
             run();

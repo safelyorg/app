@@ -19,3 +19,12 @@ pub fn risk_label(level: &str) -> String {
         _ => "High risk".into(),
     }
 }
+
+#[wasm_bindgen]
+pub fn risk_desc(desc: &str) -> String {
+    match desc {
+        "low" => "Safe to proceed".into(),
+        "caution" => "Review before proceeding".into(),
+        _ => "High risk detected".into(),
+    }
+}

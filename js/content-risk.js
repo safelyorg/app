@@ -10,11 +10,6 @@
   var pageData = window.__safelyData;
 
   // Risk-specific helpers
-  function riskDesc(l) {
-    if (l === "low") return "Safe to proceed";
-    if (l === "caution") return "Review before proceeding";
-    return "High risk detected";
-  }
   function statusIcon(l) {
     if (l === "low")
       return '<svg viewBox="0 0 24 24" fill="none" stroke="#1d9bf0" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
@@ -48,7 +43,7 @@
     );
   }
 
-  var lvl = wasm.risk_level(window.__safelyData.riskScore);
+  var lvl = wasm.risk_level(pageData.riskScore);
   var activityMax = Math.max.apply(null, pageData.seller.monthlyActivity);
   var activityBars = pageData.seller.monthlyActivity
     .map(function (v) {
@@ -87,7 +82,7 @@
     '">' +
     wasm.risk_label(lvl) +
     '</div><div class="safely-risk-desc">' +
-    riskDesc(lvl) +
+    wasm.risk_desc(lvl) +
     '</div></div><div class="safely-status-circle safely-circle-' +
     lvl +
     '">' +
