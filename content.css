@@ -1043,7 +1043,7 @@
 .safely-toolbar-letter {
     font-size: 22px;
     font-weight: 700;
-    color: #1d9bf0;
+    color: #ffffff;
     line-height: 1;
     position: absolute;
     pointer-events: none;
@@ -1086,6 +1086,7 @@
 .safely-toolbar-icon svg {
     width: 18px;
     height: 18px;
+    stroke: #ffffff;
 }
 .safely-toolbar-label {
     font-size: 14px;
