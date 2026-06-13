@@ -23,6 +23,7 @@
       "css": ["content.css"],
       "js": [
         "content-core.js",
+        "content-risk.js",
         "content-intelligence.js",
         "content-protect.js"
       ],
