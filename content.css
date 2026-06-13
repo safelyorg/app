@@ -180,8 +180,6 @@
     background: #ff453a;
     color: #ff453a;
 }
-
-/* Task 1 - New classes */
 .safely-chips-row {
     display: flex;
     gap: 8px;
@@ -205,7 +203,6 @@
     color: #a0a0a0;
     margin-top: 3px;
 }
-
 .safely-seller-card {
     background: #0f0f0f;
     border-radius: 14px;
@@ -268,7 +265,6 @@
 .safely-badge-flagged {
     color: #ff453a;
 }
-
 .safely-platform-card {
     background: #0f0f0f;
     border-radius: 10px;
@@ -299,7 +295,6 @@
 .safely-pstatus-none {
     color: #636366;
 }
-
 .safely-activity-card {
     background: #0f0f0f;
     border-radius: 10px;
@@ -311,7 +306,6 @@
     background: #0a84ff;
     min-height: 2px;
 }
-
 .safely-network-alert {
     border-radius: 8px;
     padding: 9px 11px;
@@ -346,8 +340,6 @@
     color: #ff453a;
     border: 1px solid #5c1a1a;
 }
-
-/* Task 2 - Intelligence new classes */
 .safely-signal-list {
     background: #0f0f0f;
     border-radius: 14px;
@@ -401,7 +393,6 @@
 .safely-signal-caution {
     color: #ff9f0a;
 }
-
 .safely-price-compare {
     background: #0f0f0f;
     border-radius: 10px;
@@ -459,7 +450,6 @@
     text-align: right;
     flex-shrink: 0;
 }
-
 .safely-check-card {
     background: #0f0f0f;
     border-radius: 8px;
@@ -478,8 +468,6 @@
     color: #a0a0a0;
     line-height: 1.5;
 }
-
-/* Protect tab & shared */
 .safely-sub-tabs {
     display: flex;
     gap: 4px;
@@ -1006,7 +994,7 @@
     line-height: 1.5;
 }
 
-/* Toolbar */
+/* ── Toolbar ── */
 #safely-toolbar {
     position: absolute;
     top: -24px;
@@ -1025,8 +1013,10 @@
     box-shadow:
         0 4px 16px rgba(0, 0, 0, 0.3),
         0 0 0 1px rgba(48, 209, 88, 0.12);
+    /* Width/padding: slower for smooth expand & collapse */
     transition:
-        padding 0.35s cubic-bezier(0.4, 0, 0.2, 1),
+        width 0.4s cubic-bezier(0.4, 0, 0.2, 1),
+        padding 0.4s cubic-bezier(0.4, 0, 0.2, 1),
         background 0.15s ease,
         box-shadow 0.15s ease;
 }
@@ -1039,6 +1029,8 @@
     justify-content: flex-end;
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
 }
+
+/* "S" letter — fade in with tiny delay on collapse so no gap */
 .safely-toolbar-letter {
     font-size: 22px;
     font-weight: 700;
@@ -1046,11 +1038,15 @@
     line-height: 1;
     position: absolute;
     pointer-events: none;
-    transition: opacity 0.15s ease;
+    transition: opacity 0.12s ease 0.06s;
 }
+/* When expanded, hide S immediately */
 #safely-toolbar.safely-toolbar-expanded .safely-toolbar-letter {
     opacity: 0;
+    transition: opacity 0.1s ease 0s;
 }
+
+/* Inner content — collapse: vanish instantly; expand: appear after width grows */
 .safely-toolbar-inner {
     display: flex;
     align-items: center;
@@ -1059,16 +1055,18 @@
     pointer-events: none;
     width: 100%;
     justify-content: space-between;
-    transition: opacity 0.15s ease 0.2s;
+    white-space: nowrap;
+    overflow: hidden;
+    /* Collapse state: fast fade out, no delay */
+    transition: opacity 0.1s ease 0s;
 }
 #safely-toolbar.safely-toolbar-expanded .safely-toolbar-inner {
     opacity: 1;
     pointer-events: all;
-    transition: opacity 0.15s ease 0.2s;
+    /* Expand state: fade in after width has started growing */
+    transition: opacity 0.2s ease 0.18s;
 }
-#safely-toolbar:not(.safely-toolbar-expanded) .safely-toolbar-inner {
-    transition: opacity 0.1s ease 0s;
-}
+
 .safely-toolbar-icon {
     display: flex;
     align-items: center;

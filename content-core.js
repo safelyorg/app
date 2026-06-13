@@ -6,7 +6,7 @@
   var toolbarExpanded = false;
   var currentTab = "";
   var collapseTimer;
-  var waitForClick = false;
+  var intentionallyClosed = false;
 
   var tabIds = [];
   var tabTitles = {};
@@ -101,7 +101,7 @@
     "</div></div>";
 
   document.body.appendChild(root);
-  window.__safelyRoot = root; // Expose root for other tabs to attach event listeners
+  window.__safelyRoot = root;
 
   var panel = document.getElementById("safely-panel");
   var toolbar = document.getElementById("safely-toolbar");
@@ -136,6 +136,7 @@
     panelVisible = false;
     panel.classList.remove("safely-visible");
   }
+
   function collapseToolbar() {
     toolbarExpanded = false;
     panelVisible = false;
@@ -194,43 +195,51 @@
     });
   };
 
-  // Toolbar Hover & Click Events
+  // ── Toolbar Hover Events ──
   toolbar.addEventListener("mouseenter", function () {
     clearTimeout(collapseTimer);
-    if (waitForClick) return;
+    if (intentionallyClosed) return;
     toolbarExpanded = true;
     toolbar.classList.add("safely-toolbar-expanded");
   });
+
   toolbar.addEventListener("mouseleave", function (e) {
-    waitForClick = false;
+    if (intentionallyClosed) return;
     if (e.relatedTarget && panel.contains(e.relatedTarget)) return;
     collapseTimer = setTimeout(collapseToolbar, 200);
   });
+
   panel.addEventListener("mouseenter", function () {
     clearTimeout(collapseTimer);
   });
+
   panel.addEventListener("mouseleave", function (e) {
     if (e.relatedTarget && toolbar.contains(e.relatedTarget)) return;
     collapseTimer = setTimeout(collapseToolbar, 200);
   });
+
   toolbar.addEventListener("click", function (e) {
     e.stopPropagation();
-    if (e.target.closest(".safely-toolbar-inner")) return;
-    if (waitForClick) {
-      waitForClick = false;
+    if (intentionallyClosed) {
+      intentionallyClosed = false;
       toolbarExpanded = true;
       toolbar.classList.add("safely-toolbar-expanded");
     }
   });
+
+  // Clicking "Safely" label collapses and locks until mouse leaves
   collapseBtn.addEventListener("click", function (e) {
     e.stopPropagation();
+    intentionallyClosed = true;
     collapseToolbar();
-    waitForClick = true;
   });
+
   closeBtn.addEventListener("click", function (e) {
     e.stopPropagation();
     closePanel();
   });
+
+  // Clicking outside closes panel and collapses toolbar (with lock)
   document.addEventListener("click", function (e) {
     if (!root.contains(e.target)) {
       if (panelVisible) {
@@ -239,8 +248,18 @@
       }
       if (toolbarExpanded) {
         toolbarExpanded = false;
+        intentionallyClosed = true;
         toolbar.classList.remove("safely-toolbar-expanded");
       }
+    }
+  });
+
+  // Once the mouse fully leaves the root, unlock hover-expand
+  root.addEventListener("mouseleave", function () {
+    if (intentionallyClosed) {
+      setTimeout(function () {
+        intentionallyClosed = false;
+      }, 150);
     }
   });
 })();
