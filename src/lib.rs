@@ -3,6 +3,10 @@ use wasm_bindgen::prelude::*;
 
 #[derive(Deserialize)]
 pub struct Signal {
+    pub label: String,
+    #[serde(default)]
+    pub sub: String,
+    pub value: String,
     #[serde(rename = "type")]
     pub signal_type: String,
 }
@@ -122,6 +126,18 @@ pub fn build_platform_rows(platform_json: &str) -> String {
         format!(
             r#"<div class="safely-platform-row"><span class="safely-platform-name">{}</span><span class="safely-platform-status safely-pstatus-{}">{}</span></div>"#,
             p.name, p.platform_type, p.status
+        )
+    }).collect::<Vec<_>>().join("")
+}
+
+#[wasm_bindgen]
+pub fn build_signal_rows(signals_json: &str) -> String {
+    let signals: Vec<Signal> = serde_json::from_str(signals_json).unwrap_or_default();
+
+    signals.iter().map(|s| {
+        format!(
+            r#"<div class="safely-signal-row"><span class="safely-signal-label-wrap"><span class="safely-signal-label">{}</span><span class="safely-signal-sublabel">{}</span></span><span class="safely-signal-value safely-signal-{}">{}</span></div>"#,
+            s.label, s.sub, s.signal_type, s.value
         )
     }).collect::<Vec<_>>().join("")
 }

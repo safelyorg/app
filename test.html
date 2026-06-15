@@ -10,6 +10,7 @@
                 analyze_signals,
                 verification_badge,
                 build_platform_rows,
+                build_signal_rows,
             } from "./pkg/safely_extension.js";
 
             async function run() {
@@ -91,6 +92,25 @@
                 ];
 
                 console.log(build_platform_rows(JSON.stringify(platforms)));
+
+                console.log("-------");
+
+                var signals = [
+                    {
+                        label: "Price analysis",
+                        sub: "Rs. 85,000 vs market avg Rs. 88,000",
+                        value: "Normal range",
+                        type: "good",
+                    },
+                    {
+                        label: "Contact info in listing",
+                        sub: "Phone number detected in listing text",
+                        value: "Detected",
+                        type: "caution",
+                    },
+                ];
+
+                console.log(build_signal_rows(JSON.stringify(signals)));
             }
 
             run();

@@ -9,24 +9,6 @@
 
   var pageData = window.__safelyData;
 
-  function sigRows(a) {
-    return a
-      .map(function (s) {
-        return (
-          '<div class="safely-signal-row"><span class="safely-signal-label-wrap"><span class="safely-signal-label">' +
-          s.label +
-          '</span><span class="safely-signal-sublabel">' +
-          (s.sub || "") +
-          '</span></span><span class="safely-signal-value safely-signal-' +
-          s.type +
-          '">' +
-          s.value +
-          "</span></div>"
-        );
-      })
-      .join("");
-  }
-
   var sigResult = JSON.parse(
     wasm.analyze_signals(JSON.stringify(pageData.signals)),
   );
@@ -40,7 +22,7 @@
     summaryText +
     "</span></div>" +
     '<div class="safely-section-label" style="margin-top:14px">Listing signals</div><div class="safely-signal-list">' +
-    sigRows(pageData.signals) +
+    wasm.build_signal_rows(JSON.stringify(pageData.signals)) +
     "</div>" +
     '<div class="safely-section-label" style="margin-top:18px">Price vs market</div>' +
     '<div class="safely-price-compare">' +
