@@ -9,6 +9,7 @@
                 build_activity_bars,
                 analyze_signals,
                 verification_badge,
+                build_platform_rows,
             } from "./pkg/safely_extension.js";
 
             async function run() {
@@ -63,6 +64,33 @@
                 console.log(verification_badge("verified"));
                 console.log(verification_badge("flagged"));
                 console.log(verification_badge("unknown"));
+
+                console.log("-------");
+
+                var platforms = [
+                    {
+                        name: "Facebook",
+                        type: "active",
+                        status: "Active · 3 yr",
+                    },
+                    {
+                        name: "OLX",
+                        type: "active",
+                        status: "Active · 1 yr",
+                    },
+                    {
+                        name: "Instagram",
+                        type: "none",
+                        status: "Not found",
+                    },
+                    {
+                        name: "Safely Network",
+                        type: "active",
+                        status: "142 deals",
+                    },
+                ];
+
+                console.log(build_platform_rows(JSON.stringify(platforms)));
             }
 
             run();

@@ -7,6 +7,14 @@ pub struct Signal {
     pub signal_type: String,
 }
 
+#[derive(Deserialize)]
+pub struct Platform {
+    pub name: String,
+    #[serde(rename = "type")]
+    pub platform_type: String,
+    pub status: String,
+}
+
 #[wasm_bindgen]
 pub fn risk_level(score: u8) -> String {
     if score <= 33 {
@@ -104,4 +112,16 @@ pub fn verification_badge(status: &str) -> String {
         r#"<span class="safely-verified-badge {}"><span class="safely-badge-dot {}"></span>{}</span>"#,
         badge_class, dot_class, text
     )
+}
+
+#[wasm_bindgen]
+pub fn build_platform_rows(platform_json: &str) -> String {
+    let platforms: Vec<Platform> = serde_json::from_str(platform_json).unwrap_or_default();
+
+    platforms.iter().map(|p| {
+        format!(
+            r#"<div class="safely-platform-row"><span class="safely-platform-name">{}</span><span class="safely-platform-status safely-pstatus-{}">{}</span></div>"#,
+            p.name, p.platform_type, p.status
+        )
+    }).collect::<Vec<_>>().join("")
 }

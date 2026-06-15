@@ -37,6 +37,11 @@
     })
     .join("");
 
+  // replaced with this
+  var platformRows = wasm.build_platform_rows(
+    JSON.stringify(pageData.seller.platforms),
+  );
+
   var riskTabHTML =
     '<div class="safely-risk-row"><div><div class="safely-risk-number safely-risk-' +
     lvl +
