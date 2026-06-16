@@ -1,0 +1,126 @@
+<!doctype html>
+<html>
+    <body>
+        <script type="module">
+            import init, {
+                risk_level,
+                risk_label,
+                risk_desc,
+                build_activity_bars,
+                analyze_signals,
+                verification_badge,
+                build_platform_rows,
+                build_signal_rows,
+                status_icon,
+            } from "./pkg/wasm.js";
+
+            async function run() {
+                await init();
+
+                console.log(risk_level(22)); // should print: low
+                console.log(risk_level(50)); // should print: caution
+                console.log(risk_level(80)); // should print: high
+
+                console.log("-------");
+
+                console.log(risk_label("low"));
+                console.log(risk_label("caution"));
+                console.log(risk_label("high"));
+
+                console.log("-------");
+
+                console.log(risk_desc("low"));
+                console.log(risk_desc("caution"));
+                console.log(risk_desc("high"));
+
+                console.log("-------");
+
+                var activity = new Uint8Array([
+                    4, 6, 8, 9, 7, 11, 10, 5, 9, 8, 12, 3,
+                ]);
+                var bars = build_activity_bars(activity);
+                console.log(bars);
+
+                console.log("-------");
+
+                var signals = [
+                    { type: "good" },
+                    { type: "good" },
+                    { type: "neutral" },
+                    { type: "info" },
+                    { type: "info" },
+                    { type: "good" },
+                    { type: "good" },
+                    { type: "caution" },
+                ];
+
+                var result = analyze_signals(JSON.stringify(signals));
+                console.log(result);
+
+                var parsed = JSON.parse(result);
+                console.log("level: ", parsed.level);
+                console.log("text: ", parsed.text);
+
+                console.log("-------");
+
+                console.log(verification_badge("verified"));
+                console.log(verification_badge("flagged"));
+                console.log(verification_badge("unknown"));
+
+                console.log("-------");
+
+                var platforms = [
+                    {
+                        name: "Facebook",
+                        type: "active",
+                        status: "Active · 3 yr",
+                    },
+                    {
+                        name: "OLX",
+                        type: "active",
+                        status: "Active · 1 yr",
+                    },
+                    {
+                        name: "Instagram",
+                        type: "none",
+                        status: "Not found",
+                    },
+                    {
+                        name: "Safely Network",
+                        type: "active",
+                        status: "142 deals",
+                    },
+                ];
+
+                console.log(build_platform_rows(JSON.stringify(platforms)));
+
+                console.log("-------");
+
+                var signals = [
+                    {
+                        label: "Price analysis",
+                        sub: "Rs. 85,000 vs market avg Rs. 88,000",
+                        value: "Normal range",
+                        type: "good",
+                    },
+                    {
+                        label: "Contact info in listing",
+                        sub: "Phone number detected in listing text",
+                        value: "Detected",
+                        type: "caution",
+                    },
+                ];
+
+                console.log(build_signal_rows(JSON.stringify(signals)));
+
+                console.log("-------");
+
+                console.log(status_icon("low"));
+                console.log(status_icon("caution"));
+                console.log(status_icon("high"));
+            }
+
+            run();
+        </script>
+    </body>
+</html>

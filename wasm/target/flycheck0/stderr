@@ -1,0 +1,66 @@
+warning: profiles for the non root package will be ignored, specify profiles at the workspace root:
+package:   C:\Users\Bilal Khan\Documents\projects\Rust\extension\wasm\Cargo.toml
+workspace: C:\Users\Bilal Khan\Documents\projects\Rust\extension\Cargo.toml
+warning: virtual workspace defaulting to `resolver = "1"` despite one or more workspace members being on edition 2024 which implies `resolver = "3"`
+  |
+  = note: to keep the current resolver, specify `workspace.resolver = "1"` in the workspace root's manifest
+  = note: to use the edition 2024 resolver, specify `workspace.resolver = "3"` in the workspace root's manifest
+  = note: for more details see https://doc.rust-lang.org/cargo/reference/resolver.html#resolver-versions
+   0.153125600s  INFO prepare_target{force=false package_id=wasm v0.1.0 (C:\Users\Bilal Khan\Documents\projects\Rust\extension\wasm) target="wasm"}: cargo::core::compiler::fingerprint: fingerprint error for wasm v0.1.0 (C:\Users\Bilal Khan\Documents\projects\Rust\extension\wasm)/Check { test: false }/TargetInner { name_inferred: true, ..: lib_target("wasm", ["cdylib", "rlib"], "C:\\Users\\Bilal Khan\\Documents\\projects\\Rust\\extension\\wasm\\src\\lib.rs", Edition2024) }
+   0.153254300s  INFO prepare_target{force=false package_id=wasm v0.1.0 (C:\Users\Bilal Khan\Documents\projects\Rust\extension\wasm) target="wasm"}: cargo::core::compiler::fingerprint:     err: failed to read `C:\Users\Bilal Khan\Documents\projects\Rust\extension\target\debug\.fingerprint\wasm-95d4eb6c390025bf\lib-wasm`
+
+Caused by:
+    The system cannot find the file specified. (os error 2)
+
+Stack backtrace:
+   0: git_midx_writer_dump
+   1: git_midx_writer_dump
+   2: git_midx_writer_dump
+   3: git_midx_writer_dump
+   4: git_filter_source_repo
+   5: git_filter_source_repo
+   6: git_filter_source_repo
+   7: git_filter_source_repo
+   8: git_filter_source_repo
+   9: git_filter_source_repo
+  10: git_filter_source_repo
+  11: git_libgit2_prerelease
+  12: <unknown>
+  13: <unknown>
+  14: <unknown>
+  15: <unknown>
+  16: git_midx_writer_dump
+  17: git_filter_source_repo
+  18: git_midx_writer_dump
+  19: BaseThreadInitThunk
+  20: RtlUserThreadStart
+   0.238492500s  INFO prepare_target{force=false package_id=wasm v0.1.0 (C:\Users\Bilal Khan\Documents\projects\Rust\extension\wasm) target="wasm"}: cargo::core::compiler::fingerprint: fingerprint error for wasm v0.1.0 (C:\Users\Bilal Khan\Documents\projects\Rust\extension\wasm)/Check { test: true }/TargetInner { name_inferred: true, ..: lib_target("wasm", ["cdylib", "rlib"], "C:\\Users\\Bilal Khan\\Documents\\projects\\Rust\\extension\\wasm\\src\\lib.rs", Edition2024) }
+   0.238555500s  INFO prepare_target{force=false package_id=wasm v0.1.0 (C:\Users\Bilal Khan\Documents\projects\Rust\extension\wasm) target="wasm"}: cargo::core::compiler::fingerprint:     err: failed to read `C:\Users\Bilal Khan\Documents\projects\Rust\extension\target\debug\.fingerprint\wasm-24b5610d1f811b3f\test-lib-wasm`
+
+Caused by:
+    The system cannot find the file specified. (os error 2)
+
+Stack backtrace:
+   0: git_midx_writer_dump
+   1: git_midx_writer_dump
+   2: git_midx_writer_dump
+   3: git_midx_writer_dump
+   4: git_filter_source_repo
+   5: git_filter_source_repo
+   6: git_filter_source_repo
+   7: git_filter_source_repo
+   8: git_filter_source_repo
+   9: git_filter_source_repo
+  10: git_filter_source_repo
+  11: git_libgit2_prerelease
+  12: <unknown>
+  13: <unknown>
+  14: <unknown>
+  15: <unknown>
+  16: git_midx_writer_dump
+  17: git_filter_source_repo
+  18: git_midx_writer_dump
+  19: BaseThreadInitThunk
+  20: RtlUserThreadStart
+    Checking wasm v0.1.0 (C:\Users\Bilal Khan\Documents\projects\Rust\extension\wasm)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.81s
