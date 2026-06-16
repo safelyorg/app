@@ -11,6 +11,7 @@
                 verification_badge,
                 build_platform_rows,
                 build_signal_rows,
+                status_icon,
             } from "./pkg/safely_extension.js";
 
             async function run() {
@@ -111,6 +112,12 @@
                 ];
 
                 console.log(build_signal_rows(JSON.stringify(signals)));
+
+                console.log("-------");
+
+                console.log(status_icon("low"));
+                console.log(status_icon("caution"));
+                console.log(status_icon("high"));
             }
 
             run();
