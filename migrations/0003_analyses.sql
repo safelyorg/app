@@ -1,4 +1,4 @@
-CREATE TABLE IF NOT EXISTS (
+CREATE TABLE IF NOT EXISTS analyses (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     listing_id UUID NOT NULL REFERENCES listings(id),
     risk_score SMALLINT NOT NULL,
