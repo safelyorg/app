@@ -24,7 +24,7 @@ async fn main() {
         .await
         .expect("migration expected");
 
-    run_grants(&admin_pool);
+    run_grants(&admin_pool).await;
 
     let app = Router::new()
         .merge(routes::sellers::seller_routes())
