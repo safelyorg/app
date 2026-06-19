@@ -1,12 +1,29 @@
-use crate::models::listings::{Listings, ListingsRequest, ListingsResponse};
-use axum::{Json, extract::State};
-use sqlx::{Pool, Postgres};
+use sqlx::{Error, Pool, Postgres};
 use uuid::Uuid;
 
+use crate::models::listings::{Listings, ListingsRequest};
+
+pub async fn find_listing(
+    pool: &Pool<Postgres>,
+    listing_url: &str,
+) -> Result<Option<Listings>, Error> {
+    let listing = sqlx::query_as::<_, Listings>(
+        "SELECT * FROM listings
+         WHERE listing_url = $1
+         LIMIT 1",
+    )
+    .bind(listing_url)
+    .fetch_optional(pool)
+    .await?;
+
+    Ok(listing)
+}
+
 pub async fn create_listing(
-    State(pool): State<Pool<Postgres>>,
-    Json(request): Json<ListingsRequest>,
-) -> Result<Json<ListingsResponse>, String> {
+    pool: &Pool<Postgres>,
+    request: &ListingsRequest,
+    seller_id: Uuid,
+) -> Result<Listings, Error> {
     let id = Uuid::now_v7();
 
     let listing = sqlx::query_as::<_, Listings>(
@@ -36,7 +53,7 @@ pub async fn create_listing(
         ",
     )
     .bind(id)
-    .bind(&request.seller_id)
+    .bind(seller_id)
     .bind(&request.platform)
     .bind(&request.listing_url)
     .bind(&request.listing_id)
@@ -46,9 +63,8 @@ pub async fn create_listing(
     .bind(&request.category)
     .bind(&request.image_urls)
     .bind(&request.posted_date)
-    .fetch_one(&pool)
-    .await
-    .map_err(|e| e.to_string())?;
+    .fetch_one(pool)
+    .await?;
 
-    Ok(Json(ListingsResponse::from(listing)))
+    Ok(listing)
 }

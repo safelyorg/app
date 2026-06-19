@@ -14,6 +14,9 @@ pub mod models;
 #[path = "../routes/mod.rs"]
 pub mod routes;
 
+#[path = "../services/mod.rs"]
+pub mod services;
+
 #[tokio::main]
 async fn main() {
     let admin_pool = load_pool("ADMIN_URL").await;
@@ -27,8 +30,7 @@ async fn main() {
     run_grants(&admin_pool).await;
 
     let app = Router::new()
-        .merge(routes::sellers::analyze_sellers())
-        .merge(routes::listings::listing_routes())
+        .merge(routes::analyze::analyze_routes())
         .merge(routes::analysis::analysis_routes())
         .merge(routes::fraud_reports::fraud_reports_routes())
         .nest_service(

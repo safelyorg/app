@@ -1,8 +1,10 @@
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, NaiveDate, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sqlx::{Type, prelude::FromRow};
 use uuid::Uuid;
+
+use crate::models::{listings::ListingCategory, sellers::SellerLocation};
 
 #[derive(Debug, Serialize, Deserialize, Type)]
 #[sqlx(type_name = "risk_level_type", rename_all = "snake_case")]
@@ -33,6 +35,32 @@ pub struct AnalysisRequest {
     pub risk_level: RiskLevel,
     pub signals: Value,
     pub price_analysis: Option<Value>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct AnalyzeRequest {
+    // shared
+    pub platform: String,
+
+    // listing fields
+    pub seller_id: Option<Uuid>,
+    pub listing_url: String,
+    pub listing_id: Option<String>,
+    pub title: Option<String>,
+    pub price: Option<i64>,
+    pub description: Option<String>,
+    pub category: Option<ListingCategory>,
+    pub image_urls: Option<Vec<String>>,
+    pub posted_date: Option<NaiveDate>,
+
+    // seller fields
+    pub seller_platform_id: Option<String>,
+    pub seller_name: Option<String>,
+    pub seller_handle: Option<String>,
+    pub seller_phone: Option<String>,
+    pub seller_profile_url: Option<String>,
+    pub seller_join_date: Option<String>,
+    pub seller_location: Option<SellerLocation>,
 }
 
 #[derive(Debug, Serialize)]
