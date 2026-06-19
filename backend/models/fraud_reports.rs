@@ -15,22 +15,12 @@ pub enum ReportTypes {
     NonResponsive,
 }
 
-#[derive(Debug, Serialize, Deserialize, Type)]
-#[sqlx(type_name = "platforms_list", rename_all = "snake_case")]
-#[serde(rename_all = "snake_case")]
-pub enum PlatformsList {
-    Olx,
-    Facebook,
-    Daraz,
-    Instagram,
-}
-
 #[derive(Debug, Serialize, Deserialize, FromRow)]
 pub struct FraudReports {
     pub id: Uuid,
     pub seller_id: Option<Uuid>,
-    pub platform: Option<PlatformsList>,
-    pub platform_id: Option<Uuid>,
+    pub platform: Option<String>,
+    pub platform_id: Option<String>,
     pub report_type: ReportTypes,
     pub description: Option<String>,
     pub reported_at: DateTime<Utc>,
@@ -39,8 +29,8 @@ pub struct FraudReports {
 #[derive(Deserialize)]
 pub struct FraudReportsRequest {
     pub seller_id: Option<Uuid>,
-    pub platform: Option<PlatformsList>,
-    pub platform_id: Option<Uuid>,
+    pub platform: Option<String>,
+    pub platform_id: Option<String>,
     pub report_type: ReportTypes,
     pub description: Option<String>,
 }
@@ -49,7 +39,7 @@ pub struct FraudReportsRequest {
 pub struct FraudReportsResponse {
     pub id: Uuid,
     pub seller_id: Option<Uuid>,
-    pub platform: Option<PlatformsList>,
+    pub platform: Option<String>,
     pub report_type: ReportTypes,
     pub description: Option<String>,
     pub reported_at: DateTime<Utc>,

@@ -1,7 +1,7 @@
 CREATE TABLE IF NOT EXISTS fraud_reports (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     seller_id UUID REFERENCES sellers(id) ON DELETE SET NULL,
-    platform platforms_list,
+    platform VARCHAR(30),
     platform_id VARCHAR(200),
     report_type report_types NOT NULL,
     description TEXT,
