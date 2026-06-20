@@ -1,10 +1,12 @@
 use crate::{
     models::{
         analysis::AnalyzeRequest,
+        helpers::format_account_age,
         listings::ListingsRequest,
         sellers::{SellersRequest, SellersResponse},
     },
     services::{
+        claude::call_claude,
         listings::{create_listing, find_listing},
         sellers::{create_seller, find_seller},
     },
@@ -51,7 +53,7 @@ pub async fn analyze(
             .map_err(|e| e.to_string())?,
     };
 
-    let _listing = match find_listing(&pool, &request.listing_url)
+    let listing = match find_listing(&pool, &request.listing_url)
         .await
         .map_err(|e| e.to_string())?
     {
@@ -60,6 +62,23 @@ pub async fn analyze(
             .await
             .map_err(|e| e.to_string())?,
     };
+
+    let account_age = seller
+        .join_date
+        .map(|d| format_account_age(d))
+        .unwrap_or_else(|| "Unknown".to_string());
+
+    let _ = call_claude(
+        &listing.platform,
+        seller.name.as_deref().unwrap_or("Unknown"),
+        &account_age,
+        seller.total_deals,
+        seller.disputes,
+        listing.title.as_deref().unwrap_or("Untitled"),
+        listing.price.unwrap_or(0),
+        listing.description.as_deref().unwrap_or(""),
+    )
+    .await;
 
     Ok(Json(SellersResponse::from(seller)))
 }
