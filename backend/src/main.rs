@@ -31,7 +31,6 @@ async fn main() {
 
     let app = Router::new()
         .merge(routes::analyze::analyze_routes())
-        .merge(routes::analysis::analysis_routes())
         .merge(routes::fraud_reports::fraud_reports_routes())
         .nest_service(
             "/static/",

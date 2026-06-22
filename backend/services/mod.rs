@@ -1,3 +1,4 @@
+pub mod analysis;
 pub mod claude;
 pub mod listings;
 pub mod scoring;
