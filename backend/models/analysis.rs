@@ -74,6 +74,15 @@ pub struct AnalysisResponse {
     pub created_at: DateTime<Utc>,
 }
 
+#[derive(Debug, Serialize)]
+pub struct Signal {
+    pub label: String,
+    pub sub: String,
+    pub value: String,
+    #[serde(rename = "type")]
+    pub signal_type: String,
+}
+
 impl From<Analysis> for AnalysisResponse {
     fn from(a: Analysis) -> Self {
         Self {

@@ -1,11 +1,38 @@
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 
+// 1. Packaging the question for Claude's API
+#[derive(Serialize)]
+pub struct ClaudeRequest {
+    pub model: String,
+    pub max_tokens: u32,
+    pub messages: Vec<Message>,
+}
+
+#[derive(Serialize)]
+pub struct Message {
+    pub role: String,
+    pub content: String,
+}
+// ----------
+
+// 2. Gives you the text(that contains the actual fraud analysis) from the content block
+#[derive(Debug, Deserialize)]
+struct ClaudeEnvelope {
+    content: Vec<ContentBlock>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ContentBlock {
+    text: String,
+}
+// ----------
+
+// 3. The raw data of analysis is inserted in this struct for better structure.
 #[derive(Debug, Deserialize)]
 pub struct ClaudeAnalysis {
     pub urgency_language: Finding,
     pub advance_payment_request: Finding,
-    pub account_age: Finding,
     pub duplicate_listing: Finding,
     pub image_authenticity: ImageAssessment,
     pub fraud_pattern_match: Finding,
@@ -31,21 +58,7 @@ pub struct ImageAssessment {
     pub verdict: String,
     pub reasoning: String,
 }
-
-// --------------
-
-#[derive(Serialize)]
-pub struct ClaudeRequest {
-    pub model: String,
-    pub max_tokens: u32,
-    pub messages: Vec<Message>,
-}
-
-#[derive(Serialize)]
-pub struct Message {
-    pub role: String,
-    pub content: String,
-}
+// ----------
 
 pub fn content(
     platform: &str,
@@ -154,6 +167,17 @@ pub async fn call_claude(
         .send()
         .await?;
 
-    println!("response: {:?}", response.status());
+    let body_text = response.text().await?;
+
+    let envelope: ClaudeEnvelope =
+        serde_json::from_str(&body_text).expect("failed to parse Claude's response envelope");
+
+    let inner_json = &envelope.content[0].text;
+
+    let analysis: ClaudeAnalysis =
+        serde_json::from_str(inner_json).expect("failed to parse Claude's analysis JSON");
+
+    println!("{:?}", analysis);
+
     Ok(())
 }
