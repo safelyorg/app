@@ -51,12 +51,16 @@ pub async fn create_seller(
             $6, $7, $8, $9, $10,
             $11, $12, $13, NOW(), NOW()
         )
+        ON CONFLICT (platform, platform_id)
+        DO UPDATE SET
+            name = COALESCE(EXCLUDED.name, sellers.name),
+            updated_at = NOW()
         RETURNING *
         ",
     )
     .bind(id)
     .bind(&request.platform)
-    .bind(&request.platform_id)
+    .bind(request.platform_id.as_deref().unwrap_or("unknown"))
     .bind(&request.name)
     .bind(&request.handle)
     .bind(&request.phone)

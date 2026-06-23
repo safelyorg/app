@@ -1,6 +1,6 @@
 use crate::db::{bootstrap::run_grants, connection::load_pool};
 use axum::Router;
-use tower_http::services::ServeDir;
+use tower_http::{cors::CorsLayer, services::ServeDir};
 
 #[path = "../db/mod.rs"]
 pub mod db;
@@ -36,6 +36,7 @@ async fn main() {
             "/static/",
             ServeDir::new(concat!(env!("CARGO_MANIFEST_DIR"), "/static")),
         )
+        .layer(CorsLayer::permissive())
         .with_state(app_pool);
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
