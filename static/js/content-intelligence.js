@@ -1,8 +1,52 @@
 (async function () {
   "use strict";
-  var wasmUrl = chrome.runtime.getURL("pkg/wasm.js");
-  var wasm = await import(wasmUrl);
-  await wasm.default();
+
+  var wasm;
+  try {
+    var wasmUrl = chrome.runtime.getURL("pkg/wasm.js");
+    wasm = await import(wasmUrl);
+    await wasm.default();
+  } catch (e) {
+    console.warn("Safely: WASM blocked, using JS fallback");
+    wasm = {
+      analyze_signals: function (j) {
+        var signals = JSON.parse(j);
+        var bad = signals.filter(function (s) {
+          return s.type === "bad" || s.type === "caution";
+        }).length;
+        var level = bad === 0 ? "low" : bad === 1 ? "caution" : "high";
+        var text =
+          bad === 0
+            ? "All " +
+              signals.length +
+              " signals checked. No red flags detected."
+            : bad + " of " + signals.length + " signals need your attention.";
+        return JSON.stringify({ level: level, text: text });
+      },
+      build_signal_rows: function (j) {
+        var signals = JSON.parse(j);
+        return signals
+          .map(function (s) {
+            return (
+              '<div class="safely-signal-row"><span class="safely-signal-label-wrap">' +
+              '<span class="safely-signal-label">' +
+              s.label +
+              "</span>" +
+              '<span class="safely-signal-sublabel">' +
+              s.sub +
+              "</span>" +
+              '</span><span class="safely-signal-value safely-signal-' +
+              s.type +
+              '">' +
+              s.value +
+              "</span></div>"
+            );
+          })
+          .join("");
+      },
+    };
+  }
+
   if (!window.__safelyAddTab) return;
 
   function buildIntelligenceTab() {

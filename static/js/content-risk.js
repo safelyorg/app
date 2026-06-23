@@ -1,8 +1,46 @@
 (async function () {
   "use strict";
-  var wasmUrl = chrome.runtime.getURL("pkg/wasm.js");
-  var wasm = await import(wasmUrl);
-  await wasm.default();
+
+  var wasm;
+  try {
+    var wasmUrl = chrome.runtime.getURL("pkg/wasm.js");
+    wasm = await import(wasmUrl);
+    await wasm.default();
+  } catch (e) {
+    console.warn("Safely: WASM blocked, using JS fallback");
+    wasm = {
+      risk_level: function (s) {
+        return s <= 33 ? "low" : s <= 66 ? "caution" : "high";
+      },
+      risk_label: function (l) {
+        return l === "low"
+          ? "Low risk"
+          : l === "caution"
+            ? "Caution"
+            : "High risk";
+      },
+      risk_desc: function (l) {
+        return l === "low"
+          ? "Safe to proceed"
+          : l === "caution"
+            ? "Review before proceeding"
+            : "High risk detected";
+      },
+      build_activity_bars: function (a) {
+        return "";
+      },
+      build_platform_rows: function (j) {
+        return "";
+      },
+      verification_badge: function (s) {
+        return '<span class="safely-verified-badge">' + s + "</span>";
+      },
+      status_icon: function (l) {
+        return "";
+      },
+    };
+  }
+
   if (!window.__safelyAddTab) return;
 
   function buildRiskTab() {
