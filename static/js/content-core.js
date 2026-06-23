@@ -18,6 +18,67 @@
     return "unknown";
   }
 
+  function scrapeOLX() {
+    var data = {};
+
+    // listing_id — extract from URL
+    var urlMatch = window.location.href.match(/iid-(\d+)/);
+    data.listing_id = urlMatch ? urlMatch[1] : null;
+
+    // title
+    var titleEl = document.querySelector("h1._75bce902");
+    data.title = titleEl ? titleEl.innerText.trim() : null;
+
+    // price — strip "Rs" and commas, convert to paisas
+    var priceEl = document.querySelector("span._24469da7");
+    if (priceEl) {
+      var priceText = priceEl.innerText.trim();
+      priceText = priceText.replace(/Rs\s*/i, "").replace(/,/g, "").trim();
+
+      if (priceText.toLowerCase().includes("lac")) {
+        var num = parseFloat(priceText.replace(/lac/i, "").trim());
+        data.price = Math.round(num * 100000);
+      } else {
+        data.price = Math.round(parseFloat(priceText));
+      }
+    } else {
+      data.price = null;
+    }
+
+    // description
+    var descEl = document.querySelector("div._7a99ad24 span");
+    data.description = descEl ? descEl.innerText.trim() : null;
+
+    // seller name
+    var sellerNameEl = document.querySelector("span._8206696c.b7af14b4");
+    data.seller_name = sellerNameEl ? sellerNameEl.innerText.trim() : null;
+
+    // member since — find the span after "Member Since" label
+    var memberSinceLabel = Array.from(
+      document.querySelectorAll("span._9083bec6._1fcb6673"),
+    ).find(function (el) {
+      return el.innerText.trim() === "Member Since";
+    });
+    data.seller_join_date =
+      memberSinceLabel && memberSinceLabel.nextElementSibling
+        ? "Member since " + memberSinceLabel.nextElementSibling.innerText.trim()
+        : null;
+
+    // seller profile url and platform id
+    var profileLink = document.querySelector("a.da952dfc");
+    if (profileLink) {
+      var href = profileLink.getAttribute("href");
+      data.seller_profile_url = "https://www.olx.com.pk" + href;
+      var profileMatch = href.match(/\/profile\/([^\/]+)/);
+      data.seller_platform_id = profileMatch ? profileMatch[1] : null;
+    } else {
+      data.seller_profile_url = null;
+      data.seller_platform_id = null;
+    }
+
+    return data;
+  }
+
   window.__safelyData = {
     riskScore: 0,
     seller: {
@@ -41,6 +102,13 @@
     var platform = detectPlatform();
     var listing_url = window.location.href;
 
+    // scrape real data if on OLX
+    var scraped = {};
+    if (platform === "olx") {
+      scraped = scrapeOLX();
+      console.log("Safely: scraped data:", scraped);
+    }
+
     try {
       var response = await fetch("http://localhost:3000/api/v1/analyze", {
         method: "POST",
@@ -51,26 +119,25 @@
           platform: platform,
           listing_url: listing_url,
           seller_id: null,
-          listing_id: null,
-          title: null,
-          price: null,
-          description: null,
+          listing_id: scraped.listing_id || null,
+          title: scraped.title || null,
+          price: scraped.price || null,
+          description: scraped.description || null,
           category: null,
           image_urls: null,
           posted_date: null,
-          seller_platform_id: null,
-          seller_name: null,
+          seller_platform_id: scraped.seller_platform_id || null,
+          seller_name: scraped.seller_name || null,
           seller_handle: null,
           seller_phone: null,
-          seller_profile_url: null,
-          seller_join_date: null,
+          seller_profile_url: scraped.seller_profile_url || null,
+          seller_join_date: scraped.seller_join_date || null,
           seller_location: null,
         }),
       });
 
       var rawText = await response.text();
-      console.log("status:", response.status, "ok:", response.ok);
-      console.log("body:", rawText.substring(0, 100));
+      console.log("Safely: raw response status:", response.status);
 
       if (!response.ok) {
         console.error("Safely: backend error:", rawText);
@@ -107,7 +174,7 @@
 
       window.dispatchEvent(new CustomEvent("safely-data-ready"));
     } catch (error) {
-      console.error("Safely: failed to fetch analysis", error);
+      console.error("Safely: failed to fetch analysis", error.message);
     }
   }
 
@@ -138,9 +205,6 @@
   var toolbarInner = document.getElementById("safely-toolbar-inner");
 
   // ── Reserve icon positions in left-to-right order BEFORE any tab loads ──
-  // This fixes the ordering problem caused by async (wasm-loading) tab files
-  // registering later than synchronous ones. Whichever tab finishes loading,
-  // its icon always lands in its pre-reserved slot.
   var TAB_ORDER = ["risk", "intelligence", "protect"];
   var iconSlots = {};
 
@@ -148,7 +212,7 @@
     var iconDiv = document.createElement("div");
     iconDiv.className = "safely-toolbar-icon";
     iconDiv.dataset.open = id;
-    iconDiv.style.display = "none"; // hidden until its tab fills it
+    iconDiv.style.display = "none";
     toolbarInner.insertBefore(iconDiv, collapseBtn);
     iconDiv.addEventListener("click", function (e) {
       e.stopPropagation();
@@ -202,8 +266,6 @@
     tabDiv.innerHTML = html;
     tabsArea.appendChild(tabDiv);
 
-    // Fill the pre-reserved icon slot — left-to-right order was already
-    // fixed above, regardless of which tab finishes loading first.
     var iconDiv = iconSlots[id];
     if (iconDiv) {
       iconDiv.title = title;
@@ -211,7 +273,6 @@
       iconDiv.style.display = "flex";
     }
 
-    // Always make "risk" the default visible tab, whenever it registers
     if (id === "risk") switchTab(id);
     if (typeof initFn === "function") initFn(root);
   };
