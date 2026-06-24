@@ -122,6 +122,8 @@
 
   async function fetchAnalysis() {
     var platform = detectPlatform();
+    if (platform === "unknown") return;
+
     var listing_url = window.location.href;
 
     // scrape real data if on OLX
@@ -198,7 +200,11 @@
 
       window.dispatchEvent(new CustomEvent("safely-data-ready"));
     } catch (error) {
-      console.error("Safely: failed to fetch analysis", error.message);
+      console.error(
+        "Safely: failed to fetch analysis",
+        error.message,
+        error.stack,
+      );
     }
   }
 
