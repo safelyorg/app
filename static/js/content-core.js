@@ -35,8 +35,16 @@
       var priceText = priceEl.innerText.trim();
       priceText = priceText.replace(/Rs\s*/i, "").replace(/,/g, "").trim();
 
-      if (priceText.toLowerCase().includes("lac")) {
-        var num = parseFloat(priceText.replace(/lac/i, "").trim());
+      if (priceText.toLowerCase().includes("crore")) {
+        // "2 Crore" or "2.5 Crores" → multiply by 10,000,000
+        var num = parseFloat(priceText.replace(/crores?/i, "").trim());
+        data.price = Math.round(num * 10000000);
+      } else if (
+        priceText.toLowerCase().includes("lac") ||
+        priceText.toLowerCase().includes("lacs")
+      ) {
+        // "2.50 Lac" or "2.50 Lacs" → multiply by 100,000
+        var num = parseFloat(priceText.replace(/lacs?/i, "").trim());
         data.price = Math.round(num * 100000);
       } else {
         data.price = Math.round(parseFloat(priceText));
@@ -166,7 +174,6 @@
       });
 
       var rawText = await response.text();
-      console.log("Safely: raw response status:", response.status);
 
       if (!response.ok) {
         console.error("Safely: backend error:", rawText);

@@ -9,7 +9,7 @@ use crate::{
         analysis::create_analysis,
         claude::call_claude,
         fraud_reports::{build_network_summary, count_fraud_reports},
-        listings::{create_listing, find_listing},
+        listings::create_listing,
         scoring::calculate_risk_score,
         sellers::{create_seller, find_seller},
         signals::build_signals,
