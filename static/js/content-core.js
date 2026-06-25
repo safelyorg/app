@@ -408,4 +408,20 @@
   });
 
   await fetchAnalysis();
+
+  // detect URL changes for single page app navigation
+  var lastUrl = window.location.href;
+  new MutationObserver(function () {
+    var currentUrl = window.location.href;
+    if (currentUrl !== lastUrl) {
+      lastUrl = currentUrl;
+      // only re-analyze if we are on a listing page
+      if (
+        currentUrl.includes("iid-") ||
+        currentUrl.includes("facebook.com/marketplace")
+      ) {
+        fetchAnalysis();
+      }
+    }
+  }).observe(document.body, { subtree: true, childList: true });
 })();
