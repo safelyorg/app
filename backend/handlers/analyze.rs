@@ -62,15 +62,9 @@ pub async fn analyze(
         .map_err(|e| e.to_string())?;
     let network_summary = build_network_summary(fraud_count);
 
-    let listing = match find_listing(&pool, &request.listing_url)
+    let listing = create_listing(&pool, &listing_req, seller.id)
         .await
-        .map_err(|e| e.to_string())?
-    {
-        Some(existing) => existing,
-        None => create_listing(&pool, &listing_req, seller.id)
-            .await
-            .map_err(|e| e.to_string())?,
-    };
+        .map_err(|e| e.to_string())?;
 
     let account_age = seller
         .join_date

@@ -73,7 +73,12 @@
         var reasoning = priceSignal
           ? priceSignal.sub
           : "No price data available.";
-        var verdictClass = verdict === "normal" ? "good" : "caution";
+        var verdictClass =
+          verdict === "normal"
+            ? "low"
+            : verdict === "unknown"
+              ? "low"
+              : "caution";
         return (
           '<div class="safely-section-label" style="margin-top:18px">Price vs market</div>' +
           '<div class="safely-network-alert safely-alert-' +

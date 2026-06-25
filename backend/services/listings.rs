@@ -49,6 +49,14 @@ pub async fn create_listing(
             $6,  $7,    $8,   $9,   $10,
             $11, NOW(), NULL, NOW()
         )
+        ON CONFLICT (listing_url)
+        DO UPDATE SET
+            title = COALESCE(EXCLUDED.title, listings.title),
+            price = COALESCE(EXCLUDED.price, listings.price),
+            description = COALESCE(EXCLUDED.description, listings.description),
+            seller_id = COALESCE(EXCLUDED.seller_id, listings.seller_id),
+            last_analyzed_at = NOW(),
+            updated_at = NOW()
         RETURNING *
         ",
     )
