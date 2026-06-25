@@ -74,7 +74,7 @@ pub fn content(
         r#"
         You are a fraud detection assistant for an online marketplace.
 
-        Analyze this listing and seller, then return ONLY a valid JSON object. Do not include markdown, explanations, or code fences.
+        Analyze this listing and seller, then return ONLY a raw JSON object with no markdown, no code fences, no backticks, no explanation. Start your response with {{ and end with }}.
 
         Platform: {platform}
         Seller name: {seller_name}
@@ -152,7 +152,7 @@ pub async fn call_claude(
 
     let payload = ClaudeRequest {
         model: String::from("claude-sonnet-4-6"),
-        max_tokens: 1024,
+        max_tokens: 2048,
         messages: vec![Message {
             role: "user".to_string(),
             content: prompt,
@@ -173,9 +173,15 @@ pub async fn call_claude(
         serde_json::from_str(&body_text).expect("failed to parse Claude's response envelope");
 
     let inner_json = &envelope.content[0].text;
+    let cleaned = inner_json
+        .trim()
+        .trim_start_matches("```json")
+        .trim_start_matches("```")
+        .trim_end_matches("```")
+        .trim();
 
     let analysis: ClaudeAnalysis =
-        serde_json::from_str(inner_json).expect("failed to parse Claude's analysis JSON");
+        serde_json::from_str(cleaned).expect("failed to parse Claude's analysis JSON");
 
     Ok(analysis)
 }

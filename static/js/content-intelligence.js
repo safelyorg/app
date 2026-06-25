@@ -65,12 +65,33 @@
       '<div class="safely-section-label" style="margin-top:14px">Listing signals</div><div class="safely-signal-list">' +
       wasm.build_signal_rows(JSON.stringify(pageData.signals)) +
       "</div>" +
-      '<div class="safely-section-label" style="margin-top:18px">Price vs market</div>' +
-      '<div class="safely-price-compare">' +
-      '<div class="safely-compare-row"><span class="safely-compare-label">This listing</span><div class="safely-compare-track"><div class="safely-compare-fill safely-fill-primary" style="width:72%"></div></div><span class="safely-compare-val">85K</span></div>' +
-      '<div class="safely-compare-row"><span class="safely-compare-label">Market avg</span><div class="safely-compare-track"><div class="safely-compare-fill safely-fill-neutral" style="width:75%"></div></div><span class="safely-compare-val">88K</span></div>' +
-      '<div class="safely-compare-row"><span class="safely-compare-label">Lowest found</span><div class="safely-compare-track"><div class="safely-compare-fill safely-fill-low" style="width:60%"></div></div><span class="safely-compare-val">71K</span></div>' +
-      '<div class="safely-compare-row"><span class="safely-compare-label">Suspicion zone</span><div class="safely-compare-track"><div class="safely-compare-fill safely-fill-danger" style="width:40%"></div></div><span class="safely-compare-val">&lt;52K</span></div></div>' +
+      (function () {
+        var priceSignal = pageData.signals.find(function (s) {
+          return s.label === "Price analysis";
+        });
+        var verdict = priceSignal ? priceSignal.value : "unknown";
+        var reasoning = priceSignal
+          ? priceSignal.sub
+          : "No price data available.";
+        var verdictClass = verdict === "normal" ? "good" : "caution";
+        return (
+          '<div class="safely-section-label" style="margin-top:18px">Price vs market</div>' +
+          '<div class="safely-network-alert safely-alert-' +
+          verdictClass +
+          '" style="margin-top:8px">' +
+          "<span>&#9679;</span>" +
+          "<div>" +
+          '<div style="font-weight:600;margin-bottom:4px">' +
+          verdict.charAt(0).toUpperCase() +
+          verdict.slice(1) +
+          "</div>" +
+          '<div style="font-size:12px;opacity:0.85">' +
+          reasoning +
+          "</div>" +
+          "</div>" +
+          "</div>"
+        );
+      })() +
       '<div class="safely-section-label" style="margin-top:18px">Recommended checks</div><div style="display:flex;flex-direction:column;gap:8px">' +
       '<div class="safely-check-card"><div class="safely-check-title">Ask for a live video call</div><div class="safely-check-body">Verify the item is physically in the seller\'s hands before sending any payment.</div></div>' +
       '<div class="safely-check-card"><div class="safely-check-title">Check IMEI on delivery</div><div class="safely-check-body">Dial *#06# on the device and confirm the number matches what the seller declared at deal creation.</div></div>' +

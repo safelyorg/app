@@ -65,25 +65,28 @@
       data.seller_name = null;
     }
 
-    // member since — find the span after "Member Since" label
-    // member since
+    // member since — try multiple approaches
     var memberSinceLabel = Array.from(
       document.querySelectorAll("span._9083bec6._1fcb6673"),
     ).find(function (el) {
       return el.innerText.trim() === "Member Since";
     });
+
     if (memberSinceLabel) {
       var yearEl = memberSinceLabel.parentElement.querySelector(
         "span._8206696c.b7af14b4",
       );
-      if (!yearEl) {
-        yearEl = memberSinceLabel.nextElementSibling;
-      }
+      if (!yearEl) yearEl = memberSinceLabel.nextElementSibling;
       data.seller_join_date = yearEl
         ? "Member since " + yearEl.innerText.trim()
         : null;
     } else {
-      data.seller_join_date = null;
+      // fallback — search all text on page for "Member since YYYY" pattern
+      var allText = document.body.innerText;
+      var memberMatch = allText.match(/Member [Ss]ince\s+(\d{4})/);
+      data.seller_join_date = memberMatch
+        ? "Member since " + memberMatch[1]
+        : null;
     }
 
     // seller profile url and platform id
