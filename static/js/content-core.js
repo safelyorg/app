@@ -57,6 +57,20 @@
     var descEl = document.querySelector("div._7a99ad24 span");
     data.description = descEl ? descEl.innerText.trim() : null;
 
+    // image urls — take first 3 images
+    var imageEls = document.querySelectorAll(
+      "div.image-gallery-slide img._66938426",
+    );
+    data.image_urls = Array.from(imageEls)
+      .slice(0, 3)
+      .map(function (img) {
+        return img.src;
+      })
+      .filter(function (src) {
+        return src && src.includes("olx");
+      });
+    if (data.image_urls.length === 0) data.image_urls = null;
+
     // seller name — navigate via "Posted by" label
     var postedByLabel = Array.from(
       document.querySelectorAll("span._9083bec6._1fcb6673"),
@@ -146,6 +160,8 @@
       scraped = scrapeOLX();
     }
 
+    console.log("Safely: sending image_urls:", scraped.image_urls);
+
     try {
       var response = await fetch("http://localhost:3000/api/v1/analyze", {
         method: "POST",
@@ -161,7 +177,7 @@
           price: scraped.price || null,
           description: scraped.description || null,
           category: null,
-          image_urls: null,
+          image_urls: scraped.image_urls || null,
           posted_date: null,
           seller_platform_id: scraped.seller_platform_id || null,
           seller_name: scraped.seller_name || null,

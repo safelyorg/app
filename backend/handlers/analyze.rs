@@ -71,6 +71,7 @@ pub async fn analyze(
         .map(|d| format_account_age(d))
         .unwrap_or_else(|| "Unknown".to_string());
 
+    let image_urls = listing_req.image_urls.as_deref().unwrap_or(&[]);
     let claude_analysis = call_claude(
         &listing.platform,
         seller.name.as_deref().unwrap_or("Unknown"),
@@ -80,6 +81,7 @@ pub async fn analyze(
         listing.title.as_deref().unwrap_or("Untitled"),
         listing.price.unwrap_or(0),
         listing.description.as_deref().unwrap_or(""),
+        image_urls,
     )
     .await
     .map_err(|e| e.to_string())?;

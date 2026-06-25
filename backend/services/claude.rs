@@ -12,8 +12,23 @@ pub struct ClaudeRequest {
 #[derive(Serialize)]
 pub struct Message {
     pub role: String,
-    pub content: String,
+    pub content: Vec<ContentItem>,
 }
+
+#[derive(Serialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum ContentItem {
+    Text { text: String },
+    Image { source: ImageSource },
+}
+
+#[derive(Serialize)]
+pub struct ImageSource {
+    #[serde(rename = "type")]
+    pub source_type: String,
+    pub url: String,
+}
+
 // ----------
 
 // 2. Gives you the text(that contains the actual fraud analysis) from the content block
@@ -133,6 +148,7 @@ pub async fn call_claude(
     title: &str,
     price: i64,
     description: &str,
+    image_urls: &[String],
 ) -> Result<ClaudeAnalysis, reqwest::Error> {
     let client = Client::new();
     let api_key = std::env::var("ANTHROPIC_API_KEY")
@@ -150,12 +166,24 @@ pub async fn call_claude(
         description,
     );
 
+    // Commenting to prevent image detection because it takes a lot of tokens
+    let mut content_blocks: Vec<ContentItem> = vec![ContentItem::Text { text: prompt }];
+
+    // for url in image_urls.iter().take(3) {
+    //     content_blocks.push(ContentItem::Image {
+    //         source: ImageSource {
+    //             source_type: "url".to_string(),
+    //             url: url.clone(),
+    //         },
+    //     });
+    // }
+
     let payload = ClaudeRequest {
         model: String::from("claude-sonnet-4-6"),
         max_tokens: 2048,
         messages: vec![Message {
             role: "user".to_string(),
-            content: prompt,
+            content: content_blocks,
         }],
     };
 

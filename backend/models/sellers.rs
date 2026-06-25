@@ -5,16 +5,6 @@ use sqlx::{Type, prelude::FromRow};
 use uuid::Uuid;
 
 #[derive(Debug, Serialize, Deserialize, Type)]
-#[sqlx(type_name = "seller_location", rename_all = "snake_case")]
-#[serde(rename_all = "snake_case")]
-pub enum SellerLocation {
-    Islamabad,
-    Lahore,
-    Quetta,
-    Peshawar,
-}
-
-#[derive(Debug, Serialize, Deserialize, Type)]
 #[sqlx(type_name = "seller_verification", rename_all = "snake_case")]
 #[serde(rename_all = "snake_case")]
 pub enum SellerVerification {
@@ -37,7 +27,7 @@ pub struct Sellers {
     pub total_deals: i32,
     pub disputes: i32,
     pub completion_rate: Option<i64>,
-    pub location: Option<SellerLocation>,
+    pub location: Option<String>,
     pub last_seen_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -52,7 +42,7 @@ pub struct SellersRequest {
     pub phone: Option<String>,
     pub profile_url: Option<String>,
     pub join_date: Option<String>,
-    pub location: Option<SellerLocation>,
+    pub location: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -65,7 +55,7 @@ pub struct SellersResponse {
     pub total_deals: i32,
     pub disputes: i32,
     pub completion_rate: String,
-    pub location: Option<SellerLocation>,
+    pub location: Option<String>,
     pub last_active: Option<String>,
     pub network_summary: String,
     pub platforms: Vec<PlatformResponse>,

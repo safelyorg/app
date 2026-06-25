@@ -1,13 +1,9 @@
+use crate::models::{listings::ListingCategory, sellers::SellersResponse};
 use chrono::{DateTime, NaiveDate, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sqlx::{Type, prelude::FromRow};
 use uuid::Uuid;
-
-use crate::models::{
-    listings::ListingCategory,
-    sellers::{SellerLocation, SellersResponse},
-};
 
 #[derive(Debug, Serialize, Deserialize, Type)]
 #[sqlx(type_name = "risk_level_type", rename_all = "snake_case")]
@@ -63,7 +59,7 @@ pub struct AnalyzeRequest {
     pub seller_phone: Option<String>,
     pub seller_profile_url: Option<String>,
     pub seller_join_date: Option<String>,
-    pub seller_location: Option<SellerLocation>,
+    pub seller_location: Option<String>,
 }
 
 #[derive(Debug, Serialize)]

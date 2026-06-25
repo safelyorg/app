@@ -11,7 +11,7 @@ CREATE TABLE IF NOT EXISTS sellers (
     total_deals INTEGER NOT NULL DEFAULT 0,
     disputes INTEGER NOT NULL DEFAULT 0,
     completion_rate INTEGER,
-    location seller_location,
+    location TEXT,
     last_seen_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
