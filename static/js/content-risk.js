@@ -87,7 +87,7 @@
       '</div><div class="safely-seller-detail"><span>Account age</span><span>' +
       pageData.seller.accountAge +
       '</span></div><div class="safely-seller-detail"><span>Location</span><span>' +
-      pageData.seller.location +
+      (pageData.seller.location || "Unknown") +
       '</span></div><div class="safely-seller-detail"><span>Last active</span><span>' +
       pageData.seller.lastActive +
       '</span></div><div class="safely-seller-detail"><span>Verification</span>' +

@@ -139,6 +139,13 @@
           : null;
     }
 
+    var lastActiveEl = document.querySelector(
+      "span[aria-label='Creation date']",
+    );
+    data.seller_last_active = lastActiveEl
+      ? lastActiveEl.innerText.trim()
+      : null;
+
     return data;
   }
 
@@ -222,8 +229,9 @@
           totalDeals: data.seller.total_deals,
           disputes: data.seller.disputes,
           completionRate: data.seller.completion_rate,
-          location: data.seller.location || "",
-          lastActive: data.seller.last_active || "Unknown",
+          location: data.seller.location || "Unknown",
+          lastActive:
+            scraped.seller_last_active || data.seller.last_active || "Unknown",
           networkSummary: data.seller.network_summary,
           platforms: data.seller.platforms,
           monthlyActivity: data.seller.monthly_activity,
