@@ -3,7 +3,7 @@ use crate::{
         analysis::{AnalyzeRequest, AnalyzeResponse, RiskLevel},
         helpers::format_account_age,
         listings::ListingsRequest,
-        sellers::{SellersRequest, SellersResponse},
+        sellers::{SellerVerification, SellersRequest, SellersResponse},
     },
     services::{
         analysis::create_analysis,
@@ -30,7 +30,7 @@ pub async fn analyze(
         phone: request.seller_phone.clone(),
         profile_url: request.seller_profile_url.clone(),
         join_date: request.seller_join_date.clone(),
-        location: request.seller_location,
+        location: request.seller_location.clone(),
     };
 
     let listing_req = ListingsRequest {
@@ -46,7 +46,26 @@ pub async fn analyze(
         posted_date: request.posted_date.clone(),
     };
 
-    let seller = create_seller(&pool, &seller_req)
+    let platform_id = request.seller_platform_id.as_deref().unwrap_or("");
+    let existing_seller = find_seller(&pool, &request.platform, platform_id)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let preliminary_fraud_count = if let Some(ref s) = existing_seller {
+        count_fraud_reports(&pool, s.id)
+            .await
+            .map_err(|e| e.to_string())?
+    } else {
+        0
+    };
+
+    let verification = if preliminary_fraud_count > 0 {
+        SellerVerification::Flagged
+    } else {
+        SellerVerification::Unknown
+    };
+
+    let seller = create_seller(&pool, &seller_req, verification)
         .await
         .map_err(|e| e.to_string())?;
 
@@ -65,6 +84,7 @@ pub async fn analyze(
         .unwrap_or_else(|| "Unknown".to_string());
 
     let image_urls = listing_req.image_urls.as_deref().unwrap_or(&[]);
+
     let claude_analysis = call_claude(
         &listing.platform,
         seller.name.as_deref().unwrap_or("Unknown"),

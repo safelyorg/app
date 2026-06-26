@@ -24,6 +24,7 @@ pub async fn find_seller(
 pub async fn create_seller(
     pool: &Pool<Postgres>,
     request: &SellersRequest,
+    verification: SellerVerification,
 ) -> Result<Sellers, Error> {
     let id = Uuid::now_v7();
     let join_date = request.join_date.as_deref().and_then(|s| {
@@ -61,6 +62,7 @@ pub async fn create_seller(
             name = COALESCE(EXCLUDED.name, sellers.name),
             join_date = COALESCE(EXCLUDED.join_date, sellers.join_date),
             location = COALESCE(EXCLUDED.location, sellers.location),
+            verification = EXCLUDED.verification,
             updated_at = NOW()
         RETURNING *
         ",
@@ -73,7 +75,7 @@ pub async fn create_seller(
     .bind(&request.phone)
     .bind(&request.profile_url)
     .bind(join_date)
-    .bind(SellerVerification::Unknown)
+    .bind(verification)
     .bind(0_i32)
     .bind(0_i32)
     .bind(None::<i64>)
