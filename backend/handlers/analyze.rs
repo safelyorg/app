@@ -46,16 +46,9 @@ pub async fn analyze(
         posted_date: request.posted_date.clone(),
     };
 
-    let platform_id = request.seller_platform_id.as_deref().unwrap_or("");
-    let seller = match find_seller(&pool, &request.platform, platform_id)
+    let seller = create_seller(&pool, &seller_req)
         .await
-        .map_err(|e| e.to_string())?
-    {
-        Some(existing) => existing,
-        None => create_seller(&pool, &seller_req)
-            .await
-            .map_err(|e| e.to_string())?,
-    };
+        .map_err(|e| e.to_string())?;
 
     let fraud_count = count_fraud_reports(&pool, seller.id)
         .await

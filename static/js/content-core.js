@@ -123,6 +123,22 @@
       data.seller_platform_id = null;
     }
 
+    // location — find via SVG pin icon
+    var locationSvg = document.querySelector("svg.d0356874");
+    if (locationSvg && locationSvg.parentElement) {
+      data.seller_location = locationSvg.parentElement.innerText.trim() || null;
+    } else {
+      var pinSvg = Array.from(document.querySelectorAll("svg")).find(
+        function (svg) {
+          return svg.getAttribute("viewBox") === "0 0 15 15";
+        },
+      );
+      data.seller_location =
+        pinSvg && pinSvg.parentElement
+          ? pinSvg.parentElement.innerText.trim() || null
+          : null;
+    }
+
     return data;
   }
 
@@ -160,8 +176,6 @@
       scraped = scrapeOLX();
     }
 
-    console.log("Safely: sending image_urls:", scraped.image_urls);
-
     try {
       var response = await fetch("http://localhost:3000/api/v1/analyze", {
         method: "POST",
@@ -185,7 +199,7 @@
           seller_phone: null,
           seller_profile_url: scraped.seller_profile_url || null,
           seller_join_date: scraped.seller_join_date || null,
-          seller_location: null,
+          seller_location: scraped.seller_location || null,
         }),
       });
 

@@ -60,6 +60,7 @@ pub async fn create_seller(
         DO UPDATE SET
             name = COALESCE(EXCLUDED.name, sellers.name),
             join_date = COALESCE(EXCLUDED.join_date, sellers.join_date),
+            location = COALESCE(EXCLUDED.location, sellers.location),
             updated_at = NOW()
         RETURNING *
         ",
