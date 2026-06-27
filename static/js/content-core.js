@@ -117,10 +117,10 @@
       var href = profileLink.getAttribute("href");
       data.seller_profile_url = "https://www.olx.com.pk" + href;
       var profileMatch = href.match(/\/profile\/([^\/]+)/);
-      data.seller_platform_id = profileMatch ? profileMatch[1] : null;
+      data.platform_id = profileMatch ? profileMatch[1] : null;
     } else {
       data.seller_profile_url = null;
-      data.seller_platform_id = null;
+      data.platform_id = null;
     }
 
     // location — find via SVG pin icon
@@ -200,7 +200,7 @@
           category: null,
           image_urls: scraped.image_urls || null,
           posted_date: null,
-          seller_platform_id: scraped.seller_platform_id || null,
+          platform_id: scraped.platform_id || null,
           seller_name: scraped.seller_name || null,
           seller_handle: null,
           seller_phone: null,
@@ -224,6 +224,7 @@
         seller: {
           name: data.seller.name || "Unknown",
           platform: data.seller.platform || scraped.platform || "unknown",
+          platformId: data.seller.platform_id || null,
           handle: data.seller.handle || "",
           accountAge: data.seller.account_age,
           verification: data.seller.verification,

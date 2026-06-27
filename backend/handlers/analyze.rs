@@ -24,7 +24,7 @@ pub async fn analyze(
 ) -> Result<Json<AnalyzeResponse>, String> {
     let seller_req = SellersRequest {
         platform: request.platform.clone(),
-        platform_id: request.seller_platform_id.clone(),
+        platform_id: request.platform_id.clone(),
         name: request.seller_name.clone(),
         handle: request.seller_handle.clone(),
         phone: request.seller_phone.clone(),
@@ -46,7 +46,7 @@ pub async fn analyze(
         posted_date: request.posted_date.clone(),
     };
 
-    let platform_id = request.seller_platform_id.as_deref().unwrap_or("");
+    let platform_id = request.platform_id.as_deref().unwrap_or("");
     let existing_seller = find_seller(&pool, &request.platform, platform_id)
         .await
         .map_err(|e| e.to_string())?;

@@ -26,12 +26,11 @@ pub struct FraudReports {
     pub reported_at: DateTime<Utc>,
 }
 
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize)]
 pub struct FraudReportsRequest {
-    pub seller_id: Option<Uuid>,
-    pub platform: Option<String>,
+    pub platform: String,
     pub platform_id: Option<String>,
-    pub report_type: ReportTypes,
+    pub report_type: String,
     pub description: Option<String>,
 }
 

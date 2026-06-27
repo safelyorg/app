@@ -49,6 +49,7 @@ pub struct SellersRequest {
 pub struct SellersResponse {
     pub id: Uuid,
     pub platform: String,
+    pub platform_id: String,
     pub name: Option<String>,
     pub handle: Option<String>,
     pub account_age: String,
@@ -75,6 +76,7 @@ impl From<Sellers> for SellersResponse {
         Self {
             id: s.id,
             platform: s.platform,
+            platform_id: s.platform_id,
             name: s.name,
             handle: s.handle,
             account_age: s

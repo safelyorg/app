@@ -222,20 +222,25 @@
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             platform: pageData.seller.platform || "olx",
-            seller_platform_id: pageData.seller.platformId || null,
+            platform_id: pageData.seller.platformId || null,
             report_type: selected.value,
             description: null,
           }),
         })
-          .then(function () {
+          .then(function (res) {
+            if (!res.ok) {
+              return res.text().then(function (err) {
+                throw new Error(err);
+              });
+            }
             var success = root.querySelector("#safely-report-success");
             if (success) success.style.display = "flex";
             submitBtn.style.display = "none";
           })
-          .catch(function () {
+          .catch(function (err) {
             submitBtn.textContent = "Submit Report";
             submitBtn.disabled = false;
-            alert("Failed to submit report. Please try again.");
+            alert("Failed to submit: " + err.message);
           });
       });
     }

@@ -53,7 +53,7 @@ pub struct AnalyzeRequest {
     pub posted_date: Option<NaiveDate>,
 
     // seller fields
-    pub seller_platform_id: Option<String>,
+    pub platform_id: Option<String>,
     pub seller_name: Option<String>,
     pub seller_handle: Option<String>,
     pub seller_phone: Option<String>,
