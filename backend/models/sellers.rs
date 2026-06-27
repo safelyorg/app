@@ -48,6 +48,7 @@ pub struct SellersRequest {
 #[derive(Debug, Serialize)]
 pub struct SellersResponse {
     pub id: Uuid,
+    pub platform: String,
     pub name: Option<String>,
     pub handle: Option<String>,
     pub account_age: String,
@@ -73,6 +74,7 @@ impl From<Sellers> for SellersResponse {
     fn from(s: Sellers) -> Self {
         Self {
             id: s.id,
+            platform: s.platform,
             name: s.name,
             handle: s.handle,
             account_age: s

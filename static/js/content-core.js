@@ -211,9 +211,8 @@
       });
 
       var rawText = await response.text();
-
-      if (!response.ok) {
-        console.error("Safely: backend error:", rawText);
+      if (!response.ok || rawText.startsWith("error")) {
+        console.error("Safely: backend error:", rawText.substring(0, 300));
         return;
       }
 
@@ -221,8 +220,10 @@
 
       window.__safelyData = {
         riskScore: data.risk_score,
+        fraudReportCount: data.fraud_report_count,
         seller: {
           name: data.seller.name || "Unknown",
+          platform: data.seller.platform || scraped.platform || "unknown",
           handle: data.seller.handle || "",
           accountAge: data.seller.account_age,
           verification: data.seller.verification,

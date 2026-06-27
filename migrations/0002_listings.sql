@@ -12,8 +12,7 @@ CREATE TABLE IF NOT EXISTS listings (
     posted_date DATE,
     first_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     last_analyzed_at TIMESTAMPTZ,
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    UNIQUE(platform, listing_id)
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE INDEX IF NOT EXISTS idx_seller_id ON listings(seller_id);

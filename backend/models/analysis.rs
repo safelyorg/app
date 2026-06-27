@@ -69,6 +69,7 @@ pub struct AnalyzeResponse {
     pub seller: SellersResponse,
     pub signals: Vec<Signal>,
     pub network_summary: String,
+    pub fraud_report_count: i64,
 }
 
 #[derive(Debug, Serialize)]

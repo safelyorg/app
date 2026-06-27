@@ -130,5 +130,6 @@ pub async fn analyze(
         seller: seller_response,
         signals,
         network_summary: claude_analysis.overall_risk_notes,
+        fraud_report_count: fraud_count,
     }))
 }

@@ -76,13 +76,29 @@
       '" style="width:' +
       pageData.riskScore +
       '%"></div></div>' +
-      '<div class="safely-chips-row"><div class="safely-chip"><div class="safely-chip-num">' +
-      pageData.seller.totalDeals +
-      '</div><div class="safely-chip-lbl">Total Deals</div></div><div class="safely-chip"><div class="safely-chip-num">' +
-      pageData.seller.disputes +
-      '</div><div class="safely-chip-lbl">Disputes</div></div><div class="safely-chip"><div class="safely-chip-num">' +
-      pageData.seller.completionRate +
-      '</div><div class="safely-chip-lbl">Completion Rate</div></div></div>' +
+      '<div class="safely-chips-row">' +
+      '<div class="safely-chip"><div class="safely-chip-num" style="color:' +
+      (pageData.fraudReportCount > 0 ? "#ff453a" : "#a0a0a0") +
+      '">' +
+      (pageData.fraudReportCount || 0) +
+      '</div><div class="safely-chip-lbl">Fraud Reports</div></div>' +
+      '<div class="safely-chip"><div class="safely-chip-num" style="color:' +
+      (pageData.seller.verification === "flagged"
+        ? "#ff453a"
+        : pageData.seller.verification === "verified"
+          ? "#1d9bf0"
+          : "#a0a0a0") +
+      '">' +
+      (pageData.seller.verification === "flagged"
+        ? "Flagged"
+        : pageData.seller.verification === "verified"
+          ? "Verified"
+          : "Unknown") +
+      '</div><div class="safely-chip-lbl">Cover Status</div></div>' +
+      '<div class="safely-chip"><div class="safely-chip-num" style="color:#a0a0a0;text-transform:capitalize">' +
+      (pageData.seller.platform || "Unknown") +
+      '</div><div class="safely-chip-lbl">Platform</div></div>' +
+      "</div>" +
       '<div class="safely-section-label">Seller Information</div><div class="safely-seller-card"><div class="safely-seller-name">' +
       (pageData.seller.name || "Unknown") +
       '</div><div class="safely-seller-handle">' +
