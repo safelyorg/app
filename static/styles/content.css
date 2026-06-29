@@ -1,3 +1,11 @@
+/* ============================================================
+   SAFELY — extension UI (DARK)
+   Warm charcoal surfaces (not pure black), cream text, and the
+   website's bright accents (sun / mint / coral / sky).
+   Mirrors the dark sections of the Safely site.
+   Drop-in replacement: every selector matches the original.
+   ============================================================ */
+
 #safely-root {
     all: initial;
     position: fixed;
@@ -5,31 +13,110 @@
     right: 19px;
     z-index: 2147483647;
     font-family:
-        -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        "Inter",
+        -apple-system,
+        BlinkMacSystemFont,
+        "Segoe UI",
+        Roboto,
+        sans-serif;
     width: 0;
     height: 0;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+
+    /* ── surfaces (warm charcoal, layered light-to-dark) ── */
+    --bg: #16181f; /* panel */
+    --surface: #1f222b; /* cards (sit above panel) */
+    --surface-2: #262a34; /* inputs / insets / hover */
+    --surface-3: #2e323d; /* chips / active states */
+    --line: rgba(255, 255, 255, 0.1); /* hairline border */
+    --line-soft: rgba(255, 255, 255, 0.055); /* faint dividers */
+
+    /* ── text ── */
+    --text: #ece7db; /* warm cream */
+    --text-dim: #c3bfb6;
+    --muted: #8d909b;
+
+    /* ── accents (bright on dark) ── */
+    --ink: #16181f; /* dark text used on bright fills */
+    --sun: #ffd24a;
+    --sun2: #ffe07e;
+    --mint: #54d8a1;
+    --mint-deep: #38d196;
+    --coral: #ff6f5e;
+    --coral-deep: #ff5443;
+    --sky: #6fb3ef;
+    --sky-deep: #5aa6ee;
+    --amber: #f2b24c;
+
+    /* ── tinted backgrounds for status pills/alerts ── */
+    --mint-soft: rgba(56, 209, 150, 0.13);
+    --sun-soft: rgba(242, 178, 76, 0.14);
+    --coral-soft: rgba(255, 111, 94, 0.14);
+    --sky-soft: rgba(111, 179, 239, 0.13);
+
+    --bd: 1px solid var(--line);
+    --hi: inset 0 1px 0 rgba(255, 255, 255, 0.06); /* lit-from-above edge */
+    --sh-panel:
+        0 24px 60px -16px rgba(0, 0, 0, 0.7),
+        0 10px 24px -14px rgba(0, 0, 0, 0.55);
+    --sh-card:
+        0 1px 2px rgba(0, 0, 0, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    --ring: 0 0 0 3px rgba(111, 179, 239, 0.25);
+    --r: 15px;
+    --r-lg: 20px;
+
+    --disp:
+        "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui,
+        sans-serif;
 }
 #safely-root * {
     box-sizing: border-box;
     font-family: inherit;
 }
+
+/* ── light-touch recolouring of a few inline values from the JS,
+      so they sit on the warm palette (all already legible on dark) ── */
+#safely-root [style*="color:#1d9bf0"] {
+    color: var(--sky) !important;
+}
+#safely-root [style*="color:#ff453a"] {
+    color: var(--coral) !important;
+}
+#safely-root [style*="background:#0a0a0a"],
+#safely-root [style*="background:#0f0f0f"],
+#safely-root [style*="background: #0a0a0a"],
+#safely-root [style*="background: #0f0f0f"] {
+    background: var(--surface-2) !important;
+}
+#safely-root [style*="background:#1a1a1a"],
+#safely-root [style*="background: #1a1a1a"] {
+    background: var(--surface-3) !important;
+}
+#safely-root svg[stroke="#1d9bf0"] {
+    stroke: var(--sky);
+}
+
+/* ============================================================
+   PANEL
+   ============================================================ */
 #safely-panel {
     position: absolute;
     bottom: 30px;
     right: 2px;
-    background: #000000;
-    border-radius: 20px;
-    padding: 20px 22px 24px;
+    background: linear-gradient(180deg, #1c1f28 0%, var(--bg) 58%);
+    border: var(--bd);
+    border-radius: 22px;
+    padding: 20px 20px 22px;
     width: 340px;
     opacity: 0;
-    transform: translateY(10px) scale(0.97);
+    transform: translateY(12px) scale(0.98);
     pointer-events: none;
     transition:
-        opacity 0.25s ease,
-        transform 0.25s ease;
-    box-shadow:
-        0 8px 32px rgba(0, 0, 0, 0.4),
-        0 2px 8px rgba(0, 0, 0, 0.3);
+        opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+        transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: var(--sh-panel), var(--hi);
 }
 #safely-panel.safely-visible {
     opacity: 1;
@@ -40,22 +127,25 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    margin-bottom: 20px;
+    margin-bottom: 18px;
 }
 .safely-panel-title {
-    font-size: 15px;
-    font-weight: 700;
-    color: #ffffff;
-    letter-spacing: -0.3px;
+    font-family: var(--disp);
+    font-size: 17px;
+    font-weight: 900;
+    color: var(--text);
+    letter-spacing: -0.4px;
 }
 .safely-close-btn {
-    width: 28px;
-    height: 28px;
+    width: 30px;
+    height: 30px;
     display: flex;
     align-items: center;
     justify-content: center;
-    border-radius: 50%;
-    color: #636366;
+    border: var(--bd);
+    border-radius: 9px;
+    background: var(--surface-2);
+    color: var(--muted);
     font-size: 18px;
     cursor: pointer;
     transition:
@@ -65,8 +155,8 @@
     line-height: 1;
 }
 .safely-close-btn:hover {
-    background: #1a1a1a;
-    color: #ffffff;
+    background: var(--surface-3);
+    color: var(--text);
 }
 .safely-tabs-area {
     position: relative;
@@ -81,12 +171,14 @@
 }
 .safely-section-label {
     font-size: 11px;
-    font-weight: 600;
-    color: #a0a0a0;
+    font-weight: 800;
+    color: var(--muted);
     text-transform: uppercase;
-    letter-spacing: 0.5px;
+    letter-spacing: 0.6px;
     margin-bottom: 14px;
 }
+
+/* ── Risk score header ── */
 .safely-risk-row {
     display: flex;
     align-items: flex-start;
@@ -94,34 +186,36 @@
     margin-bottom: 4px;
 }
 .safely-risk-number {
+    font-family: var(--disp);
     font-size: 52px;
-    font-weight: 700;
-    letter-spacing: -3px;
+    font-weight: 800;
+    letter-spacing: -1.6px;
     line-height: 1;
     margin: 0;
 }
 .safely-risk-label {
     font-size: 14px;
-    font-weight: 600;
+    font-weight: 700;
     margin: 4px 0 0 0;
 }
 .safely-risk-desc {
     font-size: 12px;
-    color: #a0a0a0;
+    color: var(--muted);
     margin: 2px 0 0 0;
+    font-weight: 500;
 }
 .safely-risk-low {
-    color: #1d9bf0;
+    color: var(--mint-deep);
 }
 .safely-risk-caution {
-    color: #ff9f0a;
+    color: var(--amber);
 }
 .safely-risk-high {
-    color: #ff453a;
+    color: var(--coral);
 }
 .safely-status-circle {
-    width: 40px;
-    height: 40px;
+    width: 42px;
+    height: 42px;
     border-radius: 50%;
     display: flex;
     align-items: center;
@@ -134,25 +228,36 @@
     height: 20px;
 }
 .safely-circle-low {
-    background: #0d2a4a;
+    background: var(--mint-soft);
+}
+.safely-circle-low svg {
+    stroke: var(--mint-deep);
 }
 .safely-circle-caution {
-    background: #3d2a1a;
+    background: var(--sun-soft);
+}
+.safely-circle-caution svg {
+    stroke: var(--amber);
 }
 .safely-circle-high {
-    background: #3d1a1a;
+    background: var(--coral-soft);
 }
+.safely-circle-high svg {
+    stroke: var(--coral);
+}
+
+/* ── Progress bar ── */
 .safely-bar-track {
-    height: 5px;
-    background: #0f0f0f;
-    border-radius: 3px;
-    margin: 16px 0 12px;
+    height: 9px;
+    background: var(--surface-3);
+    border-radius: 5px;
+    margin: 16px 0 14px;
     position: relative;
     overflow: visible;
 }
 .safely-bar-fill {
     height: 100%;
-    border-radius: 3px;
+    border-radius: 5px;
     position: relative;
     transition: width 0.4s ease;
 }
@@ -162,112 +267,124 @@
     right: -5px;
     top: 50%;
     transform: translateY(-50%);
-    width: 11px;
-    height: 11px;
+    width: 13px;
+    height: 13px;
     background: #ffffff;
     border-radius: 50%;
-    box-shadow: 0 0 0 2px currentColor;
+    box-shadow: 0 0 0 3px var(--bg);
 }
 .safely-bar-low {
-    background: #1d9bf0;
-    color: #1d9bf0;
+    background: var(--mint-deep);
 }
 .safely-bar-caution {
-    background: #ff9f0a;
-    color: #ff9f0a;
+    background: var(--amber);
 }
 .safely-bar-high {
-    background: #ff453a;
-    color: #ff453a;
+    background: var(--coral);
 }
+
+/* ── Chips ── */
 .safely-chips-row {
     display: flex;
     gap: 8px;
-    margin: 12px 0 18px;
+    margin: 14px 0 18px;
 }
 .safely-chip {
     flex: 1;
-    background: #0f0f0f;
-    border-radius: 8px;
+    background: var(--surface-2);
+    border: var(--bd);
+    border-radius: 10px;
     padding: 10px 8px;
     text-align: center;
 }
 .safely-chip-num {
     font-size: 16px;
-    font-weight: 600;
-    color: #ffffff;
+    font-weight: 800;
+    color: var(--text);
     line-height: 1.2;
 }
 .safely-chip-lbl {
     font-size: 10px;
-    color: #a0a0a0;
+    color: var(--muted);
     margin-top: 3px;
+    font-weight: 600;
 }
+
+/* ── Seller card ── */
 .safely-seller-card {
-    background: #0f0f0f;
-    border-radius: 14px;
+    background: var(--surface);
+    border: var(--bd);
+    border-radius: var(--r);
     padding: 16px;
 }
 .safely-seller-name {
     font-size: 15px;
-    font-weight: 600;
-    color: #ffffff;
+    font-weight: 700;
+    color: var(--text);
     margin-bottom: 2px;
 }
 .safely-seller-handle {
     font-size: 13px;
-    color: #a0a0a0;
+    color: var(--muted);
     margin-bottom: 14px;
+    font-weight: 500;
 }
 .safely-seller-detail {
     display: flex;
     justify-content: space-between;
     align-items: center;
     padding: 8px 0;
-    border-top: 1px solid #1a1a1a;
+    border-top: 1px solid var(--line-soft);
     font-size: 13px;
 }
 .safely-seller-detail span:first-child {
-    color: #a0a0a0;
-}
-.safely-seller-detail span:last-child {
-    color: #ffffff;
+    color: var(--muted);
     font-weight: 500;
 }
+.safely-seller-detail span:last-child {
+    color: var(--text);
+    font-weight: 600;
+}
+
+/* ── Verification badges ── */
 .safely-verified-badge {
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    font-weight: 500;
+    font-weight: 600;
 }
 .safely-badge-dot {
-    width: 7px;
-    height: 7px;
+    width: 8px;
+    height: 8px;
     border-radius: 50%;
     display: inline-block;
     flex-shrink: 0;
 }
 .safely-dot-blue {
-    background: #1d9bf0;
+    background: var(--mint);
 }
 .safely-dot-gray {
-    background: #636366;
+    background: var(--muted);
 }
 .safely-dot-red {
-    background: #ff453a;
+    background: var(--coral);
 }
 .safely-badge-verified {
-    color: #1d9bf0;
+    color: var(--mint-deep);
 }
 .safely-badge-unknown {
-    color: #8e8e93;
+    color: var(--muted);
 }
 .safely-badge-flagged {
-    color: #ff453a;
+    color: var(--coral);
 }
-.safely-platform-card {
-    background: #0f0f0f;
-    border-radius: 10px;
+
+/* ── Platform / activity cards ── */
+.safely-platform-card,
+.safely-activity-card {
+    background: var(--surface);
+    border: var(--bd);
+    border-radius: 12px;
     padding: 10px 12px;
 }
 .safely-platform-row {
@@ -275,74 +392,70 @@
     justify-content: space-between;
     align-items: center;
     padding: 7px 0;
-    border-bottom: 0.5px solid #1a1a1a;
+    border-bottom: 1px solid var(--line-soft);
 }
 .safely-platform-row:last-child {
     border-bottom: none;
 }
 .safely-platform-name {
     font-size: 12px;
-    color: #ffffff;
-    font-weight: 500;
+    color: var(--text);
+    font-weight: 600;
 }
 .safely-platform-status {
     font-size: 11px;
-    font-weight: 500;
+    font-weight: 700;
 }
 .safely-pstatus-active {
-    color: #1d9bf0;
+    color: var(--mint-deep);
 }
 .safely-pstatus-none {
-    color: #636366;
-}
-.safely-activity-card {
-    background: #0f0f0f;
-    border-radius: 10px;
-    padding: 10px 12px;
+    color: var(--muted);
 }
 .safely-activity-bar {
     flex: 1;
     border-radius: 2px 2px 0 0;
-    background: #0a84ff;
+    background: var(--sky);
     min-height: 2px;
 }
-.safely-network-alert {
-    border-radius: 8px;
-    padding: 9px 11px;
-    font-size: 11px;
+
+/* ── Alerts ── */
+.safely-network-alert,
+.safely-intel-summary {
+    border-radius: 10px;
+    padding: 10px 12px;
+    font-size: 11.5px;
     line-height: 1.5;
     display: flex;
     gap: 8px;
     align-items: flex-start;
+    font-weight: 500;
+    border: 1px solid transparent;
 }
 .safely-intel-summary {
-    border-radius: 8px;
-    padding: 9px 11px;
-    font-size: 11px;
-    line-height: 1.5;
-    display: flex;
-    gap: 8px;
-    align-items: flex-start;
     margin-bottom: 4px;
 }
 .safely-alert-low {
-    background: #0d2a4a;
-    color: #1d9bf0;
-    border: 1px solid #1a4a7a;
+    background: var(--mint-soft);
+    color: var(--mint-deep);
+    border-color: rgba(56, 209, 150, 0.35);
 }
 .safely-alert-caution {
-    background: #3d2a1a;
-    color: #ff9f0a;
-    border: 1px solid #5c3a1a;
+    background: var(--sun-soft);
+    color: var(--amber);
+    border-color: rgba(242, 178, 76, 0.35);
 }
 .safely-alert-high {
-    background: #3d1a1a;
-    color: #ff453a;
-    border: 1px solid #5c1a1a;
+    background: var(--coral-soft);
+    color: var(--coral);
+    border-color: rgba(255, 111, 94, 0.4);
 }
+
+/* ── Signals list ── */
 .safely-signal-list {
-    background: #0f0f0f;
-    border-radius: 14px;
+    background: var(--surface);
+    border: var(--bd);
+    border-radius: var(--r);
     overflow: hidden;
 }
 .safely-signal-row {
@@ -353,7 +466,7 @@
     gap: 12px;
 }
 .safely-signal-row + .safely-signal-row {
-    border-top: 1px solid #1a1a1a;
+    border-top: 1px solid var(--line-soft);
 }
 .safely-signal-label-wrap {
     display: flex;
@@ -363,39 +476,44 @@
 }
 .safely-signal-label {
     font-size: 13px;
-    color: #ffffff;
+    color: var(--text);
+    font-weight: 600;
 }
 .safely-signal-sublabel {
     font-size: 10px;
-    color: #8e8e93;
+    color: var(--muted);
     margin-top: 2px;
     display: block;
     line-height: 1.3;
+    font-weight: 500;
 }
 .safely-signal-value {
     font-size: 13px;
-    font-weight: 500;
+    font-weight: 700;
     text-align: right;
     word-break: break-word;
 }
 .safely-signal-good {
-    color: #1d9bf0;
+    color: var(--mint-deep);
 }
 .safely-signal-bad {
-    color: #ff453a;
+    color: var(--coral);
 }
 .safely-signal-neutral {
-    color: #a0a0a0;
+    color: var(--muted);
 }
 .safely-signal-info {
-    color: #ffffff;
+    color: var(--text);
 }
 .safely-signal-caution {
-    color: #ff9f0a;
+    color: var(--amber);
 }
+
+/* ── Price compare ── */
 .safely-price-compare {
-    background: #0f0f0f;
-    border-radius: 10px;
+    background: var(--surface);
+    border: var(--bd);
+    border-radius: 12px;
     padding: 10px 12px;
     display: flex;
     flex-direction: column;
@@ -406,53 +524,55 @@
     align-items: center;
     gap: 8px;
     padding: 5px 0;
-    border-bottom: 0.5px solid #1a1a1a;
+    border-bottom: 1px solid var(--line-soft);
 }
 .safely-compare-row:last-child {
     border-bottom: none;
 }
 .safely-compare-label {
     font-size: 11px;
-    color: #a0a0a0;
+    color: var(--muted);
     width: 88px;
     flex-shrink: 0;
+    font-weight: 500;
 }
 .safely-compare-track {
     flex: 1;
-    height: 5px;
-    background: #000000;
-    border-radius: 3px;
+    height: 7px;
+    background: var(--surface-3);
+    border-radius: 4px;
     overflow: hidden;
 }
 .safely-compare-fill {
     height: 100%;
-    border-radius: 3px;
+    border-radius: 4px;
 }
 .safely-fill-primary {
-    background: #0a84ff;
+    background: var(--sky);
 }
 .safely-fill-neutral {
-    background: #636366;
+    background: var(--muted);
 }
 .safely-fill-low {
-    background: #1d9bf0;
-    opacity: 0.6;
+    background: var(--mint-deep);
 }
 .safely-fill-danger {
-    background: #ff453a;
-    opacity: 0.6;
+    background: var(--coral);
 }
 .safely-compare-val {
     font-size: 11px;
-    font-weight: 500;
-    color: #ffffff;
+    font-weight: 700;
+    color: var(--text);
     width: 32px;
     text-align: right;
     flex-shrink: 0;
 }
+
+/* ── Recommended-check cards ── */
 .safely-check-card {
-    background: #0f0f0f;
-    border-radius: 8px;
+    background: var(--surface);
+    border: var(--bd);
+    border-radius: 10px;
     padding: 10px 12px;
     display: flex;
     flex-direction: column;
@@ -460,20 +580,24 @@
 }
 .safely-check-title {
     font-size: 12px;
-    font-weight: 600;
-    color: #ffffff;
+    font-weight: 700;
+    color: var(--text);
 }
 .safely-check-body {
     font-size: 11px;
-    color: #a0a0a0;
+    color: var(--muted);
     line-height: 1.5;
+    font-weight: 500;
 }
+
+/* ── Sub-tabs (segmented control) ── */
 .safely-sub-tabs {
     display: flex;
     gap: 4px;
     margin-bottom: 18px;
-    background: #0f0f0f;
-    border-radius: 10px;
+    background: var(--surface-2);
+    border: 1px solid var(--line);
+    border-radius: 11px;
     padding: 3px;
 }
 .safely-sub-tab {
@@ -481,18 +605,23 @@
     background: transparent;
     border: none;
     border-radius: 8px;
-    color: #636366;
+    color: var(--muted);
     font-size: 12px;
-    font-weight: 500;
+    font-weight: 700;
     padding: 7px 4px;
     cursor: pointer;
     transition: all 0.15s;
     text-align: center;
 }
 .safely-sub-tab.safely-active {
-    background: #1a1a1a;
-    color: #ffffff;
+    background: var(--surface-3);
+    color: var(--text);
+    box-shadow:
+        0 1px 2px rgba(0, 0, 0, 0.25),
+        var(--hi);
 }
+
+/* ── Empty orders ── */
 .safely-orders-empty {
     display: flex;
     flex-direction: column;
@@ -505,36 +634,50 @@
 .safely-orders-empty svg {
     width: 44px;
     height: 44px;
-    color: #1a1a1a;
+    color: var(--muted);
+    stroke: var(--muted);
     margin-bottom: 6px;
+    opacity: 0.55;
 }
 .safely-orders-empty-title {
     font-size: 15px;
-    font-weight: 600;
-    color: #e0e0e0;
+    font-weight: 700;
+    color: var(--text);
 }
 .safely-orders-empty-sub {
     font-size: 13px;
-    color: #a0a0a0;
+    color: var(--muted);
+    font-weight: 500;
 }
+
+/* ============================================================
+   FORM PRIMITIVES
+   ============================================================ */
 #safely-root .field {
     width: 100%;
     padding: 11px 14px;
-    background: #0a0a0a;
-    border: 1.5px solid #1a1a1a;
+    background: var(--surface-2);
+    border: var(--bd);
     border-radius: 10px;
-    color: #ffffff;
+    color: var(--text);
     font-size: 14px;
+    font-weight: 500;
     outline: none;
-    transition: border-color 0.15s;
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.2);
+    transition:
+        border-color 0.18s ease,
+        box-shadow 0.18s ease;
     font-family: inherit;
     margin: 0;
 }
 #safely-root .field::placeholder {
-    color: #636366;
+    color: #6f727c;
 }
 #safely-root .field:focus {
-    border-color: #1d9bf0;
+    border-color: var(--sky);
+    box-shadow:
+        var(--ring),
+        inset 0 1px 2px rgba(0, 0, 0, 0.2);
 }
 #safely-root textarea.field {
     resize: vertical;
@@ -543,15 +686,18 @@
 #safely-root select.field {
     appearance: none;
     -webkit-appearance: none;
-    background-image: url("data:image/svg+xml,%3Csvg width='12' height='12' fill='none' stroke='%23636366' stroke-width='2' viewBox='0 0 24 24'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E");
+    background-image: url("data:image/svg+xml,%3Csvg width='12' height='12' fill='none' stroke='%238d909b' stroke-width='2.4' viewBox='0 0 24 24'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E");
     background-repeat: no-repeat;
     background-position: right 12px center;
     padding-right: 36px;
     cursor: pointer;
 }
+
+/* ── Cards ── */
 #safely-root .card {
-    background: #0f0f0f;
-    border-radius: 14px;
+    background: var(--surface);
+    border: var(--bd);
+    border-radius: var(--r);
     overflow: hidden;
     margin: 0;
 }
@@ -565,10 +711,10 @@
 }
 #safely-root .section-label {
     font-size: 11px;
-    font-weight: 700;
+    font-weight: 800;
     text-transform: uppercase;
     letter-spacing: 0.06em;
-    color: #ffffff;
+    color: var(--text);
     margin-bottom: 12px;
 }
 #safely-root .brow {
@@ -577,79 +723,110 @@
     align-items: baseline;
     padding: 7px 0;
     font-size: 13px;
-    color: #ffffff;
+    color: var(--text);
+    font-weight: 600;
 }
 #safely-root .brow-total {
-    border-top: 1px solid #1a1a1a;
+    border-top: 1px solid var(--line-soft);
     margin-top: 4px;
     padding-top: 10px;
-    font-weight: 700;
+    font-weight: 800;
 }
 #safely-root .divider {
     height: 1px;
-    background: #1a1a1a;
+    background: var(--line-soft);
     margin: 0;
 }
+
+/* ── Buttons ── */
 #safely-root .btn {
     display: inline-flex;
     align-items: center;
     justify-content: center;
     gap: 6px;
     padding: 12px 20px;
-    border-radius: 10px;
+    border-radius: 12px;
     font-size: 14px;
-    font-weight: 600;
+    font-weight: 700;
     border: none;
     cursor: pointer;
-    transition: all 0.15s;
+    transition:
+        transform 0.2s cubic-bezier(0.34, 1.4, 0.64, 1),
+        box-shadow 0.2s ease,
+        filter 0.2s ease,
+        background 0.2s ease;
     font-family: inherit;
     margin: 0;
 }
+#safely-root .btn:hover {
+    transform: translateY(-1.5px);
+    filter: brightness(1.03);
+}
+#safely-root .btn:active {
+    transform: translateY(0) scale(0.99);
+}
 #safely-root .btn-black {
     width: 100%;
-    background: #ffffff;
-    color: #000000;
+    background: linear-gradient(180deg, var(--sun2), var(--sun));
+    color: var(--ink);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.5),
+        0 6px 18px -8px rgba(255, 210, 74, 0.55);
 }
 #safely-root .btn-black:hover {
-    background: #e5e5e5;
+    background: linear-gradient(180deg, #ffe88f, var(--sun2));
 }
 #safely-root .btn-ghost {
-    background: transparent;
-    border: 1.5px solid #1a1a1a;
-    color: #ffffff;
+    background: var(--surface-2);
+    color: var(--text);
+    border: var(--bd);
+    box-shadow: var(--hi);
 }
 #safely-root .btn-ghost:hover {
-    background: #1a1a1a;
+    background: var(--surface-3);
 }
 #safely-root .btn-sm {
     padding: 7px 14px;
     font-size: 12px;
 }
+
+/* ── Upload zones ── */
 #safely-root .upload-zone {
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
     gap: 8px;
-    border: 1.5px dashed #1a1a1a;
+    border: 1.5px dashed var(--line);
     border-radius: 12px;
     cursor: pointer;
     transition:
         border-color 0.15s,
         background 0.15s;
     padding: 20px;
+    background: var(--surface-2);
 }
 #safely-root .upload-zone:hover {
-    border-color: #636366;
-    background: #0a0a0a;
+    border-color: var(--sky);
+    background: var(--surface-3);
 }
 #safely-root .upload-zone input[type="file"] {
     display: none;
 }
+#safely-root .img-upload-zone {
+    background: var(--surface-2) !important;
+    border: 1.5px dashed var(--line) !important;
+    transition: border-color 0.15s;
+}
+#safely-root .img-upload-zone:hover {
+    border-color: var(--sky) !important;
+}
+
+/* ── Misc ── */
 #safely-root .back-link {
     font-size: 13px;
-    font-weight: 500;
-    color: #8e8e93;
+    font-weight: 600;
+    color: var(--muted);
     display: inline-flex;
     align-items: center;
     gap: 4px;
@@ -662,12 +839,14 @@
     margin: 0;
 }
 #safely-root .back-link:hover {
-    color: #ffffff;
+    color: var(--text);
 }
 #safely-root .mono {
     font-family:
         "SF Mono", "Fira Code", "Cascadia Code", "Courier New", monospace;
 }
+
+/* ── Step indicator (buyer flow) ── */
 #safely-root .step-indicator-row {
     display: flex;
     align-items: center;
@@ -678,51 +857,56 @@
     align-items: center;
     gap: 6px;
     font-size: 12px;
-    font-weight: 600;
-    color: #636366;
+    font-weight: 700;
+    color: var(--muted);
     white-space: nowrap;
     transition: color 0.2s;
     cursor: default;
 }
 #safely-root .new-step.step-active {
-    color: #ffffff;
+    color: var(--text);
 }
 #safely-root .new-step-dot {
-    width: 22px;
-    height: 22px;
+    width: 24px;
+    height: 24px;
+    border: 1px solid var(--line);
     border-radius: 50%;
-    background: #1a1a1a;
-    color: #636366;
+    background: var(--surface-2);
+    color: var(--muted);
     display: flex;
     align-items: center;
     justify-content: center;
     font-size: 11px;
-    font-weight: 700;
+    font-weight: 800;
     flex-shrink: 0;
     transition: all 0.2s;
 }
 #safely-root .new-step-dot.dot-active {
-    background: #1d9bf0;
-    color: #ffffff;
+    background: var(--sky);
+    color: var(--ink);
+    border-color: transparent;
 }
 #safely-root .new-step-dot.dot-done {
-    background: #1a1a1a;
-    color: #636366;
+    background: var(--mint);
+    color: var(--ink);
+    border-color: transparent;
 }
 #safely-root .step-line {
     flex: 1;
-    height: 1px;
-    background: #1a1a1a;
-    margin: 0;
+    height: 2px;
+    background: var(--line-soft);
+    margin: 0 4px;
 }
+
+/* ── Payment-method pills ── */
 #safely-root .pm-pill {
     padding: 8px 14px;
-    border-radius: 8px;
+    border-radius: 9px;
     font-size: 12px;
-    font-weight: 600;
-    border: 1.5px solid #1a1a1a;
-    color: #8e8e93;
-    background: transparent;
+    font-weight: 700;
+    border: var(--bd);
+    color: var(--muted);
+    background: var(--surface-2);
     cursor: pointer;
     transition: all 0.15s;
     display: inline-flex;
@@ -732,14 +916,19 @@
     margin: 0;
 }
 #safely-root .pm-pill:hover {
-    border-color: #636366;
-    color: #ffffff;
+    color: var(--text);
+    background: var(--surface-3);
 }
 #safely-root .pm-pill.pm-active {
-    border-color: #1d9bf0;
-    color: #1d9bf0;
-    background: rgba(29, 155, 240, 0.08);
+    border-color: var(--sky);
+    color: var(--sky);
+    background: var(--sky-soft);
 }
+#safely-root .pm-pill.pm-active svg {
+    stroke: var(--sky);
+}
+
+/* ── Seller block / image upload ── */
 #safely-root .seller-block {
     display: flex;
     flex-direction: column;
@@ -757,8 +946,9 @@
 #safely-root .img-upload-thumb {
     width: 56px;
     height: 56px;
+    border: 1px solid var(--line);
     border-radius: 12px;
-    background: #0a0a0a;
+    background: var(--surface-2);
     flex-shrink: 0;
     display: flex;
     align-items: center;
@@ -771,14 +961,15 @@
 }
 #safely-root .img-upload-title {
     font-size: 13px;
-    font-weight: 600;
-    color: #ffffff;
+    font-weight: 700;
+    color: var(--text);
     margin-bottom: 2px;
 }
 #safely-root .img-upload-sub {
     font-size: 12px;
-    color: #a0a0a0;
+    color: var(--muted);
     margin: 0;
+    font-weight: 500;
 }
 #safely-root .img-upload-btn {
     flex-shrink: 0;
@@ -795,85 +986,110 @@
 }
 #safely-root .field-label {
     font-size: 12px;
-    font-weight: 600;
-    color: #a0a0a0;
+    font-weight: 700;
+    color: var(--muted);
     margin-bottom: 5px;
     display: block;
 }
+
+/* ── Seller lookup card ── */
 #safely-root .seller-lookup-card {
     margin-top: 10px;
     padding: 12px 14px;
-    background: #0d2a4a;
-    border: 1px solid #1a4a7a;
+    background: var(--sky-soft);
+    border: 1px solid rgba(111, 179, 239, 0.35);
     border-radius: 10px;
     display: flex;
     align-items: center;
     gap: 10px;
 }
+#safely-root .seller-lookup-card svg {
+    stroke: var(--sky);
+}
 #safely-root .seller-lookup-name {
     font-size: 13px;
-    font-weight: 600;
-    color: #1d9bf0;
+    font-weight: 700;
+    color: var(--sky);
 }
 #safely-root .seller-lookup-meta {
     font-size: 11px;
-    color: #1d9bf0;
+    color: var(--sky);
     opacity: 0.8;
     margin-top: 1px;
+    font-weight: 500;
 }
+
+/* ── Phone row ── */
 #safely-root .phone-row {
     display: flex;
     gap: 8px;
 }
 #safely-root .phone-prefix {
     padding: 11px 12px;
-    background: #0a0a0a;
-    border: 1.5px solid #1a1a1a;
+    background: var(--surface-3);
+    border: var(--bd);
     border-radius: 10px;
     font-size: 13px;
-    font-weight: 600;
+    font-weight: 700;
     white-space: nowrap;
-    color: #ffffff;
+    color: var(--text);
     flex-shrink: 0;
     display: flex;
     align-items: center;
 }
 #safely-root .phone-hint {
     font-size: 11px;
-    color: #a0a0a0;
+    color: var(--muted);
     margin-top: 6px;
     line-height: 1.5;
+    font-weight: 500;
 }
-#safely-root .product-preview {
+
+/* ── Product preview ── */
+#safely-root .product-preview,
+#safely-root .safely-product-img-placeholder {
     height: 120px;
-    background: #0a0a0a;
+    background: var(--surface-2);
+    border-bottom: var(--bd);
     display: flex;
     align-items: center;
     justify-content: center;
     position: relative;
+}
+#safely-root .safely-product-img-placeholder {
+    height: 150px;
 }
 #safely-root .product-preview-badge {
     position: absolute;
     bottom: 10px;
     left: 14px;
     font-size: 12px;
-    font-weight: 600;
-    color: #ffffff;
-    background: #000000;
+    font-weight: 700;
+    color: var(--ink);
+    background: var(--sun);
     padding: 3px 10px;
     border-radius: 20px;
     box-shadow: 0 1px 6px rgba(0, 0, 0, 0.3);
 }
+#safely-root .safely-product-img-placeholder .safely-pill-status {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+}
+
+/* ── Banking / QR ── */
 #safely-root .banking-qr-container {
-    background: #0f0f0f;
-    border-radius: 14px;
+    background: var(--surface);
+    border: var(--bd);
+    border-radius: var(--r);
     padding: 20px;
     text-align: center;
-    color: #ffffff;
+    color: var(--text);
 }
 #safely-root .banking-qr-title {
+    font-family: var(--disp);
     font-size: 16px;
-    font-weight: 700;
+    font-weight: 900;
     margin-bottom: 15px;
 }
 #safely-root .banking-qr-image {
@@ -889,42 +1105,54 @@
 }
 #safely-root .banking-qr-amount {
     font-size: 14px;
-    font-weight: 600;
+    font-weight: 700;
     margin-bottom: 10px;
 }
 #safely-root .banking-details {
     text-align: left;
     margin-top: 14px;
     padding: 12px 14px;
-    background: #0a0a0a;
+    background: var(--surface-2);
     border-radius: 10px;
     font-size: 13px;
-    color: #8e8e93;
+    color: var(--muted);
     line-height: 1.9;
 }
 #safely-root .banking-details p {
     margin: 0;
 }
 #safely-root .banking-details span {
-    color: #ffffff;
-    font-weight: 500;
+    color: var(--text);
+    font-weight: 600;
 }
+
+/* ── Banners ── */
 #safely-root .banner {
     padding: 14px 16px;
+    border: 1px solid transparent;
     border-radius: 12px;
     font-size: 13px;
     line-height: 1.6;
+    font-weight: 500;
 }
 #safely-root .banner-green {
-    background: #0d2a4a;
-    color: #1d9bf0;
-    border: 1px solid #1a4a7a;
+    background: var(--mint-soft);
+    color: var(--mint-deep);
+    border-color: rgba(56, 209, 150, 0.35);
+}
+#safely-root .banner-green strong {
+    color: var(--text);
 }
 #safely-root .banner-blue {
-    background: #0d2a4a;
-    color: #1d9bf0;
-    border: 1px solid #1a4a7a;
+    background: var(--sky-soft);
+    color: var(--sky);
+    border-color: rgba(111, 179, 239, 0.35);
 }
+#safely-root .banner-blue strong {
+    color: var(--text);
+}
+
+/* ── Sub views ── */
 #safely-root .sub {
     display: none;
     flex-direction: column;
@@ -933,73 +1161,83 @@
 #safely-root .sub.sub-visible {
     display: flex;
 }
+
+/* ── Success state ── */
 #safely-root .success-icon {
-    width: 56px;
-    height: 56px;
-    background: #ffffff;
+    width: 58px;
+    height: 58px;
+    background: var(--mint);
     border-radius: 50%;
     display: flex;
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
 }
+#safely-root .success-icon svg {
+    stroke: var(--ink);
+}
 #safely-root .success-heading {
+    font-family: var(--disp);
     font-size: 22px;
-    font-weight: 800;
+    font-weight: 900;
     letter-spacing: -0.03em;
     margin: 0;
     text-align: center;
-    color: #ffffff;
+    color: var(--text);
 }
 #safely-root .success-desc {
     font-size: 13px;
-    color: #a0a0a0;
+    color: var(--muted);
     margin: 8px 0 0;
     line-height: 1.6;
     text-align: center;
+    font-weight: 500;
 }
 #safely-root .order-id-box {
     width: 100%;
-    background: #0a0a0a;
-    border: 1.5px dashed #1a1a1a;
-    border-radius: 14px;
+    background: var(--surface-2);
+    border: 1.5px dashed var(--line);
+    border-radius: var(--r);
     padding: 16px 20px;
     text-align: center;
 }
 #safely-root .order-id-label {
     font-size: 10px;
-    font-weight: 700;
+    font-weight: 800;
     text-transform: uppercase;
     letter-spacing: 0.1em;
-    color: #a0a0a0;
+    color: var(--muted);
     margin-bottom: 8px;
 }
 #safely-root .order-id-value {
     font-size: 20px;
-    font-weight: 600;
+    font-weight: 700;
     letter-spacing: 0.14em;
-    color: #ffffff;
+    color: var(--text);
 }
 #safely-root .sp-card-title {
     font-size: 16px;
-    font-weight: 700;
+    font-weight: 800;
     letter-spacing: -0.02em;
     margin: 0;
-    color: #ffffff;
+    color: var(--text);
 }
 #safely-root .sp-card-desc {
     font-size: 12px;
-    color: #a0a0a0;
+    color: var(--muted);
     margin: 3px 0 0;
     line-height: 1.5;
+    font-weight: 500;
 }
 
-/* ── Toolbar ── */
+/* ============================================================
+   TOOLBAR (floating launcher)
+   ============================================================ */
 #safely-toolbar {
     position: absolute;
     top: -24px;
     right: 0;
-    background: #000000;
+    background: linear-gradient(180deg, var(--sun2), var(--sun));
     width: 48px;
     height: 48px;
     border-radius: 24px;
@@ -1011,9 +1249,9 @@
     flex-shrink: 0;
     overflow: hidden;
     box-shadow:
-        0 4px 16px rgba(0, 0, 0, 0.3),
-        0 0 0 1px rgba(48, 209, 88, 0.12);
-    /* Width/padding: slower for smooth expand & collapse */
+        0 10px 26px -6px rgba(0, 0, 0, 0.5),
+        0 2px 10px rgba(255, 210, 74, 0.28),
+        inset 0 1px 0 rgba(255, 255, 255, 0.45);
     transition:
         width 0.4s cubic-bezier(0.4, 0, 0.2, 1),
         padding 0.4s cubic-bezier(0.4, 0, 0.2, 1),
@@ -1021,32 +1259,32 @@
         box-shadow 0.15s ease;
 }
 #safely-toolbar:hover {
-    background: #000000;
+    background: var(--sun2);
 }
 #safely-toolbar.safely-toolbar-expanded {
     width: fit-content;
     padding: 0 16px;
     justify-content: flex-end;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+    box-shadow:
+        0 10px 26px -6px rgba(0, 0, 0, 0.5),
+        inset 0 1px 0 rgba(255, 255, 255, 0.45);
 }
 
-/* "S" letter — fade in with tiny delay on collapse so no gap */
 .safely-toolbar-letter {
+    font-family: var(--disp);
     font-size: 22px;
-    font-weight: 700;
-    color: #ffffff;
+    font-weight: 900;
+    color: var(--ink);
     line-height: 1;
     position: absolute;
     pointer-events: none;
     transition: opacity 0.12s ease 0.06s;
 }
-/* When expanded, hide S immediately */
 #safely-toolbar.safely-toolbar-expanded .safely-toolbar-letter {
     opacity: 0;
     transition: opacity 0.1s ease 0s;
 }
 
-/* Inner content — collapse: vanish instantly; expand: appear after width grows */
 .safely-toolbar-inner {
     display: flex;
     align-items: center;
@@ -1057,13 +1295,11 @@
     justify-content: space-between;
     white-space: nowrap;
     overflow: hidden;
-    /* Collapse state: fast fade out, no delay */
     transition: opacity 0.1s ease 0s;
 }
 #safely-toolbar.safely-toolbar-expanded .safely-toolbar-inner {
     opacity: 1;
     pointer-events: all;
-    /* Expand state: fade in after width has started growing */
     transition: opacity 0.2s ease 0.18s;
 }
 
@@ -1074,28 +1310,31 @@
     flex-shrink: 0;
     cursor: pointer;
     padding: 4px;
-    border-radius: 6px;
+    border-radius: 7px;
     transition: background 0.15s ease;
 }
 .safely-toolbar-icon:hover {
-    background: transparent;
+    background: rgba(22, 24, 31, 0.12);
 }
 .safely-toolbar-icon svg {
     width: 18px;
     height: 18px;
-    stroke: #ffffff;
+    stroke: var(--ink);
 }
 .safely-toolbar-label {
+    font-family: var(--disp);
     font-size: 14px;
-    font-weight: 600;
-    color: #ffffff;
-    letter-spacing: -0.2px;
+    font-weight: 900;
+    color: var(--ink);
+    letter-spacing: -0.3px;
     flex-shrink: 0;
     cursor: pointer;
     padding: 4px 0;
 }
 
-/* Seller sub-tab */
+/* ============================================================
+   SELLER FLOW
+   ============================================================ */
 .safely-seller-lookup-empty {
     display: flex;
     flex-direction: column;
@@ -1105,14 +1344,17 @@
     text-align: center;
 }
 .safely-seller-lookup-icon {
-    width: 56px;
-    height: 56px;
+    width: 58px;
+    height: 58px;
     border-radius: 16px;
-    background: #1a1a1a;
+    background: var(--sky);
     display: flex;
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
+}
+.safely-seller-lookup-icon svg {
+    stroke: var(--ink);
 }
 .safely-seller-lookup-form {
     width: 100%;
@@ -1123,8 +1365,8 @@
 }
 .safely-seller-lookup-label {
     font-size: 12px;
-    font-weight: 600;
-    color: #a0a0a0;
+    font-weight: 700;
+    color: var(--muted);
     margin-bottom: 5px;
     display: block;
     text-align: left;
@@ -1138,12 +1380,13 @@
     font-family:
         "SF Mono", "Fira Code", "Cascadia Code", "Courier New", monospace;
     font-size: 14px;
-    font-weight: 600;
-    color: #ffffff;
+    font-weight: 700;
+    color: var(--text);
     letter-spacing: 0.08em;
-    padding: 8px 14px;
-    background: #0a0a0a;
-    border-radius: 8px;
+    padding: 9px 14px;
+    background: var(--surface-2);
+    border: 1px solid var(--line);
+    border-radius: 9px;
     text-align: center;
 }
 .safely-proof-row {
@@ -1152,17 +1395,18 @@
     align-items: baseline;
     padding: 7px 0;
     font-size: 13px;
-    border-bottom: 0.5px solid #1a1a1a;
+    border-bottom: 1px solid var(--line-soft);
 }
 .safely-proof-row:last-child {
     border-bottom: none;
 }
 .safely-proof-key {
-    color: #a0a0a0;
+    color: var(--muted);
+    font-weight: 500;
 }
 .safely-proof-val {
-    color: #ffffff;
-    font-weight: 500;
+    color: var(--text);
+    font-weight: 600;
     text-align: right;
     max-width: 60%;
     word-break: break-word;
@@ -1170,86 +1414,97 @@
 .safely-pill-status {
     display: inline-flex;
     align-items: center;
-    padding: 4px 10px;
+    padding: 4px 11px;
     border-radius: 20px;
     font-size: 11px;
-    font-weight: 600;
+    font-weight: 700;
     flex-shrink: 0;
 }
 .safely-s-paid {
-    background: #0d2a4a;
-    color: #1d9bf0;
+    background: var(--sky-soft);
+    color: var(--sky);
 }
 .safely-s-shipped {
-    background: #3d2a1a;
-    color: #ff9f0a;
+    background: var(--sun-soft);
+    color: var(--amber);
 }
+
+/* seller step indicator */
 .safely-sel-step {
     display: flex;
     align-items: center;
     gap: 6px;
     font-size: 12px;
-    font-weight: 600;
-    color: #636366;
+    font-weight: 700;
+    color: var(--muted);
     white-space: nowrap;
     transition: color 0.2s;
     cursor: default;
 }
 .safely-sel-step.safely-sel-active {
-    color: #ffffff;
+    color: var(--text);
 }
 .safely-sel-step-dot {
-    width: 22px;
-    height: 22px;
+    width: 24px;
+    height: 24px;
+    border: 1px solid var(--line);
     border-radius: 50%;
-    background: #1a1a1a;
-    color: #636366;
+    background: var(--surface-2);
+    color: var(--muted);
     display: flex;
     align-items: center;
     justify-content: center;
     font-size: 11px;
-    font-weight: 700;
+    font-weight: 800;
     flex-shrink: 0;
     transition: all 0.2s;
 }
 .safely-sel-step-dot.safely-sel-dot-active {
-    background: #1d9bf0;
-    color: #ffffff;
+    background: var(--sky);
+    color: var(--ink);
+    border-color: transparent;
 }
 .safely-sel-step-dot.safely-sel-dot-done {
-    background: #1a1a1a;
-    color: #636366;
+    background: var(--mint);
+    color: var(--ink);
+    border-color: transparent;
 }
 .safely-sel-step-line {
     flex: 1;
-    height: 1px;
-    background: #1a1a1a;
-    margin: 0;
+    height: 2px;
+    background: var(--line-soft);
+    margin: 0 4px;
 }
+
+/* waiting / payout / qr */
 .safely-waiting-card {
     display: flex;
     flex-direction: column;
     align-items: center;
     gap: 14px;
     padding: 24px 20px;
-    background: #0f0f0f;
-    border: 1px solid #1a1a1a;
-    border-radius: 14px;
+    background: var(--surface);
+    border: var(--bd);
+    border-radius: var(--r);
     text-align: center;
 }
 .safely-waiting-icon {
-    width: 48px;
-    height: 48px;
+    width: 50px;
+    height: 50px;
     border-radius: 50%;
-    background: #1a1a1a;
+    background: var(--surface-3);
     display: flex;
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
 }
+.safely-waiting-icon svg {
+    stroke: var(--muted);
+}
 .safely-payout-row {
     width: 100%;
-    background: #0a0a0a;
+    background: var(--surface-2);
+    border: 1px solid var(--line-soft);
     border-radius: 9px;
     padding: 11px 14px;
     display: flex;
@@ -1262,29 +1517,30 @@
     align-items: center;
     gap: 14px;
     padding: 20px 16px;
-    background: #0a0a0a;
+    background: var(--surface-2);
     border-radius: 12px;
-    border: 1.5px dashed #1a1a1a;
+    border: 1.5px dashed var(--line);
 }
 .safely-qr-box {
     background: #ffffff;
     padding: 14px;
     border-radius: 10px;
-    box-shadow: 0 2px 14px rgba(0, 0, 0, 0.08);
+    box-shadow: 0 2px 14px rgba(0, 0, 0, 0.35);
     display: inline-block;
 }
 .safely-qr-order-id {
     font-family:
         "SF Mono", "Fira Code", "Cascadia Code", "Courier New", monospace;
     font-size: 13px;
-    font-weight: 600;
+    font-weight: 700;
     letter-spacing: 0.08em;
-    color: #ffffff;
+    color: var(--text);
 }
 .safely-qr-hint {
     font-size: 11px;
-    color: #636366;
+    color: var(--muted);
     margin-top: 3px;
+    font-weight: 500;
 }
 .safely-qr-actions {
     display: grid;
@@ -1294,53 +1550,45 @@
 }
 .safely-qr-footer {
     font-size: 11px;
-    color: #636366;
+    color: var(--muted);
     text-align: center;
     line-height: 1.5;
     margin-top: -4px;
-}
-.safely-product-img-placeholder {
-    height: 150px;
-    background: #0a0a0a;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    position: relative;
-}
-.safely-product-img-placeholder .safely-pill-status {
-    position: absolute;
-    top: 12px;
-    right: 12px;
+    font-weight: 500;
 }
 .safely-ship-header-title {
+    font-family: var(--disp);
     font-size: 18px;
-    font-weight: 800;
+    font-weight: 900;
     letter-spacing: -0.02em;
-    color: #ffffff;
+    color: var(--text);
     margin: 0;
 }
 .safely-ship-header-sub {
     font-size: 13px;
-    color: #a0a0a0;
+    color: var(--muted);
     margin: 6px 0 0;
+    font-weight: 500;
 }
 .safely-qr-desc {
     font-size: 12px;
-    color: #a0a0a0;
+    color: var(--muted);
     line-height: 1.6;
     margin: 4px 0 0;
+    font-weight: 500;
 }
 .safely-waiting-title {
     font-size: 15px;
-    font-weight: 700;
+    font-weight: 800;
     letter-spacing: -0.02em;
-    color: #ffffff;
+    color: var(--text);
 }
 .safely-waiting-desc {
     font-size: 13px;
-    color: #a0a0a0;
+    color: var(--muted);
     margin: 6px 0 0;
     line-height: 1.6;
+    font-weight: 500;
 }
 .safely-seller-actions {
     display: grid;
@@ -1348,22 +1596,26 @@
     gap: 10px;
 }
 
-/* ── Report section ── */
+/* ============================================================
+   REPORT SECTION
+   ============================================================ */
 .safely-report-section {
     padding-top: 4px;
 }
 .safely-report-desc {
     font-size: 12px;
-    color: #a0a0a0;
+    color: var(--muted);
     line-height: 1.6;
     margin: 0 0 14px 0;
+    font-weight: 500;
 }
 .safely-report-reasons {
     display: flex;
     flex-direction: column;
     gap: 2px;
-    background: #0f0f0f;
-    border-radius: 14px;
+    background: var(--surface);
+    border: var(--bd);
+    border-radius: var(--r);
     overflow: hidden;
     margin-bottom: 14px;
 }
@@ -1373,13 +1625,17 @@
     gap: 12px;
     padding: 11px 16px;
     cursor: pointer;
-    border-bottom: 1px solid #1a1a1a;
+    border-bottom: 1px solid var(--line-soft);
+    transition: background 0.12s;
 }
 .safely-report-reason:last-child {
     border-bottom: none;
 }
+.safely-report-reason:hover {
+    background: var(--surface-2);
+}
 .safely-report-reason input[type="radio"] {
-    accent-color: #1d9bf0;
+    accent-color: var(--coral);
     width: 16px;
     height: 16px;
     flex-shrink: 0;
@@ -1393,45 +1649,81 @@
 }
 .safely-report-reason-name {
     font-size: 13px;
-    color: #ffffff;
-    font-weight: 500;
+    color: var(--text);
+    font-weight: 600;
 }
 .safely-reason-desc {
     font-size: 11px;
-    color: #636366;
+    color: var(--muted);
     line-height: 1.4;
+    font-weight: 500;
 }
 .safely-report-btn {
     width: 100%;
     padding: 12px;
-    background: #ff453a;
-    color: #ffffff;
+    background: linear-gradient(180deg, #ff8475, var(--coral));
+    color: #2a0d08;
     border: none;
-    border-radius: 10px;
+    border-radius: 12px;
     font-size: 14px;
-    font-weight: 600;
+    font-weight: 700;
     cursor: pointer;
     font-family: inherit;
-    transition: background 0.15s;
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.38),
+        0 6px 18px -8px rgba(255, 111, 94, 0.5);
+    transition:
+        transform 0.2s cubic-bezier(0.34, 1.4, 0.64, 1),
+        filter 0.2s ease,
+        background 0.2s ease;
 }
 .safely-report-btn:hover {
-    background: #cc3830;
+    background: linear-gradient(180deg, #ff9385, #ff5e4d);
+    transform: translateY(-1.5px);
+    filter: brightness(1.03);
 }
 .safely-report-btn:disabled {
-    background: #3d1a1a;
-    color: #636366;
+    background: var(--coral-soft);
+    color: var(--muted);
     cursor: not-allowed;
+    transform: none;
+    border-color: transparent;
 }
 .safely-report-success {
     margin-top: 12px;
     padding: 12px 14px;
-    background: #0d2a4a;
-    border: 1px solid #1a4a7a;
+    background: var(--mint-soft);
+    border: 1px solid rgba(56, 209, 150, 0.35);
     border-radius: 10px;
     font-size: 13px;
-    color: #1d9bf0;
+    color: var(--mint-deep);
     gap: 8px;
     align-items: flex-start;
     line-height: 1.5;
     display: flex;
+    font-weight: 600;
+}
+
+/* ============================================================
+   PREMIUM POLISH — soft elevation + lit edges on surfaces
+   ============================================================ */
+#safely-root .card,
+#safely-root .safely-seller-card,
+#safely-root .safely-signal-list,
+#safely-root .safely-platform-card,
+#safely-root .safely-activity-card,
+#safely-root .safely-price-compare,
+#safely-root .safely-check-card,
+#safely-root .safely-chip,
+#safely-root .banking-qr-container,
+#safely-root .safely-waiting-card,
+#safely-root .safely-report-reasons {
+    box-shadow: var(--sh-card);
+}
+#safely-root .safely-close-btn {
+    box-shadow: var(--hi);
+}
+#safely-root .safely-bar-track,
+#safely-root .safely-compare-track {
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.3);
 }
