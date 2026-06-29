@@ -75,7 +75,7 @@ impl From<Sellers> for SellersResponse {
     fn from(s: Sellers) -> Self {
         Self {
             id: s.id,
-            platform: s.platform,
+            platform: s.platform.clone(),
             platform_id: s.platform_id,
             name: s.name,
             handle: s.handle,
@@ -93,7 +93,11 @@ impl From<Sellers> for SellersResponse {
             location: s.location,
             last_active: s.last_seen_at.map(|t| format_last_active(t)),
             network_summary: String::new(),
-            platforms: vec![],
+            platforms: vec![PlatformResponse {
+                name: s.platform,
+                status: "Active".to_string(),
+                platform_type: "Marketplace".to_string(),
+            }],
             monthly_activity: vec![],
         }
     }

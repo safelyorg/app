@@ -30,7 +30,32 @@
         return "";
       },
       build_platform_rows: function (j) {
-        return "";
+        var platforms = JSON.parse(j);
+        if (!platforms || platforms.length === 0)
+          return '<div style="padding:10px 12px;font-size:12px;color:#636366">No platform data</div>';
+        return platforms
+          .map(function (p) {
+            var statusClass =
+              p.status && p.status.toLowerCase() === "active"
+                ? "active"
+                : "none";
+            return (
+              '<div class="safely-platform-row">' +
+              '<span class="safely-platform-name" style="text-transform:capitalize">' +
+              p.name +
+              "</span>" +
+              '<span class="safely-platform-status safely-pstatus-' +
+              statusClass +
+              '">' +
+              p.status +
+              "</span>" +
+              '<span style="font-size:11px;color:#636366">' +
+              p.platform_type +
+              "</span>" +
+              "</div>"
+            );
+          })
+          .join("");
       },
       verification_badge: function (s) {
         return '<span class="safely-verified-badge">' + s + "</span>";
