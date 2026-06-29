@@ -26,17 +26,22 @@
     text-rendering: optimizeLegibility;
 
     /* ── surfaces (warm charcoal, layered light-to-dark) ── */
-    --bg: #16181f; /* panel */
-    --surface: #1f222b; /* cards (sit above panel) */
-    --surface-2: #262a34; /* inputs / insets / hover */
-    --surface-3: #2e323d; /* chips / active states */
-    --line: rgba(255, 255, 255, 0.1); /* hairline border */
-    --line-soft: rgba(255, 255, 255, 0.055); /* faint dividers */
+    --bg: #0c0d12; /* panel — deep near-black */
+    --surface: #16181f; /* cards (lifted off the deep base) */
+    --surface-2: #1d2028; /* inputs / insets / hover */
+    --surface-3: #262a33; /* chips / active states */
+    --line: rgba(
+        255,
+        255,
+        255,
+        0.085
+    ); /* hairline border (softened for deep bg) */
+    --line-soft: rgba(255, 255, 255, 0.05); /* faint dividers */
 
     /* ── text ── */
     --text: #ece7db; /* warm cream */
     --text-dim: #c3bfb6;
-    --muted: #8d909b;
+    --muted: #9499a4;
 
     /* ── accents (bright on dark) ── */
     --ink: #16181f; /* dark text used on bright fills */
@@ -105,7 +110,7 @@
     position: absolute;
     bottom: 30px;
     right: 2px;
-    background: linear-gradient(180deg, #1c1f28 0%, var(--bg) 58%);
+    background: linear-gradient(180deg, #15171e 0%, var(--bg) 60%);
     border: var(--bd);
     border-radius: 22px;
     padding: 20px 20px 22px;
@@ -1237,7 +1242,7 @@
     position: absolute;
     top: -24px;
     right: 0;
-    background: linear-gradient(180deg, #2a2e38, #16181f);
+    background: linear-gradient(180deg, #191c22, #0a0b0f);
     width: 48px;
     height: 48px;
     border: var(--bd);
@@ -1259,7 +1264,7 @@
         box-shadow 0.15s ease;
 }
 #safely-toolbar:hover {
-    background: linear-gradient(180deg, #313641, #1b1e26);
+    background: linear-gradient(180deg, #21242c, #101217);
 }
 #safely-toolbar.safely-toolbar-expanded {
     width: fit-content;
