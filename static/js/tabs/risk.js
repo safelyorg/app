@@ -1,4 +1,3 @@
-// tabs/risk.js — Risk score tab with Circle Score, Seller Info, and Report
 (async function () {
   "use strict";
 

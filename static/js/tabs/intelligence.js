@@ -1,4 +1,3 @@
-// tabs/intelligence.js — Intelligence tab with signal analysis
 (async function () {
   "use strict";
 

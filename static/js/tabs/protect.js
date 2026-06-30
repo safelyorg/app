@@ -1,4 +1,3 @@
-// tabs/protect.js — Protect tab with orders, new order, seller sub-tabs
 (function () {
   "use strict";
   if (!window.__safelyAddTab) return;
@@ -241,8 +240,8 @@
           });
         });
 
-      // Prevent input bubbling
-      window.__safelyPreventInputBubbling();
+      if (window.__safelyPreventInputBubbling)
+        window.__safelyPreventInputBubbling();
     },
   );
 })();
