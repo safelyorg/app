@@ -1,4 +1,3 @@
-use chrono::Datelike;
 use sqlx::{Error, Pool, Postgres, Row};
 use uuid::Uuid;
 
@@ -90,6 +89,7 @@ pub async fn get_monthly_visit_activity(
         FROM analysis a
         JOIN listings l ON a.listing_id = l.id
         WHERE l.seller_id = $1
+            AND a.created_at >= DATE_TRUNC('month', NOW()) - INTERVAL '11 months'
         GROUP BY month
         ORDER BY month ASC
         ",
