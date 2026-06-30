@@ -55,11 +55,11 @@ pub fn build_activity_bars(activity: &[u8]) -> String {
         .iter()
         .map(|&v| {
             let pct = (v as f64 / max * 100.0).round();
-            let height_px = ((pct / 100.0 * 24.0).round() as u32).max(2);
+            let height_px = ((pct / 100.0 * 44.0).round() as u32).max(2);
             let opacity = if v == 0 { 0.15 } else { 0.3 + (pct / 100.0) * 0.7 };
             format!(
-                r#"<div style="display:flex;flex-direction:column;align-items:center;flex:1;gap:3px;"><span style="font-size:9px;color:#8e8e93;line-height:1;">{}</span><div class="safely-activity-bar" style="height:{}px;opacity:{:.2};width:100%;"></div></div>"#,
-                v, height_px, opacity
+                r#"<div style="flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;height:100%;position:relative;"><div class="safely-activity-bar" style="height:{}px;opacity:{:.2};width:100%;"></div><span style="position:absolute;top:6px;font-size:9px;color:#ffffff;line-height:1;">{}</span></div>"#,
+                height_px, opacity, v
             )
         })
         .collect::<Vec<_>>()
