@@ -145,7 +145,7 @@
       platformRows +
       "</div>" +
       '<div class="safely-section-label" style="margin-top:18px">Visit activity \u2014 12 months</div>' +
-      '<div class="safely-activity-card"><div style="display:flex;align-items:flex-end;gap:3px;height:32px">' +
+      '<div class="safely-activity-card"><div style="display:flex;align-items:flex-end;gap:3px;height:44px">' +
       activityBars +
       "</div>" +
       (function () {
