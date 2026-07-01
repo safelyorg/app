@@ -4,16 +4,12 @@ use tower_http::{cors::CorsLayer, services::ServeDir};
 
 #[path = "../db/mod.rs"]
 pub mod db;
-
 #[path = "../handlers/mod.rs"]
 pub mod handlers;
-
 #[path = "../models/mod.rs"]
 pub mod models;
-
 #[path = "../routes/mod.rs"]
 pub mod routes;
-
 #[path = "../services/mod.rs"]
 pub mod services;
 
@@ -26,22 +22,27 @@ async fn main() {
         .run(&admin_pool)
         .await
         .expect("migration expected");
-
     run_grants(&admin_pool).await;
 
     let app = Router::new()
         .merge(routes::analyze::analyze_routes())
         .merge(routes::fraud_reports::fraud_reports_routes())
         .nest_service(
+            "/dashboard/",
+            ServeDir::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../dashboard")),
+        )
+        .nest_service(
             "/extension/",
-            ServeDir::new(concat!(env!("CARGO_MANIFEST_DIR"), "/extension")),
+            ServeDir::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../extension")),
+        )
+        .fallback_service(
+            ServeDir::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../site"))
+                .append_index_html_on_directories(true),
         )
         .layer(CorsLayer::permissive())
         .with_state(app_pool);
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
-
     println!("Server running on port: 3000");
-
     axum::serve(listener, app).await.unwrap();
 }

@@ -35,6 +35,10 @@
   });
 
   document.getElementById("siMagic").addEventListener("click", function () {
-    window.location.href = "../dashboard/index.html";
+    window.location.href = "/dashboard/";
+  });
+
+  document.getElementById("siGoogle").addEventListener("click", function () {
+    window.location.href = "/dashboard/";
   });
 })();
