@@ -33,4 +33,8 @@
       history.replaceState(null, "", location.pathname + location.search);
     }
   });
+
+  document.getElementById("siMagic").addEventListener("click", function () {
+    window.location.href = "../dashboard/index.html";
+  });
 })();
