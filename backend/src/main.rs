@@ -1,5 +1,5 @@
 use crate::db::{bootstrap::run_grants, connection::load_pool};
-use axum::Router;
+use axum::{Router, response::Redirect, routing::get};
 use tower_http::{cors::CorsLayer, services::ServeDir};
 
 #[path = "../db/mod.rs"]
@@ -28,12 +28,17 @@ async fn main() {
         .merge(routes::analyze::analyze_routes())
         .merge(routes::fraud_reports::fraud_reports_routes())
         .merge(routes::auth::auth_routes())
-        .nest_service(
-            "/dashboard/",
-            ServeDir::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../dashboard")),
+        .route(
+            "/dashboard",
+            get(|| async { Redirect::permanent("/dashboard/") }),
         )
         .nest_service(
-            "/extension/",
+            "/dashboard/",
+            ServeDir::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../dashboard"))
+                .append_index_html_on_directories(true),
+        )
+        .nest_service(
+            "/extension",
             ServeDir::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../extension")),
         )
         .fallback_service(

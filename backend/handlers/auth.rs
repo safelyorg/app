@@ -1,16 +1,18 @@
-use crate::models::users::{AuthSuccessResponse, GoogleCallbackQuery, MagicLinkRequest, VerifyQuery};
+use crate::models::users::{
+    AuthSuccessResponse, GoogleCallbackQuery, MagicLinkRequest, VerifyQuery,
+};
 use crate::services::{auth, email, google_oauth};
 use axum::{
+    Json,
     extract::{Query, State},
     http::StatusCode,
     response::{IntoResponse, Redirect},
-    Json,
 };
 use axum_extra::extract::cookie::{Cookie, CookieJar};
 use sqlx::{Pool, Postgres};
 use uuid::Uuid;
 
-const DASHBOARD_PATH: &str = "/dashboard";
+const DASHBOARD_PATH: &str = "/dashboard/";
 const OAUTH_STATE_COOKIE: &str = "oauth_state";
 
 /// POST /api/v1/auth/magic-link
@@ -29,7 +31,8 @@ pub async fn request_magic_link(
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    let base_url = std::env::var("PUBLIC_BASE_URL").unwrap_or_else(|_| "http://localhost:3000".to_string());
+    let base_url =
+        std::env::var("PUBLIC_BASE_URL").unwrap_or_else(|_| "http://localhost:3000".to_string());
     let verify_url = format!("{}/api/v1/auth/verify?token={}", base_url, token);
 
     if let Err(e) = email::send_magic_link_email(&email_trimmed, &verify_url).await {
@@ -53,7 +56,9 @@ pub async fn verify_magic_link(
 ) -> impl IntoResponse {
     let link = match auth::verify_magic_link(&pool, &query.token).await {
         Ok(Some(l)) => l,
-        Ok(None) => return Redirect::to(&format!("{}?error=expired_link", DASHBOARD_PATH)).into_response(),
+        Ok(None) => {
+            return Redirect::to(&format!("{}?error=expired_link", DASHBOARD_PATH)).into_response();
+        }
         Err(e) => {
             eprintln!("verify_magic_link db error: {}", e);
             return Redirect::to(&format!("{}?error=server_error", DASHBOARD_PATH)).into_response();
@@ -96,7 +101,11 @@ pub async fn google_redirect(jar: CookieJar) -> impl IntoResponse {
         Ok(url) => url,
         Err(e) => {
             eprintln!("build_google_authorize_url error: {}", e);
-            return (jar, Redirect::to(&format!("{}?error=server_error", DASHBOARD_PATH))).into_response();
+            return (
+                jar,
+                Redirect::to(&format!("{}?error=server_error", DASHBOARD_PATH)),
+            )
+                .into_response();
         }
     };
 

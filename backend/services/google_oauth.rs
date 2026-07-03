@@ -2,7 +2,8 @@ use crate::models::users::{GoogleTokenResponse, GoogleUserInfo};
 use std::env;
 
 pub fn build_google_authorize_url(state: &str) -> Result<String, String> {
-    let client_id = env::var("GOOGLE_CLIENT_ID").map_err(|_| "GOOGLE_CLIENT_ID not set".to_string())?;
+    let client_id =
+        env::var("GOOGLE_CLIENT_ID").map_err(|_| "GOOGLE_CLIENT_ID not set".to_string())?;
     let redirect_uri =
         env::var("GOOGLE_REDIRECT_URI").map_err(|_| "GOOGLE_REDIRECT_URI not set".to_string())?;
 
@@ -21,7 +22,8 @@ pub fn build_google_authorize_url(state: &str) -> Result<String, String> {
 /// Exchanges an authorization code for an access token, then fetches the
 /// user's profile. Two plain HTTP calls — no OAuth crate needed for this.
 pub async fn exchange_code_for_user(code: &str) -> Result<GoogleUserInfo, String> {
-    let client_id = env::var("GOOGLE_CLIENT_ID").map_err(|_| "GOOGLE_CLIENT_ID not set".to_string())?;
+    let client_id =
+        env::var("GOOGLE_CLIENT_ID").map_err(|_| "GOOGLE_CLIENT_ID not set".to_string())?;
     let client_secret =
         env::var("GOOGLE_CLIENT_SECRET").map_err(|_| "GOOGLE_CLIENT_SECRET not set".to_string())?;
     let redirect_uri =
