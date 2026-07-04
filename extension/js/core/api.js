@@ -4,14 +4,32 @@
 
   var API_BASE = "http://localhost:3000/api/v1";
 
+  // Reads the session token that auth-bridge.js relayed from the website.
+  // Returns an empty object (no Authorization header) if the person isn't
+  // logged in - every existing call keeps working exactly as before for
+  // anonymous use, this only adds something extra when a token exists.
+  async function getAuthHeaders() {
+    try {
+      var result = await chrome.storage.local.get("safely_session_token");
+      var token = result.safely_session_token;
+      return token ? { Authorization: "Bearer " + token } : {};
+    } catch (e) {
+      // chrome.storage can be unavailable in rare edge cases - fail back
+      // to anonymous rather than break the request entirely.
+      return {};
+    }
+  }
+
   window.__safelyAPI = {
     analyze: async function (scrapedData) {
       try {
+        var authHeaders = await getAuthHeaders();
         var response = await fetch(API_BASE + "/analyze", {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
+          headers: Object.assign(
+            { "Content-Type": "application/json" },
+            authHeaders,
+          ),
           body: JSON.stringify(scrapedData),
         });
 
@@ -34,11 +52,13 @@
 
     submitReport: async function (reportData) {
       try {
+        var authHeaders = await getAuthHeaders();
         var response = await fetch(API_BASE + "/report", {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
+          headers: Object.assign(
+            { "Content-Type": "application/json" },
+            authHeaders,
+          ),
           body: JSON.stringify(reportData),
         });
 
