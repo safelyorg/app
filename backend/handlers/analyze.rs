@@ -7,6 +7,7 @@ use crate::{
     },
     services::{
         analysis::create_analysis,
+        auth::extract_user_id,
         claude::call_claude,
         fraud_reports::{build_network_summary, count_fraud_reports},
         listings::{create_listing, get_monthly_visit_activity},
@@ -15,13 +16,19 @@ use crate::{
         signals::build_signals,
     },
 };
-use axum::{Json, extract::State};
+use axum::{Json, extract::State, http::HeaderMap};
 use sqlx::{Pool, Postgres};
 
 pub async fn analyze(
     State(pool): State<Pool<Postgres>>,
+    headers: HeaderMap,
     Json(request): Json<AnalyzeRequest>,
 ) -> Result<Json<AnalyzeResponse>, String> {
+    // None if not logged in, or if the token is missing/invalid - either
+    // way the request proceeds exactly as it always has, just without a
+    // user_id attached to the saved analysis row.
+    let user_id = extract_user_id(&headers, &pool).await;
+
     let seller_req = SellersRequest {
         platform: request.platform.clone(),
         platform_id: request.platform_id.clone(),
@@ -117,6 +124,7 @@ pub async fn analyze(
         signals_json,
         claude_analysis.overall_risk_notes.clone(),
         String::new(),
+        user_id,
     )
     .await
     .map_err(|e| e.to_string())?;

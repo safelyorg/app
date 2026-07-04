@@ -1,12 +1,16 @@
 use crate::models::fraud_reports::FraudReportsRequest;
-use axum::{Json, extract::State};
+use crate::services::auth::extract_user_id;
+use axum::{Json, extract::State, http::HeaderMap};
 use sqlx::{Pool, Postgres, Row};
 use uuid::Uuid;
 
 pub async fn create_fraud_report(
     State(pool): State<Pool<Postgres>>,
+    headers: HeaderMap,
     Json(request): Json<FraudReportsRequest>,
 ) -> Result<Json<serde_json::Value>, String> {
+    let user_id = extract_user_id(&headers, &pool).await;
+
     let seller = sqlx::query(
         "SELECT id FROM sellers
          WHERE platform = $1 AND platform_id = $2
@@ -28,9 +32,9 @@ pub async fn create_fraud_report(
     sqlx::query(
         "INSERT INTO fraud_reports (
             id, seller_id, platform, platform_id,
-            report_type, description, reported_at
+            report_type, description, user_id, reported_at
         )
-        VALUES ($1, $2, $3, $4, $5, $6, NOW())",
+        VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())",
     )
     .bind(id)
     .bind(seller_id)
@@ -38,6 +42,7 @@ pub async fn create_fraud_report(
     .bind(request.platform_id.as_deref().unwrap_or(""))
     .bind(&request.report_type)
     .bind(&request.description)
+    .bind(&user_id)
     .execute(&pool)
     .await
     .map_err(|e| {

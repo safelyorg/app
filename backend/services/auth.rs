@@ -1,4 +1,5 @@
 use crate::models::users::{MagicLink, User};
+use axum::http::HeaderMap;
 use chrono::{Duration, Utc};
 use sqlx::{Pool, Postgres, Row};
 use uuid::Uuid;
@@ -23,10 +24,7 @@ pub async fn find_user_by_google_id(
         .await
 }
 
-pub async fn find_user_by_id(
-    pool: &Pool<Postgres>,
-    id: Uuid,
-) -> Result<Option<User>, sqlx::Error> {
+pub async fn find_user_by_id(pool: &Pool<Postgres>, id: Uuid) -> Result<Option<User>, sqlx::Error> {
     sqlx::query_as::<_, User>("SELECT * FROM users WHERE id = $1 LIMIT 1")
         .bind(id)
         .fetch_optional(pool)
@@ -44,13 +42,11 @@ pub async fn find_or_create_user_by_email(
     }
 
     let id = Uuid::now_v7();
-    sqlx::query_as::<_, User>(
-        "INSERT INTO users (id, email) VALUES ($1, $2) RETURNING *",
-    )
-    .bind(id)
-    .bind(email)
-    .fetch_one(pool)
-    .await
+    sqlx::query_as::<_, User>("INSERT INTO users (id, email) VALUES ($1, $2) RETURNING *")
+        .bind(id)
+        .bind(email)
+        .fetch_one(pool)
+        .await
 }
 
 /// Finds a user by google_id, falling back to matching by email so a person
@@ -104,15 +100,13 @@ pub async fn create_magic_link(pool: &Pool<Postgres>, email: &str) -> Result<Str
     let token = Uuid::new_v4().to_string();
     let expires_at = Utc::now() + Duration::minutes(15);
 
-    sqlx::query(
-        "INSERT INTO magic_links (id, email, token, expires_at) VALUES ($1, $2, $3, $4)",
-    )
-    .bind(id)
-    .bind(email)
-    .bind(&token)
-    .bind(expires_at)
-    .execute(pool)
-    .await?;
+    sqlx::query("INSERT INTO magic_links (id, email, token, expires_at) VALUES ($1, $2, $3, $4)")
+        .bind(id)
+        .bind(email)
+        .bind(&token)
+        .bind(expires_at)
+        .execute(pool)
+        .await?;
 
     Ok(token)
 }
@@ -146,15 +140,13 @@ pub async fn create_session(pool: &Pool<Postgres>, user_id: Uuid) -> Result<Stri
     let token = format!("{}{}", Uuid::new_v4(), Uuid::new_v4()).replace('-', "");
     let expires_at = Utc::now() + Duration::days(30);
 
-    sqlx::query(
-        "INSERT INTO sessions (id, user_id, token, expires_at) VALUES ($1, $2, $3, $4)",
-    )
-    .bind(id)
-    .bind(user_id)
-    .bind(&token)
-    .bind(expires_at)
-    .execute(pool)
-    .await?;
+    sqlx::query("INSERT INTO sessions (id, user_id, token, expires_at) VALUES ($1, $2, $3, $4)")
+        .bind(id)
+        .bind(user_id)
+        .bind(&token)
+        .bind(expires_at)
+        .execute(pool)
+        .await?;
 
     Ok(token)
 }
@@ -167,12 +159,11 @@ pub async fn get_user_from_token(
     pool: &Pool<Postgres>,
     token: &str,
 ) -> Result<Option<User>, sqlx::Error> {
-    let row = sqlx::query(
-        "SELECT user_id FROM sessions WHERE token = $1 AND expires_at > NOW() LIMIT 1",
-    )
-    .bind(token)
-    .fetch_optional(pool)
-    .await?;
+    let row =
+        sqlx::query("SELECT user_id FROM sessions WHERE token = $1 AND expires_at > NOW() LIMIT 1")
+            .bind(token)
+            .fetch_optional(pool)
+            .await?;
 
     let Some(row) = row else {
         return Ok(None);
@@ -188,4 +179,17 @@ pub async fn delete_session(pool: &Pool<Postgres>, token: &str) -> Result<(), sq
         .execute(pool)
         .await?;
     Ok(())
+}
+
+/// Reads the Authorization header (if present) and resolves it to a user
+/// ID. Returns None for any of: missing header, malformed header, or a
+/// token that doesn't match a valid session - all treated the same way,
+/// as "proceed anonymously" rather than reject the request. This is what
+/// keeps every existing anonymous extension user working unchanged; being
+/// logged in only ever adds a user_id, it never becomes a requirement.
+pub async fn extract_user_id(headers: &HeaderMap, pool: &Pool<Postgres>) -> Option<Uuid> {
+    let auth_header = headers.get("authorization")?.to_str().ok()?;
+    let token = auth_header.strip_prefix("Bearer ")?;
+    let user = get_user_from_token(pool, token).await.ok()??;
+    Some(user.id)
 }

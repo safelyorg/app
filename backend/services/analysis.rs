@@ -10,9 +10,9 @@ pub async fn create_analysis(
     signals: serde_json::Value,
     network_summary: String,
     claude_raw: String,
+    user_id: Option<Uuid>,
 ) -> Result<Analysis, Error> {
     let id = Uuid::now_v7();
-
     let analysis = sqlx::query_as::<_, Analysis>(
         "
         INSERT INTO analysis (
@@ -24,11 +24,12 @@ pub async fn create_analysis(
             price_analysis,
             network_summary,
             claude_raw,
+            user_id,
             created_at
         )
         VALUES (
             $1,  $2,  $3,  $4,   $5,
-            $6,  $7,  $8,  NOW()
+            $6,  $7,  $8,  $9,   NOW()
         )
         RETURNING *
         ",
@@ -41,8 +42,8 @@ pub async fn create_analysis(
     .bind(None::<serde_json::Value>)
     .bind(&network_summary)
     .bind(&claude_raw)
+    .bind(&user_id)
     .fetch_one(pool)
     .await?;
-
     Ok(analysis)
 }

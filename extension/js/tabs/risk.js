@@ -254,7 +254,7 @@
     // report submission
     var submitBtn = root.querySelector("#safely-report-submit");
     if (submitBtn) {
-      submitBtn.addEventListener("click", function () {
+      submitBtn.addEventListener("click", async function () {
         var selected = root.querySelector(
           'input[name="safely-report-reason"]:checked',
         );
@@ -267,9 +267,29 @@
         submitBtn.textContent = "Submitting...";
         submitBtn.disabled = true;
 
+        // This call was bypassing core/api.js entirely, which is why it
+        // never picked up the Authorization header that analyze() gets -
+        // that header logic lives in api.js's getAuthHeaders(), and this
+        // fetch never went through that file. Reading storage directly
+        // here closes that gap without needing a bigger refactor.
+        var authHeaders = {};
+        try {
+          var result = await chrome.storage.local.get("safely_session_token");
+          if (result.safely_session_token) {
+            authHeaders = {
+              Authorization: "Bearer " + result.safely_session_token,
+            };
+          }
+        } catch (e) {
+          // fall back to anonymous if storage is unavailable
+        }
+
         fetch("http://localhost:3000/api/v1/report", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: Object.assign(
+            { "Content-Type": "application/json" },
+            authHeaders,
+          ),
           body: JSON.stringify({
             platform: pageData.seller.platform || "olx",
             platform_id: pageData.seller.platformId || null,
