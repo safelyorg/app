@@ -71,7 +71,7 @@
 })();
 
 // ============================================================
-// Real data loading. Replaces the earlier hardcoded mock rows.
+// Real data loading.
 // ============================================================
 var API_BASE = "http://localhost:3000/api/v1";
 var currentHistory = [];
@@ -85,12 +85,30 @@ function verdictColor(level) {
       : "text-rose-400";
 }
 
+function verdictBorderColor(level) {
+  return level === "low"
+    ? "border-emerald-400"
+    : level === "caution"
+      ? "border-amber-400"
+      : "border-rose-400";
+}
+
 function verdictDot(level) {
   return level === "low"
     ? "bg-emerald-400"
     : level === "caution"
       ? "bg-amber-400"
       : "bg-rose-400";
+}
+
+function signalColor(type) {
+  return type === "good"
+    ? "text-emerald-400"
+    : type === "info"
+      ? "text-zinc-400"
+      : type === "caution"
+        ? "text-amber-400"
+        : "text-rose-400";
 }
 
 function formatDate(isoString) {
@@ -148,7 +166,7 @@ function renderHistoryRows() {
   }
 
   tbody.innerHTML = currentHistory
-    .map(function (item, index) {
+    .map(function (item) {
       var searchText = (
         (item.listing_title || "") +
         " " +
@@ -161,8 +179,8 @@ function renderHistoryRows() {
         item.risk_level +
         '" data-search="' +
         searchText +
-        '" data-index="' +
-        index +
+        '" data-id="' +
+        item.id +
         '" class="history-row border-b border-white/5 hover:bg-zinc-800/60 cursor-pointer">' +
         '<td class="px-3 py-3.5 text-zinc-400">' +
         formatDate(item.created_at) +
@@ -191,8 +209,7 @@ function renderHistoryRows() {
 
   tbody.querySelectorAll(".history-row").forEach(function (tr) {
     tr.addEventListener("click", function () {
-      var item = currentHistory[parseInt(tr.dataset.index, 10)];
-      openDetail(item, null);
+      openDetail(tr.dataset.id);
     });
   });
 }
@@ -207,19 +224,20 @@ function renderReportRows() {
     return;
   }
 
+  // Report rows aren't clickable to a full detail view - fraud_reports
+  // isn't tied to a specific analysis id, so there's nothing to fetch
+  // detail for yet. Showing them plainly here is honest to what exists.
   tbody.innerHTML = currentReports
-    .map(function (item, index) {
+    .map(function (item) {
       return (
-        '<tr data-index="' +
-        index +
-        '" class="report-row border-b border-white/5 hover:bg-zinc-800/60 cursor-pointer">' +
+        '<tr class="border-b border-white/5">' +
         '<td class="px-3 py-3.5 text-zinc-400">' +
         formatDate(item.reported_at) +
         "</td>" +
         '<td class="px-3 py-3.5">' +
         item.report_type +
         "</td>" +
-        '<td class="px-3 py-3.5 truncate max-w-[220px]">' +
+        '<td class="px-3 py-3.5 truncate max-w-[220px] capitalize">' +
         item.platform +
         "</td>" +
         '<td class="px-3 py-3.5">' +
@@ -229,67 +247,193 @@ function renderReportRows() {
       );
     })
     .join("");
-
-  tbody.querySelectorAll(".report-row").forEach(function (tr) {
-    tr.addEventListener("click", function () {
-      var item = currentReports[parseInt(tr.dataset.index, 10)];
-      openDetail(null, item);
-    });
-  });
 }
 
-// Single dynamic detail panel - replaces the 5 hardcoded mock detail
-// overlays. Shows whatever fields the clicked row actually has; history
-// rows and report rows have slightly different fields available.
-function openDetail(historyItem, reportItem) {
+// ============================================================
+// Full rich detail panel - fetches GET /api/v1/history/:id for real
+// signals, seller info, and activity data.
+// ============================================================
+async function openDetail(analysisId) {
   var panel = document.getElementById("detail-view");
+  var loading = document.getElementById("detail-loading");
+  var body = document.getElementById("detail-body");
   if (!panel) return;
 
-  var source = historyItem || reportItem;
-  var title = historyItem
-    ? historyItem.listing_title || "Untitled listing"
-    : "Fraud report";
-  var seller = source.seller_name || "Unknown seller";
-  var platform = source.platform || "unknown";
-  var date = formatDate(
-    historyItem ? historyItem.created_at : reportItem.reported_at,
-  );
-
-  document.getElementById("detail-title").textContent = title;
-  document.getElementById("detail-seller").textContent = seller;
-  document.getElementById("detail-platform").textContent = platform;
-  document.getElementById("detail-date").textContent = date;
-
-  var riskBlock = document.getElementById("detail-risk-block");
-  var reportBlock = document.getElementById("detail-report-block");
-
-  if (historyItem) {
-    riskBlock.classList.remove("hidden");
-    var scoreEl = document.getElementById("detail-risk-score");
-    scoreEl.textContent = historyItem.risk_score;
-    scoreEl.className =
-      "text-3xl font-extrabold " + verdictColor(historyItem.risk_level);
-    document.getElementById("detail-risk-level").textContent =
-      historyItem.risk_level.charAt(0).toUpperCase() +
-      historyItem.risk_level.slice(1) +
-      " risk";
-    document.getElementById("detail-reported").textContent =
-      historyItem.reported
-        ? "You have reported this seller"
-        : "You have not reported this seller";
-  } else {
-    riskBlock.classList.add("hidden");
-  }
-
-  if (reportItem) {
-    reportBlock.classList.remove("hidden");
-    document.getElementById("detail-report-reason").textContent =
-      reportItem.report_type;
-  } else {
-    reportBlock.classList.add("hidden");
-  }
-
   panel.classList.remove("hidden");
+  loading.classList.remove("hidden");
+  body.classList.add("hidden");
+  document.getElementById("detail-title").textContent = "";
+
+  try {
+    var res = await fetch(API_BASE + "/history/" + analysisId, {
+      headers: window.safelyAuth.authHeader(),
+    });
+
+    if (res.status === 401) {
+      window.safelyAuth.logout();
+      return;
+    }
+    if (!res.ok) {
+      loading.textContent = "Could not load this listing.";
+      return;
+    }
+
+    var data = await res.json();
+    renderDetailBody(data);
+
+    loading.classList.add("hidden");
+    body.classList.remove("hidden");
+  } catch (e) {
+    console.error("Safely: failed to load detail", e);
+    loading.textContent = "Could not load this listing.";
+  }
+}
+
+function renderDetailBody(data) {
+  document.getElementById("detail-title").textContent =
+    data.listing_title || "Untitled listing";
+
+  // --- Risk tab ---
+  var gauge = document.getElementById("detail-risk-gauge");
+  gauge.className =
+    "w-28 h-28 rounded-full border-4 flex items-center justify-center mx-auto mb-3 " +
+    verdictBorderColor(data.risk_level);
+
+  var scoreEl = document.getElementById("detail-risk-score");
+  scoreEl.textContent = data.risk_score;
+  scoreEl.className =
+    "text-3xl font-extrabold " + verdictColor(data.risk_level);
+
+  var levelEl = document.getElementById("detail-risk-level");
+  levelEl.textContent =
+    data.risk_level.charAt(0).toUpperCase() +
+    data.risk_level.slice(1) +
+    " risk";
+  levelEl.className =
+    "text-base font-extrabold " + verdictColor(data.risk_level);
+
+  document.getElementById("detail-chip-reports").textContent =
+    data.fraud_report_count || 0;
+  document.getElementById("detail-chip-reports").className =
+    "text-base font-extrabold " +
+    (data.fraud_report_count > 0 ? "text-rose-400" : "text-zinc-500");
+
+  var statusText =
+    data.seller.verification === "verified"
+      ? "Verified"
+      : data.seller.verification === "flagged"
+        ? "Flagged"
+        : "Unverified";
+  document.getElementById("detail-chip-status").textContent = statusText;
+
+  document.getElementById("detail-chip-platform").textContent = data.platform;
+
+  document.getElementById("detail-seller-name").textContent =
+    data.seller.name || "Unknown";
+  document.getElementById("detail-seller-age").textContent =
+    data.seller.account_age || "Unknown";
+  document.getElementById("detail-seller-location").textContent =
+    data.seller.location || "Unknown";
+  document.getElementById("detail-seller-lastactive").textContent =
+    data.seller.last_active || "Unknown";
+
+  var chart = document.getElementById("detail-activity-chart");
+  var activity = data.seller.monthly_activity || new Array(12).fill(0);
+  var max = Math.max.apply(null, activity) || 1;
+  chart.innerHTML = activity
+    .map(function (v) {
+      var heightPx = Math.max(2, Math.round((v / max) * 44));
+      return (
+        '<div class="flex-1 flex flex-col items-center justify-end relative">' +
+        '<span class="text-[8px] text-zinc-500 absolute top-0">' +
+        v +
+        "</span>" +
+        '<div class="w-full bg-sky-400 rounded-t-sm" style="height:' +
+        heightPx +
+        'px"></div></div>'
+      );
+    })
+    .join("");
+
+  document.getElementById("detail-network-summary").textContent =
+    data.seller.network_summary || "";
+
+  // --- Intelligence tab ---
+  var signals = data.signals || [];
+  var badCount = signals.filter(function (s) {
+    return s.type !== "good" && s.type !== "info";
+  }).length;
+
+  var summaryEl = document.getElementById("detail-intel-summary");
+  if (badCount === 0) {
+    summaryEl.className =
+      "flex gap-2 p-3 rounded-xl text-xs mb-4 bg-emerald-500/10 text-emerald-400";
+    summaryEl.innerHTML =
+      "<span>&#9679;</span><span>All " +
+      signals.length +
+      " signals checked. No red flags detected.</span>";
+  } else {
+    summaryEl.className =
+      "flex gap-2 p-3 rounded-xl text-xs mb-4 bg-amber-500/10 text-amber-400";
+    summaryEl.innerHTML =
+      "<span>&#9679;</span><span>" +
+      badCount +
+      " of " +
+      signals.length +
+      " signals need your attention.</span>";
+  }
+
+  var signalsList = document.getElementById("detail-signals-list");
+  signalsList.innerHTML = signals
+    .map(function (s, i) {
+      var borderClass =
+        i === signals.length - 1 ? "" : "border-b border-white/5";
+      return (
+        '<div class="flex justify-between gap-3 px-4 py-3 ' +
+        borderClass +
+        '"><div><div class="font-semibold text-sm">' +
+        s.label +
+        '</div><div class="text-[10px] text-zinc-500 mt-0.5">' +
+        (s.sub || "") +
+        '</div></div><div class="text-sm font-bold whitespace-nowrap ' +
+        signalColor(s.type) +
+        '">' +
+        s.value +
+        "</div></div>"
+      );
+    })
+    .join("");
+
+  // --- Report tab ---
+  var filedBlock = document.getElementById("detail-report-filed");
+  var emptyBlock = document.getElementById("detail-report-empty");
+  if (data.reported) {
+    filedBlock.classList.remove("hidden");
+    emptyBlock.classList.add("hidden");
+    document.getElementById("detail-report-reason").textContent =
+      data.report_reason || "";
+    document.getElementById("detail-report-date").textContent = data.report_date
+      ? "Submitted " + formatDate(data.report_date)
+      : "";
+  } else {
+    filedBlock.classList.add("hidden");
+    emptyBlock.classList.remove("hidden");
+  }
+
+  // Reset to the Risk tab every time a new item is opened.
+  switchDetailTab("risk");
+}
+
+function switchDetailTab(tab) {
+  ["risk", "intel", "report"].forEach(function (name) {
+    var content = document.getElementById("detail-tab-content-" + name);
+    var btn = document.querySelector('[data-detail-tab="' + name + '"]');
+    if (content) content.classList.toggle("hidden", name !== tab);
+    if (btn) {
+      btn.classList.toggle("bg-zinc-700", name === tab);
+      btn.classList.toggle("text-white", name === tab);
+    }
+  });
 }
 
 document.addEventListener("DOMContentLoaded", function () {
@@ -305,6 +449,12 @@ document.addEventListener("DOMContentLoaded", function () {
       document.getElementById("detail-view").classList.add("hidden");
     });
   }
+
+  document.querySelectorAll(".detail-tab-btn").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      switchDetailTab(btn.dataset.detailTab);
+    });
+  });
 
   // ============================================================
   // The one interaction genuinely impossible in pure CSS: substring

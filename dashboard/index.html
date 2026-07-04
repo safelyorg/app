@@ -261,41 +261,87 @@
 
         <!-- ===== DETAIL OVERLAYS ===== -->
 
-        <!--
-            Single dynamic detail panel. Populated by openDetail() in dashboard.js
-            based on whichever row was clicked. Replaces what used to be 5
-            separate hand-written overlays (one per mock listing) - that approach
-            doesn't scale to a real, arbitrarily-sized list of listings, so this
-            is filled in with JS instead.
-        -->
+        <!-- Single dynamic detail panel. Populated by openDetail() in dashboard.js
+             via a real fetch to GET /api/v1/history/:id - full Risk/Intelligence
+             view built from real signals, seller info, and activity data. -->
         <div id="detail-view" class="hidden fixed inset-y-0 left-56 right-0 bg-zinc-950 z-50 overflow-y-auto p-8">
-            <div class="w-full max-w-xl mx-auto">
+          <div class="w-full max-w-2xl mx-auto">
             <div class="flex items-center gap-3 mb-5">
-                <button id="detail-close" class="text-zinc-400 text-xs font-semibold hover:text-white cursor-pointer">&larr; Back</button>
-                <div id="detail-title" class="text-base font-extrabold truncate flex-1"></div>
+              <button id="detail-close" class="text-zinc-400 text-xs font-semibold hover:text-white cursor-pointer">&larr; Back</button>
+              <div id="detail-title" class="text-base font-extrabold truncate flex-1"></div>
             </div>
 
-            <div class="bg-zinc-900 border border-white/10 rounded-xl p-4 mb-4">
-                <div class="flex justify-between py-1.5 text-sm"><span class="text-zinc-500">Seller</span><span id="detail-seller" class="font-semibold"></span></div>
-                <div class="flex justify-between py-1.5 text-sm"><span class="text-zinc-500">Platform</span><span id="detail-platform" class="font-semibold capitalize"></span></div>
-                <div class="flex justify-between py-1.5 text-sm"><span class="text-zinc-500">Date</span><span id="detail-date" class="font-semibold"></span></div>
-            </div>
+            <div id="detail-loading" class="text-center text-zinc-500 text-sm py-16">Loading...</div>
 
-            <div id="detail-risk-block" class="hidden">
-                <div class="text-center py-6">
-                <div id="detail-risk-score" class="text-3xl font-extrabold"></div>
-                <div id="detail-risk-level" class="text-sm font-bold text-zinc-400 mt-1"></div>
+            <div id="detail-body" class="hidden">
+              <div class="flex gap-1 mb-4 bg-zinc-800 border border-white/10 rounded-xl p-1">
+                <button data-detail-tab="risk" class="detail-tab-btn flex-1 text-center py-1.5 rounded-lg text-xs font-bold text-zinc-400 cursor-pointer">Risk</button>
+                <button data-detail-tab="intel" class="detail-tab-btn flex-1 text-center py-1.5 rounded-lg text-xs font-bold text-zinc-400 cursor-pointer">Intelligence</button>
+                <button data-detail-tab="report" class="detail-tab-btn flex-1 text-center py-1.5 rounded-lg text-xs font-bold text-zinc-400 cursor-pointer">Report</button>
+              </div>
+
+              <!-- RISK TAB -->
+              <div id="detail-tab-content-risk" class="detail-tab-content">
+                <div class="text-center py-7">
+                  <div id="detail-risk-gauge" class="w-28 h-28 rounded-full border-4 flex items-center justify-center mx-auto mb-3">
+                    <span id="detail-risk-score" class="text-3xl font-extrabold"></span>
+                  </div>
+                  <div id="detail-risk-level" class="text-base font-extrabold"></div>
                 </div>
-                <div class="bg-zinc-900 border border-white/10 rounded-xl p-3 text-sm text-zinc-400">
-                <span id="detail-reported"></span>
+                <div class="flex gap-2.5 mb-4">
+                  <div class="flex-1 bg-zinc-900 border border-white/10 rounded-xl p-3 text-center">
+                    <div id="detail-chip-reports" class="text-base font-extrabold text-zinc-500"></div>
+                    <div class="text-[10px] font-bold uppercase text-zinc-500">Fraud Reports</div>
+                  </div>
+                  <div class="flex-1 bg-zinc-900 border border-white/10 rounded-xl p-3 text-center">
+                    <div id="detail-chip-status" class="text-base font-extrabold text-zinc-500"></div>
+                    <div class="text-[10px] font-bold uppercase text-zinc-500">Safely Status</div>
+                  </div>
+                  <div class="flex-1 bg-zinc-900 border border-white/10 rounded-xl p-3 text-center">
+                    <div id="detail-chip-platform" class="text-base font-extrabold text-sky-400 capitalize"></div>
+                    <div class="text-[10px] font-bold uppercase text-zinc-500">Platform</div>
+                  </div>
                 </div>
-            </div>
+                <div class="text-[11px] font-extrabold uppercase text-zinc-500 mb-2 mt-4">Seller Information</div>
+                <div class="bg-zinc-900 border border-white/10 rounded-xl p-4 mb-4">
+                  <div class="flex justify-between py-1.5 text-sm"><span class="text-zinc-500">Name</span><span id="detail-seller-name" class="font-semibold"></span></div>
+                  <div class="flex justify-between py-1.5 text-sm"><span class="text-zinc-500">Account age</span><span id="detail-seller-age" class="font-semibold"></span></div>
+                  <div class="flex justify-between py-1.5 text-sm"><span class="text-zinc-500">Location</span><span id="detail-seller-location" class="font-semibold"></span></div>
+                  <div class="flex justify-between py-1.5 text-sm"><span class="text-zinc-500">Last active</span><span id="detail-seller-lastactive" class="font-semibold"></span></div>
+                </div>
+                <div class="text-[11px] font-extrabold uppercase text-zinc-500 mb-2">Visit activity - 12 months</div>
+                <div class="bg-zinc-900 border border-white/10 rounded-xl p-3">
+                  <div id="detail-activity-chart" class="flex items-end gap-1 h-14 mb-1.5"></div>
+                  <div class="flex gap-1">
+                    <span class="flex-1 text-center text-[8px] font-bold text-zinc-500">Jan</span><span class="flex-1 text-center text-[8px] font-bold text-zinc-500">Feb</span><span class="flex-1 text-center text-[8px] font-bold text-zinc-500">Mar</span><span class="flex-1 text-center text-[8px] font-bold text-zinc-500">Apr</span><span class="flex-1 text-center text-[8px] font-bold text-zinc-500">May</span><span class="flex-1 text-center text-[8px] font-bold text-zinc-500">Jun</span><span class="flex-1 text-center text-[8px] font-bold text-zinc-500">Jul</span><span class="flex-1 text-center text-[8px] font-bold text-zinc-500">Aug</span><span class="flex-1 text-center text-[8px] font-bold text-zinc-500">Sep</span><span class="flex-1 text-center text-[8px] font-bold text-zinc-500">Oct</span><span class="flex-1 text-center text-[8px] font-bold text-zinc-500">Nov</span><span class="flex-1 text-center text-[8px] font-bold text-zinc-500">Dec</span>
+                  </div>
+                </div>
+                <div class="flex gap-2.5 mt-4 p-3 bg-zinc-900 border border-white/10 rounded-xl text-[11px] text-zinc-500">
+                  <span>&#9679;</span><span id="detail-network-summary"></span>
+                </div>
+              </div>
 
-            <div id="detail-report-block" class="hidden mt-4 bg-zinc-900 border border-white/10 rounded-xl p-4">
-                <div class="text-[11px] font-extrabold uppercase text-zinc-500 mb-1">Report reason</div>
-                <div id="detail-report-reason" class="text-sm font-semibold"></div>
+              <!-- INTELLIGENCE TAB -->
+              <div id="detail-tab-content-intel" class="detail-tab-content hidden">
+                <div id="detail-intel-summary" class="flex gap-2 p-3 rounded-xl text-xs mb-4"></div>
+                <div class="text-[11px] font-extrabold uppercase text-zinc-500 mb-2">Listing signals</div>
+                <div id="detail-signals-list" class="bg-zinc-900 border border-white/10 rounded-xl mb-4"></div>
+              </div>
+
+              <!-- REPORT TAB -->
+              <div id="detail-tab-content-report" class="detail-tab-content hidden">
+                <div id="detail-report-filed" class="hidden bg-zinc-900 border border-white/10 rounded-xl p-4">
+                  <div class="text-[11px] font-extrabold uppercase text-zinc-500 mb-1">Report reason</div>
+                  <div id="detail-report-reason" class="text-sm font-semibold"></div>
+                  <div id="detail-report-date" class="text-xs text-zinc-500 mt-2"></div>
+                </div>
+                <div id="detail-report-empty" class="hidden text-center py-14">
+                  <div class="text-sm font-bold mb-1.5">No report filed</div>
+                  <div class="text-xs text-zinc-500 max-w-xs mx-auto">You have not reported this seller.</div>
+                </div>
+              </div>
             </div>
-            </div>
+          </div>
         </div>
 
         <script src="js/dashboard.js"></script>

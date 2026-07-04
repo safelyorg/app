@@ -1,5 +1,8 @@
-use crate::models::history::{HistoryItem, ReportItem};
-use sqlx::{Error, Pool, Postgres};
+use crate::models::history::{AnalysisDetailRow, HistoryDetailResponse, HistoryItem, ReportItem};
+use crate::models::sellers::{Sellers, SellersResponse};
+use crate::services::fraud_reports::{build_network_summary, count_fraud_reports};
+use crate::services::listings::get_monthly_visit_activity;
+use sqlx::{Error, Pool, Postgres, Row};
 use uuid::Uuid;
 
 /// Every listing this user has analyzed, most recent first. "reported"
@@ -62,4 +65,88 @@ pub async fn get_user_reports(
     .bind(user_id)
     .fetch_all(pool)
     .await
+}
+
+/// Full detail for one specific listing analysis - the query is scoped to
+/// (analysis_id AND user_id) together, so a person can never fetch detail
+/// for an analysis that isn't theirs. Returns Ok(None) rather than an
+/// error for "not found or not yours" - callers turn that into a 404
+/// without distinguishing the two cases, so as not to reveal whether an
+/// id belongs to someone else.
+pub async fn get_history_detail(
+    pool: &Pool<Postgres>,
+    analysis_id: Uuid,
+    user_id: Uuid,
+) -> Result<Option<HistoryDetailResponse>, Error> {
+    let row = sqlx::query_as::<_, AnalysisDetailRow>(
+        "
+        SELECT
+            a.id,
+            a.created_at,
+            a.risk_score,
+            a.risk_level,
+            a.signals,
+            l.title AS listing_title,
+            l.platform,
+            l.seller_id
+        FROM analysis a
+        JOIN listings l ON a.listing_id = l.id
+        WHERE a.id = $1 AND a.user_id = $2
+        ",
+    )
+    .bind(analysis_id)
+    .bind(user_id)
+    .fetch_optional(pool)
+    .await?;
+
+    let Some(row) = row else {
+        return Ok(None);
+    };
+
+    let seller = sqlx::query_as::<_, Sellers>("SELECT * FROM sellers WHERE id = $1")
+        .bind(row.seller_id)
+        .fetch_one(pool)
+        .await?;
+
+    let fraud_count = count_fraud_reports(pool, seller.id).await?;
+    let network_summary = build_network_summary(fraud_count);
+    let monthly_activity = get_monthly_visit_activity(pool, seller.id)
+        .await
+        .unwrap_or_else(|_| vec![0i32; 12]);
+
+    // Has THIS user reported THIS seller, and if so with what reason/date -
+    // separate from fraud_count, which is the community-wide total.
+    let report_row = sqlx::query(
+        "SELECT report_type, reported_at FROM fraud_reports
+         WHERE seller_id = $1 AND user_id = $2
+         ORDER BY reported_at DESC LIMIT 1",
+    )
+    .bind(seller.id)
+    .bind(user_id)
+    .fetch_optional(pool)
+    .await?;
+
+    let (reported, report_reason, report_date) = match report_row {
+        Some(r) => (true, Some(r.get("report_type")), Some(r.get("reported_at"))),
+        None => (false, None, None),
+    };
+
+    let mut seller_response = SellersResponse::from(seller);
+    seller_response.network_summary = network_summary;
+    seller_response.monthly_activity = monthly_activity;
+
+    Ok(Some(HistoryDetailResponse {
+        id: row.id,
+        created_at: row.created_at,
+        listing_title: row.listing_title,
+        platform: row.platform,
+        risk_score: row.risk_score,
+        risk_level: row.risk_level,
+        signals: row.signals,
+        seller: seller_response,
+        fraud_report_count: fraud_count,
+        reported,
+        report_reason,
+        report_date,
+    }))
 }
