@@ -32,7 +32,7 @@
       build_platform_rows: function (j) {
         var platforms = JSON.parse(j);
         if (!platforms || platforms.length === 0)
-          return '<div style="padding:10px 12px;font-size:12px;color:#636366">No platform data</div>';
+          return '<div style="padding:10px 12px;font-size:12px;color:#8a8a93">No platform data</div>';
         return platforms
           .map(function (p) {
             var statusClass =
@@ -49,7 +49,7 @@
               '">' +
               p.status +
               "</span>" +
-              '<span style="font-size:11px;color:#636366">' +
+              '<span style="font-size:11px;color:#8a8a93">' +
               p.platform_type +
               "</span>" +
               "</div>"
@@ -68,8 +68,64 @@
 
   if (!window.__safelyAddTab) return;
 
-  // track current active sub-tab
   var currentRiskSubTab = "seller";
+
+  // Same palette as the dashboard's RISK_HEX map - keeping this in sync
+  // between the two surfaces is what makes them read as one product.
+  var RISK_HEX = { low: "#35d0a6", caution: "#f2b84c", high: "#ff5d5d" };
+
+  // Segmented tick-mark gauge - the same drawing technique used on the
+  // dashboard's detail panel, sized down slightly for the panel's width.
+  function buildRiskGauge(score, level) {
+    var color = RISK_HEX[level] || RISK_HEX.high;
+    var r = 44;
+    var circumference = 2 * Math.PI * r;
+    var offset = circumference * (1 - score / 100);
+
+    var ticks = "";
+    var tickCount = 40;
+    for (var i = 0; i < tickCount; i++) {
+      var angle = (i * 360) / tickCount;
+      var major = i % 5 === 0;
+      var len = major ? 6 : 3;
+      var outerR = 54;
+      var innerR = outerR - len;
+      ticks +=
+        '<line x1="60" y1="' +
+        (60 - outerR) +
+        '" x2="60" y2="' +
+        (60 - innerR) +
+        '" stroke="' +
+        (major ? "#3a3a42" : "#24242b") +
+        '" stroke-width="1.5" transform="rotate(' +
+        angle +
+        ' 60 60)" />';
+    }
+
+    return (
+      '<svg viewBox="0 0 120 120" style="width:100%;height:100%">' +
+      ticks +
+      '<circle cx="60" cy="60" r="' +
+      r +
+      '" fill="none" stroke="#1b1b20" stroke-width="9" />' +
+      '<circle cx="60" cy="60" r="' +
+      r +
+      '" fill="none" stroke="' +
+      color +
+      '" stroke-width="9" stroke-linecap="round" stroke-dasharray="' +
+      circumference +
+      '" stroke-dashoffset="' +
+      offset +
+      '" transform="rotate(-90 60 60)" />' +
+      '<text x="60" y="57" text-anchor="middle" font-family="JetBrains Mono, monospace" font-weight="700" font-size="30" fill="' +
+      color +
+      '">' +
+      score +
+      "</text>" +
+      '<text x="60" y="75" text-anchor="middle" font-family="Inter, sans-serif" font-weight="600" font-size="9" fill="#8a8a93" letter-spacing="0.5">/ 100</text>' +
+      "</svg>"
+    );
+  }
 
   function buildSellerSection() {
     var pageData = window.__safelyData;
@@ -77,8 +133,7 @@
     var lvl = wasm.risk_level(score);
     var riskLabel = wasm.risk_label(lvl);
     var riskDesc = wasm.risk_desc(lvl);
-    var riskColor =
-      lvl === "low" ? "#34c759" : lvl === "caution" ? "#ff9f0a" : "#ff3b30";
+    var riskColor = RISK_HEX[lvl] || RISK_HEX.high;
 
     var activityBars = wasm.build_activity_bars(
       new Uint8Array(
@@ -88,27 +143,23 @@
       ),
     );
 
-    // 1. Circle Risk Score
+    // 1. Gauge
     var circleHTML =
       '<div class="safely-risk-hero" style="text-align:center;padding:20px 16px 10px">' +
-      '<div class="safely-risk-gauge" style="width:120px;height:120px;border-radius:50%;border:6px solid ' +
-      riskColor +
-      ';display:flex;align-items:center;justify-content:center;margin:0 auto 12px;position:relative">' +
-      '<span style="font-size:36px;font-weight:700;color:' +
+      '<div style="width:120px;height:120px;margin:0 auto 12px">' +
+      buildRiskGauge(score, lvl) +
+      "</div>" +
+      '<div style="font-size:18px;font-weight:700;color:' +
       riskColor +
       '">' +
-      score +
-      "</span>" +
-      "</div>" +
-      '<div style="font-size:18px;font-weight:700;color:#ffffff">' +
       riskLabel +
       "</div>" +
-      '<div style="font-size:13px;color:#a0a0a0;margin-top:4px">' +
+      '<div style="font-size:13px;color:#8a8a93;margin-top:4px">' +
       riskDesc +
       "</div>" +
       "</div>";
 
-    // 2. Seller Information (Added Fraud Reports and Platform, Status kept, Chips row removed)
+    // 2. Seller Information
     var sellerCardHTML =
       '<div class="safely-section-label">Seller Information</div><div class="safely-seller-card"><div class="safely-seller-name">' +
       (pageData.seller.name || "Unknown") +
@@ -123,7 +174,7 @@
       '</span></div><div class="safely-seller-detail"><span>Status</span>' +
       wasm.verification_badge(pageData.seller.verification) +
       '</div><div class="safely-seller-detail"><span>Fraud Reports</span><span style="color:' +
-      (pageData.fraudReportCount > 0 ? "#ff453a" : "#a0a0a0") +
+      (pageData.fraudReportCount > 0 ? "#ff5d5d" : "#8a8a93") +
       '">' +
       (pageData.fraudReportCount || 0) +
       '</span></div><div class="safely-seller-detail"><span>Platform</span><span style="text-transform:capitalize">' +
@@ -156,7 +207,7 @@
         return months
           .map(function (m) {
             return (
-              '<span style="flex:1;text-align:center;font-size:8px;color:#ffffff;">' +
+              '<span style="flex:1;text-align:center;font-size:8px;color:#8a8a93;">' +
               m +
               "</span>"
             );
@@ -225,7 +276,6 @@
     var root = document.getElementById("safely-tab-risk");
     if (!root) return;
 
-    // sub-tab switching
     var sellerBtn = root.querySelector("#safely-risk-subtab-seller");
     var reportBtn = root.querySelector("#safely-risk-subtab-report");
     var sellerContent = root.querySelector("#safely-risk-seller-content");
@@ -251,7 +301,6 @@
       });
     }
 
-    // report submission
     var submitBtn = root.querySelector("#safely-report-submit");
     if (submitBtn) {
       submitBtn.addEventListener("click", async function () {
@@ -267,11 +316,6 @@
         submitBtn.textContent = "Submitting...";
         submitBtn.disabled = true;
 
-        // This call was bypassing core/api.js entirely, which is why it
-        // never picked up the Authorization header that analyze() gets -
-        // that header logic lives in api.js's getAuthHeaders(), and this
-        // fetch never went through that file. Reading storage directly
-        // here closes that gap without needing a bigger refactor.
         var authHeaders = {};
         try {
           var result = await chrome.storage.local.get("safely_session_token");
@@ -320,7 +364,7 @@
     "risk",
     "Risk",
     buildRiskTab(),
-    '<svg viewBox="0 0 24 24" fill="none" stroke="#8e8e93" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="9 12 11 14 15 10"/></svg>',
+    '<svg viewBox="0 0 24 24" fill="none" stroke="#8a8a93" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="9 12 11 14 15 10"/></svg>',
     function () {
       if (window.__safelyPreventInputBubbling)
         window.__safelyPreventInputBubbling();

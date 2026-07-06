@@ -1,10 +1,13 @@
 /* ============================================================
-   SAFELY — extension UI (DARK)
-   Warm charcoal surfaces (not pure black), cream text, and the
-   website's bright accents (sun / mint / coral / sky).
-   Mirrors the dark sections of the Safely site.
-   Drop-in replacement: every selector matches the original.
+   SAFELY — extension UI
+   Recolored to match the Safely dashboard's design system exactly:
+   near-black surfaces, brand blue / mint / amber / coral accents,
+   JetBrains Mono for numerics. Every original selector is kept so
+   panel.js / risk.js / intelligence.js / protect.js work unchanged -
+   this file only changes WHAT COLOR things are, never what exists.
    ============================================================ */
+
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@500;600;700;800&display=swap");
 
 #safely-root {
     all: initial;
@@ -25,49 +28,42 @@
     -moz-osx-font-smoothing: grayscale;
     text-rendering: optimizeLegibility;
 
-    /* ── surfaces (warm charcoal, layered light-to-dark) ── */
-    --bg: #0c0d12; /* panel — deep near-black */
-    --surface: #16181f; /* cards (lifted off the deep base) */
-    --surface-2: #1d2028; /* inputs / insets / hover */
-    --surface-3: #262a33; /* chips / active states */
-    --line: rgba(
-        255,
-        255,
-        255,
-        0.085
-    ); /* hairline border (softened for deep bg) */
-    --line-soft: rgba(255, 255, 255, 0.05); /* faint dividers */
+    /* ── surfaces (matches dashboard's bg/surface/surface2/surface3) ── */
+    --bg: #0a0a0c;
+    --surface: #131316;
+    --surface-2: #1b1b20;
+    --surface-3: #24242b;
+    --line: rgba(255, 255, 255, 0.07);
+    --line-soft: rgba(255, 255, 255, 0.05);
 
-    /* ── text ── */
-    --text: #ece7db; /* warm cream */
-    --text-dim: #c3bfb6;
-    --muted: #9499a4;
+    /* ── text (matches dashboard's ink/muted, not warm cream anymore) ── */
+    --text: #f2f1ed;
+    --text-dim: #cfcecb;
+    --muted: #8a8a93;
 
-    /* ── accents (bright on dark) ── */
-    --ink: #16181f; /* dark text used on bright fills */
-    --sun: #ffd24a;
-    --sun2: #ffe07e;
-    --mint: #54d8a1;
-    --mint-deep: #38d196;
-    --coral: #ff6f5e;
-    --coral-deep: #ff5443;
-    --sky: #6fb3ef;
-    --sky-deep: #5aa6ee;
-    --amber: #f2b24c;
+    /* ── accents (identical hex values to the dashboard's palette) ── */
+    --ink: #0a0a0c; /* dark text used on bright fills */
+    --mint: #35d0a6;
+    --mint-deep: #35d0a6;
+    --coral: #ff5d5d;
+    --coral-deep: #ff5d5d;
+    --sky: #6fb3ef; /* "brand" in the dashboard */
+    --sky-deep: #6fb3ef;
+    --amber: #f2b84c;
 
     /* ── tinted backgrounds for status pills/alerts ── */
-    --mint-soft: rgba(56, 209, 150, 0.13);
-    --sun-soft: rgba(242, 178, 76, 0.14);
-    --coral-soft: rgba(255, 111, 94, 0.14);
+    --mint-soft: rgba(53, 208, 166, 0.13);
+    --sun-soft: rgba(242, 184, 76, 0.14);
+    --coral-soft: rgba(255, 93, 93, 0.14);
     --sky-soft: rgba(111, 179, 239, 0.13);
 
     --bd: 1px solid var(--line);
-    --hi: inset 0 1px 0 rgba(255, 255, 255, 0.06); /* lit-from-above edge */
+    --hi: inset 0 1px 0 rgba(255, 255, 255, 0.05);
     --sh-panel:
         0 24px 60px -16px rgba(0, 0, 0, 0.7),
         0 10px 24px -14px rgba(0, 0, 0, 0.55);
     --sh-card:
-        0 1px 2px rgba(0, 0, 0, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+        0 1px 2px rgba(0, 0, 0, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.04);
     --ring: 0 0 0 3px rgba(111, 179, 239, 0.25);
     --r: 15px;
     --r-lg: 20px;
@@ -75,20 +71,58 @@
     --disp:
         "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui,
         sans-serif;
+    --mono: "JetBrains Mono", "SF Mono", "Fira Code", monospace;
 }
 #safely-root * {
     box-sizing: border-box;
     font-family: inherit;
 }
 
-/* ── light-touch recolouring of a few inline values from the JS,
-      so they sit on the warm palette (all already legible on dark) ── */
+/* ============================================================
+   Light-touch recoloring of hardcoded inline hex values from the
+   JS files - this is the mechanism that lets risk.js and protect.js
+   stay completely unedited (aside from risk.js's gauge, rebuilt
+   below) while still picking up the new palette. Each rule matches
+   a literal substring inside an inline style="" attribute and
+   overrides it, regardless of which CSS property originally used
+   that hex value.
+   ============================================================ */
+
+/* risk.js risk-level colors (was iOS system green/orange/red) */
+#safely-root [style*="#34c759"] {
+    color: var(--mint) !important;
+    border-color: var(--mint) !important;
+}
+#safely-root [style*="#ff9f0a"] {
+    color: var(--amber) !important;
+    border-color: var(--amber) !important;
+}
+#safely-root [style*="#ff3b30"] {
+    color: var(--coral) !important;
+    border-color: var(--coral) !important;
+}
+
+/* shared muted-gray text/icon values used across risk.js + protect.js */
+#safely-root [style*="color:#a0a0a0"],
+#safely-root [style*="color: #a0a0a0"] {
+    color: var(--muted) !important;
+}
+#safely-root [style*="color:#636366"],
+#safely-root [style*="color: #636366"] {
+    color: var(--muted) !important;
+}
+#safely-root [style*="color:#e0e0e0"],
+#safely-root [style*="color: #e0e0e0"] {
+    color: var(--text) !important;
+}
 #safely-root [style*="color:#1d9bf0"] {
     color: var(--sky) !important;
 }
 #safely-root [style*="color:#ff453a"] {
     color: var(--coral) !important;
 }
+
+/* surface fills used inline in protect.js's escrow markup */
 #safely-root [style*="background:#0a0a0a"],
 #safely-root [style*="background:#0f0f0f"],
 #safely-root [style*="background: #0a0a0a"],
@@ -99,8 +133,23 @@
 #safely-root [style*="background: #1a1a1a"] {
     background: var(--surface-3) !important;
 }
+#safely-root [style*="border:1.5px dashed #1a1a1a"],
+#safely-root [style*="border: 1.5px dashed #1a1a1a"] {
+    border-color: var(--line) !important;
+}
+
+/* icon stroke colors */
 #safely-root svg[stroke="#1d9bf0"] {
     stroke: var(--sky);
+}
+#safely-root svg[stroke="#a0a0a0"] {
+    stroke: var(--muted);
+}
+#safely-root svg[stroke="#636366"] {
+    stroke: var(--muted);
+}
+#safely-root svg[stroke="#34c759"] {
+    stroke: var(--mint);
 }
 
 /* ============================================================
@@ -110,7 +159,7 @@
     position: absolute;
     bottom: 30px;
     right: 2px;
-    background: linear-gradient(180deg, #15171e 0%, var(--bg) 60%);
+    background: var(--bg);
     border: var(--bd);
     border-radius: 22px;
     padding: 20px 20px 22px;
@@ -191,10 +240,10 @@
     margin-bottom: 4px;
 }
 .safely-risk-number {
-    font-family: var(--disp);
-    font-size: 52px;
-    font-weight: 800;
-    letter-spacing: -1.6px;
+    font-family: var(--mono);
+    font-size: 46px;
+    font-weight: 700;
+    letter-spacing: -1px;
     line-height: 1;
     margin: 0;
 }
@@ -210,7 +259,7 @@
     font-weight: 500;
 }
 .safely-risk-low {
-    color: var(--mint-deep);
+    color: var(--mint);
 }
 .safely-risk-caution {
     color: var(--amber);
@@ -236,7 +285,7 @@
     background: var(--mint-soft);
 }
 .safely-circle-low svg {
-    stroke: var(--mint-deep);
+    stroke: var(--mint);
 }
 .safely-circle-caution {
     background: var(--sun-soft);
@@ -279,7 +328,7 @@
     box-shadow: 0 0 0 3px var(--bg);
 }
 .safely-bar-low {
-    background: var(--mint-deep);
+    background: var(--mint);
 }
 .safely-bar-caution {
     background: var(--amber);
@@ -303,8 +352,9 @@
     text-align: center;
 }
 .safely-chip-num {
+    font-family: var(--mono);
     font-size: 16px;
-    font-weight: 800;
+    font-weight: 700;
     color: var(--text);
     line-height: 1.2;
 }
@@ -312,7 +362,9 @@
     font-size: 10px;
     color: var(--muted);
     margin-top: 3px;
-    font-weight: 600;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
 }
 
 /* ── Seller card ── */
@@ -366,7 +418,7 @@
     flex-shrink: 0;
 }
 .safely-dot-blue {
-    background: var(--mint);
+    background: var(--sky);
 }
 .safely-dot-gray {
     background: var(--muted);
@@ -375,7 +427,7 @@
     background: var(--coral);
 }
 .safely-badge-verified {
-    color: var(--mint-deep);
+    color: var(--mint);
 }
 .safely-badge-unknown {
     color: var(--muted);
@@ -412,7 +464,7 @@
     font-weight: 700;
 }
 .safely-pstatus-active {
-    color: var(--mint-deep);
+    color: var(--mint);
 }
 .safely-pstatus-none {
     color: var(--muted);
@@ -442,21 +494,22 @@
 }
 .safely-alert-low {
     background: var(--mint-soft);
-    color: var(--mint-deep);
-    border-color: rgba(56, 209, 150, 0.35);
+    color: var(--mint);
+    border-color: rgba(53, 208, 166, 0.35);
 }
 .safely-alert-caution {
     background: var(--sun-soft);
     color: var(--amber);
-    border-color: rgba(242, 178, 76, 0.35);
+    border-color: rgba(242, 184, 76, 0.35);
 }
 .safely-alert-high {
     background: var(--coral-soft);
     color: var(--coral);
-    border-color: rgba(255, 111, 94, 0.4);
+    border-color: rgba(255, 93, 93, 0.4);
 }
 
-/* ── Signals list ── */
+/* ── Signals list - left accent bar per row, matching the dashboard's
+      color-coded row treatment in the History table and signal list ── */
 .safely-signal-list {
     background: var(--surface);
     border: var(--bd);
@@ -469,6 +522,7 @@
     align-items: center;
     padding: 11px 16px;
     gap: 12px;
+    border-left: 3px solid transparent;
 }
 .safely-signal-row + .safely-signal-row {
     border-top: 1px solid var(--line-soft);
@@ -499,10 +553,16 @@
     word-break: break-word;
 }
 .safely-signal-good {
-    color: var(--mint-deep);
+    color: var(--mint);
+}
+.safely-signal-row:has(.safely-signal-good) {
+    border-left-color: var(--mint);
 }
 .safely-signal-bad {
     color: var(--coral);
+}
+.safely-signal-row:has(.safely-signal-bad) {
+    border-left-color: var(--coral);
 }
 .safely-signal-neutral {
     color: var(--muted);
@@ -510,8 +570,14 @@
 .safely-signal-info {
     color: var(--text);
 }
+.safely-signal-row:has(.safely-signal-info) {
+    border-left-color: var(--line);
+}
 .safely-signal-caution {
     color: var(--amber);
+}
+.safely-signal-row:has(.safely-signal-caution) {
+    border-left-color: var(--amber);
 }
 
 /* ── Price compare ── */
@@ -559,12 +625,13 @@
     background: var(--muted);
 }
 .safely-fill-low {
-    background: var(--mint-deep);
+    background: var(--mint);
 }
 .safely-fill-danger {
     background: var(--coral);
 }
 .safely-compare-val {
+    font-family: var(--mono);
     font-size: 11px;
     font-weight: 700;
     color: var(--text);
@@ -676,7 +743,7 @@
     margin: 0;
 }
 #safely-root .field::placeholder {
-    color: #6f727c;
+    color: #5c5c66;
 }
 #safely-root .field:focus {
     border-color: var(--sky);
@@ -691,7 +758,7 @@
 #safely-root select.field {
     appearance: none;
     -webkit-appearance: none;
-    background-image: url("data:image/svg+xml,%3Csvg width='12' height='12' fill='none' stroke='%238d909b' stroke-width='2.4' viewBox='0 0 24 24'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E");
+    background-image: url("data:image/svg+xml,%3Csvg width='12' height='12' fill='none' stroke='%238a8a93' stroke-width='2.4' viewBox='0 0 24 24'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E");
     background-repeat: no-repeat;
     background-position: right 12px center;
     padding-right: 36px;
@@ -736,6 +803,7 @@
     margin-top: 4px;
     padding-top: 10px;
     font-weight: 800;
+    font-family: var(--mono);
 }
 #safely-root .divider {
     height: 1px;
@@ -743,7 +811,9 @@
     margin: 0;
 }
 
-/* ── Buttons ── */
+/* ── Buttons - primary is now a white/ink pill (matches the dashboard's
+      login-gate button) rather than the old yellow gradient, since the
+      dashboard has no yellow accent anywhere in its palette. ── */
 #safely-root .btn {
     display: inline-flex;
     align-items: center;
@@ -765,21 +835,19 @@
 }
 #safely-root .btn:hover {
     transform: translateY(-1.5px);
-    filter: brightness(1.03);
+    filter: brightness(1.05);
 }
 #safely-root .btn:active {
     transform: translateY(0) scale(0.99);
 }
 #safely-root .btn-black {
     width: 100%;
-    background: linear-gradient(180deg, var(--sun2), var(--sun));
+    background: var(--text);
     color: var(--ink);
-    box-shadow:
-        inset 0 1px 0 rgba(255, 255, 255, 0.5),
-        0 6px 18px -8px rgba(255, 210, 74, 0.55);
+    box-shadow: 0 6px 18px -8px rgba(0, 0, 0, 0.5);
 }
 #safely-root .btn-black:hover {
-    background: linear-gradient(180deg, #ffe88f, var(--sun2));
+    background: #ffffff;
 }
 #safely-root .btn-ghost {
     background: var(--surface-2);
@@ -847,8 +915,7 @@
     color: var(--text);
 }
 #safely-root .mono {
-    font-family:
-        "SF Mono", "Fira Code", "Cascadia Code", "Courier New", monospace;
+    font-family: var(--mono);
 }
 
 /* ── Step indicator (buyer flow) ── */
@@ -1071,7 +1138,7 @@
     font-size: 12px;
     font-weight: 700;
     color: var(--ink);
-    background: var(--sun);
+    background: var(--text);
     padding: 3px 10px;
     border-radius: 20px;
     box-shadow: 0 1px 6px rgba(0, 0, 0, 0.3);
@@ -1112,6 +1179,7 @@
     font-size: 14px;
     font-weight: 700;
     margin-bottom: 10px;
+    font-family: var(--mono);
 }
 #safely-root .banking-details {
     text-align: left;
@@ -1142,8 +1210,8 @@
 }
 #safely-root .banner-green {
     background: var(--mint-soft);
-    color: var(--mint-deep);
-    border-color: rgba(56, 209, 150, 0.35);
+    color: var(--mint);
+    border-color: rgba(53, 208, 166, 0.35);
 }
 #safely-root .banner-green strong {
     color: var(--text);
@@ -1215,6 +1283,7 @@
     margin-bottom: 8px;
 }
 #safely-root .order-id-value {
+    font-family: var(--mono);
     font-size: 20px;
     font-weight: 700;
     letter-spacing: 0.14em;
@@ -1242,7 +1311,7 @@
     position: absolute;
     top: -24px;
     right: 0;
-    background: linear-gradient(180deg, #191c22, #0a0b0f);
+    background: var(--surface);
     width: 48px;
     height: 48px;
     border: var(--bd);
@@ -1256,7 +1325,7 @@
     overflow: hidden;
     box-shadow:
         0 10px 26px -6px rgba(0, 0, 0, 0.55),
-        inset 0 1px 0 rgba(255, 255, 255, 0.08);
+        inset 0 1px 0 rgba(255, 255, 255, 0.06);
     transition:
         width 0.4s cubic-bezier(0.4, 0, 0.2, 1),
         padding 0.4s cubic-bezier(0.4, 0, 0.2, 1),
@@ -1264,7 +1333,7 @@
         box-shadow 0.15s ease;
 }
 #safely-toolbar:hover {
-    background: linear-gradient(180deg, #21242c, #101217);
+    background: var(--surface-2);
 }
 #safely-toolbar.safely-toolbar-expanded {
     width: fit-content;
@@ -1272,14 +1341,13 @@
     justify-content: flex-end;
     box-shadow:
         0 10px 26px -6px rgba(0, 0, 0, 0.55),
-        inset 0 1px 0 rgba(255, 255, 255, 0.08);
+        inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
-
 .safely-toolbar-letter {
     font-family: var(--disp);
     font-size: 22px;
     font-weight: 900;
-    color: var(--text);
+    color: var(--sky);
     line-height: 1;
     position: absolute;
     pointer-events: none;
@@ -1289,7 +1357,6 @@
     opacity: 0;
     transition: opacity 0.1s ease 0s;
 }
-
 .safely-toolbar-inner {
     display: flex;
     align-items: center;
@@ -1307,7 +1374,6 @@
     pointer-events: all;
     transition: opacity 0.2s ease 0.18s;
 }
-
 .safely-toolbar-icon {
     display: flex;
     align-items: center;
@@ -1338,7 +1404,7 @@
 }
 
 /* ============================================================
-   SELLER FLOW
+   SELLER FLOW (protect.js) - colors only, structure untouched
    ============================================================ */
 .safely-seller-lookup-empty {
     display: flex;
@@ -1377,13 +1443,11 @@
     text-align: left;
 }
 .safely-field-mono {
-    font-family:
-        "SF Mono", "Fira Code", "Cascadia Code", "Courier New", monospace;
+    font-family: var(--mono);
     letter-spacing: 0.04em;
 }
 .safely-order-num {
-    font-family:
-        "SF Mono", "Fira Code", "Cascadia Code", "Courier New", monospace;
+    font-family: var(--mono);
     font-size: 14px;
     font-weight: 700;
     color: var(--text);
@@ -1433,8 +1497,6 @@
     background: var(--sun-soft);
     color: var(--amber);
 }
-
-/* seller step indicator */
 .safely-sel-step {
     display: flex;
     align-items: center;
@@ -1480,8 +1542,6 @@
     background: var(--line-soft);
     margin: 0 4px;
 }
-
-/* waiting / payout / qr */
 .safely-waiting-card {
     display: flex;
     flex-direction: column;
@@ -1534,8 +1594,7 @@
     display: inline-block;
 }
 .safely-qr-order-id {
-    font-family:
-        "SF Mono", "Fira Code", "Cascadia Code", "Courier New", monospace;
+    font-family: var(--mono);
     font-size: 13px;
     font-weight: 700;
     letter-spacing: 0.08em;
@@ -1666,42 +1725,38 @@
 .safely-report-btn {
     width: 100%;
     padding: 12px;
-    background: linear-gradient(180deg, #ff8475, var(--coral));
-    color: #2a0d08;
+    background: var(--coral);
+    color: var(--ink);
     border: none;
     border-radius: 12px;
     font-size: 14px;
     font-weight: 700;
     cursor: pointer;
     font-family: inherit;
-    box-shadow:
-        inset 0 1px 0 rgba(255, 255, 255, 0.38),
-        0 6px 18px -8px rgba(255, 111, 94, 0.5);
+    box-shadow: 0 6px 18px -8px rgba(255, 93, 93, 0.5);
     transition:
         transform 0.2s cubic-bezier(0.34, 1.4, 0.64, 1),
         filter 0.2s ease,
         background 0.2s ease;
 }
 .safely-report-btn:hover {
-    background: linear-gradient(180deg, #ff9385, #ff5e4d);
+    filter: brightness(1.08);
     transform: translateY(-1.5px);
-    filter: brightness(1.03);
 }
 .safely-report-btn:disabled {
     background: var(--coral-soft);
     color: var(--muted);
     cursor: not-allowed;
     transform: none;
-    border-color: transparent;
 }
 .safely-report-success {
     margin-top: 12px;
     padding: 12px 14px;
     background: var(--mint-soft);
-    border: 1px solid rgba(56, 209, 150, 0.35);
+    border: 1px solid rgba(53, 208, 166, 0.35);
     border-radius: 10px;
     font-size: 13px;
-    color: var(--mint-deep);
+    color: var(--mint);
     gap: 8px;
     align-items: flex-start;
     line-height: 1.5;
