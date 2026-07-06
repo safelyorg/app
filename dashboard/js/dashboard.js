@@ -337,6 +337,18 @@ async function openDetail(analysisId) {
 }
 
 function renderDetailBody(data) {
+  // --- Force full-width tabs and content ---
+  var tabBtn = document.querySelector(".detail-tab-btn");
+  if (tabBtn && tabBtn.parentElement) {
+    tabBtn.parentElement.classList.remove("max-w-md");
+    tabBtn.parentElement.classList.add("w-full");
+  }
+  var intelTab = document.getElementById("detail-tab-content-intel");
+  var reportTab = document.getElementById("detail-tab-content-report");
+  if (intelTab) intelTab.classList.remove("max-w-2xl");
+  if (reportTab) reportTab.classList.remove("max-w-2xl");
+  // -----------------------------------------
+
   document.getElementById("detail-title").textContent =
     data.listing_title || "Untitled listing";
 
