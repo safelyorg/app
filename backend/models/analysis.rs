@@ -40,7 +40,6 @@ pub struct AnalysisRequest {
 pub struct AnalyzeRequest {
     // shared
     pub platform: String,
-
     // listing fields
     pub seller_id: Option<Uuid>,
     pub listing_url: String,
@@ -51,7 +50,6 @@ pub struct AnalyzeRequest {
     pub category: Option<ListingCategory>,
     pub image_urls: Option<Vec<String>>,
     pub posted_date: Option<NaiveDate>,
-
     // seller fields
     pub platform_id: Option<String>,
     pub seller_name: Option<String>,
@@ -60,6 +58,7 @@ pub struct AnalyzeRequest {
     pub seller_profile_url: Option<String>,
     pub seller_join_date: Option<String>,
     pub seller_location: Option<String>,
+    pub seller_last_active: Option<String>,
 }
 
 #[derive(Debug, Serialize)]

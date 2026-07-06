@@ -72,16 +72,15 @@
 
     // seller name — navigate via "Posted by" label
     var postedByLabel = Array.from(
-      document.querySelectorAll("span._9083bec6._1fcb6673"),
+      document.querySelectorAll("span._9083bec6"),
     ).find(function (el) {
       return el.innerText.trim() === "Posted by";
     });
-    if (postedByLabel) {
-      var nameContainer = postedByLabel.parentElement.nextElementSibling;
-      var nameEl = nameContainer
-        ? nameContainer.querySelector("span._8206696c.b7af14b4")
-        : null;
+    if (postedByLabel && postedByLabel.nextElementSibling) {
+      var nameEl = postedByLabel.nextElementSibling.querySelector("span");
       data.seller_name = nameEl ? nameEl.innerText.trim() : null;
+    } else {
+      data.seller_name = null;
     }
 
     // member since — try multiple approaches

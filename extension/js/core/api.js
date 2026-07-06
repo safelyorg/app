@@ -114,6 +114,7 @@
         seller_profile_url: scraped.seller_profile_url || null,
         seller_join_date: scraped.seller_join_date || null,
         seller_location: scraped.seller_location || null,
+        seller_last_active: scraped.seller_last_active || null,
       };
 
       var data = await window.__safelyAPI.analyze(payload);

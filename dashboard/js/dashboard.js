@@ -323,7 +323,7 @@ function renderDetailBody(data) {
       ? "Verified"
       : data.seller.verification === "flagged"
         ? "Flagged"
-        : "Unverified";
+        : "Unknown";
   document.getElementById("detail-chip-status").textContent = statusText;
 
   document.getElementById("detail-chip-platform").textContent = data.platform;
@@ -338,6 +338,7 @@ function renderDetailBody(data) {
     data.seller.last_active || "Unknown";
 
   var chart = document.getElementById("detail-activity-chart");
+  chart.className = "flex items-end gap-1 h-16 mb-1.5";
   var activity = data.seller.monthly_activity || new Array(12).fill(0);
   var max = Math.max.apply(null, activity) || 1;
   chart.innerHTML = activity
@@ -345,7 +346,7 @@ function renderDetailBody(data) {
       var heightPx = Math.max(2, Math.round((v / max) * 44));
       return (
         '<div class="flex-1 flex flex-col items-center justify-end relative">' +
-        '<span class="text-[8px] text-zinc-500 absolute top-0">' +
+        '<span class="text-[8px] text-white font-bold absolute top-1">' +
         v +
         "</span>" +
         '<div class="w-full bg-sky-400 rounded-t-sm" style="height:' +

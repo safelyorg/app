@@ -17,7 +17,6 @@ pub async fn find_seller(
     .bind(platform_id)
     .fetch_optional(pool)
     .await?;
-
     Ok(seller)
 }
 
@@ -32,7 +31,6 @@ pub async fn create_seller(
         let year: i32 = year_str.parse().ok()?;
         NaiveDate::from_ymd_opt(year, 1, 1)
     });
-
     let seller = sqlx::query_as::<_, Sellers>(
         "
         INSERT INTO sellers (
@@ -49,19 +47,21 @@ pub async fn create_seller(
             disputes,
             completion_rate,
             location,
+            last_active_text,
             created_at,
             updated_at
         )
         VALUES (
             $1, $2, $3, $4, $5,
             $6, $7, $8, $9, $10,
-            $11, $12, $13, NOW(), NOW()
+            $11, $12, $13, $14, NOW(), NOW()
         )
         ON CONFLICT (platform, platform_id)
         DO UPDATE SET
             name = COALESCE(EXCLUDED.name, sellers.name),
             join_date = COALESCE(EXCLUDED.join_date, sellers.join_date),
             location = COALESCE(EXCLUDED.location, sellers.location),
+            last_active_text = COALESCE(EXCLUDED.last_active_text, sellers.last_active_text),
             verification = EXCLUDED.verification,
             updated_at = NOW()
         RETURNING *
@@ -80,8 +80,8 @@ pub async fn create_seller(
     .bind(0_i32)
     .bind(None::<i64>)
     .bind(&request.location)
+    .bind(&request.last_active)
     .fetch_one(pool)
     .await?;
-
     Ok(seller)
 }

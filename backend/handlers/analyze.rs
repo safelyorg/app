@@ -38,6 +38,7 @@ pub async fn analyze(
         profile_url: request.seller_profile_url.clone(),
         join_date: request.seller_join_date.clone(),
         location: request.seller_location.clone(),
+        last_active: request.seller_last_active.clone(),
     };
 
     let listing_req = ListingsRequest {

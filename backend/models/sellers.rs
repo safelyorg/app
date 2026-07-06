@@ -29,6 +29,7 @@ pub struct Sellers {
     pub completion_rate: Option<i64>,
     pub location: Option<String>,
     pub last_seen_at: Option<DateTime<Utc>>,
+    pub last_active_text: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -43,6 +44,10 @@ pub struct SellersRequest {
     pub profile_url: Option<String>,
     pub join_date: Option<String>,
     pub location: Option<String>,
+    // The scraped "3 hours ago" style text - the only source of this
+    // value, since there's no way to compute it server-side. Sent fresh
+    // on every analyze call and overwritten each time, same as location.
+    pub last_active: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -90,7 +95,14 @@ impl From<Sellers> for SellersResponse {
                 .map(|c| format!("{:.0}%", c))
                 .unwrap_or_else(|| "N/A".to_string()),
             location: s.location,
-            last_active: s.last_seen_at.map(|t| format_last_active(t)),
+            // Prefer the real scraped text ("3 hours ago") over the
+            // server-computed last_seen_at timestamp - the scraped text
+            // is what the extension already showed, so this keeps both
+            // surfaces saying the same thing instead of two different
+            // notions of "last active."
+            last_active: s
+                .last_active_text
+                .or_else(|| s.last_seen_at.map(|t| format_last_active(t))),
             network_summary: String::new(),
             monthly_activity: vec![],
         }
