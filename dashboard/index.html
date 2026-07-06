@@ -4,13 +4,188 @@
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <title>Safely Dashboard</title>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+        <link
+            href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@500;600;700&display=swap"
+            rel="stylesheet"
+        />
         <script src="https://cdn.tailwindcss.com"></script>
-        <link rel="stylesheet" href="css/dashboard.css" />
+        <script>
+            tailwind.config = {
+                theme: {
+                    extend: {
+                        colors: {
+                            bg: "#0a0a0c",
+                            surface: "#131316",
+                            surface2: "#1b1b20",
+                            surface3: "#24242b",
+                            line: "rgba(255,255,255,0.07)",
+                            ink: "#f2f1ed",
+                            muted: "#8a8a93",
+                            brand: "#6fb3ef",
+                            mint: "#35d0a6",
+                            amber: "#f2b84c",
+                            coral: "#ff5d5d",
+                        },
+                        fontFamily: {
+                            sans: ["Inter", "system-ui", "sans-serif"],
+                            mono: ["JetBrains Mono", "monospace"],
+                        },
+                    },
+                },
+            };
+        </script>
+        <style>
+            /* ============================================================
+     Functional state/interaction logic - Tailwind can't express
+     arbitrary :has()/:target selectors, so this block stays purely
+     about WHAT SHOWS, never appearance.
+     ============================================================ */
+            #panel-history,
+            #panel-reports {
+                display: none;
+            }
+            body:has(#view-history:checked) #panel-history {
+                display: block;
+            }
+            body:has(#view-reports:checked) #panel-reports {
+                display: block;
+            }
+
+            .detail-overlay:has(.tab-risk:checked) .content-risk {
+                display: block;
+            }
+            .detail-overlay:has(.tab-risk:checked) .content-intel {
+                display: none;
+            }
+            .detail-overlay:has(.tab-risk:checked) .content-report {
+                display: none;
+            }
+            .detail-overlay:has(.tab-intel:checked) .content-risk {
+                display: none;
+            }
+            .detail-overlay:has(.tab-intel:checked) .content-intel {
+                display: block;
+            }
+            .detail-overlay:has(.tab-intel:checked) .content-report {
+                display: none;
+            }
+            .detail-overlay:has(.tab-report:checked) .content-risk {
+                display: none;
+            }
+            .detail-overlay:has(.tab-report:checked) .content-intel {
+                display: none;
+            }
+            .detail-overlay:has(.tab-report:checked) .content-report {
+                display: block;
+            }
+
+            body:has(#risk-low:checked) tr[data-risk]:not([data-risk="low"]) {
+                display: none;
+            }
+            body:has(#risk-caution:checked)
+                tr[data-risk]:not([data-risk="caution"]) {
+                display: none;
+            }
+            body:has(#risk-high:checked) tr[data-risk]:not([data-risk="high"]) {
+                display: none;
+            }
+
+            /* mobile sidebar drawer - off-canvas below md, static above it */
+            @media (max-width: 767px) {
+                #sidebar {
+                    position: fixed;
+                    inset-block: 0;
+                    left: 0;
+                    z-index: 40;
+                    transform: translateX(-100%);
+                    transition: transform 0.22s ease;
+                }
+                body:has(#mobile-nav-toggle:checked) #sidebar {
+                    transform: translateX(0);
+                }
+                #sidebar {
+                    z-index: 60;
+                }
+                #mobile-backdrop {
+                    display: none;
+                }
+                body:has(#mobile-nav-toggle:checked) #mobile-backdrop {
+                    display: block;
+                }
+            }
+
+            /* ============================================================
+     Visual layer - active-state styling for nav, filters, tabs.
+     ============================================================ */
+            body:has(#view-history:checked) label[for="view-history"] {
+                color: #f2f1ed;
+                background: #1b1b20;
+            }
+            body:has(#view-history:checked)
+                label[for="view-history"]
+                .nav-accent {
+                opacity: 1;
+            }
+            body:has(#view-reports:checked) label[for="view-reports"] {
+                color: #f2f1ed;
+                background: #1b1b20;
+            }
+            body:has(#view-reports:checked)
+                label[for="view-reports"]
+                .nav-accent {
+                opacity: 1;
+            }
+
+            body:has(#risk-all:checked) label[for="risk-all"],
+            body:has(#risk-low:checked) label[for="risk-low"],
+            body:has(#risk-caution:checked) label[for="risk-caution"],
+            body:has(#risk-high:checked) label[for="risk-high"] {
+                background: #24242b;
+                color: #f2f1ed;
+            }
+
+            .detail-overlay:has(.tab-risk:checked) label[for$="-tab-risk"],
+            .detail-overlay:has(.tab-intel:checked) label[for$="-tab-intel"],
+            .detail-overlay:has(.tab-report:checked) label[for$="-tab-report"] {
+                background: #24242b;
+                color: #f2f1ed;
+            }
+
+            ::-webkit-scrollbar {
+                width: 8px;
+                height: 8px;
+            }
+            ::-webkit-scrollbar-track {
+                background: transparent;
+            }
+            ::-webkit-scrollbar-thumb {
+                background: #24242b;
+                border-radius: 8px;
+            }
+            ::-webkit-scrollbar-thumb:hover {
+                background: #2e2e37;
+            }
+
+            :focus-visible {
+                outline: 2px solid #6fb3ef;
+                outline-offset: 2px;
+            }
+
+            tr[data-search-hidden="true"] {
+                display: none;
+            }
+
+            .num {
+                font-family: "JetBrains Mono", monospace;
+                font-variant-numeric: tabular-nums;
+            }
+        </style>
     </head>
     <body
-        class="bg-zinc-950 text-zinc-100 h-screen flex overflow-hidden text-sm"
+        class="bg-bg text-ink h-screen flex overflow-hidden text-sm font-sans"
     >
-        <!-- hidden state controls -->
         <input
             type="radio"
             name="view"
@@ -34,40 +209,118 @@
             class="hidden"
         />
         <input type="radio" name="riskfilter" id="risk-high" class="hidden" />
+        <input type="checkbox" id="mobile-nav-toggle" class="hidden" />
 
+        <!-- LOGIN GATE -->
         <div
             id="login-gate"
-            class="w-full h-full flex flex-col items-center justify-center gap-4 text-center px-6"
+            class="w-full h-full flex flex-col items-center justify-center gap-5 text-center px-6"
         >
-            <div class="text-xl font-black">Safely</div>
-            <div class="text-zinc-400 text-sm max-w-xs">
-                You need to sign in to view your dashboard.
+            <div
+                class="w-11 h-11 rounded-xl bg-surface2 border border-line flex items-center justify-center"
+            >
+                <svg
+                    width="20"
+                    height="20"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="#6fb3ef"
+                    stroke-width="2"
+                >
+                    <path d="M12 3l8 3v6c0 5-3.4 8-8 9-4.6-1-8-4-8-9V6l8-3z" />
+                    <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        d="M9 12l2 2 4-4"
+                    />
+                </svg>
+            </div>
+            <div>
+                <div class="text-lg font-extrabold tracking-tight">Safely</div>
+                <div class="text-muted text-sm mt-1 max-w-xs">
+                    Sign in to view your dashboard.
+                </div>
             </div>
             <a
                 href="/"
-                class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-white text-black text-sm font-bold hover:bg-zinc-200 transition"
+                class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-ink text-bg text-sm font-bold hover:bg-white transition"
                 >Go to sign in</a
             >
         </div>
 
-        <div id="app" class="hidden flex-1 flex h-full w-full">
+        <div id="app" class="hidden flex-1 flex h-full w-full relative">
+            <!-- mobile top bar - z-50 keeps it above the detail panel (z-40) so
+         the hamburger stays reachable even while viewing a listing's
+         detail, instead of getting buried underneath it. -->
+            <div
+                class="md:hidden fixed top-0 left-0 right-0 h-14 bg-surface border-b border-line flex items-center gap-3 px-4 z-50"
+            >
+                <label
+                    for="mobile-nav-toggle"
+                    class="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-surface2 cursor-pointer"
+                >
+                    <svg
+                        width="18"
+                        height="18"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2.2"
+                        stroke-linecap="round"
+                    >
+                        <path d="M4 6h16M4 12h16M4 18h16" />
+                    </svg>
+                </label>
+                <span class="text-[14px] font-extrabold tracking-tight"
+                    >Safely</span
+                >
+            </div>
+            <label
+                id="mobile-backdrop"
+                for="mobile-nav-toggle"
+                class="md:hidden fixed inset-0 bg-black/60 z-[55]"
+            ></label>
+
             <!-- SIDEBAR -->
             <aside
-                class="w-56 h-full bg-gradient-to-b from-zinc-900 to-zinc-950 border-r border-white/10 flex flex-col p-3 flex-shrink-0"
+                id="sidebar"
+                class="w-60 h-full bg-surface border-r border-line flex flex-col p-3 flex-shrink-0"
             >
                 <div
-                    class="text-xl font-black tracking-tight px-3 pb-5 border-b border-white/10 mb-4"
+                    class="flex items-center gap-2.5 px-2 pb-5 mb-4 border-b border-line"
                 >
-                    Safely
-                </div>
-                <nav class="flex flex-col gap-1 flex-1">
-                    <label
-                        for="view-history"
-                        class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-bold text-zinc-400 hover:bg-zinc-900 hover:text-zinc-200 cursor-pointer transition"
+                    <div
+                        class="w-7 h-7 rounded-lg bg-surface2 border border-line flex items-center justify-center flex-shrink-0"
                     >
                         <svg
-                            width="18"
-                            height="18"
+                            width="14"
+                            height="14"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="#6fb3ef"
+                            stroke-width="2.4"
+                        >
+                            <path
+                                d="M12 3l8 3v6c0 5-3.4 8-8 9-4.6-1-8-4-8-9V6l8-3z"
+                            />
+                        </svg>
+                    </div>
+                    <span class="text-[15px] font-extrabold tracking-tight"
+                        >Safely</span
+                    >
+                </div>
+
+                <nav class="flex flex-col gap-0.5 flex-1">
+                    <label
+                        for="view-history"
+                        class="relative flex items-center gap-3 pl-4 pr-3 py-2.5 rounded-lg text-[13px] font-semibold text-muted hover:text-ink hover:bg-surface2 cursor-pointer transition"
+                    >
+                        <span
+                            class="nav-accent absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-full bg-brand opacity-0 transition"
+                        ></span>
+                        <svg
+                            width="16"
+                            height="16"
                             viewBox="0 0 24 24"
                             fill="none"
                             stroke="currentColor"
@@ -83,11 +336,14 @@
                     </label>
                     <label
                         for="view-reports"
-                        class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-bold text-zinc-400 hover:bg-zinc-900 hover:text-zinc-200 cursor-pointer transition"
+                        class="relative flex items-center gap-3 pl-4 pr-3 py-2.5 rounded-lg text-[13px] font-semibold text-muted hover:text-ink hover:bg-surface2 cursor-pointer transition"
                     >
+                        <span
+                            class="nav-accent absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-full bg-brand opacity-0 transition"
+                        ></span>
                         <svg
-                            width="18"
-                            height="18"
+                            width="16"
+                            height="16"
                             viewBox="0 0 24 24"
                             fill="none"
                             stroke="currentColor"
@@ -104,17 +360,16 @@
                     </label>
                 </nav>
 
-                <!-- user menu: native <details>/<summary>, zero JS, same disclosure pattern as the landing page's FAQ -->
-                <details class="mt-auto pt-4 border-t border-white/10 relative">
+                <details class="mt-auto pt-3 border-t border-line relative">
                     <summary
-                        class="list-none flex items-center gap-3 px-3 py-2.5 rounded-lg text-zinc-400 hover:bg-zinc-900 cursor-pointer"
+                        class="list-none flex items-center gap-2.5 px-2 py-2 rounded-lg text-muted hover:bg-surface2 cursor-pointer"
                     >
                         <span
-                            class="w-8 h-8 rounded-full bg-zinc-800 border border-white/10 flex items-center justify-center flex-shrink-0"
+                            class="w-7 h-7 rounded-full bg-surface2 border border-line flex items-center justify-center flex-shrink-0"
                         >
                             <svg
-                                width="15"
-                                height="15"
+                                width="13"
+                                height="13"
                                 viewBox="0 0 24 24"
                                 fill="none"
                                 stroke="currentColor"
@@ -128,27 +383,27 @@
                                 <circle cx="12" cy="7" r="4" />
                             </svg>
                         </span>
-                        <span class="flex flex-col text-left">
-                            <span class="text-xs font-bold text-zinc-100"
+                        <span class="flex flex-col text-left min-w-0">
+                            <span class="text-xs font-bold text-ink truncate"
                                 >Bilal Khan</span
                             >
-                            <span class="text-[11px] text-zinc-500"
+                            <span class="text-[10px] text-muted"
                                 >Buyer Account</span
                             >
                         </span>
                     </summary>
                     <div
-                        class="absolute bottom-full mb-2 left-0 w-48 bg-zinc-800 border border-white/10 rounded-xl p-1.5 shadow-2xl"
+                        class="absolute bottom-full mb-2 left-0 w-48 bg-surface2 border border-line rounded-xl p-1.5 shadow-2xl"
                     >
                         <a
                             href="#"
-                            class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-semibold hover:bg-white/5"
+                            class="flex items-center gap-3 px-3 py-2 rounded-lg text-[13px] font-semibold hover:bg-white/5"
                             >Settings</a
                         >
                         <a
                             href="#"
                             id="btnLogout"
-                            class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-semibold text-rose-400 hover:bg-white/5 border-t border-white/5 mt-1 pt-3"
+                            class="flex items-center gap-3 px-3 py-2 rounded-lg text-[13px] font-semibold text-coral hover:bg-white/5 border-t border-line mt-1 pt-2.5"
                             >Log out</a
                         >
                     </div>
@@ -156,59 +411,90 @@
             </aside>
 
             <!-- HISTORY PANEL -->
-            <main id="panel-history" class="flex-1 overflow-y-auto p-8">
-                <div class="w-full">
+            <main
+                id="panel-history"
+                class="flex-1 overflow-y-auto p-5 md:p-9 pt-20 md:pt-9"
+            >
+                <div class="w-full max-w-5xl mx-auto">
                     <div
-                        class="flex items-baseline gap-5 mb-5 pb-4 border-b border-white/5"
+                        class="flex items-center gap-3 mb-7 flex-wrap justify-center md:justify-start"
                     >
-                        <div class="flex items-baseline gap-1.5">
-                            <span class="text-xl font-black">5</span
-                            ><span
-                                class="text-[11px] font-semibold text-zinc-500 uppercase tracking-wide"
+                        <div
+                            class="flex items-center gap-2.5 px-3.5 py-2 rounded-xl bg-surface border border-line"
+                        >
+                            <span
+                                id="stat-checked-num"
+                                class="num text-lg font-bold text-ink"
+                                >0</span
+                            >
+                            <span
+                                class="text-[10px] font-bold uppercase tracking-wider text-muted"
                                 >Checked</span
                             >
                         </div>
-                        <div class="flex items-baseline gap-1.5">
-                            <span class="text-xl font-black">2</span
-                            ><span
-                                class="text-[11px] font-semibold text-zinc-500 uppercase tracking-wide"
+                        <div
+                            class="flex items-center gap-2.5 px-3.5 py-2 rounded-xl bg-surface border border-line"
+                        >
+                            <span
+                                id="stat-reported-num"
+                                class="num text-lg font-bold text-coral"
+                                >0</span
+                            >
+                            <span
+                                class="text-[10px] font-bold uppercase tracking-wider text-muted"
                                 >Reported</span
                             >
                         </div>
                     </div>
 
                     <div
-                        class="flex justify-between items-center mb-3.5 gap-3 flex-wrap"
+                        class="flex justify-between items-center mb-4 gap-3 flex-wrap"
                     >
-                        <h2 class="text-sm font-extrabold">Analysis History</h2>
+                        <h2 class="text-[15px] font-extrabold tracking-tight">
+                            Analysis History
+                        </h2>
                         <div class="flex gap-2 flex-wrap items-center">
-                            <input
-                                id="search-box"
-                                type="text"
-                                placeholder="Search seller or listing..."
-                                class="px-3 py-1.5 bg-zinc-900 border border-white/10 rounded-lg text-xs font-medium w-48 outline-none focus:border-sky-500"
-                            />
+                            <div class="relative">
+                                <svg
+                                    class="absolute left-3 top-1/2 -translate-y-1/2"
+                                    width="13"
+                                    height="13"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="#8a8a93"
+                                    stroke-width="2"
+                                >
+                                    <circle cx="11" cy="11" r="7" />
+                                    <path d="M21 21l-4-4" />
+                                </svg>
+                                <input
+                                    id="search-box"
+                                    type="text"
+                                    placeholder="Search seller or listing"
+                                    class="pl-8 pr-3 py-2 bg-surface border border-line rounded-lg text-[12px] font-medium w-full sm:w-52 outline-none focus:border-brand transition"
+                                />
+                            </div>
                             <div
-                                class="flex gap-1 bg-zinc-900 border border-white/10 rounded-lg p-1"
+                                class="flex gap-0.5 bg-surface border border-line rounded-lg p-1"
                             >
                                 <label
                                     for="risk-all"
-                                    class="px-2.5 py-1 rounded-md text-[11px] font-bold text-zinc-400 cursor-pointer"
+                                    class="px-2.5 py-1 rounded-md text-[11px] font-bold text-muted cursor-pointer transition"
                                     >All</label
                                 >
                                 <label
                                     for="risk-low"
-                                    class="px-2.5 py-1 rounded-md text-[11px] font-bold text-zinc-400 cursor-pointer"
+                                    class="px-2.5 py-1 rounded-md text-[11px] font-bold text-muted cursor-pointer transition"
                                     >Low</label
                                 >
                                 <label
                                     for="risk-caution"
-                                    class="px-2.5 py-1 rounded-md text-[11px] font-bold text-zinc-400 cursor-pointer"
+                                    class="px-2.5 py-1 rounded-md text-[11px] font-bold text-muted cursor-pointer transition"
                                     >Caution</label
                                 >
                                 <label
                                     for="risk-high"
-                                    class="px-2.5 py-1 rounded-md text-[11px] font-bold text-zinc-400 cursor-pointer"
+                                    class="px-2.5 py-1 rounded-md text-[11px] font-bold text-muted cursor-pointer transition"
                                     >High</label
                                 >
                             </div>
@@ -216,17 +502,28 @@
                     </div>
 
                     <div
-                        class="bg-zinc-900 border border-white/10 rounded-2xl overflow-hidden shadow"
+                        class="bg-surface border border-line rounded-2xl overflow-hidden"
                     >
-                        <table class="w-full">
+                        <table class="w-full table-fixed">
+                            <colgroup>
+                                <col
+                                    class="hidden sm:table-column"
+                                    style="width: 110px"
+                                />
+                                <col />
+                                <col style="width: 90px" />
+                                <col style="width: 110px" />
+                            </colgroup>
                             <thead>
                                 <tr
-                                    class="text-left text-[11px] font-extrabold uppercase tracking-wide text-zinc-500 bg-zinc-900 border-b border-white/5"
+                                    class="text-left text-[10px] font-extrabold uppercase tracking-wider text-muted bg-surface2/50 border-b border-line"
                                 >
-                                    <th class="px-3 py-2.5">Date</th>
-                                    <th class="px-3 py-2.5">Listing</th>
-                                    <th class="px-3 py-2.5">Risk</th>
-                                    <th class="px-3 py-2.5">Reported</th>
+                                    <th class="hidden sm:table-cell px-4 py-3">
+                                        Date
+                                    </th>
+                                    <th class="px-4 py-3">Listing</th>
+                                    <th class="px-4 py-3">Risk</th>
+                                    <th class="px-4 py-3">Reported</th>
                                 </tr>
                             </thead>
                             <tbody id="history-rows"></tbody>
@@ -236,21 +533,42 @@
             </main>
 
             <!-- REPORTS PANEL -->
-            <main id="panel-reports" class="flex-1 overflow-y-auto p-8">
-                <div class="w-full">
-                    <h2 class="text-sm font-extrabold mb-3.5">Fraud Reports</h2>
+            <main
+                id="panel-reports"
+                class="flex-1 overflow-y-auto p-5 md:p-9 pt-20 md:pt-9"
+            >
+                <div class="w-full max-w-5xl mx-auto">
+                    <h2 class="text-[15px] font-extrabold tracking-tight mb-4">
+                        Fraud Reports
+                    </h2>
                     <div
-                        class="bg-zinc-900 border border-white/10 rounded-2xl overflow-hidden shadow"
+                        class="bg-surface border border-line rounded-2xl overflow-hidden"
                     >
-                        <table class="w-full">
+                        <table class="w-full table-fixed">
+                            <colgroup>
+                                <col
+                                    class="hidden sm:table-column"
+                                    style="width: 110px"
+                                />
+                                <col style="width: 220px" />
+                                <col
+                                    class="hidden sm:table-column"
+                                    style="width: 110px"
+                                />
+                                <col />
+                            </colgroup>
                             <thead>
                                 <tr
-                                    class="text-left text-[11px] font-extrabold uppercase tracking-wide text-zinc-500 bg-zinc-900 border-b border-white/5"
+                                    class="text-left text-[10px] font-extrabold uppercase tracking-wider text-muted bg-surface2/50 border-b border-line"
                                 >
-                                    <th class="px-3 py-2.5">Date</th>
-                                    <th class="px-3 py-2.5">Reason</th>
-                                    <th class="px-3 py-2.5">Listing</th>
-                                    <th class="px-3 py-2.5">Seller</th>
+                                    <th class="hidden sm:table-cell px-4 py-3">
+                                        Date
+                                    </th>
+                                    <th class="px-4 py-3">Reason</th>
+                                    <th class="hidden sm:table-cell px-4 py-3">
+                                        Platform
+                                    </th>
+                                    <th class="px-4 py-3">Seller</th>
                                 </tr>
                             </thead>
                             <tbody></tbody>
@@ -259,89 +577,303 @@
                 </div>
             </main>
 
-        <!-- ===== DETAIL OVERLAYS ===== -->
+            <!-- DETAIL PANEL -->
+            <div
+                id="detail-view"
+                class="detail-overlay hidden fixed inset-y-0 left-0 md:left-60 right-0 bg-bg z-40 overflow-y-auto"
+            >
+                <div
+                    class="w-full max-w-5xl mx-auto px-5 md:px-9 py-6 md:py-9 pt-20 md:pt-9"
+                >
+                    <div class="flex items-center gap-3 mb-6">
+                        <button
+                            id="detail-close"
+                            class="flex items-center gap-1.5 text-muted text-[13px] font-semibold hover:text-ink cursor-pointer transition flex-shrink-0"
+                        >
+                            <svg
+                                width="14"
+                                height="14"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="2.4"
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                            >
+                                <path d="M15 18l-6-6 6-6" />
+                            </svg>
+                            Back
+                        </button>
+                        <div
+                            id="detail-title"
+                            class="text-[15px] font-extrabold truncate flex-1"
+                        ></div>
+                    </div>
 
-        <!-- Single dynamic detail panel. Populated by openDetail() in dashboard.js
-             via a real fetch to GET /api/v1/history/:id - full Risk/Intelligence
-             view built from real signals, seller info, and activity data. -->
-        <div id="detail-view" class="hidden fixed inset-y-0 left-56 right-0 bg-zinc-950 z-50 overflow-y-auto p-8">
-          <div class="w-full max-w-2xl mx-auto">
-            <div class="flex items-center gap-3 mb-5">
-              <button id="detail-close" class="text-zinc-400 text-xs font-semibold hover:text-white cursor-pointer">&larr; Back</button>
-              <div id="detail-title" class="text-base font-extrabold truncate flex-1"></div>
+                    <div
+                        id="detail-loading"
+                        class="text-center text-muted text-sm py-20"
+                    >
+                        Loading...
+                    </div>
+
+                    <div id="detail-body" class="hidden">
+                        <div
+                            class="flex gap-1 mb-6 bg-surface2 border border-line rounded-xl p-1 max-w-md"
+                        >
+                            <button
+                                data-detail-tab="risk"
+                                class="detail-tab-btn flex-1 text-center py-2 rounded-lg text-[12px] font-bold text-muted cursor-pointer transition"
+                            >
+                                Risk
+                            </button>
+                            <button
+                                data-detail-tab="intel"
+                                class="detail-tab-btn flex-1 text-center py-2 rounded-lg text-[12px] font-bold text-muted cursor-pointer transition"
+                            >
+                                Intelligence
+                            </button>
+                            <button
+                                data-detail-tab="report"
+                                class="detail-tab-btn flex-1 text-center py-2 rounded-lg text-[12px] font-bold text-muted cursor-pointer transition"
+                            >
+                                Report
+                            </button>
+                        </div>
+
+                        <!-- RISK TAB - two columns on larger screens so the wider
+               container gets used with purpose instead of just
+               stretching single-column rows. -->
+                        <div
+                            id="detail-tab-content-risk"
+                            class="detail-tab-content grid grid-cols-1 lg:grid-cols-2 gap-6 items-start"
+                        >
+                            <div>
+                                <div
+                                    class="flex flex-col items-center bg-surface border border-line rounded-2xl py-8"
+                                >
+                                    <div
+                                        id="detail-gauge-wrap"
+                                        class="w-32 h-32"
+                                    ></div>
+                                    <div
+                                        id="detail-risk-level"
+                                        class="text-[15px] font-extrabold mt-1"
+                                    ></div>
+                                </div>
+                                <div class="grid grid-cols-3 gap-2.5 mt-5">
+                                    <div
+                                        class="bg-surface border border-line rounded-xl p-3 text-center"
+                                    >
+                                        <div
+                                            id="detail-chip-reports"
+                                            class="num text-lg font-bold text-muted"
+                                        ></div>
+                                        <div
+                                            class="text-[9px] font-bold uppercase tracking-wider text-muted mt-0.5"
+                                        >
+                                            Reports
+                                        </div>
+                                    </div>
+                                    <div
+                                        class="bg-surface border border-line rounded-xl p-3 text-center"
+                                    >
+                                        <div
+                                            id="detail-chip-status"
+                                            class="text-[13px] font-bold text-muted"
+                                        ></div>
+                                        <div
+                                            class="text-[9px] font-bold uppercase tracking-wider text-muted mt-0.5"
+                                        >
+                                            Status
+                                        </div>
+                                    </div>
+                                    <div
+                                        class="bg-surface border border-line rounded-xl p-3 text-center"
+                                    >
+                                        <div
+                                            id="detail-chip-platform"
+                                            class="text-[13px] font-bold text-brand capitalize"
+                                        ></div>
+                                        <div
+                                            class="text-[9px] font-bold uppercase tracking-wider text-muted mt-0.5"
+                                        >
+                                            Platform
+                                        </div>
+                                    </div>
+                                </div>
+                                <div
+                                    class="flex gap-2.5 mt-5 p-3.5 bg-surface border border-line rounded-xl text-[12px] text-muted"
+                                >
+                                    <span class="mt-0.5">&#9679;</span
+                                    ><span id="detail-network-summary"></span>
+                                </div>
+                            </div>
+
+                            <div>
+                                <div
+                                    class="text-[10px] font-extrabold uppercase tracking-wider text-muted mb-2"
+                                >
+                                    Seller Information
+                                </div>
+                                <div
+                                    class="bg-surface border border-line rounded-xl p-4 mb-5 divide-y divide-line"
+                                >
+                                    <div
+                                        class="flex justify-between py-2 text-[13px]"
+                                    >
+                                        <span class="text-muted">Name</span
+                                        ><span
+                                            id="detail-seller-name"
+                                            class="font-semibold text-right"
+                                        ></span>
+                                    </div>
+                                    <div
+                                        class="flex justify-between py-2 text-[13px]"
+                                    >
+                                        <span class="text-muted"
+                                            >Account age</span
+                                        ><span
+                                            id="detail-seller-age"
+                                            class="font-semibold num"
+                                        ></span>
+                                    </div>
+                                    <div
+                                        class="flex justify-between py-2 text-[13px]"
+                                    >
+                                        <span class="text-muted">Location</span
+                                        ><span
+                                            id="detail-seller-location"
+                                            class="font-semibold text-right"
+                                        ></span>
+                                    </div>
+                                    <div
+                                        class="flex justify-between py-2 text-[13px]"
+                                    >
+                                        <span class="text-muted"
+                                            >Last active</span
+                                        ><span
+                                            id="detail-seller-lastactive"
+                                            class="font-semibold"
+                                        ></span>
+                                    </div>
+                                </div>
+
+                                <div
+                                    class="text-[10px] font-extrabold uppercase tracking-wider text-muted mb-2"
+                                >
+                                    Visit activity &middot; 12 months
+                                </div>
+                                <div
+                                    class="bg-surface border border-line rounded-xl p-4"
+                                >
+                                    <div
+                                        id="detail-activity-chart"
+                                        class="flex items-end gap-1.5 h-16 mb-2"
+                                    ></div>
+                                    <div class="flex gap-1.5">
+                                        <span
+                                            class="flex-1 text-center text-[9px] font-bold text-muted"
+                                            >Jan</span
+                                        ><span
+                                            class="flex-1 text-center text-[9px] font-bold text-muted"
+                                            >Feb</span
+                                        ><span
+                                            class="flex-1 text-center text-[9px] font-bold text-muted"
+                                            >Mar</span
+                                        ><span
+                                            class="flex-1 text-center text-[9px] font-bold text-muted"
+                                            >Apr</span
+                                        ><span
+                                            class="flex-1 text-center text-[9px] font-bold text-muted"
+                                            >May</span
+                                        ><span
+                                            class="flex-1 text-center text-[9px] font-bold text-muted"
+                                            >Jun</span
+                                        ><span
+                                            class="flex-1 text-center text-[9px] font-bold text-muted"
+                                            >Jul</span
+                                        ><span
+                                            class="flex-1 text-center text-[9px] font-bold text-muted"
+                                            >Aug</span
+                                        ><span
+                                            class="flex-1 text-center text-[9px] font-bold text-muted"
+                                            >Sep</span
+                                        ><span
+                                            class="flex-1 text-center text-[9px] font-bold text-muted"
+                                            >Oct</span
+                                        ><span
+                                            class="flex-1 text-center text-[9px] font-bold text-muted"
+                                            >Nov</span
+                                        ><span
+                                            class="flex-1 text-center text-[9px] font-bold text-muted"
+                                            >Dec</span
+                                        >
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- INTELLIGENCE TAB -->
+                        <div
+                            id="detail-tab-content-intel"
+                            class="detail-tab-content hidden max-w-2xl"
+                        >
+                            <div
+                                id="detail-intel-summary"
+                                class="flex gap-2.5 p-3.5 rounded-xl text-[12px] mb-5"
+                            ></div>
+                            <div
+                                class="text-[10px] font-extrabold uppercase tracking-wider text-muted mb-2"
+                            >
+                                Listing signals
+                            </div>
+                            <div
+                                id="detail-signals-list"
+                                class="bg-surface border border-line rounded-xl overflow-hidden mb-5"
+                            ></div>
+                        </div>
+
+                        <!-- REPORT TAB -->
+                        <div
+                            id="detail-tab-content-report"
+                            class="detail-tab-content hidden max-w-2xl"
+                        >
+                            <div
+                                id="detail-report-filed"
+                                class="hidden bg-surface border border-line rounded-xl p-4"
+                            >
+                                <div
+                                    class="text-[10px] font-extrabold uppercase tracking-wider text-muted mb-1.5"
+                                >
+                                    Report reason
+                                </div>
+                                <div
+                                    id="detail-report-reason"
+                                    class="text-[14px] font-semibold"
+                                ></div>
+                                <div
+                                    id="detail-report-date"
+                                    class="text-[12px] text-muted mt-2"
+                                ></div>
+                            </div>
+                            <div
+                                id="detail-report-empty"
+                                class="hidden text-center py-16"
+                            >
+                                <div class="text-[14px] font-bold mb-1.5">
+                                    No report filed
+                                </div>
+                                <div
+                                    class="text-[12px] text-muted max-w-xs mx-auto"
+                                >
+                                    You have not reported this seller.
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
-
-            <div id="detail-loading" class="text-center text-zinc-500 text-sm py-16">Loading...</div>
-
-            <div id="detail-body" class="hidden">
-              <div class="flex gap-1 mb-4 bg-zinc-800 border border-white/10 rounded-xl p-1">
-                <button data-detail-tab="risk" class="detail-tab-btn flex-1 text-center py-1.5 rounded-lg text-xs font-bold text-zinc-400 cursor-pointer">Risk</button>
-                <button data-detail-tab="intel" class="detail-tab-btn flex-1 text-center py-1.5 rounded-lg text-xs font-bold text-zinc-400 cursor-pointer">Intelligence</button>
-                <button data-detail-tab="report" class="detail-tab-btn flex-1 text-center py-1.5 rounded-lg text-xs font-bold text-zinc-400 cursor-pointer">Report</button>
-              </div>
-
-              <!-- RISK TAB -->
-              <div id="detail-tab-content-risk" class="detail-tab-content">
-                <div class="text-center py-7">
-                  <div id="detail-risk-gauge" class="w-28 h-28 rounded-full border-4 flex items-center justify-center mx-auto mb-3">
-                    <span id="detail-risk-score" class="text-3xl font-extrabold"></span>
-                  </div>
-                  <div id="detail-risk-level" class="text-base font-extrabold"></div>
-                </div>
-                <div class="flex gap-2.5 mb-4">
-                  <div class="flex-1 bg-zinc-900 border border-white/10 rounded-xl p-3 text-center">
-                    <div id="detail-chip-reports" class="text-base font-extrabold text-zinc-500"></div>
-                    <div class="text-[10px] font-bold uppercase text-zinc-500">Fraud Reports</div>
-                  </div>
-                  <div class="flex-1 bg-zinc-900 border border-white/10 rounded-xl p-3 text-center">
-                    <div id="detail-chip-status" class="text-base font-extrabold text-zinc-500"></div>
-                    <div class="text-[10px] font-bold uppercase text-zinc-500">Safely Status</div>
-                  </div>
-                  <div class="flex-1 bg-zinc-900 border border-white/10 rounded-xl p-3 text-center">
-                    <div id="detail-chip-platform" class="text-base font-extrabold text-sky-400 capitalize"></div>
-                    <div class="text-[10px] font-bold uppercase text-zinc-500">Platform</div>
-                  </div>
-                </div>
-                <div class="text-[11px] font-extrabold uppercase text-zinc-500 mb-2 mt-4">Seller Information</div>
-                <div class="bg-zinc-900 border border-white/10 rounded-xl p-4 mb-4">
-                  <div class="flex justify-between py-1.5 text-sm"><span class="text-zinc-500">Name</span><span id="detail-seller-name" class="font-semibold"></span></div>
-                  <div class="flex justify-between py-1.5 text-sm"><span class="text-zinc-500">Account age</span><span id="detail-seller-age" class="font-semibold"></span></div>
-                  <div class="flex justify-between py-1.5 text-sm"><span class="text-zinc-500">Location</span><span id="detail-seller-location" class="font-semibold"></span></div>
-                  <div class="flex justify-between py-1.5 text-sm"><span class="text-zinc-500">Last active</span><span id="detail-seller-lastactive" class="font-semibold"></span></div>
-                </div>
-                <div class="text-[11px] font-extrabold uppercase text-zinc-500 mb-2">Visit activity - 12 months</div>
-                <div class="bg-zinc-900 border border-white/10 rounded-xl p-3">
-                  <div id="detail-activity-chart" class="flex items-end gap-1 h-14 mb-1.5"></div>
-                  <div class="flex gap-1">
-                    <span class="flex-1 text-center text-[8px] font-bold text-zinc-500">Jan</span><span class="flex-1 text-center text-[8px] font-bold text-zinc-500">Feb</span><span class="flex-1 text-center text-[8px] font-bold text-zinc-500">Mar</span><span class="flex-1 text-center text-[8px] font-bold text-zinc-500">Apr</span><span class="flex-1 text-center text-[8px] font-bold text-zinc-500">May</span><span class="flex-1 text-center text-[8px] font-bold text-zinc-500">Jun</span><span class="flex-1 text-center text-[8px] font-bold text-zinc-500">Jul</span><span class="flex-1 text-center text-[8px] font-bold text-zinc-500">Aug</span><span class="flex-1 text-center text-[8px] font-bold text-zinc-500">Sep</span><span class="flex-1 text-center text-[8px] font-bold text-zinc-500">Oct</span><span class="flex-1 text-center text-[8px] font-bold text-zinc-500">Nov</span><span class="flex-1 text-center text-[8px] font-bold text-zinc-500">Dec</span>
-                  </div>
-                </div>
-                <div class="flex gap-2.5 mt-4 p-3 bg-zinc-900 border border-white/10 rounded-xl text-[11px] text-zinc-500">
-                  <span>&#9679;</span><span id="detail-network-summary"></span>
-                </div>
-              </div>
-
-              <!-- INTELLIGENCE TAB -->
-              <div id="detail-tab-content-intel" class="detail-tab-content hidden">
-                <div id="detail-intel-summary" class="flex gap-2 p-3 rounded-xl text-xs mb-4"></div>
-                <div class="text-[11px] font-extrabold uppercase text-zinc-500 mb-2">Listing signals</div>
-                <div id="detail-signals-list" class="bg-zinc-900 border border-white/10 rounded-xl mb-4"></div>
-              </div>
-
-              <!-- REPORT TAB -->
-              <div id="detail-tab-content-report" class="detail-tab-content hidden">
-                <div id="detail-report-filed" class="hidden bg-zinc-900 border border-white/10 rounded-xl p-4">
-                  <div class="text-[11px] font-extrabold uppercase text-zinc-500 mb-1">Report reason</div>
-                  <div id="detail-report-reason" class="text-sm font-semibold"></div>
-                  <div id="detail-report-date" class="text-xs text-zinc-500 mt-2"></div>
-                </div>
-                <div id="detail-report-empty" class="hidden text-center py-14">
-                  <div class="text-sm font-bold mb-1.5">No report filed</div>
-                  <div class="text-xs text-zinc-500 max-w-xs mx-auto">You have not reported this seller.</div>
-                </div>
-              </div>
-            </div>
-          </div>
         </div>
 
         <script src="js/dashboard.js"></script>
