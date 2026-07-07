@@ -5,34 +5,44 @@ use crate::services::listings::get_monthly_visit_activity;
 use sqlx::{Error, Pool, Postgres, Row};
 use uuid::Uuid;
 
-/// Every listing this user has analyzed, most recent first. "reported"
-/// tells the dashboard whether THIS user has ever reported THIS seller -
-/// not whether anyone has, since that's a community-wide count already
-/// shown elsewhere (fraud_report_count on the seller itself).
+/// Every LISTING this user has analyzed, most recent first - deduplicated by
+/// the ad's actual identity (its scraped listing_id, e.g. OLX's "iid-..."
+/// number, falling back to the full listing_url if that wasn't captured),
+/// NOT by the listings table's internal row id. Revisiting the same ad can
+/// end up creating more than one `listings` row behind the scenes - if we
+/// deduped by row id, each of those would show as a separate history entry
+/// even though they're the same real ad. Grouping by the ad's own identity
+/// collapses them correctly regardless of how many internal rows exist.
+///
+/// "reported" is computed fresh every time (not stored per-analysis), so it
+/// always reflects current reality even for an older analysis row.
 pub async fn get_user_history(
     pool: &Pool<Postgres>,
     user_id: Uuid,
 ) -> Result<Vec<HistoryItem>, Error> {
     sqlx::query_as::<_, HistoryItem>(
         "
-        SELECT
-            a.id,
-            a.created_at,
-            a.risk_score,
-            a.risk_level,
-            l.platform,
-            l.title AS listing_title,
-            s.name AS seller_name,
-            s.id AS seller_id,
-            EXISTS (
-                SELECT 1 FROM fraud_reports fr
-                WHERE fr.seller_id = s.id AND fr.user_id = a.user_id
-            ) AS reported
-        FROM analysis a
-        JOIN listings l ON a.listing_id = l.id
-        JOIN sellers s ON l.seller_id = s.id
-        WHERE a.user_id = $1
-        ORDER BY a.created_at DESC
+        SELECT * FROM (
+            SELECT DISTINCT ON (s.id, COALESCE(l.listing_id, l.listing_url))
+                a.id,
+                a.created_at,
+                a.risk_score,
+                a.risk_level,
+                l.platform,
+                l.title AS listing_title,
+                s.name AS seller_name,
+                s.id AS seller_id,
+                EXISTS (
+                    SELECT 1 FROM fraud_reports fr
+                    WHERE fr.seller_id = s.id AND fr.user_id = a.user_id
+                ) AS reported
+            FROM analysis a
+            JOIN listings l ON a.listing_id = l.id
+            JOIN sellers s ON l.seller_id = s.id
+            WHERE a.user_id = $1
+            ORDER BY s.id, COALESCE(l.listing_id, l.listing_url), a.created_at DESC
+        ) sub
+        ORDER BY created_at DESC
         LIMIT 200
         ",
     )
@@ -114,8 +124,6 @@ pub async fn get_history_detail(
         .await
         .unwrap_or_else(|_| vec![0i32; 12]);
 
-    // Has THIS user reported THIS seller, and if so with what reason/date -
-    // separate from fraud_count, which is the community-wide total.
     let report_row = sqlx::query(
         "SELECT report_type, reported_at FROM fraud_reports
          WHERE seller_id = $1 AND user_id = $2
