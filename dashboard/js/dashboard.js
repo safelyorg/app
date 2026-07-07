@@ -188,15 +188,16 @@ function renderHistoryRows() {
         formatDate(item.created_at) +
         "</td>" +
         '<td class="px-4 py-3.5 overflow-hidden"><div class="truncate">' +
+        '<div class="flex items-center gap-1 min-w-0">' +
+        '<span class="font-bold truncate">' +
+        (item.listing_title || "Untitled listing") +
+        "</span>" +
         (item.listing_url
           ? '<a href="' +
             escapeAttr(item.listing_url) +
-            '" target="_blank" rel="noopener noreferrer" class="block font-bold truncate hover:underline hover:text-brand" onclick="event.stopPropagation()">' +
-            (item.listing_title || "Untitled listing") +
-            " \u2197</a>"
-          : '<span class="block font-bold truncate">' +
-            (item.listing_title || "Untitled listing") +
-            "</span>") +
+            '" target="_blank" rel="noopener noreferrer" class="flex-shrink-0 text-muted hover:text-brand text-[11px]" onclick="event.stopPropagation()" title="Open original listing">\u2197</a>'
+          : "") +
+        "</div>" +
         '<span class="block text-[11px] text-muted truncate">' +
         (item.seller_name || "Unknown seller") +
         "</span></div></td>" +
