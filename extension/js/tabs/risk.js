@@ -351,6 +351,54 @@
             var success = root.querySelector("#safely-report-success");
             if (success) success.style.display = "flex";
             submitBtn.style.display = "none";
+
+            // Reflect the report immediately without another /analyze
+            // call - each analyze() adds one to that month's visit count,
+            // so re-fetching here just to refresh "reported" status would
+            // quietly double-count this visit. Updating the already-loaded
+            // data in place and redrawing only the seller section avoids
+            // that entirely.
+            // Mirrors the exact fraud-count contribution used by the
+            // backend's calculate_risk_score (services/scoring.rs) - a step
+            // function, not a flat +N per report, so the increment has to
+            // match brackets exactly rather than guessing at a fixed bump.
+            function fraudCountContribution(count) {
+              if (count === 0) return 0;
+              if (count === 1) return 20;
+              if (count === 2) return 35;
+              return 50;
+            }
+
+            var oldCount = window.__safelyData.fraudReportCount || 0;
+            var newCount = oldCount + 1;
+            var delta =
+              fraudCountContribution(newCount) -
+              fraudCountContribution(oldCount);
+
+            window.__safelyData.fraudReportCount = newCount;
+            window.__safelyData.seller.verification = "reported";
+            window.__safelyData.riskScore = Math.min(
+              100,
+              (window.__safelyData.riskScore || 0) + delta,
+            );
+
+            // The network-alert sentence ("2 fraud reports found on Safely
+            // network...") is plain text that came from the server on the
+            // last analyze call - it doesn't recompute itself just because
+            // fraudReportCount changed. Swap in the new count directly
+            // wherever a standalone number appears in that sentence.
+            if (window.__safelyData.seller.networkSummary) {
+              window.__safelyData.seller.networkSummary =
+                window.__safelyData.seller.networkSummary.replace(
+                  /\d+/,
+                  String(newCount),
+                );
+            }
+
+            var sellerContent = document.getElementById(
+              "safely-risk-seller-content",
+            );
+            if (sellerContent) sellerContent.innerHTML = buildSellerSection();
           })
           .catch(function (err) {
             submitBtn.textContent = "Submit Report";
