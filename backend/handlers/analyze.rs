@@ -68,7 +68,7 @@ pub async fn analyze(
     };
 
     let verification = if preliminary_fraud_count > 0 {
-        SellerVerification::Flagged
+        SellerVerification::Reported
     } else {
         SellerVerification::Unknown
     };

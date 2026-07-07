@@ -104,11 +104,7 @@ pub fn verification_badge(status: &str) -> String {
             "safely-badge-verified",
             "Safely Verified",
         ),
-        "flagged" => (
-            "safely-dot-red",
-            "safely-badge-flagged",
-            "Flagged in Safely Network",
-        ),
+        "reported" => ("safely-dot-red", "safely-badge-reported", "Reported"),
         _ => ("safely-dot-gray", "safely-badge-unknown", "Unknown"),
     };
 

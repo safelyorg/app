@@ -432,7 +432,7 @@
 .safely-badge-unknown {
     color: var(--muted);
 }
-.safely-badge-flagged {
+.safely-badge-reported {
     color: var(--coral);
 }
 

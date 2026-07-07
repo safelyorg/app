@@ -405,8 +405,8 @@ function renderDetailBody(data) {
   var statusText =
     data.seller.verification === "verified"
       ? "Verified"
-      : data.seller.verification === "flagged"
-        ? "Flagged"
+      : data.seller.verification === "reported"
+        ? "Reported"
         : "Unknown";
   document.getElementById("detail-chip-status").textContent = statusText;
 

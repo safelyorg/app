@@ -1,6 +1,6 @@
 CREATE TYPE seller_verification AS ENUM (
     'verified',
-    'flagged',
+    'reported',
     'unknown'
 );
 
