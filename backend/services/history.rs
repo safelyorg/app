@@ -1,14 +1,23 @@
-use crate::models::history::{AnalysisDetailRow, HistoryDetailResponse, HistoryItem, ReportItem};
+use crate::models::history::{
+    AnalysisDetailRow, HistoryDetailResponse, HistoryItem, ReportItem, ReportSummary,
+};
 use crate::models::sellers::{Sellers, SellersResponse};
 use crate::services::fraud_reports::{build_network_summary, count_fraud_reports};
 use crate::services::listings::get_monthly_visit_activity;
-use sqlx::{Error, Pool, Postgres, Row};
+use sqlx::{Error, Pool, Postgres};
 use uuid::Uuid;
 
 /// Every LISTING this user has analyzed, most recent first - deduplicated by
 /// the ad's actual identity (its scraped listing_id, e.g. OLX's "iid-..."
 /// number, falling back to the full listing_url if that wasn't captured),
 /// NOT by the listings table's internal row id.
+///
+/// "reported" means "have I filed a report against THIS SPECIFIC listing" -
+/// matched by listing_url, not just by seller - so it stays consistent with
+/// the detail view, which only ever shows reports for the one listing being
+/// viewed. A seller with multiple listings can be reported on one and not
+/// another; this reflects that correctly instead of flagging every listing
+/// from that seller the moment any one of them gets reported.
 pub async fn get_user_history(
     pool: &Pool<Postgres>,
     user_id: Uuid,
@@ -28,7 +37,9 @@ pub async fn get_user_history(
                 s.id AS seller_id,
                 EXISTS (
                     SELECT 1 FROM fraud_reports fr
-                    WHERE fr.seller_id = s.id AND fr.user_id = a.user_id
+                    WHERE fr.seller_id = s.id
+                      AND fr.user_id = a.user_id
+                      AND fr.listing_url = l.listing_url
                 ) AS reported
             FROM analysis a
             JOIN listings l ON a.listing_id = l.id
@@ -45,10 +56,9 @@ pub async fn get_user_history(
     .await
 }
 
-/// Every fraud report this user has personally filed, most recent first.
-/// listing_url comes straight off the report itself (captured at the
-/// moment it was filed), not from a join to `listings` - a report isn't
-/// tied to a specific listing row, only to a seller.
+/// Every fraud report this user has personally filed, across every
+/// listing and seller - this is the "My Reports" tab, deliberately NOT
+/// scoped to any single listing, unlike get_history_detail below.
 pub async fn get_user_reports(
     pool: &Pool<Postgres>,
     user_id: Uuid,
@@ -75,7 +85,9 @@ pub async fn get_user_reports(
     .await
 }
 
-/// Full detail for one specific listing analysis.
+/// Full detail for one specific listing analysis, including EVERY report
+/// this user has filed against this exact listing (matched by listing_url)
+/// - not just the seller's most recent report from anywhere.
 pub async fn get_history_detail(
     pool: &Pool<Postgres>,
     analysis_id: Uuid,
@@ -118,20 +130,18 @@ pub async fn get_history_detail(
         .await
         .unwrap_or_else(|_| vec![0i32; 12]);
 
-    let report_row = sqlx::query(
+    let reports = sqlx::query_as::<_, ReportSummary>(
         "SELECT report_type, reported_at FROM fraud_reports
-         WHERE seller_id = $1 AND user_id = $2
-         ORDER BY reported_at DESC LIMIT 1",
+         WHERE user_id = $1 AND seller_id = $2 AND listing_url = $3
+         ORDER BY reported_at DESC",
     )
-    .bind(seller.id)
     .bind(user_id)
-    .fetch_optional(pool)
+    .bind(seller.id)
+    .bind(&row.listing_url)
+    .fetch_all(pool)
     .await?;
 
-    let (reported, report_reason, report_date) = match report_row {
-        Some(r) => (true, Some(r.get("report_type")), Some(r.get("reported_at"))),
-        None => (false, None, None),
-    };
+    let reported = !reports.is_empty();
 
     let mut seller_response = SellersResponse::from(seller);
     seller_response.network_summary = network_summary;
@@ -149,7 +159,6 @@ pub async fn get_history_detail(
         seller: seller_response,
         fraud_report_count: fraud_count,
         reported,
-        report_reason,
-        report_date,
+        reports,
     }))
 }

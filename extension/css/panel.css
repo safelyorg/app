@@ -389,7 +389,8 @@
 .safely-seller-detail {
     display: flex;
     justify-content: space-between;
-    align-items: center;
+    align-items: flex-start;
+    gap: 12px;
     padding: 8px 0;
     border-top: 1px solid var(--line-soft);
     font-size: 13px;
@@ -397,10 +398,12 @@
 .safely-seller-detail span:first-child {
     color: var(--muted);
     font-weight: 500;
+    flex-shrink: 0;
 }
 .safely-seller-detail span:last-child {
     color: var(--text);
     font-weight: 600;
+    text-align: right;
 }
 
 /* ── Verification badges ── */

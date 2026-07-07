@@ -492,19 +492,34 @@ function renderDetailBody(data) {
     })
     .join("");
 
-  // --- Report tab ---
+  // --- Report tab --- shows EVERY report filed against this specific
+  // listing, not just the most recent one - a listing can be reported
+  // more than once, with different reasons each time.
   var filedBlock = document.getElementById("detail-report-filed");
   var emptyBlock = document.getElementById("detail-report-empty");
-  if (data.reported) {
+  var reports = data.reports || [];
+
+  if (reports.length > 0) {
     filedBlock.classList.remove("hidden");
     emptyBlock.classList.add("hidden");
-    document.getElementById("detail-report-reason").textContent =
-      data.report_reason || "";
-    document.getElementById("detail-report-date").textContent = data.report_date
-      ? "Submitted " + formatDate(data.report_date)
-      : "";
+    filedBlock.innerHTML = reports
+      .map(function (r) {
+        return (
+          '<div class="bg-surface border border-line rounded-xl p-4 mb-2.5 last:mb-0">' +
+          '<div class="text-[10px] font-extrabold uppercase tracking-wider text-muted mb-1.5">Report reason</div>' +
+          '<div class="text-[14px] font-semibold">' +
+          r.report_type +
+          "</div>" +
+          '<div class="text-[12px] text-muted mt-2">Submitted ' +
+          formatDate(r.reported_at) +
+          "</div>" +
+          "</div>"
+        );
+      })
+      .join("");
   } else {
     filedBlock.classList.add("hidden");
+    filedBlock.innerHTML = "";
     emptyBlock.classList.remove("hidden");
   }
 

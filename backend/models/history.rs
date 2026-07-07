@@ -30,8 +30,7 @@ pub struct ReportItem {
 }
 
 /// Raw shape of the first query in get_history_detail - just enough to
-/// then look up the full seller separately. Not sent to the frontend
-/// directly; HistoryDetailResponse below is the real API response shape.
+/// then look up the full seller and this listing's reports separately.
 #[derive(Debug, FromRow)]
 pub struct AnalysisDetailRow {
     pub id: Uuid,
@@ -43,6 +42,16 @@ pub struct AnalysisDetailRow {
     pub listing_url: String,
     pub platform: String,
     pub seller_id: Uuid,
+}
+
+/// One filed report, as shown inside a single listing's detail view -
+/// there can be more than one of these for the same listing, since
+/// nothing stops a person from reporting the same ad twice with
+/// different reasons.
+#[derive(Debug, FromRow, Serialize)]
+pub struct ReportSummary {
+    pub report_type: ReportTypes,
+    pub reported_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Serialize)]
@@ -58,6 +67,8 @@ pub struct HistoryDetailResponse {
     pub seller: SellersResponse,
     pub fraud_report_count: i64,
     pub reported: bool,
-    pub report_reason: Option<ReportTypes>,
-    pub report_date: Option<DateTime<Utc>>,
+    // All reports filed against THIS specific listing (by this user) -
+    // not the seller's reports from other listings, and not just the
+    // single most recent one.
+    pub reports: Vec<ReportSummary>,
 }
