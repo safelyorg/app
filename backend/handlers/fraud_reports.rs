@@ -32,9 +32,9 @@ pub async fn create_fraud_report(
     sqlx::query(
         "INSERT INTO fraud_reports (
             id, seller_id, platform, platform_id,
-            report_type, description, user_id, reported_at
+            report_type, description, listing_url, user_id, reported_at
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())",
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())",
     )
     .bind(id)
     .bind(seller_id)
@@ -42,6 +42,7 @@ pub async fn create_fraud_report(
     .bind(request.platform_id.as_deref().unwrap_or(""))
     .bind(&request.report_type)
     .bind(&request.description)
+    .bind(&request.listing_url)
     .bind(&user_id)
     .execute(&pool)
     .await

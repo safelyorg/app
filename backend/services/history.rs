@@ -8,14 +8,7 @@ use uuid::Uuid;
 /// Every LISTING this user has analyzed, most recent first - deduplicated by
 /// the ad's actual identity (its scraped listing_id, e.g. OLX's "iid-..."
 /// number, falling back to the full listing_url if that wasn't captured),
-/// NOT by the listings table's internal row id. Revisiting the same ad can
-/// end up creating more than one `listings` row behind the scenes - if we
-/// deduped by row id, each of those would show as a separate history entry
-/// even though they're the same real ad. Grouping by the ad's own identity
-/// collapses them correctly regardless of how many internal rows exist.
-///
-/// "reported" is computed fresh every time (not stored per-analysis), so it
-/// always reflects current reality even for an older analysis row.
+/// NOT by the listings table's internal row id.
 pub async fn get_user_history(
     pool: &Pool<Postgres>,
     user_id: Uuid,
@@ -30,6 +23,7 @@ pub async fn get_user_history(
                 a.risk_level,
                 l.platform,
                 l.title AS listing_title,
+                l.listing_url,
                 s.name AS seller_name,
                 s.id AS seller_id,
                 EXISTS (
@@ -52,6 +46,9 @@ pub async fn get_user_history(
 }
 
 /// Every fraud report this user has personally filed, most recent first.
+/// listing_url comes straight off the report itself (captured at the
+/// moment it was filed), not from a join to `listings` - a report isn't
+/// tied to a specific listing row, only to a seller.
 pub async fn get_user_reports(
     pool: &Pool<Postgres>,
     user_id: Uuid,
@@ -64,7 +61,8 @@ pub async fn get_user_reports(
             fr.report_type,
             fr.platform,
             s.name AS seller_name,
-            s.id AS seller_id
+            s.id AS seller_id,
+            fr.listing_url
         FROM fraud_reports fr
         JOIN sellers s ON fr.seller_id = s.id
         WHERE fr.user_id = $1
@@ -77,12 +75,7 @@ pub async fn get_user_reports(
     .await
 }
 
-/// Full detail for one specific listing analysis - the query is scoped to
-/// (analysis_id AND user_id) together, so a person can never fetch detail
-/// for an analysis that isn't theirs. Returns Ok(None) rather than an
-/// error for "not found or not yours" - callers turn that into a 404
-/// without distinguishing the two cases, so as not to reveal whether an
-/// id belongs to someone else.
+/// Full detail for one specific listing analysis.
 pub async fn get_history_detail(
     pool: &Pool<Postgres>,
     analysis_id: Uuid,
@@ -97,6 +90,7 @@ pub async fn get_history_detail(
             a.risk_level,
             a.signals,
             l.title AS listing_title,
+            l.listing_url,
             l.platform,
             l.seller_id
         FROM analysis a
@@ -147,6 +141,7 @@ pub async fn get_history_detail(
         id: row.id,
         created_at: row.created_at,
         listing_title: row.listing_title,
+        listing_url: row.listing_url,
         platform: row.platform,
         risk_score: row.risk_score,
         risk_level: row.risk_level,

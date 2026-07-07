@@ -111,6 +111,13 @@ function formatDate(isoString) {
   return isoString ? isoString.slice(0, 10) : "";
 }
 
+// Escapes a URL for safe use inside an href="" attribute in a string we're
+// building by hand - prevents a stray quote in a scraped URL from breaking
+// out of the attribute.
+function escapeAttr(str) {
+  return String(str).replace(/"/g, "&quot;");
+}
+
 // ============================================================
 // Real data loading.
 // ============================================================
@@ -180,9 +187,17 @@ function renderHistoryRows() {
         '<td class="hidden sm:table-cell px-4 py-3.5 text-muted num text-[12px]">' +
         formatDate(item.created_at) +
         "</td>" +
-        '<td class="px-4 py-3.5 overflow-hidden"><div class="truncate"><span class="block font-bold truncate">' +
-        (item.listing_title || "Untitled listing") +
-        '</span><span class="block text-[11px] text-muted truncate">' +
+        '<td class="px-4 py-3.5 overflow-hidden"><div class="truncate">' +
+        (item.listing_url
+          ? '<a href="' +
+            escapeAttr(item.listing_url) +
+            '" target="_blank" rel="noopener noreferrer" class="block font-bold truncate hover:underline hover:text-brand" onclick="event.stopPropagation()">' +
+            (item.listing_title || "Untitled listing") +
+            " \u2197</a>"
+          : '<span class="block font-bold truncate">' +
+            (item.listing_title || "Untitled listing") +
+            "</span>") +
+        '<span class="block text-[11px] text-muted truncate">' +
         (item.seller_name || "Unknown seller") +
         "</span></div></td>" +
         '<td class="px-4 py-3.5 num font-extrabold ' +
@@ -231,7 +246,13 @@ function renderReportRows() {
         item.platform +
         "</td>" +
         '<td class="px-4 py-3.5 truncate">' +
-        (item.seller_name || "Unknown seller") +
+        (item.listing_url
+          ? '<a href="' +
+            escapeAttr(item.listing_url) +
+            '" target="_blank" rel="noopener noreferrer" class="hover:underline hover:text-brand">' +
+            (item.seller_name || "Unknown seller") +
+            " \u2197</a>"
+          : item.seller_name || "Unknown seller") +
         "</td>" +
         "</tr>"
       );
@@ -349,6 +370,16 @@ function renderDetailBody(data) {
 
   document.getElementById("detail-title").textContent =
     data.listing_title || "Untitled listing";
+
+  var linkEl = document.getElementById("detail-listing-link");
+  if (linkEl) {
+    if (data.listing_url) {
+      linkEl.href = data.listing_url;
+      linkEl.classList.remove("hidden");
+    } else {
+      linkEl.classList.add("hidden");
+    }
+  }
 
   // --- Risk tab ---
   document.getElementById("detail-gauge-wrap").innerHTML = buildRiskGauge(
@@ -506,18 +537,11 @@ document.addEventListener("DOMContentLoaded", function () {
     closeBtn.addEventListener("click", closeDetailPanel);
   }
 
-  // Clicking History/Reports in the sidebar switches the underlying panel
-  // via CSS just fine on its own - but the detail view sits in a separate,
-  // JS-controlled overlay on top of everything, so nothing told it to
-  // close when nav was clicked. Without this, a nav click while a detail
-  // was open appeared to do nothing, since the detail overlay kept
-  // covering the panel that had actually switched underneath it.
   var navHistory = document.getElementById("view-history");
   var navReports = document.getElementById("view-reports");
   if (navHistory) navHistory.addEventListener("change", closeDetailPanel);
   if (navReports) navReports.addEventListener("change", closeDetailPanel);
 
-  // Also close the mobile drawer whenever a nav item is chosen there.
   var mobileToggle = document.getElementById("mobile-nav-toggle");
   if (mobileToggle) {
     [navHistory, navReports].forEach(function (input) {

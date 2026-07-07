@@ -339,6 +339,7 @@
             platform_id: pageData.seller.platformId || null,
             report_type: selected.value,
             description: null,
+            listing_url: window.location.href,
           }),
         })
           .then(function (res) {

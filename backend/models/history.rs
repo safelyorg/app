@@ -12,6 +12,7 @@ pub struct HistoryItem {
     pub risk_level: RiskLevel,
     pub platform: String,
     pub listing_title: Option<String>,
+    pub listing_url: String,
     pub seller_name: Option<String>,
     pub seller_id: Uuid,
     pub reported: bool,
@@ -25,6 +26,7 @@ pub struct ReportItem {
     pub platform: String,
     pub seller_name: Option<String>,
     pub seller_id: Uuid,
+    pub listing_url: Option<String>,
 }
 
 /// Raw shape of the first query in get_history_detail - just enough to
@@ -38,6 +40,7 @@ pub struct AnalysisDetailRow {
     pub risk_level: RiskLevel,
     pub signals: serde_json::Value,
     pub listing_title: Option<String>,
+    pub listing_url: String,
     pub platform: String,
     pub seller_id: Uuid,
 }
@@ -47,6 +50,7 @@ pub struct HistoryDetailResponse {
     pub id: Uuid,
     pub created_at: DateTime<Utc>,
     pub listing_title: Option<String>,
+    pub listing_url: String,
     pub platform: String,
     pub risk_score: i16,
     pub risk_level: RiskLevel,
