@@ -262,6 +262,53 @@ function renderReportRows() {
 }
 
 // ============================================================
+// Settings panel - read-only account info.
+// ============================================================
+var settingsLoaded = false;
+
+async function loadSettingsData() {
+  var loading = document.getElementById("settings-loading");
+  var body = document.getElementById("settings-body");
+  if (!loading || !body) return;
+
+  try {
+    var res = await fetch(API_BASE + "/me", {
+      headers: window.safelyAuth.authHeader(),
+    });
+
+    if (res.status === 401) {
+      window.safelyAuth.logout();
+      return;
+    }
+    if (!res.ok) {
+      loading.textContent = "Could not load account settings.";
+      return;
+    }
+
+    var data = await res.json();
+
+    document.getElementById("settings-email").textContent =
+      data.email || "Unknown";
+    document.getElementById("settings-name").textContent =
+      data.name || "Not set";
+    document.getElementById("settings-signin-method").textContent =
+      data.signed_in_with === "google" ? "Google" : "Email magic link";
+    document.getElementById("settings-created").textContent = formatDate(
+      data.created_at,
+    );
+    document.getElementById("settings-last-login").textContent =
+      data.last_login_at ? formatDate(data.last_login_at) : "Unknown";
+
+    loading.classList.add("hidden");
+    body.classList.remove("hidden");
+    settingsLoaded = true;
+  } catch (e) {
+    console.error("Safely: failed to load settings", e);
+    loading.textContent = "Could not load account settings.";
+  }
+}
+
+// ============================================================
 // Signature element: segmented instrument-style risk gauge, same
 // arc-drawing technique as the landing page's hero gauge, so the
 // dashboard's "risk reading" looks like the same instrument across
@@ -578,6 +625,23 @@ document.addEventListener("DOMContentLoaded", function () {
           mobileToggle.checked = false;
         });
       }
+    });
+  }
+
+  var navSettings = document.getElementById("view-settings");
+  if (navSettings) {
+    navSettings.addEventListener("change", closeDetailPanel);
+    navSettings.addEventListener("click", closeDetailPanel);
+    navSettings.addEventListener("change", function () {
+      if (!settingsLoaded) loadSettingsData();
+    });
+  }
+
+  var settingsLink = document.getElementById("account-settings-link");
+  if (settingsLink) {
+    settingsLink.addEventListener("click", function () {
+      var menu = document.getElementById("account-menu");
+      if (menu) menu.open = false;
     });
   }
 

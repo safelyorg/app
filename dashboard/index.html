@@ -43,13 +43,17 @@
      about WHAT SHOWS, never appearance.
      ============================================================ */
             #panel-history,
-            #panel-reports {
+            #panel-reports,
+            #panel-settings {
                 display: none;
             }
             body:has(#view-history:checked) #panel-history {
                 display: block;
             }
             body:has(#view-reports:checked) #panel-reports {
+                display: block;
+            }
+            body:has(#view-settings:checked) #panel-settings {
                 display: block;
             }
 
@@ -194,6 +198,7 @@
             checked
         />
         <input type="radio" name="view" id="view-reports" class="hidden" />
+        <input type="radio" name="view" id="view-settings" class="hidden" />
         <input
             type="radio"
             name="riskfilter"
@@ -398,10 +403,11 @@
                     <div
                         class="absolute bottom-full mb-2 left-0 w-48 bg-surface2 border border-line rounded-xl p-1.5 shadow-2xl"
                     >
-                        <a
-                            href="#"
-                            class="flex items-center gap-3 px-3 py-2 rounded-lg text-[13px] font-semibold hover:bg-white/5"
-                            >Settings</a
+                        <label
+                            for="view-settings"
+                            id="account-settings-link"
+                            class="flex items-center gap-3 px-3 py-2 rounded-lg text-[13px] font-semibold hover:bg-white/5 cursor-pointer"
+                            >Settings</label
                         >
                         <a
                             href="#"
@@ -566,6 +572,97 @@
                             </thead>
                             <tbody></tbody>
                         </table>
+                    </div>
+                </div>
+            </main>
+
+            <!-- SETTINGS PANEL -->
+            <main
+                id="panel-settings"
+                class="flex-1 overflow-y-auto p-5 md:p-9 pt-20 md:pt-9"
+            >
+                <div class="w-full max-w-2xl mx-auto">
+                    <h2 class="text-[15px] font-extrabold tracking-tight mb-4">
+                        Account Settings
+                    </h2>
+
+                    <div
+                        id="settings-loading"
+                        class="text-center text-muted text-sm py-16"
+                    >
+                        Loading...
+                    </div>
+
+                    <div id="settings-body" class="hidden">
+                        <div
+                            class="text-[10px] font-extrabold uppercase tracking-wider text-muted mb-2"
+                        >
+                            Account
+                        </div>
+                        <div
+                            class="bg-surface border border-line rounded-2xl p-4 mb-5 divide-y divide-line"
+                        >
+                            <div
+                                class="flex justify-between py-2.5 text-[13px]"
+                            >
+                                <span class="text-muted">Email</span>
+                                <span
+                                    id="settings-email"
+                                    class="font-semibold"
+                                ></span>
+                            </div>
+                            <div
+                                class="flex justify-between py-2.5 text-[13px]"
+                            >
+                                <span class="text-muted">Name</span>
+                                <span
+                                    id="settings-name"
+                                    class="font-semibold"
+                                ></span>
+                            </div>
+                            <div
+                                class="flex justify-between py-2.5 text-[13px]"
+                            >
+                                <span class="text-muted">Signed in with</span>
+                                <span
+                                    id="settings-signin-method"
+                                    class="font-semibold"
+                                ></span>
+                            </div>
+                        </div>
+
+                        <div
+                            class="text-[10px] font-extrabold uppercase tracking-wider text-muted mb-2"
+                        >
+                            Account history
+                        </div>
+                        <div
+                            class="bg-surface border border-line rounded-2xl p-4 divide-y divide-line"
+                        >
+                            <div
+                                class="flex justify-between py-2.5 text-[13px]"
+                            >
+                                <span class="text-muted">Member since</span>
+                                <span
+                                    id="settings-created"
+                                    class="font-semibold num"
+                                ></span>
+                            </div>
+                            <div
+                                class="flex justify-between py-2.5 text-[13px]"
+                            >
+                                <span class="text-muted">Last signed in</span>
+                                <span
+                                    id="settings-last-login"
+                                    class="font-semibold num"
+                                ></span>
+                            </div>
+                        </div>
+
+                        <p class="text-[12px] text-muted mt-5">
+                            Editing these details isn't available yet - this
+                            page is read-only for now.
+                        </p>
                     </div>
                 </div>
             </main>
