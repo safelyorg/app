@@ -5,20 +5,20 @@
     --ink: #191c22;
     --cream: #fbf7ed;
     --cream-2: #f1ebda;
-    --sky: #6fb3ef; /* HERO sky-blue (trust) */
-    --sky-deep: #2f86dd;
-    --sky-card: #93c6f5;
-    --sun: #ffd24a; /* PRIMARY golden-yellow */
-    --sun-2: #ffe07e;
-    --mint: #5fd6a3;
-    --mint-deep: #16a877;
-    --coral: #ff6f5e;
-    --coral-soft-bg: #ffe2dd;
-    --coral-card: #ff9f93;
+    --sky: #8b93f0; /* HERO indigo-periwinkle (trust, premium, region-neutral) */
+    --sky-deep: #4a55d6;
+    --sky-card: #b7befa;
+    --sun: #ffb937; /* PRIMARY warm gold - pairs with indigo for a premium contrast */
+    --sun-2: #ffcb63;
+    --mint: #3ed9a6; /* success/safe - shifted more emerald, less candy-green */
+    --mint-deep: #0f9a6e;
+    --coral: #ff6656; /* danger/risk - kept in the red family, slightly deepened */
+    --coral-soft-bg: #ffe1dc;
+    --coral-card: #ff9d8f;
     --amber: #eaa12c;
     --amber-soft: #fbe7c2;
-    --info: #2f86dd;
-    --info-soft: #d8e8fb;
+    --info: #4a55d6;
+    --info-soft: #e2e4fb;
     --paper: #ffffff;
     --muted: #5d6066;
 
@@ -185,7 +185,7 @@ ul {
     flex: none;
 }
 .btn:hover {
-    transform: translate(-2px, -2px);
+    transform: translate(-2px, -2px) scale(1.015);
     box-shadow: var(--sh-lg);
 }
 .btn:active {
@@ -291,7 +291,12 @@ summary:focus-visible {
     font-weight: 600;
     padding: 8px 12px;
     border-radius: 10px;
-    transition: background 0.15s;
+    transition:
+        background 0.18s ease,
+        color 0.18s ease;
+}
+.nav-links a:hover {
+    color: var(--sky-deep);
 }
 .nav-links a:hover {
     background: var(--cream);
@@ -461,6 +466,25 @@ summary:focus-visible {
         transform: rotate(5deg);
     }
 }
+@keyframes ctaGlow {
+    0%,
+    100% {
+        box-shadow:
+            var(--sh-lg),
+            0 0 0 0 rgba(255, 185, 55, 0.45);
+    }
+    50% {
+        box-shadow:
+            var(--sh-lg),
+            0 0 26px 4px rgba(255, 185, 55, 0.45);
+    }
+}
+.hero-cta .btn-sun {
+    animation: ctaGlow 3.2s ease-in-out infinite;
+}
+.hero-cta .btn-sun:hover {
+    animation-play-state: paused;
+}
 .hero p.sub {
     max-width: 52ch;
     margin: 24px auto 0;
@@ -563,6 +587,13 @@ summary:focus-visible {
     padding: 9px 15px;
     font-weight: 700;
     font-size: 14.5px;
+    transition:
+        transform 0.18s cubic-bezier(0.22, 0.61, 0.36, 1),
+        box-shadow 0.18s cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+.mp:hover {
+    transform: translate(-2px, -2px);
+    box-shadow: var(--sh);
 }
 .mp .ic {
     width: 20px;
