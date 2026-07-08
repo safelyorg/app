@@ -611,6 +611,7 @@
                                     class="font-semibold"
                                 ></span>
                             </div>
+                            <!-- NEW -->
                             <div
                                 class="flex justify-between items-start py-2.5 text-[13px]"
                             >
@@ -619,7 +620,7 @@
                                 >
                                 <div
                                     id="settings-name-display"
-                                    class="flex items-center gap-2"
+                                    class="flex items-center gap-2.5"
                                 >
                                     <span
                                         id="settings-name"
@@ -628,8 +629,22 @@
                                     <button
                                         id="settings-name-edit-btn"
                                         type="button"
-                                        class="text-brand text-[11px] font-bold hover:underline"
+                                        class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-surface2 border border-line text-brand text-[11px] font-bold hover:bg-surface3 hover:border-brand/40 transition"
                                     >
+                                        <svg
+                                            width="11"
+                                            height="11"
+                                            viewBox="0 0 24 24"
+                                            fill="none"
+                                            stroke="currentColor"
+                                            stroke-width="2.4"
+                                            stroke-linecap="round"
+                                            stroke-linejoin="round"
+                                        >
+                                            <path
+                                                d="M17 3a2.85 2.83 0 114 4L7.5 20.5 2 22l1.5-5.5L17 3z"
+                                            />
+                                        </svg>
                                         Edit
                                     </button>
                                 </div>
@@ -648,15 +663,41 @@
                                         <button
                                             id="settings-name-save"
                                             type="button"
-                                            class="px-2.5 py-1.5 rounded-lg bg-ink text-bg text-[11px] font-bold"
+                                            class="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-ink text-bg text-[11px] font-bold hover:bg-white transition"
                                         >
+                                            <svg
+                                                width="11"
+                                                height="11"
+                                                viewBox="0 0 24 24"
+                                                fill="none"
+                                                stroke="currentColor"
+                                                stroke-width="3"
+                                                stroke-linecap="round"
+                                                stroke-linejoin="round"
+                                            >
+                                                <path d="M20 6L9 17l-5-5" />
+                                            </svg>
                                             Save
                                         </button>
                                         <button
                                             id="settings-name-cancel"
                                             type="button"
-                                            class="px-2.5 py-1.5 rounded-lg bg-surface2 border border-line text-[11px] font-semibold"
+                                            class="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-surface2 border border-line text-muted text-[11px] font-semibold hover:bg-surface3 hover:text-ink transition"
                                         >
+                                            <svg
+                                                width="11"
+                                                height="11"
+                                                viewBox="0 0 24 24"
+                                                fill="none"
+                                                stroke="currentColor"
+                                                stroke-width="2.4"
+                                                stroke-linecap="round"
+                                                stroke-linejoin="round"
+                                            >
+                                                <path
+                                                    d="M18 6L6 18M6 6l12 12"
+                                                />
+                                            </svg>
                                             Cancel
                                         </button>
                                     </div>
@@ -704,11 +745,6 @@
                                 ></span>
                             </div>
                         </div>
-
-                        <p class="text-[12px] text-muted mt-5">
-                            Editing these details isn't available yet - this
-                            page is read-only for now.
-                        </p>
                     </div>
                 </div>
             </main>

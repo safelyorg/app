@@ -343,7 +343,7 @@ async function saveNameEdit() {
   }
 
   saveBtn.disabled = true;
-  saveBtn.textContent = "Saving...";
+  saveBtn.innerHTML = "Saving...";
 
   try {
     var res = await fetch(API_BASE + "/me", {
@@ -371,7 +371,8 @@ async function saveNameEdit() {
     errorEl.classList.remove("hidden");
   } finally {
     saveBtn.disabled = false;
-    saveBtn.textContent = "Save";
+    saveBtn.innerHTML =
+      '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5" /></svg> Save';
   }
 }
 
