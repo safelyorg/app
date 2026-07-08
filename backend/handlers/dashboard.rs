@@ -66,6 +66,48 @@ pub async fn get_history_item(
     }
 }
 
+#[derive(Debug, serde::Deserialize)]
+pub struct UpdateMeRequest {
+    pub name: String,
+}
+
+/// PATCH /api/v1/me
+/// Currently only lets a person set/change their display name - this is
+/// the one field magic-link users have no other way of ever getting
+/// populated (there's no name to scrape from just an email address,
+/// unlike Google sign-in which provides one automatically).
+pub async fn update_me(
+    State(pool): State<Pool<Postgres>>,
+    headers: HeaderMap,
+    Json(req): Json<UpdateMeRequest>,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    let user_id = extract_user_id(&headers, &pool)
+        .await
+        .ok_or((StatusCode::UNAUTHORIZED, "Sign in required".to_string()))?;
+
+    let trimmed = req.name.trim();
+    if trimmed.is_empty() {
+        return Err((StatusCode::BAD_REQUEST, "Name cannot be empty".to_string()));
+    }
+    if trimmed.chars().count() > 100 {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "Name must be 100 characters or fewer".to_string(),
+        ));
+    }
+
+    sqlx::query("UPDATE users SET name = $1 WHERE id = $2")
+        .bind(trimmed)
+        .bind(user_id)
+        .execute(&pool)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    Ok(Json(
+        serde_json::json!({ "success": true, "name": trimmed }),
+    ))
+}
+
 /// GET /api/v1/me
 /// Read-only account info for the Settings page - email, name, how the
 /// person signed in, and account dates. Deliberately minimal: no plan/

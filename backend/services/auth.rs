@@ -65,7 +65,7 @@ pub async fn find_or_create_user_by_google(
     if let Some(existing) = find_user_by_email(pool, email).await? {
         // link the google_id onto the existing email-based account
         return sqlx::query_as::<_, User>(
-            "UPDATE users SET google_id = $1, name = COALESCE($2, name) WHERE id = $3 RETURNING *",
+            "UPDATE users SET google_id = $1, name = COALESCE(name, $2) WHERE id = $3 RETURNING *",
         )
         .bind(google_id)
         .bind(name)

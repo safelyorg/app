@@ -308,6 +308,73 @@ async function loadSettingsData() {
   }
 }
 
+function toggleNameEdit(showEdit) {
+  var displayEl = document.getElementById("settings-name-display");
+  var editEl = document.getElementById("settings-name-edit");
+  var input = document.getElementById("settings-name-input");
+  var errorEl = document.getElementById("settings-name-error");
+  if (!displayEl || !editEl) return;
+
+  if (showEdit) {
+    var currentName = document.getElementById("settings-name").textContent;
+    input.value = currentName === "Not set" ? "" : currentName;
+    displayEl.classList.add("hidden");
+    editEl.classList.remove("hidden");
+    errorEl.classList.add("hidden");
+    input.focus();
+  } else {
+    displayEl.classList.remove("hidden");
+    editEl.classList.add("hidden");
+  }
+}
+
+async function saveNameEdit() {
+  var input = document.getElementById("settings-name-input");
+  var errorEl = document.getElementById("settings-name-error");
+  var saveBtn = document.getElementById("settings-name-save");
+  var newName = input.value.trim();
+
+  errorEl.classList.add("hidden");
+
+  if (!newName) {
+    errorEl.textContent = "Name cannot be empty.";
+    errorEl.classList.remove("hidden");
+    return;
+  }
+
+  saveBtn.disabled = true;
+  saveBtn.textContent = "Saving...";
+
+  try {
+    var res = await fetch(API_BASE + "/me", {
+      method: "PATCH",
+      headers: Object.assign(
+        { "Content-Type": "application/json" },
+        window.safelyAuth.authHeader(),
+      ),
+      body: JSON.stringify({ name: newName }),
+    });
+
+    if (res.status === 401) {
+      window.safelyAuth.logout();
+      return;
+    }
+    if (!res.ok) {
+      var errBody = await res.text();
+      throw new Error(errBody || "Request failed");
+    }
+
+    document.getElementById("settings-name").textContent = newName;
+    toggleNameEdit(false);
+  } catch (e) {
+    errorEl.textContent = "Could not save. Please try again.";
+    errorEl.classList.remove("hidden");
+  } finally {
+    saveBtn.disabled = false;
+    saveBtn.textContent = "Save";
+  }
+}
+
 // ============================================================
 // Signature element: segmented instrument-style risk gauge, same
 // arc-drawing technique as the landing page's hero gauge, so the
@@ -661,6 +728,30 @@ document.addEventListener("DOMContentLoaded", function () {
     settingsLink.addEventListener("click", function () {
       var menu = document.getElementById("account-menu");
       if (menu) menu.open = false;
+    });
+  }
+
+  var nameEditBtn = document.getElementById("settings-name-edit-btn");
+  if (nameEditBtn) {
+    nameEditBtn.addEventListener("click", function () {
+      toggleNameEdit(true);
+    });
+  }
+  var nameCancelBtn = document.getElementById("settings-name-cancel");
+  if (nameCancelBtn) {
+    nameCancelBtn.addEventListener("click", function () {
+      toggleNameEdit(false);
+    });
+  }
+  var nameSaveBtn = document.getElementById("settings-name-save");
+  if (nameSaveBtn) {
+    nameSaveBtn.addEventListener("click", saveNameEdit);
+  }
+  var nameInput = document.getElementById("settings-name-input");
+  if (nameInput) {
+    nameInput.addEventListener("keydown", function (e) {
+      if (e.key === "Enter") saveNameEdit();
+      if (e.key === "Escape") toggleNameEdit(false);
     });
   }
 
