@@ -1716,8 +1716,8 @@ footer {
 }
 .fgrid {
     display: grid;
-    grid-template-columns: 1.8fr repeat(3, 1fr);
-    gap: 36px;
+    grid-template-columns: 1.5fr repeat(4, 1fr);
+    gap: 32px;
 }
 .fbrand .brand {
     margin-bottom: 16px;
