@@ -193,10 +193,10 @@ ul {
     box-shadow: var(--sh-sm);
 }
 .btn-sun {
-    background: var(--sun);
+    background: linear-gradient(180deg, var(--sun-2) 0%, var(--sun) 60%);
 }
 .btn-sun:hover {
-    background: var(--sun-2);
+    background: linear-gradient(180deg, #fff0b8 0%, var(--sun-2) 60%);
 }
 .btn-mint {
     background: var(--mint);
@@ -205,11 +205,11 @@ ul {
     background: #7fe1b8;
 }
 .btn-dark {
-    background: var(--ink);
+    background: linear-gradient(180deg, #2a2e38 0%, var(--ink) 60%);
     color: #fff;
 }
 .btn-dark:hover {
-    background: #000;
+    background: linear-gradient(180deg, #34394a 0%, #000 60%);
 }
 .btn-lg {
     padding: 16px 26px;
@@ -263,10 +263,14 @@ summary:focus-visible {
     gap: 24px;
     height: 64px;
     padding: 0 16px 0 22px;
-    background: var(--paper);
+    background: rgba(255, 255, 255, 0.86);
+    -webkit-backdrop-filter: blur(14px) saturate(160%);
+    backdrop-filter: blur(14px) saturate(160%);
     border: var(--bd);
     border-radius: 20px;
-    box-shadow: var(--sh);
+    box-shadow:
+        var(--sh),
+        0 20px 40px -22px rgba(25, 28, 34, 0.28);
 }
 .nav .btn {
     padding: 9px 17px;
@@ -409,7 +413,12 @@ summary:focus-visible {
    ============================================================ */
 .hero {
     position: relative;
-    background: var(--sky);
+    background: radial-gradient(
+        120% 100% at 50% 0%,
+        #86c0f2 0%,
+        var(--sky) 55%,
+        #5ea8e8 100%
+    );
     margin-top: calc(-1 * var(--navh));
     padding-top: calc(var(--navh) + clamp(22px, 4vw, 42px));
     padding-bottom: clamp(96px, 12vw, 150px);
@@ -584,8 +593,8 @@ summary:focus-visible {
     background: var(--paper);
     padding: 26px;
     transition:
-        transform 0.12s ease,
-        box-shadow 0.12s ease;
+        transform 0.18s cubic-bezier(0.22, 0.61, 0.36, 1),
+        box-shadow 0.18s cubic-bezier(0.22, 0.61, 0.36, 1);
 }
 .steps .step:hover {
     transform: translate(-3px, -3px);
@@ -874,18 +883,22 @@ summary:focus-visible {
 .bcard {
     border: var(--bd);
     border-radius: var(--r-lg);
-    box-shadow: var(--sh);
+    box-shadow:
+        var(--sh),
+        0 18px 34px -18px rgba(25, 28, 34, 0.18);
     background: var(--paper);
     overflow: hidden;
     display: flex;
     flex-direction: column;
     transition:
-        transform 0.13s ease,
-        box-shadow 0.13s ease;
+        transform 0.18s cubic-bezier(0.22, 0.61, 0.36, 1),
+        box-shadow 0.18s cubic-bezier(0.22, 0.61, 0.36, 1);
 }
 .bento .bcard:hover {
     transform: translate(-3px, -3px);
-    box-shadow: var(--sh-lg);
+    box-shadow:
+        var(--sh-lg),
+        0 26px 44px -18px rgba(25, 28, 34, 0.24);
     transition-delay: 0s;
 }
 .bviz {
@@ -1099,22 +1112,34 @@ summary:focus-visible {
 .pcard {
     border: var(--bd);
     border-radius: var(--r-lg);
-    box-shadow: var(--sh);
+    box-shadow:
+        var(--sh),
+        0 16px 30px -16px rgba(25, 28, 34, 0.16);
     padding: 24px;
     background: var(--paper);
     position: relative;
     transition:
-        transform 0.12s ease,
-        box-shadow 0.12s ease;
+        transform 0.18s cubic-bezier(0.22, 0.61, 0.36, 1),
+        box-shadow 0.18s cubic-bezier(0.22, 0.61, 0.36, 1);
 }
 .price-grid .pcard:hover {
     transform: translate(-3px, -3px);
-    box-shadow: var(--sh-lg);
+    box-shadow:
+        var(--sh-lg),
+        0 24px 40px -16px rgba(25, 28, 34, 0.22);
     transition-delay: 0s;
 }
 .pcard.feat {
-    background: var(--sky-card);
+    background: linear-gradient(
+        160deg,
+        #a8d4fa 0%,
+        var(--sky-card) 55%,
+        #7fc0f2 100%
+    );
     transform: translateY(-6px);
+    box-shadow:
+        var(--sh),
+        0 22px 46px -14px rgba(47, 134, 221, 0.35);
 }
 .price-grid .pcard.feat:hover {
     transform: translate(-3px, -9px);
@@ -1445,14 +1470,14 @@ summary:focus-visible {
     border-radius: 18px;
     padding: 24px 22px;
     transition:
-        transform 0.16s ease,
-        box-shadow 0.16s ease,
-        border-color 0.16s ease;
+        transform 0.2s cubic-bezier(0.22, 0.61, 0.36, 1),
+        box-shadow 0.2s cubic-bezier(0.22, 0.61, 0.36, 1),
+        border-color 0.2s ease;
 }
 .wall .lcard:hover {
-    transform: translateY(-8px);
-    border-color: #444b5a;
-    box-shadow: 0 16px 34px rgba(0, 0, 0, 0.45);
+    transform: translateY(-10px);
+    border-color: #525a6b;
+    box-shadow: 0 26px 50px -12px rgba(0, 0, 0, 0.55);
     transition-delay: 0s;
 }
 .lcard .ltape {
@@ -1562,7 +1587,7 @@ summary:focus-visible {
     place-items: center;
     flex: none;
     transition:
-        transform 0.3s ease,
+        transform 0.35s cubic-bezier(0.22, 0.61, 0.36, 1),
         background 0.2s;
 }
 .acc .ic svg {
