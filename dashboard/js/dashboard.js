@@ -588,4 +588,14 @@ document.addEventListener("DOMContentLoaded", function () {
       });
     });
   }
+
+  // Native <details> only closes itself when its own <summary> is clicked
+  // again - clicking anywhere else on the page does nothing on its own.
+  // This closes the account menu on any click outside it.
+  document.addEventListener("click", function (e) {
+    var menu = document.getElementById("account-menu");
+    if (menu && menu.open && !menu.contains(e.target)) {
+      menu.open = false;
+    }
+  });
 });
