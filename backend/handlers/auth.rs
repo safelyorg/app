@@ -16,8 +16,6 @@ const DASHBOARD_PATH: &str = "/dashboard/";
 const OAUTH_STATE_COOKIE: &str = "oauth_state";
 
 /// POST /api/v1/auth/magic-link
-/// Sends a sign-in email. Always returns success (even for unknown emails)
-/// so this endpoint can't be used to check which emails have accounts.
 pub async fn request_magic_link(
     State(pool): State<Pool<Postgres>>,
     Json(req): Json<MagicLinkRequest>,
@@ -36,8 +34,6 @@ pub async fn request_magic_link(
     let verify_url = format!("{}/api/v1/auth/verify?token={}", base_url, token);
 
     if let Err(e) = email::send_magic_link_email(&email_trimmed, &verify_url).await {
-        // Log but don't leak email-sending failures to the client - same
-        // reasoning as not revealing whether the email exists.
         eprintln!("Failed to send magic link email: {}", e);
     }
 
@@ -48,8 +44,6 @@ pub async fn request_magic_link(
 }
 
 /// GET /api/v1/auth/verify?token=...
-/// This is the link the person clicks from their email client - a real
-/// browser navigation, not a fetch call - so it responds with a redirect.
 pub async fn verify_magic_link(
     State(pool): State<Pool<Postgres>>,
     Query(query): Query<VerifyQuery>,
@@ -74,6 +68,10 @@ pub async fn verify_magic_link(
     };
 
     let _ = auth::touch_last_login(&pool, user.id).await;
+    // Records that THIS login used the email/magic-link path - separate
+    // from google_id, which only ever tracks whether Google has EVER been
+    // linked to this account, not which method was used this time.
+    let _ = auth::set_login_method(&pool, user.id, "email").await;
 
     let session_token = match auth::create_session(&pool, user.id).await {
         Ok(t) => t,
@@ -83,17 +81,10 @@ pub async fn verify_magic_link(
         }
     };
 
-    // Session token goes in the URL fragment (#), not a query string, so it
-    // never gets logged by the server or shows up in browser history search.
-    // The dashboard's JS reads it from location.hash on load, saves it to
-    // localStorage, then strips the hash from the visible URL.
     Redirect::to(&format!("{}#session={}", DASHBOARD_PATH, session_token)).into_response()
 }
 
 /// GET /api/v1/auth/google
-/// Redirects the browser to Google's consent screen. Sets a short-lived
-/// state cookie so the callback can confirm the response actually came
-/// from a request we initiated (basic CSRF protection).
 pub async fn google_redirect(jar: CookieJar) -> impl IntoResponse {
     let state = Uuid::new_v4().to_string();
 
@@ -161,6 +152,11 @@ pub async fn google_callback(
     };
 
     let _ = auth::touch_last_login(&pool, user.id).await;
+    // This login genuinely did use Google - unlike the email path above,
+    // this one is accurate by definition, but we still record it
+    // explicitly rather than relying only on google_id existing, since
+    // that field describes the account, not this specific session.
+    let _ = auth::set_login_method(&pool, user.id, "google").await;
 
     let session_token = match auth::create_session(&pool, user.id).await {
         Ok(t) => t,

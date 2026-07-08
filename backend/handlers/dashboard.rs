@@ -7,7 +7,7 @@ use axum::{
     extract::{Path, State},
     http::{HeaderMap, StatusCode},
 };
-use sqlx::{Pool, Postgres};
+use sqlx::{Pool, Postgres, Row};
 use uuid::Uuid;
 
 /// GET /api/v1/history
@@ -84,10 +84,32 @@ pub async fn get_me(
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
         .ok_or((StatusCode::NOT_FOUND, "User not found".to_string()))?;
 
+    // Reads last_login_method directly rather than going through the User
+    // struct, so this doesn't depend on that struct having been updated to
+    // include the new column - a raw query here is a small, self-contained
+    // way to add this without needing to touch models/users.rs at all.
+    let method_row = sqlx::query("SELECT last_login_method FROM users WHERE id = $1")
+        .bind(user_id)
+        .fetch_one(&pool)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let last_login_method: Option<String> = method_row.get("last_login_method");
+
+    // Falls back to the old google_id-based guess only for accounts that
+    // haven't logged in since this column was added (still NULL) - every
+    // login going forward sets this explicitly and accurately.
+    let signed_in_with = last_login_method.unwrap_or_else(|| {
+        if user.google_id.is_some() {
+            "google".to_string()
+        } else {
+            "email".to_string()
+        }
+    });
+
     Ok(Json(serde_json::json!({
         "email": user.email,
         "name": user.name,
-        "signed_in_with": if user.google_id.is_some() { "google" } else { "email" },
+        "signed_in_with": signed_in_with,
         "created_at": user.created_at,
         "last_login_at": user.last_login_at,
     })))

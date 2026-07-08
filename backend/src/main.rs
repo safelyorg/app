@@ -1,6 +1,7 @@
 use crate::db::{bootstrap::run_grants, connection::load_pool};
+use axum::http::{HeaderValue, header};
 use axum::{Router, response::Redirect, routing::get};
-use tower_http::{cors::CorsLayer, services::ServeDir};
+use tower_http::{cors::CorsLayer, services::ServeDir, set_header::SetResponseHeaderLayer};
 
 #[path = "../db/mod.rs"]
 pub mod db;
@@ -17,7 +18,6 @@ pub mod services;
 async fn main() {
     let admin_pool = load_pool("ADMIN_URL").await;
     let app_pool = load_pool("APP_URL").await;
-
     sqlx::migrate!("../migrations")
         .run(&admin_pool)
         .await
@@ -46,6 +46,10 @@ async fn main() {
             ServeDir::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../site"))
                 .append_index_html_on_directories(true),
         )
+        .layer(SetResponseHeaderLayer::overriding(
+            header::CACHE_CONTROL,
+            HeaderValue::from_static("no-cache, no-store, must-revalidate"),
+        ))
         .layer(CorsLayer::permissive())
         .with_state(app_pool);
 

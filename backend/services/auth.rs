@@ -1,7 +1,7 @@
 use crate::models::users::{MagicLink, User};
 use axum::http::HeaderMap;
 use chrono::{Duration, Utc};
-use sqlx::{Pool, Postgres, Row};
+use sqlx::{Error, Pool, Postgres, Row};
 use uuid::Uuid;
 
 pub async fn find_user_by_email(
@@ -109,6 +109,19 @@ pub async fn create_magic_link(pool: &Pool<Postgres>, email: &str) -> Result<Str
         .await?;
 
     Ok(token)
+}
+
+pub async fn set_login_method(
+    pool: &Pool<Postgres>,
+    user_id: Uuid,
+    method: &str,
+) -> Result<(), Error> {
+    sqlx::query("UPDATE users SET last_login_method = $1 WHERE id = $2")
+        .bind(method)
+        .bind(user_id)
+        .execute(pool)
+        .await?;
+    Ok(())
 }
 
 /// Validates a magic link token: must exist, be unused, and not expired.
