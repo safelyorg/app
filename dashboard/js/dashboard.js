@@ -635,7 +635,26 @@ document.addEventListener("DOMContentLoaded", function () {
     navSettings.addEventListener("change", function () {
       if (!settingsLoaded) loadSettingsData();
     });
+
+    // Browsers can restore a radio's checked state after Back/Forward
+    // navigation without ever firing a "change" event - that's silent
+    // DOM restoration, not a user action. Checking at DOMContentLoaded
+    // is too early: that restoration can happen slightly later in the
+    // page's load sequence, so the check below can miss it. "pageshow"
+    // is the event actually designed for this - it only fires once
+    // whatever the browser is going to restore has already been applied,
+    // whether this is a fresh load or a history-restored one.
+    if (navSettings.checked && !settingsLoaded) {
+      loadSettingsData();
+    }
   }
+
+  window.addEventListener("pageshow", function () {
+    var settingsRadio = document.getElementById("view-settings");
+    if (settingsRadio && settingsRadio.checked && !settingsLoaded) {
+      loadSettingsData();
+    }
+  });
 
   var settingsLink = document.getElementById("account-settings-link");
   if (settingsLink) {
