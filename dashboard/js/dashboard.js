@@ -555,8 +555,20 @@ document.addEventListener("DOMContentLoaded", function () {
 
   var navHistory = document.getElementById("view-history");
   var navReports = document.getElementById("view-reports");
-  if (navHistory) navHistory.addEventListener("change", closeDetailPanel);
-  if (navReports) navReports.addEventListener("change", closeDetailPanel);
+  // "change" only fires when the radio's checked state actually flips -
+  // if you're already on History and click History again while a detail
+  // is open, nothing about the radio changes, so "change" never fires and
+  // the detail panel never gets closed. "click" fires every time
+  // regardless, so it's added alongside "change" (not instead of it) to
+  // catch that case too.
+  if (navHistory) {
+    navHistory.addEventListener("change", closeDetailPanel);
+    navHistory.addEventListener("click", closeDetailPanel);
+  }
+  if (navReports) {
+    navReports.addEventListener("change", closeDetailPanel);
+    navReports.addEventListener("click", closeDetailPanel);
+  }
 
   var mobileToggle = document.getElementById("mobile-nav-toggle");
   if (mobileToggle) {
