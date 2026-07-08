@@ -1,6 +1,7 @@
 /* (1) reveal-on-scroll via IntersectionObserver (CSS scroll-timelines aren't broadly supported yet);
    (2) Escape closes the menu / sign-in / modals (keyboard accessibility);
-   (3) real auth wiring for the sign-in overlay. */
+   (3) real auth wiring for the sign-in overlay;
+   (4) pricing Monthly/Yearly toggle. */
 (function () {
   var els = document.querySelectorAll(".reveal");
   if ("IntersectionObserver" in window) {
@@ -91,6 +92,34 @@
           magicBtn.textContent = originalText;
           alert("Something went wrong sending the link. Please try again.");
         });
+    });
+  }
+
+  // ============================================================
+  // Pricing toggle: Monthly / Yearly billing switch. Every price
+  // element already stores both values directly in the HTML
+  // (data-mo="$29" data-yr="$279") - this just reads whichever one
+  // matches the currently-clicked button and displays it. No math
+  // happens here, the real numbers already live in the markup.
+  // ============================================================
+  var billToggleBtns = document.querySelectorAll(".ptoggle-btn");
+  if (billToggleBtns.length) {
+    var billFields = document.querySelectorAll("[data-mo]");
+
+    var setBillingPeriod = function (period) {
+      billToggleBtns.forEach(function (btn) {
+        btn.classList.toggle("active", btn.dataset.bill === period);
+      });
+      billFields.forEach(function (el) {
+        var value = period === "mo" ? el.dataset.mo : el.dataset.yr;
+        if (value !== undefined) el.textContent = value;
+      });
+    };
+
+    billToggleBtns.forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        setBillingPeriod(btn.dataset.bill);
+      });
     });
   }
 })();
