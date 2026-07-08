@@ -93,10 +93,9 @@ ul {
 
 .disp {
     font-family: var(--disp);
-    font-weight: 700;
+    font-weight: 800;
     line-height: 0.95;
-    letter-spacing: -0.02em;
-    font-weight: bold;
+    letter-spacing: -0.025em;
 }
 .it {
     font-family: "Archivo", sans-serif;
@@ -176,8 +175,8 @@ ul {
     color: var(--ink);
     box-shadow: var(--sh);
     transition:
-        transform 0.1s ease,
-        box-shadow 0.1s ease,
+        transform 0.16s cubic-bezier(0.22, 0.61, 0.36, 1),
+        box-shadow 0.16s cubic-bezier(0.22, 0.61, 0.36, 1),
         background 0.15s ease;
 }
 .btn svg {
@@ -376,7 +375,6 @@ summary:focus-visible {
     opacity: 1;
     pointer-events: auto;
 }
-/* hidden state toggles (drive overlays with pure CSS) */
 .sr-toggle {
     position: fixed;
     top: 0;
@@ -429,12 +427,13 @@ summary:focus-visible {
 }
 .hero-title h1 {
     font-family: var(--disp);
-    font-weight: 700;
+    font-weight: 800;
     text-transform: uppercase;
     font-size: clamp(42px, 9.5vw, 100px);
     line-height: 0.92;
-    letter-spacing: -0.03em;
+    letter-spacing: -0.035em;
     max-width: 10ch;
+    text-shadow: 0.4px 0 0 currentColor;
 }
 .hero-eyes {
     position: absolute;
@@ -499,10 +498,10 @@ summary:focus-visible {
 }
 .head h2 {
     font-family: var(--disp);
-    font-weight: 700;
+    font-weight: 800;
     font-size: clamp(32px, 5.6vw, 62px);
     line-height: 0.98;
-    letter-spacing: -0.025em;
+    letter-spacing: -0.03em;
     margin-top: 18px;
 }
 .head p {
@@ -632,9 +631,10 @@ summary:focus-visible {
 }
 .step h3 {
     font-family: var(--disp);
-    font-weight: 700;
+    font-weight: 800;
     font-size: 21px;
     margin-bottom: 9px;
+    letter-spacing: -0.01em;
 }
 .step p {
     font-size: 15px;
@@ -653,10 +653,10 @@ summary:focus-visible {
 }
 .f1 .colh {
     font-family: var(--disp);
-    font-weight: 700;
+    font-weight: 800;
     font-size: clamp(28px, 4.2vw, 46px);
     line-height: 1;
-    letter-spacing: -0.02em;
+    letter-spacing: -0.025em;
 }
 .f1 .colp {
     font-size: 16.5px;
@@ -930,9 +930,10 @@ summary:focus-visible {
 }
 .btxt h3 {
     font-family: var(--disp);
-    font-weight: 700;
+    font-weight: 800;
     font-size: 21px;
     margin-bottom: 9px;
+    letter-spacing: -0.01em;
 }
 .btxt p {
     font-size: 14.5px;
@@ -940,7 +941,6 @@ summary:focus-visible {
     color: var(--muted);
     line-height: 1.6;
 }
-/* mini viz bits */
 .vchip {
     display: flex;
     align-items: center;
@@ -1075,10 +1075,10 @@ summary:focus-visible {
 }
 .statbar .num {
     font-family: var(--disp);
-    font-weight: 700;
+    font-weight: 800;
     font-size: clamp(34px, 4.6vw, 52px);
     line-height: 1;
-    letter-spacing: -0.02em;
+    letter-spacing: -0.025em;
 }
 .statbar .cap {
     margin-top: 8px;
@@ -1138,8 +1138,9 @@ summary:focus-visible {
 }
 .pname {
     font-family: var(--disp);
-    font-weight: 700;
+    font-weight: 800;
     font-size: 20px;
+    letter-spacing: -0.01em;
 }
 .pprice {
     display: flex;
@@ -1149,9 +1150,10 @@ summary:focus-visible {
 }
 .pprice .amt {
     font-family: var(--disp);
-    font-weight: 700;
+    font-weight: 800;
     font-size: 38px;
     line-height: 1;
+    letter-spacing: -0.02em;
 }
 .pprice .per {
     font-size: 13px;
@@ -1242,7 +1244,6 @@ summary:focus-visible {
     letter-spacing: 0.02em;
 }
 
-/* price card extras */
 .pfor {
     font-size: 13px;
     color: var(--muted);
@@ -1275,11 +1276,11 @@ summary:focus-visible {
 }
 .comp-wrap > h3 {
     font-family: var(--disp);
-    font-weight: 700;
+    font-weight: 800;
     font-size: clamp(24px, 3.5vw, 38px);
     text-align: center;
     margin-bottom: 28px;
-    letter-spacing: -0.02em;
+    letter-spacing: -0.025em;
 }
 .comp-scroll {
     overflow-x: auto;
@@ -1421,9 +1422,9 @@ summary:focus-visible {
 }
 .lhead-card h2 {
     font-family: var(--disp);
-    font-weight: 700;
+    font-weight: 800;
     font-size: clamp(32px, 5vw, 52px);
-    letter-spacing: -0.02em;
+    letter-spacing: -0.025em;
 }
 .wall-head p {
     color: var(--on-dark-mut);
@@ -1611,10 +1612,10 @@ summary:focus-visible {
 }
 .finalcta .box h2 {
     font-family: var(--disp);
-    font-weight: 700;
+    font-weight: 800;
     font-size: clamp(32px, 5.6vw, 64px);
     line-height: 0.98;
-    letter-spacing: -0.025em;
+    letter-spacing: -0.03em;
     max-width: 18ch;
     margin-inline: auto;
     text-transform: uppercase;
@@ -1996,11 +1997,11 @@ footer {
 }
 .si-right h3 {
     font-family: var(--disp);
-    font-weight: 700;
+    font-weight: 800;
     text-transform: uppercase;
     font-size: clamp(34px, 4.6vw, 56px);
     line-height: 0.88;
-    letter-spacing: -0.035em;
+    letter-spacing: -0.04em;
     max-width: 12ch;
 }
 .si-right .rp {
