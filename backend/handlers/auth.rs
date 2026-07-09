@@ -210,6 +210,27 @@ pub async fn google_callback(
             }
         };
 
+        // The Google account being connected must use the SAME email as
+        // the account already logged in - otherwise this would silently
+        // attach an unrelated Google identity to this account, creating
+        // exactly the kind of email mismatch this check exists to
+        // prevent. Comparison is case-insensitive since email addresses
+        // are conventionally treated that way.
+        let linking_user = match auth::find_user_by_id(&pool, linking_user_id).await {
+            Ok(Some(u)) => u,
+            Ok(None) => {
+                return Redirect::to(&format!("{}?error=server_error", DASHBOARD_PATH));
+            }
+            Err(e) => {
+                eprintln!("find_user_by_id error: {}", e);
+                return Redirect::to(&format!("{}?error=server_error", DASHBOARD_PATH));
+            }
+        };
+
+        if linking_user.email.trim().to_lowercase() != google_user.email.trim().to_lowercase() {
+            return Redirect::to(&format!("{}?error=google_email_mismatch", DASHBOARD_PATH));
+        }
+
         // Refuse to link a Google account already tied to a DIFFERENT
         // Safely account - each Google account can only ever be linked
         // to one Safely account at a time.

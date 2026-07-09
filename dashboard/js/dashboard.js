@@ -938,6 +938,11 @@ function checkGoogleConnectResult() {
     alert(
       "That Google account is already connected to a different Safely account.",
     );
+  } else if (error === "google_email_mismatch") {
+    alert(
+      "That Google account uses a different email address than your Safely account. " +
+        "Please connect a Google account that uses the same email address.",
+    );
   } else if (error === "session_expired") {
     alert("Your session expired - please log in again and retry connecting Google.");
   } else if (connected === "1") {
