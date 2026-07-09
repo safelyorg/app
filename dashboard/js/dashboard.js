@@ -876,13 +876,10 @@ async function handleGoogleButtonClick() {
   if (!btn) return;
 
   if (btn.dataset.connected === "true") {
-    if (
-      !confirm(
-        "Disconnect your Google account? You can still sign in with your email magic link.",
-      )
-    ) {
-      return;
-    }
+    // No confirmation prompt - disconnecting is fully reversible (just
+    // click Connect again any time), so a popup here is only friction,
+    // not real protection the way it would be for something destructive
+    // like deleting the account.
     btn.disabled = true;
     try {
       var res = await fetch(API_BASE + "/me/google/disconnect", {
@@ -903,6 +900,16 @@ async function handleGoogleButtonClick() {
       // all.
       var signinMethodEl = document.getElementById("settings-signin-method");
       if (signinMethodEl) signinMethodEl.textContent = "Email magic link";
+
+      // A plain in-page message, not a popup - and deliberately not
+      // saved anywhere, so it's only ever visible for this one session
+      // right after the action, and is simply gone on the next reload.
+      var statusEl = document.getElementById("google-status-message");
+      if (statusEl) {
+        statusEl.textContent =
+          "Google disconnected. You can sign in using your email magic link.";
+        statusEl.classList.remove("hidden");
+      }
     } catch (e) {
       alert("Could not disconnect Google. Please try again.");
       btn.disabled = false;
