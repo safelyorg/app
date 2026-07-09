@@ -170,6 +170,26 @@ pub async fn google_connect_redirect(
     (jar, Redirect::to(&authorize_url)).into_response()
 }
 
+/// POST /api/v1/auth/logout
+/// Deletes the session row on the server, not just the token sitting in
+/// the browser's localStorage - without this, logging out only ever
+/// removed Safely's own memory of being logged in, while the token
+/// itself stayed valid indefinitely if it had ever leaked (XSS, a
+/// compromised device, a copied localStorage value). Always reports
+/// success regardless of whether a matching session was actually found,
+/// since the person's intent (be logged out) is satisfied either way.
+pub async fn logout(
+    State(pool): State<Pool<Postgres>>,
+    headers: HeaderMap,
+) -> Json<serde_json::Value> {
+    if let Some(auth_header) = headers.get("authorization").and_then(|v| v.to_str().ok()) {
+        if let Some(token) = auth_header.strip_prefix("Bearer ") {
+            let _ = auth::delete_session(&pool, token).await;
+        }
+    }
+    Json(serde_json::json!({ "success": true }))
+}
+
 /// GET /api/v1/auth/google/callback
 pub async fn google_callback(
     State(pool): State<Pool<Postgres>>,

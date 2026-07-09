@@ -48,7 +48,23 @@
       var token = getToken();
       return token ? { Authorization: "Bearer " + token } : {};
     },
-    logout: function () {
+    // Deletes the session on the server first, not just the local token -
+    // without this, a stolen or leaked token would keep working forever
+    // even after someone thought they'd logged out. A network hiccup
+    // here still lets the person log out locally regardless (caught and
+    // ignored, not blocking the redirect).
+    logout: async function () {
+      var token = getToken();
+      if (token) {
+        try {
+          await fetch("http://localhost:3000/api/v1/auth/logout", {
+            method: "POST",
+            headers: { Authorization: "Bearer " + token },
+          });
+        } catch (e) {
+          console.error("Safely: logout request failed", e);
+        }
+      }
       clearToken();
       window.location.href = "/";
     },
