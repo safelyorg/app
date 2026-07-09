@@ -1,6 +1,6 @@
 use crate::models::users::{MagicLink, User};
 use axum::http::HeaderMap;
-use chrono::{Duration, Utc};
+use chrono::{DateTime, Duration, Utc};
 use sqlx::{Error, Pool, Postgres, Row};
 use uuid::Uuid;
 
@@ -171,17 +171,40 @@ pub async fn get_user_from_token(
     pool: &Pool<Postgres>,
     token: &str,
 ) -> Result<Option<User>, sqlx::Error> {
-    let row =
-        sqlx::query("SELECT user_id FROM sessions WHERE token = $1 AND expires_at > NOW() LIMIT 1")
-            .bind(token)
-            .fetch_optional(pool)
-            .await?;
+    let row = sqlx::query(
+        "SELECT user_id, expires_at FROM sessions WHERE token = $1 AND expires_at > NOW() LIMIT 1",
+    )
+    .bind(token)
+    .fetch_optional(pool)
+    .await?;
 
     let Some(row) = row else {
         return Ok(None);
     };
 
     let user_id: Uuid = row.get("user_id");
+    let expires_at: DateTime<Utc> = row.get("expires_at");
+
+    // Sliding expiration: an actively-used session keeps pushing its own
+    // expiry forward, so someone who checks the dashboard every few days
+    // effectively never gets logged out - only genuine inactivity for
+    // the full window causes a real expiry, matching how most everyday
+    // consumer apps behave rather than a hard wall from the moment of
+    // login. To avoid writing to the database on every single request
+    // (a page load can easily fire five or six authenticated calls at
+    // once), this only re-extends once the session has already burned
+    // through at least 5 of its 30 days - a regular user still triggers
+    // this roughly once every few days of real use, not on every click.
+    let refresh_threshold = Utc::now() + Duration::days(25);
+    if expires_at < refresh_threshold {
+        let _ = sqlx::query(
+            "UPDATE sessions SET expires_at = NOW() + INTERVAL '30 days' WHERE token = $1",
+        )
+        .bind(token)
+        .execute(pool)
+        .await;
+    }
+
     find_user_by_id(pool, user_id).await
 }
 

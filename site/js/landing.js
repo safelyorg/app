@@ -3,6 +3,29 @@
    (3) real auth wiring for the sign-in overlay;
    (4) pricing Monthly/Yearly toggle. */
 (function () {
+  // If a valid-looking session token already exists, clicking Login/Get
+  // Started should skip the sign-in screen entirely and go straight to
+  // the dashboard - there's no reason to make an already-logged-in
+  // person re-authenticate just because they clicked a button meant for
+  // people who aren't signed in yet. This only checks that a token is
+  // PRESENT, not that it's still valid server-side (an expired or
+  // revoked token would just land them back on the dashboard's own
+  // sign-in gate, which already handles that case correctly - this is
+  // purely about skipping an unnecessary extra step for the common
+  // case of someone who's actually still logged in).
+  var signinTriggers = document.querySelectorAll('label[for="si-toggle"]');
+  if (signinTriggers.length) {
+    signinTriggers.forEach(function (el) {
+      el.addEventListener("click", function (e) {
+        var token = localStorage.getItem("safely_session_token");
+        if (token) {
+          e.preventDefault();
+          window.location.href = "/dashboard/";
+        }
+      });
+    });
+  }
+
   var els = document.querySelectorAll(".reveal");
   if ("IntersectionObserver" in window) {
     var io = new IntersectionObserver(
