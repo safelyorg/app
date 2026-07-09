@@ -1073,6 +1073,78 @@ document.addEventListener("DOMContentLoaded", function () {
     googleConnectBtn.addEventListener("click", handleGoogleButtonClick);
   }
 
+  // Plan & Billing - design-only for now. The show/hide of the card
+  // form is real, functioning UI (no backend needed for that part);
+  // only the actual save/change-plan actions are placeholders pending
+  // a real payment provider being wired in.
+  // Change plan - the dropdown itself, and swapping which plan is shown
+  // as "Active", are both real working UI. Only an actual plan CHANGE
+  // taking effect (billing, prorating, etc.) needs a real backend later -
+  // this is purely a visual preview of picking a different plan.
+  var changePlanBtn = document.getElementById("change-plan-btn");
+  var changePlanDropdown = document.getElementById("change-plan-dropdown");
+
+  function togglePlanDropdown(show) {
+    if (!changePlanDropdown) return;
+    changePlanDropdown.classList.toggle("hidden", !show);
+  }
+
+  if (changePlanBtn && changePlanDropdown) {
+    changePlanBtn.addEventListener("click", function (e) {
+      e.stopPropagation();
+      togglePlanDropdown(changePlanDropdown.classList.contains("hidden"));
+    });
+
+    document.querySelectorAll(".plan-option").forEach(function (opt) {
+      opt.addEventListener("click", function () {
+        var planName = opt.dataset.plan;
+        var planPrice = opt.dataset.price;
+
+        var nameEl = document.getElementById("current-plan-name");
+        var priceEl = document.getElementById("current-plan-price");
+        if (nameEl) nameEl.textContent = planName;
+        if (priceEl) priceEl.textContent = planPrice + " \u00b7 Renews Aug 9, 2026";
+
+        document.querySelectorAll(".plan-option .plan-check").forEach(function (c) {
+          c.classList.add("hidden");
+        });
+        var check = opt.querySelector(".plan-check");
+        if (check) check.classList.remove("hidden");
+
+        togglePlanDropdown(false);
+      });
+    });
+
+    document.addEventListener("click", function (e) {
+      if (
+        !changePlanDropdown.classList.contains("hidden") &&
+        !changePlanDropdown.contains(e.target) &&
+        e.target !== changePlanBtn
+      ) {
+        togglePlanDropdown(false);
+      }
+    });
+  }
+  var addPaymentBtn = document.getElementById("add-payment-btn");
+  var paymentForm = document.getElementById("payment-form");
+  if (addPaymentBtn && paymentForm) {
+    addPaymentBtn.addEventListener("click", function () {
+      paymentForm.classList.remove("hidden");
+    });
+  }
+  var paymentCancelBtn = document.getElementById("payment-cancel-btn");
+  if (paymentCancelBtn && paymentForm) {
+    paymentCancelBtn.addEventListener("click", function () {
+      paymentForm.classList.add("hidden");
+    });
+  }
+  var paymentSaveBtn = document.getElementById("payment-save-btn");
+  if (paymentSaveBtn) {
+    paymentSaveBtn.addEventListener("click", function () {
+      alert("Payment processing isn'\''t wired up yet - this is a design preview.");
+    });
+  }
+
   var termsBtn = document.getElementById("terms-privacy-btn");
   var termsModal = document.getElementById("terms-privacy-modal");
   var termsClose = document.getElementById("terms-privacy-close");

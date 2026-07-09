@@ -689,6 +689,125 @@
                             </div>
                         </div>
 
+                        <!-- Design-only for now, not wired up yet -->
+                        <div class="text-[10px] font-extrabold uppercase tracking-wider text-muted mb-2 mt-7">
+                            Plan &amp; Billing
+                        </div>
+                        <div class="bg-surface border border-line rounded-2xl p-4">
+                            <div class="flex items-center justify-between">
+                                <div>
+                                    <div class="flex items-center gap-2">
+                                        <span id="current-plan-name" class="text-[14px] font-bold">Pro</span>
+                                        <span class="px-2 py-0.5 rounded-full bg-brand/10 text-brand text-[10px] font-bold uppercase tracking-wide">Active</span>
+                                    </div>
+                                    <div id="current-plan-price" class="text-[12px] text-muted mt-1">$29/month &middot; Renews Aug 9, 2026</div>
+                                </div>
+                                <div class="relative">
+                                    <button
+                                        id="change-plan-btn"
+                                        type="button"
+                                        class="px-3.5 py-1.5 rounded-lg bg-surface2 border border-line text-[12px] font-bold hover:bg-surface3 transition"
+                                    >
+                                        Change plan
+                                    </button>
+                                    <div
+                                        id="change-plan-dropdown"
+                                        class="hidden absolute right-0 top-full mt-2 w-56 bg-surface2 border border-line rounded-xl p-1.5 shadow-2xl z-10"
+                                    >
+                                        <button type="button" class="plan-option w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg text-left hover:bg-white/5 transition" data-plan="Pro" data-price="$29/month">
+                                            <span>
+                                                <span class="block text-[13px] font-semibold">Pro</span>
+                                                <span class="block text-[11px] text-muted">$29/month</span>
+                                            </span>
+                                            <svg class="plan-check w-4 h-4 text-brand flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                                                <path d="M20 6L9 17l-5-5" />
+                                            </svg>
+                                        </button>
+                                        <button type="button" class="plan-option w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg text-left hover:bg-white/5 transition" data-plan="Business" data-price="$89/month">
+                                            <span>
+                                                <span class="block text-[13px] font-semibold">Business</span>
+                                                <span class="block text-[11px] text-muted">$89/month</span>
+                                            </span>
+                                            <svg class="plan-check hidden w-4 h-4 text-brand flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                                                <path d="M20 6L9 17l-5-5" />
+                                            </svg>
+                                        </button>
+                                        <button type="button" class="plan-option w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg text-left hover:bg-white/5 transition" data-plan="Enterprise" data-price="From $499/month">
+                                            <span>
+                                                <span class="block text-[13px] font-semibold">Enterprise</span>
+                                                <span class="block text-[11px] text-muted">From $499/month</span>
+                                            </span>
+                                            <svg class="plan-check hidden w-4 h-4 text-brand flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                                                <path d="M20 6L9 17l-5-5" />
+                                            </svg>
+                                        </button>
+                                        <button type="button" class="plan-option w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg text-left hover:bg-white/5 transition" data-plan="API" data-price="$199/month">
+                                            <span>
+                                                <span class="block text-[13px] font-semibold">API</span>
+                                                <span class="block text-[11px] text-muted">$199/month</span>
+                                            </span>
+                                            <svg class="plan-check hidden w-4 h-4 text-brand flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                                                <path d="M20 6L9 17l-5-5" />
+                                            </svg>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="bg-surface border border-line rounded-2xl p-4 mt-3">
+                            <div id="payment-method-display" class="flex items-center justify-between">
+                                <div class="flex items-center gap-3">
+                                    <span class="w-9 h-6 rounded bg-surface2 border border-line flex items-center justify-center text-[9px] font-bold text-muted flex-shrink-0">CARD</span>
+                                    <span class="text-[13px] text-muted">No payment method on file</span>
+                                </div>
+                                <button
+                                    id="add-payment-btn"
+                                    type="button"
+                                    class="px-3.5 py-1.5 rounded-lg bg-ink text-bg text-[12px] font-bold hover:bg-white transition"
+                                >
+                                    Add payment method
+                                </button>
+                            </div>
+
+                            <div id="payment-form" class="hidden mt-4 pt-4 border-t border-line">
+                                <div class="mb-3">
+                                    <label class="text-[11px] font-semibold text-muted mb-1 block">Card number</label>
+                                    <input type="text" inputmode="numeric" placeholder="1234 5678 9012 3456" class="w-full px-3 py-2 bg-surface2 border border-line rounded-lg text-[13px] outline-none focus:border-brand" />
+                                </div>
+                                <div class="grid grid-cols-2 gap-3 mb-3">
+                                    <div>
+                                        <label class="text-[11px] font-semibold text-muted mb-1 block">Expiry</label>
+                                        <input type="text" placeholder="MM/YY" class="w-full px-3 py-2 bg-surface2 border border-line rounded-lg text-[13px] outline-none focus:border-brand" />
+                                    </div>
+                                    <div>
+                                        <label class="text-[11px] font-semibold text-muted mb-1 block">CVC</label>
+                                        <input type="text" inputmode="numeric" placeholder="123" class="w-full px-3 py-2 bg-surface2 border border-line rounded-lg text-[13px] outline-none focus:border-brand" />
+                                    </div>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="text-[11px] font-semibold text-muted mb-1 block">Name on card</label>
+                                    <input type="text" placeholder="Full name" class="w-full px-3 py-2 bg-surface2 border border-line rounded-lg text-[13px] outline-none focus:border-brand" />
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    <button
+                                        id="payment-save-btn"
+                                        type="button"
+                                        class="px-3.5 py-2 rounded-lg bg-ink text-bg text-[12px] font-bold hover:bg-white transition"
+                                    >
+                                        Save card
+                                    </button>
+                                    <button
+                                        id="payment-cancel-btn"
+                                        type="button"
+                                        class="px-3.5 py-2 rounded-lg bg-surface2 border border-line text-muted text-[12px] font-semibold hover:bg-surface3 hover:text-ink transition"
+                                    >
+                                        Cancel
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
                         <div class="text-[10px] font-extrabold uppercase tracking-wider text-muted mb-2 mt-7">
                             Account history
                         </div>
