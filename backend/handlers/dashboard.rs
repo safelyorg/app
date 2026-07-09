@@ -160,7 +160,36 @@ pub async fn get_me(
         "created_at": user.created_at,
         "last_login_at": user.last_login_at,
         "has_avatar": has_avatar,
+        "google_linked": user.google_id.is_some(),
     })))
+}
+
+/// POST /api/v1/me/google/disconnect
+/// Always safe to allow: email is the one identity that's never optional
+/// on this account (even a Google-only signup has an email captured from
+/// the Google profile), so disconnecting Google never locks anyone out -
+/// they can always fall back to a magic link on that same email.
+pub async fn disconnect_google(
+    State(pool): State<Pool<Postgres>>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    let user_id = extract_user_id(&headers, &pool)
+        .await
+        .ok_or((StatusCode::UNAUTHORIZED, "Sign in required".to_string()))?;
+
+    crate::services::auth::unlink_google_account(&pool, user_id)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    // Google is no longer a valid way back in for this account, so the
+    // "signed in with" label should reflect the only method that still
+    // works from here - email - immediately, not just after the next
+    // actual login happens to update it.
+    let _ = crate::services::auth::set_login_method(&pool, user_id, "email").await;
+
+    Ok(Json(
+        serde_json::json!({ "success": true, "signed_in_with": "email" }),
+    ))
 }
 
 /// POST /api/v1/me/avatar

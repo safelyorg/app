@@ -440,6 +440,7 @@ async function loadSettingsData() {
     updateAvatar(data.has_avatar);
     document.getElementById("settings-signin-method").textContent =
       data.signed_in_with === "google" ? "Google" : "Email magic link";
+    setGoogleButtonState(data.google_linked);
     document.getElementById("settings-created").textContent = formatDate(data.created_at);
     document.getElementById("settings-last-login").textContent = data.last_login_at
       ? formatDate(data.last_login_at)
@@ -834,7 +835,120 @@ function closeDetailPanel() {
   if (panel) panel.classList.add("hidden");
 }
 
+// Reflects whether Google is linked - "Connected" normally, but on
+// hover swaps to a red "Disconnect" affordance so the destructive action
+// isn't the default thing a person sees, only what they see when they
+// deliberately hover with intent to act.
+function setGoogleButtonState(connected) {
+  var btn = document.getElementById("google-connect-btn");
+  if (!btn) return;
+  btn.dataset.connected = connected ? "true" : "false";
+  btn.disabled = false;
+  if (connected) {
+    btn.textContent = "Connected";
+    btn.classList.remove("hover:bg-surface3");
+  } else {
+    btn.textContent = "Connect";
+    btn.classList.add("hover:bg-surface3");
+    btn.classList.remove("border-coral", "text-coral");
+  }
+}
+
+function wireGoogleButtonHover() {
+  var btn = document.getElementById("google-connect-btn");
+  if (!btn) return;
+  btn.addEventListener("mouseenter", function () {
+    if (btn.dataset.connected === "true") {
+      btn.textContent = "Disconnect";
+      btn.classList.add("border-coral", "text-coral");
+    }
+  });
+  btn.addEventListener("mouseleave", function () {
+    if (btn.dataset.connected === "true") {
+      btn.textContent = "Connected";
+      btn.classList.remove("border-coral", "text-coral");
+    }
+  });
+}
+
+async function handleGoogleButtonClick() {
+  var btn = document.getElementById("google-connect-btn");
+  if (!btn) return;
+
+  if (btn.dataset.connected === "true") {
+    if (
+      !confirm(
+        "Disconnect your Google account? You can still sign in with your email magic link.",
+      )
+    ) {
+      return;
+    }
+    btn.disabled = true;
+    try {
+      var res = await fetch(API_BASE + "/me/google/disconnect", {
+        method: "POST",
+        headers: window.safelyAuth.authHeader(),
+      });
+      if (res.status === 401) {
+        window.safelyAuth.logout();
+        return;
+      }
+      if (!res.ok) throw new Error("Failed to disconnect");
+      setGoogleButtonState(false);
+
+      // Google is no longer valid for signing back in, so this label
+      // updates immediately - not just after the next real login - to
+      // avoid the confusing state of showing "Google" as the sign-in
+      // method for an account that's no longer connected to Google at
+      // all.
+      var signinMethodEl = document.getElementById("settings-signin-method");
+      if (signinMethodEl) signinMethodEl.textContent = "Email magic link";
+    } catch (e) {
+      alert("Could not disconnect Google. Please try again.");
+      btn.disabled = false;
+    }
+  } else {
+    // Plain navigation, not a fetch - the session token has to travel
+    // as a URL parameter since a full page navigation can't carry an
+    // Authorization header the way fetch() can.
+    var token = window.safelyAuth.getToken();
+    window.location.href =
+      API_BASE + "/auth/google/connect?session=" + encodeURIComponent(token);
+  }
+}
+
+// Surfaces the outcome of the connect flow when it redirects back here -
+// either a plain success flag or one of a few error codes, both arriving
+// as a query string rather than a fragment (the backend redirect uses
+// query params for this, distinct from the #session= fragment used for
+// login).
+function checkGoogleConnectResult() {
+  var params = new URLSearchParams(window.location.search);
+  var error = params.get("error");
+  var connected = params.get("google_connected");
+
+  if (error === "google_already_linked") {
+    alert(
+      "That Google account is already connected to a different Safely account.",
+    );
+  } else if (error === "session_expired") {
+    alert("Your session expired - please log in again and retry connecting Google.");
+  } else if (connected === "1") {
+    // Nothing to alert here - the Settings fetch that already ran (or
+    // will run) picks up the new state naturally via google_linked.
+  }
+
+  if (error || connected) {
+    var url = new URL(window.location.href);
+    url.searchParams.delete("error");
+    url.searchParams.delete("google_connected");
+    history.replaceState(null, "", url.pathname + url.hash);
+  }
+}
+
 document.addEventListener("DOMContentLoaded", function () {
+  checkGoogleConnectResult();
+
   if (window.safelyAuth && window.safelyAuth.getToken()) {
     loadDashboardData();
   }
@@ -943,9 +1057,8 @@ document.addEventListener("DOMContentLoaded", function () {
   }
   var googleConnectBtn = document.getElementById("google-connect-btn");
   if (googleConnectBtn) {
-    googleConnectBtn.addEventListener("click", function () {
-      alert("Connecting Google here isn'\''t wired up yet - this is a design preview.");
-    });
+    wireGoogleButtonHover();
+    googleConnectBtn.addEventListener("click", handleGoogleButtonClick);
   }
 
   var termsBtn = document.getElementById("terms-privacy-btn");

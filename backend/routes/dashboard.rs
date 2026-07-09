@@ -1,7 +1,11 @@
 use crate::handlers::dashboard::{
-    get_avatar, get_history, get_history_item, get_me, get_reports, update_me, upload_avatar,
+    disconnect_google, get_avatar, get_history, get_history_item, get_me, get_reports, update_me,
+    upload_avatar,
 };
-use axum::{Router, routing::get};
+use axum::{
+    Router,
+    routing::{get, post},
+};
 use sqlx::{Pool, Postgres};
 
 pub fn dashboard_routes() -> Router<Pool<Postgres>> {
@@ -11,4 +15,5 @@ pub fn dashboard_routes() -> Router<Pool<Postgres>> {
         .route("/api/v1/reports", get(get_reports))
         .route("/api/v1/me", get(get_me).patch(update_me))
         .route("/api/v1/me/avatar", get(get_avatar).post(upload_avatar))
+        .route("/api/v1/me/google/disconnect", post(disconnect_google))
 }

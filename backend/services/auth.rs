@@ -206,3 +206,24 @@ pub async fn extract_user_id(headers: &HeaderMap, pool: &Pool<Postgres>) -> Opti
     let user = get_user_from_token(pool, token).await.ok()??;
     Some(user.id)
 }
+
+pub async fn link_google_account(
+    pool: &Pool<Postgres>,
+    user_id: Uuid,
+    google_id: &str,
+) -> Result<(), Error> {
+    sqlx::query("UPDATE users SET google_id = $1 WHERE id = $2")
+        .bind(google_id)
+        .bind(user_id)
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
+pub async fn unlink_google_account(pool: &Pool<Postgres>, user_id: Uuid) -> Result<(), Error> {
+    sqlx::query("UPDATE users SET google_id = NULL WHERE id = $1")
+        .bind(user_id)
+        .execute(pool)
+        .await?;
+    Ok(())
+}

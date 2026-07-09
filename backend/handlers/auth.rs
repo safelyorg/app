@@ -5,7 +5,7 @@ use crate::services::{auth, email, google_oauth};
 use axum::{
     Json,
     extract::{Query, State},
-    http::StatusCode,
+    http::{HeaderMap, HeaderValue, StatusCode, header},
     response::{IntoResponse, Redirect},
 };
 use axum_extra::extract::cookie::{Cookie, CookieJar};
@@ -14,6 +14,7 @@ use uuid::Uuid;
 
 const DASHBOARD_PATH: &str = "/dashboard/";
 const OAUTH_STATE_COOKIE: &str = "oauth_state";
+const OAUTH_LINK_USER_COOKIE: &str = "oauth_link_user_id";
 
 /// POST /api/v1/auth/magic-link
 pub async fn request_magic_link(
@@ -68,9 +69,6 @@ pub async fn verify_magic_link(
     };
 
     let _ = auth::touch_last_login(&pool, user.id).await;
-    // Records that THIS login used the email/magic-link path - separate
-    // from google_id, which only ever tracks whether Google has EVER been
-    // linked to this account, not which method was used this time.
     let _ = auth::set_login_method(&pool, user.id, "email").await;
 
     let session_token = match auth::create_session(&pool, user.id).await {
@@ -85,6 +83,9 @@ pub async fn verify_magic_link(
 }
 
 /// GET /api/v1/auth/google
+/// Fresh sign-in via Google - creates a session at the end, same as
+/// magic link does. Not to be confused with google_connect_redirect
+/// below, which links Google onto an account that's already logged in.
 pub async fn google_redirect(jar: CookieJar) -> impl IntoResponse {
     let state = Uuid::new_v4().to_string();
 
@@ -106,6 +107,66 @@ pub async fn google_redirect(jar: CookieJar) -> impl IntoResponse {
     cookie.set_http_only(true);
 
     let jar = jar.add(cookie);
+    (jar, Redirect::to(&authorize_url)).into_response()
+}
+
+#[derive(Debug, serde::Deserialize)]
+pub struct GoogleConnectQuery {
+    pub session: String,
+}
+
+/// GET /api/v1/auth/google/connect?session=<token>
+/// Starts the "connect Google to my already-logged-in account" flow.
+/// This is a plain top-level page navigation triggered by clicking
+/// "Connect" in Settings - it can't carry the Bearer token as a header
+/// the way a fetch() call would, so the token travels as a query
+/// parameter instead. It's verified here exactly like any other
+/// authenticated request, just via a different transport.
+pub async fn google_connect_redirect(
+    State(pool): State<Pool<Postgres>>,
+    Query(query): Query<GoogleConnectQuery>,
+    jar: CookieJar,
+) -> impl IntoResponse {
+    let mut synthetic_headers = HeaderMap::new();
+    if let Ok(val) = HeaderValue::from_str(&format!("Bearer {}", query.session)) {
+        synthetic_headers.insert(header::AUTHORIZATION, val);
+    }
+
+    let user_id = match auth::extract_user_id(&synthetic_headers, &pool).await {
+        Some(id) => id,
+        None => {
+            return (
+                jar,
+                Redirect::to(&format!("{}?error=session_expired", DASHBOARD_PATH)),
+            )
+                .into_response();
+        }
+    };
+
+    let state = Uuid::new_v4().to_string();
+    let authorize_url = match google_oauth::build_google_authorize_url(&state) {
+        Ok(url) => url,
+        Err(e) => {
+            eprintln!("build_google_authorize_url error: {}", e);
+            return (
+                jar,
+                Redirect::to(&format!("{}?error=server_error", DASHBOARD_PATH)),
+            )
+                .into_response();
+        }
+    };
+
+    let mut state_cookie = Cookie::new(OAUTH_STATE_COOKIE, state);
+    state_cookie.set_path("/");
+    state_cookie.set_max_age(time::Duration::minutes(10));
+    state_cookie.set_http_only(true);
+
+    let mut link_cookie = Cookie::new(OAUTH_LINK_USER_COOKIE, user_id.to_string());
+    link_cookie.set_path("/");
+    link_cookie.set_max_age(time::Duration::minutes(10));
+    link_cookie.set_http_only(true);
+
+    let jar = jar.add(state_cookie).add(link_cookie);
     (jar, Redirect::to(&authorize_url)).into_response()
 }
 
@@ -136,6 +197,41 @@ pub async fn google_callback(
         }
     };
 
+    // If the link-user cookie is present, this is a "connect Google to my
+    // already-logged-in account" flow (started by google_connect_redirect
+    // above) - handled entirely separately from fresh sign-in below,
+    // since it must attach Google to THIS SPECIFIC account rather than
+    // whichever account happens to match the Google email.
+    if let Some(link_cookie) = jar.get(OAUTH_LINK_USER_COOKIE) {
+        let linking_user_id = match Uuid::parse_str(link_cookie.value()) {
+            Ok(id) => id,
+            Err(_) => {
+                return Redirect::to(&format!("{}?error=server_error", DASHBOARD_PATH));
+            }
+        };
+
+        // Refuse to link a Google account already tied to a DIFFERENT
+        // Safely account - each Google account can only ever be linked
+        // to one Safely account at a time.
+        match auth::find_user_by_google_id(&pool, &google_user.sub).await {
+            Ok(Some(existing)) if existing.id != linking_user_id => {
+                return Redirect::to(&format!("{}?error=google_already_linked", DASHBOARD_PATH));
+            }
+            Ok(_) => {}
+            Err(e) => {
+                eprintln!("find_user_by_google_id error: {}", e);
+                return Redirect::to(&format!("{}?error=server_error", DASHBOARD_PATH));
+            }
+        }
+
+        if let Err(e) = auth::link_google_account(&pool, linking_user_id, &google_user.sub).await {
+            eprintln!("link_google_account error: {}", e);
+            return Redirect::to(&format!("{}?error=server_error", DASHBOARD_PATH));
+        }
+
+        return Redirect::to(&format!("{}?google_connected=1", DASHBOARD_PATH));
+    }
+
     let user = match auth::find_or_create_user_by_google(
         &pool,
         &google_user.sub,
@@ -152,10 +248,6 @@ pub async fn google_callback(
     };
 
     let _ = auth::touch_last_login(&pool, user.id).await;
-    // This login genuinely did use Google - unlike the email path above,
-    // this one is accurate by definition, but we still record it
-    // explicitly rather than relying only on google_id existing, since
-    // that field describes the account, not this specific session.
     let _ = auth::set_login_method(&pool, user.id, "google").await;
 
     let session_token = match auth::create_session(&pool, user.id).await {
