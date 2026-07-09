@@ -176,24 +176,30 @@ pub async fn google_callback(
     jar: CookieJar,
     Query(query): Query<GoogleCallbackQuery>,
 ) -> impl IntoResponse {
+    // Every return path in this function ends with .into_response() so
+    // they all share one concrete type (Response<Body>) - `impl
+    // IntoResponse` in a return position still requires every branch to
+    // return the SAME underlying type, it isn't a trait object that can
+    // hold different concrete types across branches.
     if query.error.is_some() {
-        return Redirect::to(&format!("{}?error=google_denied", DASHBOARD_PATH));
+        return Redirect::to(&format!("{}?error=google_denied", DASHBOARD_PATH)).into_response();
     }
 
     let Some(code) = query.code else {
-        return Redirect::to(&format!("{}?error=missing_code", DASHBOARD_PATH));
+        return Redirect::to(&format!("{}?error=missing_code", DASHBOARD_PATH)).into_response();
     };
 
     let expected_state = jar.get(OAUTH_STATE_COOKIE).map(|c| c.value().to_string());
     if expected_state.is_none() || expected_state != query.state {
-        return Redirect::to(&format!("{}?error=state_mismatch", DASHBOARD_PATH));
+        return Redirect::to(&format!("{}?error=state_mismatch", DASHBOARD_PATH)).into_response();
     }
 
     let google_user = match google_oauth::exchange_code_for_user(&code).await {
         Ok(u) => u,
         Err(e) => {
             eprintln!("exchange_code_for_user error: {}", e);
-            return Redirect::to(&format!("{}?error=google_exchange_failed", DASHBOARD_PATH));
+            return Redirect::to(&format!("{}?error=google_exchange_failed", DASHBOARD_PATH))
+                .into_response();
         }
     };
 
@@ -202,11 +208,31 @@ pub async fn google_callback(
     // above) - handled entirely separately from fresh sign-in below,
     // since it must attach Google to THIS SPECIFIC account rather than
     // whichever account happens to match the Google email.
-    if let Some(link_cookie) = jar.get(OAUTH_LINK_USER_COOKIE) {
+    //
+    // The cookie is removed the INSTANT it's read, before any further
+    // logic runs, on every single exit path below - regardless of
+    // success or failure. Without this, the cookie would linger in the
+    // browser for its full lifetime and incorrectly hijack a completely
+    // separate, later login attempt as if it were another "connect"
+    // request - which never issues a session token, since it assumes
+    // you're already logged in. That's exactly what caused a normal
+    // Google sign-in to loop back to the login screen instead of
+    // reaching the dashboard.
+    if let Some(link_cookie) = jar.get(OAUTH_LINK_USER_COOKIE).cloned() {
+        let mut removed_state = Cookie::from(OAUTH_STATE_COOKIE);
+        removed_state.set_path("/");
+        let mut removed_link = Cookie::from(OAUTH_LINK_USER_COOKIE);
+        removed_link.set_path("/");
+        let jar = jar.remove(removed_state).remove(removed_link);
+
         let linking_user_id = match Uuid::parse_str(link_cookie.value()) {
             Ok(id) => id,
             Err(_) => {
-                return Redirect::to(&format!("{}?error=server_error", DASHBOARD_PATH));
+                return (
+                    jar,
+                    Redirect::to(&format!("{}?error=server_error", DASHBOARD_PATH)),
+                )
+                    .into_response();
             }
         };
 
@@ -219,16 +245,28 @@ pub async fn google_callback(
         let linking_user = match auth::find_user_by_id(&pool, linking_user_id).await {
             Ok(Some(u)) => u,
             Ok(None) => {
-                return Redirect::to(&format!("{}?error=server_error", DASHBOARD_PATH));
+                return (
+                    jar,
+                    Redirect::to(&format!("{}?error=server_error", DASHBOARD_PATH)),
+                )
+                    .into_response();
             }
             Err(e) => {
                 eprintln!("find_user_by_id error: {}", e);
-                return Redirect::to(&format!("{}?error=server_error", DASHBOARD_PATH));
+                return (
+                    jar,
+                    Redirect::to(&format!("{}?error=server_error", DASHBOARD_PATH)),
+                )
+                    .into_response();
             }
         };
 
         if linking_user.email.trim().to_lowercase() != google_user.email.trim().to_lowercase() {
-            return Redirect::to(&format!("{}?error=google_email_mismatch", DASHBOARD_PATH));
+            return (
+                jar,
+                Redirect::to(&format!("{}?error=google_email_mismatch", DASHBOARD_PATH)),
+            )
+                .into_response();
         }
 
         // Refuse to link a Google account already tied to a DIFFERENT
@@ -236,21 +274,37 @@ pub async fn google_callback(
         // to one Safely account at a time.
         match auth::find_user_by_google_id(&pool, &google_user.sub).await {
             Ok(Some(existing)) if existing.id != linking_user_id => {
-                return Redirect::to(&format!("{}?error=google_already_linked", DASHBOARD_PATH));
+                return (
+                    jar,
+                    Redirect::to(&format!("{}?error=google_already_linked", DASHBOARD_PATH)),
+                )
+                    .into_response();
             }
             Ok(_) => {}
             Err(e) => {
                 eprintln!("find_user_by_google_id error: {}", e);
-                return Redirect::to(&format!("{}?error=server_error", DASHBOARD_PATH));
+                return (
+                    jar,
+                    Redirect::to(&format!("{}?error=server_error", DASHBOARD_PATH)),
+                )
+                    .into_response();
             }
         }
 
         if let Err(e) = auth::link_google_account(&pool, linking_user_id, &google_user.sub).await {
             eprintln!("link_google_account error: {}", e);
-            return Redirect::to(&format!("{}?error=server_error", DASHBOARD_PATH));
+            return (
+                jar,
+                Redirect::to(&format!("{}?error=server_error", DASHBOARD_PATH)),
+            )
+                .into_response();
         }
 
-        return Redirect::to(&format!("{}?google_connected=1", DASHBOARD_PATH));
+        return (
+            jar,
+            Redirect::to(&format!("{}?google_connected=1", DASHBOARD_PATH)),
+        )
+            .into_response();
     }
 
     let user = match auth::find_or_create_user_by_google(
@@ -264,7 +318,7 @@ pub async fn google_callback(
         Ok(u) => u,
         Err(e) => {
             eprintln!("find_or_create_user_by_google error: {}", e);
-            return Redirect::to(&format!("{}?error=server_error", DASHBOARD_PATH));
+            return Redirect::to(&format!("{}?error=server_error", DASHBOARD_PATH)).into_response();
         }
     };
 
@@ -275,9 +329,9 @@ pub async fn google_callback(
         Ok(t) => t,
         Err(e) => {
             eprintln!("create_session error: {}", e);
-            return Redirect::to(&format!("{}?error=server_error", DASHBOARD_PATH));
+            return Redirect::to(&format!("{}?error=server_error", DASHBOARD_PATH)).into_response();
         }
     };
 
-    Redirect::to(&format!("{}#session={}", DASHBOARD_PATH, session_token))
+    Redirect::to(&format!("{}#session={}", DASHBOARD_PATH, session_token)).into_response()
 }
