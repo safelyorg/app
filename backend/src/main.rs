@@ -46,6 +46,13 @@ async fn main() {
             ServeDir::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../site"))
                 .append_index_html_on_directories(true),
         )
+        // Forces every response - including the dashboard's HTML/JS/CSS -
+        // to be revalidated with the server on every load rather than
+        // silently reused from the browser's own cache. This is what was
+        // letting a stale copy of index.html get served right after the
+        // sign-in redirect, even after the real file on disk was already
+        // fixed - the browser just never asked the server for a fresh
+        // copy at that exact moment.
         .layer(SetResponseHeaderLayer::overriding(
             header::CACHE_CONTROL,
             HeaderValue::from_static("no-cache, no-store, must-revalidate"),

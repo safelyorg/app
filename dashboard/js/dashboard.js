@@ -154,6 +154,7 @@ async function loadDashboardData() {
     if (meRes.ok) {
       var meData = await meRes.json();
       updateSidebarUserName(meData.name);
+      updateAvatar(meData.has_avatar);
     }
   } catch (e) {
     console.error("Safely: failed to load account name", e);
@@ -167,6 +168,130 @@ async function loadDashboardData() {
 function updateSidebarUserName(name) {
   var el = document.getElementById("sidebar-user-name");
   if (el) el.textContent = name || "User";
+}
+
+// Toggles between the placeholder icon and the real photo in both
+// places at once - the sidebar's small circle and the larger one in
+// Settings - so a person can never see stale/mismatched versions of
+// their own picture between the two.
+//
+// The avatar now lives in the database, served through an authenticated
+// endpoint (GET /api/v1/me/avatar) - not a plain static file URL. A
+// plain <img src="..."> can't attach the Bearer token itself, so this
+// fetches the actual image bytes with the auth header first, then hands
+// the browser the result as an object URL. hasAvatar is just the boolean
+// flag from /api/v1/me telling us whether to bother fetching at all.
+var currentAvatarObjectUrl = null;
+
+async function updateAvatar(hasAvatar) {
+  var targets = [
+    { img: "sidebar-avatar-img", placeholder: "sidebar-avatar-placeholder" },
+    {
+      img: "settings-avatar-img",
+      placeholder: "settings-avatar-placeholder",
+    },
+  ];
+
+  if (!hasAvatar) {
+    targets.forEach(function (t) {
+      var img = document.getElementById(t.img);
+      var placeholder = document.getElementById(t.placeholder);
+      if (img) img.classList.add("hidden");
+      if (placeholder) placeholder.classList.remove("hidden");
+    });
+    return;
+  }
+
+  try {
+    var res = await fetch(API_BASE + "/me/avatar", {
+      headers: window.safelyAuth.authHeader(),
+    });
+    if (res.status === 401) {
+      window.safelyAuth.logout();
+      return;
+    }
+    if (!res.ok) throw new Error("Failed to load avatar");
+
+    var blob = await res.blob();
+
+    // Release the previous object URL before creating a new one - these
+    // aren't automatically garbage collected, and without this a person
+    // changing their photo repeatedly would slowly leak memory.
+    if (currentAvatarObjectUrl) URL.revokeObjectURL(currentAvatarObjectUrl);
+    currentAvatarObjectUrl = URL.createObjectURL(blob);
+
+    targets.forEach(function (t) {
+      var img = document.getElementById(t.img);
+      var placeholder = document.getElementById(t.placeholder);
+      if (img) {
+        img.src = currentAvatarObjectUrl;
+        img.classList.remove("hidden");
+      }
+      if (placeholder) placeholder.classList.add("hidden");
+    });
+  } catch (e) {
+    console.error("Safely: failed to load avatar image", e);
+  }
+}
+
+async function uploadAvatar(file) {
+  var errorEl = document.getElementById("settings-avatar-error");
+  var label = document.getElementById("settings-avatar-label");
+  if (errorEl) errorEl.classList.add("hidden");
+
+  var validTypes = ["image/png", "image/jpeg", "image/webp"];
+  if (!validTypes.includes(file.type)) {
+    if (errorEl) {
+      errorEl.textContent = "Please choose a PNG, JPEG, or WEBP image.";
+      errorEl.classList.remove("hidden");
+    }
+    return;
+  }
+  if (file.size > 2 * 1024 * 1024) {
+    if (errorEl) {
+      errorEl.textContent = "Image must be 2MB or smaller.";
+      errorEl.classList.remove("hidden");
+    }
+    return;
+  }
+
+  var originalText = label ? label.textContent : "";
+  if (label) label.textContent = "Uploading...";
+
+  try {
+    var formData = new FormData();
+    formData.append("avatar", file);
+
+    // Deliberately no "Content-Type" header here - the browser sets the
+    // multipart boundary itself when given a FormData body, and manually
+    // setting Content-Type would break that boundary and corrupt the
+    // upload.
+    var res = await fetch(API_BASE + "/me/avatar", {
+      method: "POST",
+      headers: window.safelyAuth.authHeader(),
+      body: formData,
+    });
+
+    if (res.status === 401) {
+      window.safelyAuth.logout();
+      return;
+    }
+    if (!res.ok) {
+      var errBody = await res.text();
+      throw new Error(errBody || "Upload failed");
+    }
+
+    await res.json();
+    updateAvatar(true);
+  } catch (e) {
+    console.error("Safely: avatar upload failed", e);
+    if (errorEl) {
+      errorEl.textContent = "Could not upload photo. Please try again.";
+      errorEl.classList.remove("hidden");
+    }
+  } finally {
+    if (label) label.textContent = originalText;
+  }
 }
 
 function renderStats() {
@@ -312,6 +437,7 @@ async function loadSettingsData() {
     document.getElementById("settings-email").textContent = data.email || "Unknown";
     document.getElementById("settings-name").textContent = data.name || "User";
     updateSidebarUserName(data.name);
+    updateAvatar(data.has_avatar);
     document.getElementById("settings-signin-method").textContent =
       data.signed_in_with === "google" ? "Google" : "Email magic link";
     document.getElementById("settings-created").textContent = formatDate(data.created_at);
@@ -773,6 +899,14 @@ document.addEventListener("DOMContentLoaded", function () {
     nameInput.addEventListener("keydown", function (e) {
       if (e.key === "Enter") saveNameEdit();
       if (e.key === "Escape") toggleNameEdit(false);
+    });
+  }
+
+  var avatarInput = document.getElementById("settings-avatar-input");
+  if (avatarInput) {
+    avatarInput.addEventListener("change", function (e) {
+      var file = e.target.files && e.target.files[0];
+      if (file) uploadAvatar(file);
     });
   }
 

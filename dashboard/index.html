@@ -372,10 +372,14 @@
                     <summary
                         class="list-none flex items-center gap-2.5 px-2 py-2 rounded-lg text-muted hover:bg-surface2 cursor-pointer"
                     >
-                        <span
-                            class="w-7 h-7 rounded-full bg-surface2 border border-line flex items-center justify-center flex-shrink-0"
-                        >
+                        <span class="relative w-7 h-7 rounded-full bg-surface2 border border-line flex items-center justify-center flex-shrink-0 overflow-hidden">
+                            <img
+                                id="sidebar-avatar-img"
+                                src=""
+                                class="hidden w-full h-full object-cover"
+                            />
                             <svg
+                                id="sidebar-avatar-placeholder"
                                 width="13"
                                 height="13"
                                 viewBox="0 0 24 24"
@@ -602,6 +606,52 @@
                         <div
                             class="bg-surface border border-line rounded-2xl p-4 mb-5 divide-y divide-line"
                         >
+                        <div class="flex items-center gap-4 py-3.5 border-b border-line">
+                            <div class="relative flex-shrink-0">
+                                    <img
+                                        id="settings-avatar-img"
+                                        src=""
+                                        class="hidden w-14 h-14 rounded-full object-cover border border-line"
+                                    />
+                                    <div
+                                        id="settings-avatar-placeholder"
+                                        class="w-14 h-14 rounded-full bg-surface2 border border-line flex items-center justify-center"
+                                    >
+                                        <svg
+                                            width="22"
+                                            height="22"
+                                            viewBox="0 0 24 24"
+                                            fill="none"
+                                            stroke="currentColor"
+                                            stroke-width="2"
+                                            stroke-linecap="round"
+                                            stroke-linejoin="round"
+                                            class="text-muted"
+                                        >
+                                            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                                            <circle cx="12" cy="7" r="4" />
+                                        </svg>
+                                    </div>
+                                </div>
+                                <div>
+                                    <label
+                                        for="settings-avatar-input"
+                                        id="settings-avatar-label"
+                                        class="inline-flex px-3 py-1.5 rounded-lg bg-surface2 border border-line text-[12px] font-bold cursor-pointer hover:bg-surface3"
+                                        >Change photo</label
+                                    >
+                                    <input
+                                        type="file"
+                                        id="settings-avatar-input"
+                                        accept="image/png,image/jpeg,image/webp"
+                                        class="hidden"
+                                    />
+                                    <div
+                                        id="settings-avatar-error"
+                                        class="hidden text-coral text-[11px] mt-1.5"
+                                    ></div>
+                                </div>
+                            </div>
                             <div
                                 class="flex justify-between py-2.5 text-[13px]"
                             >
