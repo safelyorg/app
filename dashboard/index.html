@@ -903,6 +903,39 @@
                                     Delete Account
                                 </button>
                             </div>
+
+                            <div id="delete-account-confirm" class="hidden mt-4 pt-4 border-t border-coral/20">
+                                <p class="text-[12px] text-muted mb-2">
+                                    Type
+                                    <strong id="delete-confirm-email" class="text-ink"></strong>
+                                    to confirm. This will permanently delete your account.
+                                </p>
+                                <input
+                                    type="text"
+                                    id="delete-confirm-input"
+                                    autocomplete="off"
+                                    placeholder="Type your email to confirm"
+                                    class="w-full px-3 py-2 bg-surface2 border border-line rounded-lg text-[13px] outline-none focus:border-coral mb-3"
+                                />
+                                <div id="delete-confirm-error" class="hidden text-coral text-[11px] mb-3"></div>
+                                <div class="flex items-center gap-2">
+                                    <button
+                                        id="delete-confirm-btn"
+                                        type="button"
+                                        disabled
+                                        class="px-3.5 py-2 rounded-lg bg-coral text-white text-[12px] font-bold hover:bg-coral/90 transition disabled:opacity-40 disabled:cursor-not-allowed"
+                                    >
+                                        Permanently delete my account
+                                    </button>
+                                    <button
+                                        id="delete-cancel-btn"
+                                        type="button"
+                                        class="px-3.5 py-2 rounded-lg bg-surface2 border border-line text-muted text-[12px] font-semibold hover:bg-surface3 hover:text-ink transition"
+                                    >
+                                        Cancel
+                                    </button>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>

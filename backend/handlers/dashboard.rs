@@ -169,6 +169,24 @@ pub async fn get_me(
 /// on this account (even a Google-only signup has an email captured from
 /// the Google profile), so disconnecting Google never locks anyone out -
 /// they can always fall back to a magic link on that same email.
+/// DELETE /api/v1/me
+/// Permanently deletes the account. See delete_user_account in
+/// services/auth.rs for exactly what happens to each piece of data.
+pub async fn delete_account(
+    State(pool): State<Pool<Postgres>>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    let user_id = extract_user_id(&headers, &pool)
+        .await
+        .ok_or((StatusCode::UNAUTHORIZED, "Sign in required".to_string()))?;
+
+    crate::services::auth::delete_user_account(&pool, user_id)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    Ok(Json(serde_json::json!({ "success": true })))
+}
+
 pub async fn disconnect_google(
     State(pool): State<Pool<Postgres>>,
     headers: HeaderMap,

@@ -999,6 +999,7 @@ function checkGoogleConnectResult() {
 document.addEventListener("DOMContentLoaded", function () {
   checkGoogleConnectResult();
 
+
   if (window.safelyAuth && window.safelyAuth.getToken()) {
     loadDashboardData();
   }
@@ -1099,10 +1100,80 @@ document.addEventListener("DOMContentLoaded", function () {
   // Danger Zone / Connect Google are visual-only for now, per request -
   // clicking either just says so rather than doing nothing silently or
   // pretending to succeed.
+  // Delete account - requires typing the account's own email exactly
+  // before the button even becomes clickable, deliberately more friction
+  // than a plain confirm() popup, since this is genuinely irreversible
+  // (unlike disconnecting Google, which just needs one click to undo).
   var deleteBtn = document.getElementById("delete-account-btn");
-  if (deleteBtn) {
+  var deleteConfirmBox = document.getElementById("delete-account-confirm");
+  var deleteConfirmEmailEl = document.getElementById("delete-confirm-email");
+  var deleteConfirmInput = document.getElementById("delete-confirm-input");
+  var deleteConfirmBtn = document.getElementById("delete-confirm-btn");
+  var deleteCancelBtn = document.getElementById("delete-cancel-btn");
+  var deleteConfirmError = document.getElementById("delete-confirm-error");
+
+  if (deleteBtn && deleteConfirmBox) {
     deleteBtn.addEventListener("click", function () {
-      alert("Account deletion isn'\''t wired up yet - this is a design preview.");
+      var accountEmail = document.getElementById("settings-email")
+        ? document.getElementById("settings-email").textContent
+        : "";
+      if (deleteConfirmEmailEl) deleteConfirmEmailEl.textContent = accountEmail;
+      if (deleteConfirmInput) deleteConfirmInput.value = "";
+      if (deleteConfirmBtn) deleteConfirmBtn.disabled = true;
+      if (deleteConfirmError) deleteConfirmError.classList.add("hidden");
+      deleteConfirmBox.classList.remove("hidden");
+      if (deleteConfirmInput) deleteConfirmInput.focus();
+    });
+  }
+
+  if (deleteCancelBtn && deleteConfirmBox) {
+    deleteCancelBtn.addEventListener("click", function () {
+      deleteConfirmBox.classList.add("hidden");
+    });
+  }
+
+  if (deleteConfirmInput && deleteConfirmBtn) {
+    deleteConfirmInput.addEventListener("input", function () {
+      var accountEmail = document.getElementById("settings-email")
+        ? document.getElementById("settings-email").textContent.trim().toLowerCase()
+        : "";
+      var typed = deleteConfirmInput.value.trim().toLowerCase();
+      deleteConfirmBtn.disabled = !(typed && typed === accountEmail);
+    });
+  }
+
+  if (deleteConfirmBtn) {
+    deleteConfirmBtn.addEventListener("click", async function () {
+      deleteConfirmBtn.disabled = true;
+      var originalText = deleteConfirmBtn.textContent;
+      deleteConfirmBtn.textContent = "Deleting...";
+
+      try {
+        var res = await fetch(API_BASE + "/me", {
+          method: "DELETE",
+          headers: window.safelyAuth.authHeader(),
+        });
+
+        if (res.status === 401) {
+          window.safelyAuth.logout();
+          return;
+        }
+        if (!res.ok) throw new Error("Failed to delete account");
+
+        // The account is gone - clear the local token directly (there's
+        // no session left on the server to also delete, unlike a normal
+        // logout) and send them to the homepage.
+        window.safelyAuth.clearToken();
+        window.location.href = "/";
+      } catch (e) {
+        if (deleteConfirmError) {
+          deleteConfirmError.textContent =
+            "Could not delete your account. Please try again.";
+          deleteConfirmError.classList.remove("hidden");
+        }
+        deleteConfirmBtn.disabled = false;
+        deleteConfirmBtn.textContent = originalText;
+      }
     });
   }
   var googleConnectBtn = document.getElementById("google-connect-btn");

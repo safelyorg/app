@@ -63,7 +63,6 @@ pub async fn find_or_create_user_by_google(
     }
 
     if let Some(existing) = find_user_by_email(pool, email).await? {
-        // link the google_id onto the existing email-based account
         return sqlx::query_as::<_, User>(
             "UPDATE users SET google_id = $1, name = COALESCE(name, $2) WHERE id = $3 RETURNING *",
         )
@@ -225,5 +224,56 @@ pub async fn unlink_google_account(pool: &Pool<Postgres>, user_id: Uuid) -> Resu
         .bind(user_id)
         .execute(pool)
         .await?;
+    Ok(())
+}
+
+/// Permanently deletes an account and everything that belongs solely to
+/// it - sessions, magic links, the account row itself. Data that
+/// represents shared community value (fraud reports, listing analyses -
+/// other users still benefit from knowing "this seller has N fraud
+/// reports" regardless of who filed them) is anonymized rather than
+/// deleted: user_id is set to NULL so the record survives, disconnected
+/// from this person's identity, instead of quietly weakening fraud
+/// protection for everyone else the moment one person closes their
+/// account. Everything happens in one transaction - either all of it
+/// succeeds, or none of it does, so an account can never end up
+/// half-deleted.
+pub async fn delete_user_account(pool: &Pool<Postgres>, user_id: Uuid) -> Result<(), Error> {
+    let mut tx = pool.begin().await?;
+
+    let email: String = sqlx::query_scalar("SELECT email FROM users WHERE id = $1")
+        .bind(user_id)
+        .fetch_one(&mut *tx)
+        .await?;
+
+    sqlx::query("UPDATE analysis SET user_id = NULL WHERE user_id = $1")
+        .bind(user_id)
+        .execute(&mut *tx)
+        .await?;
+
+    sqlx::query("UPDATE fraud_reports SET user_id = NULL WHERE user_id = $1")
+        .bind(user_id)
+        .execute(&mut *tx)
+        .await?;
+
+    sqlx::query("DELETE FROM sessions WHERE user_id = $1")
+        .bind(user_id)
+        .execute(&mut *tx)
+        .await?;
+
+    // magic_links has no user_id column at all (it only ever existed as
+    // an email + token pair before any account was necessarily created)
+    // so cleanup here matches by email instead.
+    sqlx::query("DELETE FROM magic_links WHERE email = $1")
+        .bind(&email)
+        .execute(&mut *tx)
+        .await?;
+
+    sqlx::query("DELETE FROM users WHERE id = $1")
+        .bind(user_id)
+        .execute(&mut *tx)
+        .await?;
+
+    tx.commit().await?;
     Ok(())
 }
