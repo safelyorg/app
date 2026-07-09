@@ -948,6 +948,36 @@ document.addEventListener("DOMContentLoaded", function () {
     });
   }
 
+  var termsBtn = document.getElementById("terms-privacy-btn");
+  var termsModal = document.getElementById("terms-privacy-modal");
+  var termsClose = document.getElementById("terms-privacy-close");
+  var termsBackdrop = document.getElementById("terms-privacy-backdrop");
+
+  function toggleTermsModal(show) {
+    if (!termsModal) return;
+    termsModal.classList.toggle("hidden", !show);
+    termsModal.classList.toggle("flex", show);
+  }
+
+  if (termsBtn) {
+    termsBtn.addEventListener("click", function () {
+      toggleTermsModal(true);
+    });
+  }
+  if (termsClose) {
+    termsClose.addEventListener("click", function () {
+      toggleTermsModal(false);
+    });
+  }
+  if (termsBackdrop) {
+    termsBackdrop.addEventListener("click", function () {
+      toggleTermsModal(false);
+    });
+  }
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape") toggleTermsModal(false);
+  });
+
   var avatarInput = document.getElementById("settings-avatar-input");
   if (avatarInput) {
     avatarInput.addEventListener("change", function (e) {
