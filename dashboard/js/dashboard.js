@@ -145,6 +145,28 @@ async function loadDashboardData() {
   } catch (e) {
     console.error("Safely: failed to load dashboard data", e);
   }
+
+  // The sidebar name needs to be correct from the moment the page loads,
+  // not only after the person happens to open Settings - so it's fetched
+  // here too, separately from loadSettingsData's fuller fetch.
+  try {
+    var meRes = await fetch(API_BASE + "/me", { headers: headers });
+    if (meRes.ok) {
+      var meData = await meRes.json();
+      updateSidebarUserName(meData.name);
+    }
+  } catch (e) {
+    console.error("Safely: failed to load account name", e);
+  }
+}
+
+// No name set (most commonly: signed in via magic link, never visited
+// Settings to set one) falls back to plain "User" - consistently, in
+// both the sidebar and the Settings page, rather than "Not set" in one
+// place and blank/hardcoded text in the other.
+function updateSidebarUserName(name) {
+  var el = document.getElementById("sidebar-user-name");
+  if (el) el.textContent = name || "User";
 }
 
 function renderStats() {
@@ -287,17 +309,15 @@ async function loadSettingsData() {
 
     var data = await res.json();
 
-    document.getElementById("settings-email").textContent =
-      data.email || "Unknown";
-    document.getElementById("settings-name").textContent =
-      data.name || "Not set";
+    document.getElementById("settings-email").textContent = data.email || "Unknown";
+    document.getElementById("settings-name").textContent = data.name || "User";
+    updateSidebarUserName(data.name);
     document.getElementById("settings-signin-method").textContent =
       data.signed_in_with === "google" ? "Google" : "Email magic link";
-    document.getElementById("settings-created").textContent = formatDate(
-      data.created_at,
-    );
-    document.getElementById("settings-last-login").textContent =
-      data.last_login_at ? formatDate(data.last_login_at) : "Unknown";
+    document.getElementById("settings-created").textContent = formatDate(data.created_at);
+    document.getElementById("settings-last-login").textContent = data.last_login_at
+      ? formatDate(data.last_login_at)
+      : "Unknown";
 
     loading.classList.add("hidden");
     body.classList.remove("hidden");
@@ -317,7 +337,7 @@ function toggleNameEdit(showEdit) {
 
   if (showEdit) {
     var currentName = document.getElementById("settings-name").textContent;
-    input.value = currentName === "Not set" ? "" : currentName;
+    input.value = currentName === "User" ? "" : currentName;
     displayEl.classList.add("hidden");
     editEl.classList.remove("hidden");
     errorEl.classList.add("hidden");
@@ -343,7 +363,7 @@ async function saveNameEdit() {
   }
 
   saveBtn.disabled = true;
-  saveBtn.innerHTML = "Saving...";
+  saveBtn.textContent = "Saving...";
 
   try {
     var res = await fetch(API_BASE + "/me", {
@@ -365,14 +385,14 @@ async function saveNameEdit() {
     }
 
     document.getElementById("settings-name").textContent = newName;
+    updateSidebarUserName(newName);
     toggleNameEdit(false);
   } catch (e) {
     errorEl.textContent = "Could not save. Please try again.";
     errorEl.classList.remove("hidden");
   } finally {
     saveBtn.disabled = false;
-    saveBtn.innerHTML =
-      '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5" /></svg> Save';
+    saveBtn.textContent = "Save";
   }
 }
 
@@ -520,8 +540,8 @@ function renderDetailBody(data) {
   var statusText =
     data.seller.verification === "verified"
       ? "Verified"
-      : data.seller.verification === "reported"
-        ? "Reported"
+      : data.seller.verification === "flagged"
+        ? "Flagged"
         : "Unknown";
   document.getElementById("detail-chip-status").textContent = statusText;
 
