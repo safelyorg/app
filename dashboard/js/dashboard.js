@@ -118,6 +118,28 @@ function escapeAttr(str) {
   return String(str).replace(/"/g, "&quot;");
 }
 
+// Identifies card brand from the leading digits only - standard, public
+// numbering rules (not anything secret about the card itself). Visa
+// always starts with 4; Mastercard's classic range starts with 51-55,
+// plus a newer 2221-2720 range introduced when the classic range ran
+// low. Anything else returns null, which just means no logo shows yet.
+function detectCardBrand(digits) {
+  if (/^4/.test(digits)) return "visa";
+  if (/^5[1-5]/.test(digits)) return "mastercard";
+  if (/^2(22[1-9]|2[3-9]\d|[3-6]\d{2}|7[01]\d|720)/.test(digits)) {
+    return "mastercard";
+  }
+  return null;
+}
+
+function updateCardBrandIcon(digits) {
+  var brand = detectCardBrand(digits);
+  var visaIcon = document.getElementById("card-brand-visa");
+  var mcIcon = document.getElementById("card-brand-mastercard");
+  if (visaIcon) visaIcon.classList.toggle("hidden", brand !== "visa");
+  if (mcIcon) mcIcon.classList.toggle("hidden", brand !== "mastercard");
+}
+
 // ============================================================
 // Real data loading.
 // ============================================================
@@ -1138,10 +1160,103 @@ document.addEventListener("DOMContentLoaded", function () {
       paymentForm.classList.add("hidden");
     });
   }
+  // Card number: groups into 4-digit blocks as you type, capped at 16
+  // digits (the standard Visa/Mastercard length), and shows the matching
+  // brand logo the moment enough digits identify it.
+  var cardNumberInput = document.getElementById("card-number-input");
+  if (cardNumberInput) {
+    cardNumberInput.addEventListener("input", function (e) {
+      var digits = e.target.value.replace(/\D/g, "").slice(0, 16);
+      var groups = digits.match(/.{1,4}/g) || [];
+      e.target.value = groups.join(" ");
+      updateCardBrandIcon(digits);
+    });
+  }
+
+  // Expiry: typing digits alone builds "MM/YY" - a single first digit of
+  // 2-9 is auto-padded to "0X" immediately (since no valid month starts
+  // with 2-9 as its only digit), the slash is inserted automatically
+  // right after the month is complete, and the month is clamped to a
+  // maximum of 12.
+  var cardExpiryInput = document.getElementById("card-expiry-input");
+  if (cardExpiryInput) {
+    cardExpiryInput.addEventListener("input", function (e) {
+      var raw = e.target.value.replace(/\D/g, "").slice(0, 4);
+
+      if (raw.length === 0) {
+        e.target.value = "";
+        return;
+      }
+
+      if (raw.length === 1) {
+        if (parseInt(raw, 10) >= 2) {
+          e.target.value = "0" + raw + "/";
+        } else {
+          e.target.value = raw;
+        }
+        return;
+      }
+
+      var month = parseInt(raw.slice(0, 2), 10);
+      if (month === 0) month = 1;
+      if (month > 12) month = 12;
+      var monthStr = month < 10 ? "0" + month : String(month);
+
+      if (raw.length === 2) {
+        e.target.value = monthStr + "/";
+      } else {
+        e.target.value = monthStr + "/" + raw.slice(2, 4);
+      }
+    });
+  }
+
+  // CVC: digits only, capped at 3.
+  var cardCvcInput = document.getElementById("card-cvc-input");
+  if (cardCvcInput) {
+    cardCvcInput.addEventListener("input", function (e) {
+      e.target.value = e.target.value.replace(/\D/g, "").slice(0, 3);
+    });
+  }
+
   var paymentSaveBtn = document.getElementById("payment-save-btn");
   if (paymentSaveBtn) {
     paymentSaveBtn.addEventListener("click", function () {
-      alert("Payment processing isn'\''t wired up yet - this is a design preview.");
+      var digits = cardNumberInput
+        ? cardNumberInput.value.replace(/\D/g, "")
+        : "";
+      var brand = detectCardBrand(digits);
+      var last4 = digits.slice(-4);
+
+      var iconEl = document.getElementById("payment-method-icon");
+      var labelEl = document.getElementById("payment-method-label");
+
+      if (last4.length === 4 && iconEl && labelEl) {
+        if (brand === "visa") {
+          iconEl.className =
+            "w-9 h-6 rounded bg-[#1a1f71] flex items-center justify-center text-white text-[8px] font-black flex-shrink-0";
+          iconEl.textContent = "VISA";
+          labelEl.textContent = "Visa ending in " + last4;
+        } else if (brand === "mastercard") {
+          iconEl.className =
+            "w-9 h-6 rounded bg-surface2 border border-line flex items-center justify-center flex-shrink-0";
+          iconEl.innerHTML =
+            '<svg width="20" height="12" viewBox="0 0 26 16"><circle cx="9" cy="8" r="7" fill="#EB001B"/><circle cx="17" cy="8" r="7" fill="#F79E1B" fill-opacity="0.9"/></svg>';
+          labelEl.textContent = "Mastercard ending in " + last4;
+        } else {
+          iconEl.className =
+            "w-9 h-6 rounded bg-surface2 border border-line flex items-center justify-center text-[9px] font-bold text-muted flex-shrink-0";
+          iconEl.textContent = "CARD";
+          labelEl.textContent = "Card ending in " + last4;
+        }
+        labelEl.classList.remove("text-muted");
+      }
+
+      if (paymentForm) paymentForm.classList.add("hidden");
+
+      alert(
+        "Payment processing isn'\''t wired up yet - this is a design preview. " +
+          "The card details above are shown for preview only and were not actually saved anywhere.",
+      );
     });
   }
 

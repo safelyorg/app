@@ -758,8 +758,8 @@
                         <div class="bg-surface border border-line rounded-2xl p-4 mt-3">
                             <div id="payment-method-display" class="flex items-center justify-between">
                                 <div class="flex items-center gap-3">
-                                    <span class="w-9 h-6 rounded bg-surface2 border border-line flex items-center justify-center text-[9px] font-bold text-muted flex-shrink-0">CARD</span>
-                                    <span class="text-[13px] text-muted">No payment method on file</span>
+                                    <span id="payment-method-icon" class="w-9 h-6 rounded bg-surface2 border border-line flex items-center justify-center text-[9px] font-bold text-muted flex-shrink-0">CARD</span>
+                                    <span id="payment-method-label" class="text-[13px] text-muted">No payment method on file</span>
                                 </div>
                                 <button
                                     id="add-payment-btn"
@@ -773,21 +773,60 @@
                             <div id="payment-form" class="hidden mt-4 pt-4 border-t border-line">
                                 <div class="mb-3">
                                     <label class="text-[11px] font-semibold text-muted mb-1 block">Card number</label>
-                                    <input type="text" inputmode="numeric" placeholder="1234 5678 9012 3456" class="w-full px-3 py-2 bg-surface2 border border-line rounded-lg text-[13px] outline-none focus:border-brand" />
+                                    <div class="relative">
+                                        <input
+                                            type="text"
+                                            id="card-number-input"
+                                            inputmode="numeric"
+                                            autocomplete="cc-number"
+                                            placeholder="1234 5678 9012 3456"
+                                            maxlength="19"
+                                            class="w-full px-3 py-2 pr-14 bg-surface2 border border-line rounded-lg text-[13px] outline-none focus:border-brand"
+                                        />
+                                        <span
+                                            id="card-brand-visa"
+                                            class="hidden absolute right-2.5 top-1/2 -translate-y-1/2 px-1.5 py-0.5 rounded bg-[#1a1f71] text-white text-[9px] font-black tracking-wide"
+                                        >VISA</span>
+                                        <span
+                                            id="card-brand-mastercard"
+                                            class="hidden absolute right-2.5 top-1/2 -translate-y-1/2"
+                                        >
+                                            <svg width="26" height="16" viewBox="0 0 26 16" aria-hidden="true">
+                                                <circle cx="9" cy="8" r="7" fill="#EB001B" />
+                                                <circle cx="17" cy="8" r="7" fill="#F79E1B" fill-opacity="0.9" />
+                                            </svg>
+                                        </span>
+                                    </div>
                                 </div>
                                 <div class="grid grid-cols-2 gap-3 mb-3">
                                     <div>
                                         <label class="text-[11px] font-semibold text-muted mb-1 block">Expiry</label>
-                                        <input type="text" placeholder="MM/YY" class="w-full px-3 py-2 bg-surface2 border border-line rounded-lg text-[13px] outline-none focus:border-brand" />
+                                        <input
+                                            type="text"
+                                            id="card-expiry-input"
+                                            inputmode="numeric"
+                                            autocomplete="cc-exp"
+                                            placeholder="MM/YY"
+                                            maxlength="5"
+                                            class="w-full px-3 py-2 bg-surface2 border border-line rounded-lg text-[13px] outline-none focus:border-brand"
+                                        />
                                     </div>
                                     <div>
                                         <label class="text-[11px] font-semibold text-muted mb-1 block">CVC</label>
-                                        <input type="text" inputmode="numeric" placeholder="123" class="w-full px-3 py-2 bg-surface2 border border-line rounded-lg text-[13px] outline-none focus:border-brand" />
+                                        <input
+                                            type="text"
+                                            id="card-cvc-input"
+                                            inputmode="numeric"
+                                            autocomplete="cc-csc"
+                                            placeholder="123"
+                                            maxlength="3"
+                                            class="w-full px-3 py-2 bg-surface2 border border-line rounded-lg text-[13px] outline-none focus:border-brand"
+                                        />
                                     </div>
                                 </div>
                                 <div class="mb-3">
                                     <label class="text-[11px] font-semibold text-muted mb-1 block">Name on card</label>
-                                    <input type="text" placeholder="Full name" class="w-full px-3 py-2 bg-surface2 border border-line rounded-lg text-[13px] outline-none focus:border-brand" />
+                                    <input type="text" id="card-name-input" autocomplete="cc-name" placeholder="Full name" class="w-full px-3 py-2 bg-surface2 border border-line rounded-lg text-[13px] outline-none focus:border-brand" />
                                 </div>
                                 <div class="flex items-center gap-2">
                                     <button
