@@ -598,201 +598,179 @@
                     </div>
 
                     <div id="settings-body" class="hidden">
-                        <div
-                            class="text-[10px] font-extrabold uppercase tracking-wider text-muted mb-2"
-                        >
-                            Account
+                        <div class="flex items-center justify-between mb-2">
+                            <div class="text-[10px] font-extrabold uppercase tracking-wider text-muted">Account</div>
+                            <button
+                                id="profile-edit-btn"
+                                type="button"
+                                class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-surface2 border border-line text-brand text-[12px] font-bold hover:bg-surface3 hover:border-brand/40 transition"
+                            >
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M17 3a2.85 2.83 0 114 4L7.5 20.5 2 22l1.5-5.5L17 3z" />
+                                </svg>
+                                Edit profile
+                            </button>
+                            <div id="profile-edit-actions" class="hidden items-center gap-2">
+                                <button
+                                    id="profile-cancel-btn"
+                                    type="button"
+                                    class="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-surface2 border border-line text-muted text-[12px] font-semibold hover:bg-surface3 hover:text-ink transition"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    id="profile-save-btn"
+                                    type="button"
+                                    class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-ink text-bg text-[12px] font-bold hover:bg-white transition"
+                                >
+                                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                                        <path d="M20 6L9 17l-5-5" />
+                                    </svg>
+                                    Save changes
+                                </button>
+                            </div>
                         </div>
-                        <div
-                            class="bg-surface border border-line rounded-2xl p-4 mb-5 divide-y divide-line"
-                        >
-                        <div class="flex items-center gap-4 py-3.5 border-b border-line">
-                            <div class="relative flex-shrink-0">
+
+                        <div class="bg-surface border border-line rounded-2xl p-5">
+                            <div class="flex items-center gap-4 pb-5 border-b border-line">
+                                <div class="relative flex-shrink-0">
                                     <img
                                         id="settings-avatar-img"
                                         src=""
-                                        class="hidden w-14 h-14 rounded-full object-cover border border-line"
+                                        class="hidden w-16 h-16 rounded-full object-cover border border-line"
                                     />
                                     <div
                                         id="settings-avatar-placeholder"
-                                        class="w-14 h-14 rounded-full bg-surface2 border border-line flex items-center justify-center"
+                                        class="w-16 h-16 rounded-full bg-surface2 border border-line flex items-center justify-center"
                                     >
-                                        <svg
-                                            width="22"
-                                            height="22"
-                                            viewBox="0 0 24 24"
-                                            fill="none"
-                                            stroke="currentColor"
-                                            stroke-width="2"
-                                            stroke-linecap="round"
-                                            stroke-linejoin="round"
-                                            class="text-muted"
-                                        >
+                                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-muted">
                                             <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
                                             <circle cx="12" cy="7" r="4" />
                                         </svg>
                                     </div>
-                                </div>
-                                <div>
                                     <label
+                                        id="avatar-edit-overlay"
                                         for="settings-avatar-input"
-                                        id="settings-avatar-label"
-                                        class="inline-flex px-3 py-1.5 rounded-lg bg-surface2 border border-line text-[12px] font-bold cursor-pointer hover:bg-surface3"
-                                        >Change photo</label
+                                        class="hidden absolute inset-0 rounded-full bg-black/55 items-center justify-center cursor-pointer"
+                                        title="Change photo"
                                     >
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                            <path d="M4 8a2 2 0 0 1 2-2h1.2a2 2 0 0 0 1.66-.89l.28-.42A2 2 0 0 1 10.8 4h2.4a2 2 0 0 1 1.66.89l.28.42A2 2 0 0 0 16.8 6H18a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8z" />
+                                            <circle cx="12" cy="13" r="3.2" />
+                                        </svg>
+                                    </label>
                                     <input
                                         type="file"
                                         id="settings-avatar-input"
                                         accept="image/png,image/jpeg,image/webp"
                                         class="hidden"
                                     />
-                                    <div
-                                        id="settings-avatar-error"
-                                        class="hidden text-coral text-[11px] mt-1.5"
-                                    ></div>
+                                </div>
+                                <div class="flex-1 min-w-0">
+                                    <div id="settings-name" class="text-[16px] font-bold truncate"></div>
+                                    <input
+                                        id="settings-name-input"
+                                        type="text"
+                                        maxlength="100"
+                                        class="hidden w-full mt-0.5 px-3 py-2 bg-surface2 border border-line rounded-lg text-[15px] font-bold outline-none focus:border-brand"
+                                        placeholder="Your name"
+                                    />
+                                    <div id="settings-avatar-error" class="hidden text-coral text-[11px] mt-1.5"></div>
+                                    <div id="settings-name-error" class="hidden text-coral text-[11px] mt-1.5"></div>
                                 </div>
                             </div>
-                            <div
-                                class="flex justify-between py-2.5 text-[13px]"
-                            >
-                                <span class="text-muted">Email</span>
-                                <span
-                                    id="settings-email"
-                                    class="font-semibold"
-                                ></span>
-                            </div>
-                            <!-- NEW -->
-                            <div
-                                class="flex justify-between items-start py-2.5 text-[13px]"
-                            >
-                                <span class="text-muted flex-shrink-0"
-                                    >Name</span
-                                >
-                                <div
-                                    id="settings-name-display"
-                                    class="flex items-center gap-2.5"
-                                >
-                                    <span
-                                        id="settings-name"
-                                        class="font-semibold"
-                                    ></span>
-                                    <button
-                                        id="settings-name-edit-btn"
-                                        type="button"
-                                        class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-surface2 border border-line text-brand text-[11px] font-bold hover:bg-surface3 hover:border-brand/40 transition"
-                                    >
-                                        <svg
-                                            width="11"
-                                            height="11"
-                                            viewBox="0 0 24 24"
-                                            fill="none"
-                                            stroke="currentColor"
-                                            stroke-width="2.4"
-                                            stroke-linecap="round"
-                                            stroke-linejoin="round"
-                                        >
-                                            <path
-                                                d="M17 3a2.85 2.83 0 114 4L7.5 20.5 2 22l1.5-5.5L17 3z"
-                                            />
-                                        </svg>
-                                        Edit
-                                    </button>
+
+                            <div class="divide-y divide-line">
+                                <div class="flex justify-between py-3 text-[13px]">
+                                    <span class="text-muted">Email</span>
+                                    <span id="settings-email" class="font-semibold"></span>
                                 </div>
-                                <div
-                                    id="settings-name-edit"
-                                    class="hidden flex-1 flex flex-col items-end gap-1.5"
-                                >
-                                    <div class="flex items-center gap-2">
-                                        <input
-                                            id="settings-name-input"
-                                            type="text"
-                                            maxlength="100"
-                                            class="w-40 px-2.5 py-1.5 bg-surface2 border border-line rounded-lg text-[13px] outline-none focus:border-brand"
-                                            placeholder="Your name"
-                                        />
-                                        <button
-                                            id="settings-name-save"
-                                            type="button"
-                                            class="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-ink text-bg text-[11px] font-bold hover:bg-white transition"
-                                        >
-                                            <svg
-                                                width="11"
-                                                height="11"
-                                                viewBox="0 0 24 24"
-                                                fill="none"
-                                                stroke="currentColor"
-                                                stroke-width="3"
-                                                stroke-linecap="round"
-                                                stroke-linejoin="round"
-                                            >
-                                                <path d="M20 6L9 17l-5-5" />
-                                            </svg>
-                                            Save
-                                        </button>
-                                        <button
-                                            id="settings-name-cancel"
-                                            type="button"
-                                            class="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-surface2 border border-line text-muted text-[11px] font-semibold hover:bg-surface3 hover:text-ink transition"
-                                        >
-                                            <svg
-                                                width="11"
-                                                height="11"
-                                                viewBox="0 0 24 24"
-                                                fill="none"
-                                                stroke="currentColor"
-                                                stroke-width="2.4"
-                                                stroke-linecap="round"
-                                                stroke-linejoin="round"
-                                            >
-                                                <path
-                                                    d="M18 6L6 18M6 6l12 12"
-                                                />
-                                            </svg>
-                                            Cancel
-                                        </button>
-                                    </div>
-                                    <div
-                                        id="settings-name-error"
-                                        class="hidden text-coral text-[11px]"
-                                    ></div>
+                                <div class="flex justify-between py-3 text-[13px]">
+                                    <span class="text-muted">Signed in with</span>
+                                    <span id="settings-signin-method" class="font-semibold"></span>
                                 </div>
-                            </div>
-                            <div
-                                class="flex justify-between py-2.5 text-[13px]"
-                            >
-                                <span class="text-muted">Signed in with</span>
-                                <span
-                                    id="settings-signin-method"
-                                    class="font-semibold"
-                                ></span>
                             </div>
                         </div>
 
-                        <div
-                            class="text-[10px] font-extrabold uppercase tracking-wider text-muted mb-2"
-                        >
+                        <div class="text-[10px] font-extrabold uppercase tracking-wider text-muted mb-2 mt-7">
                             Account history
                         </div>
-                        <div
-                            class="bg-surface border border-line rounded-2xl p-4 divide-y divide-line"
-                        >
-                            <div
-                                class="flex justify-between py-2.5 text-[13px]"
-                            >
+                        <div class="bg-surface border border-line rounded-2xl p-4 divide-y divide-line">
+                            <div class="flex justify-between py-2.5 text-[13px]">
                                 <span class="text-muted">Member since</span>
-                                <span
-                                    id="settings-created"
-                                    class="font-semibold num"
-                                ></span>
+                                <span id="settings-created" class="font-semibold num"></span>
                             </div>
-                            <div
-                                class="flex justify-between py-2.5 text-[13px]"
-                            >
+                            <div class="flex justify-between py-2.5 text-[13px]">
                                 <span class="text-muted">Last signed in</span>
-                                <span
-                                    id="settings-last-login"
-                                    class="font-semibold num"
-                                ></span>
+                                <span id="settings-last-login" class="font-semibold num"></span>
+                            </div>
+                        </div>
+
+                        <!-- Design-only for now, not wired up yet -->
+                        <div class="text-[10px] font-extrabold uppercase tracking-wider text-muted mb-2 mt-7">
+                            Connected Accounts
+                        </div>
+                        <div class="bg-surface border border-line rounded-2xl p-4">
+                            <div class="flex items-center justify-between">
+                                <div class="flex items-center gap-3">
+                                    <span class="w-8 h-8 rounded-lg bg-surface2 border border-line flex items-center justify-center flex-shrink-0">
+                                        <svg width="15" height="15" viewBox="0 0 24 24">
+                                            <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.76h3.56c2.08-1.92 3.28-4.74 3.28-8.09z" />
+                                            <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.56-2.76c-.98.66-2.23 1.06-3.72 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84A11 11 0 0012 23z" />
+                                            <path fill="#FBBC05" d="M5.84 14.11a6.6 6.6 0 010-4.22V7.05H2.18a11 11 0 000 9.9l3.66-2.84z" />
+                                            <path fill="#EA4335" d="M12 4.75c1.62 0 3.06.56 4.21 1.64l3.15-3.15A10.5 10.5 0 0012 1 11 11 0 002.18 7.05l3.66 2.84C6.71 6.68 9.14 4.75 12 4.75z" />
+                                        </svg>
+                                    </span>
+                                    <span class="text-[13px] font-semibold">Google</span>
+                                </div>
+                                <button
+                                    id="google-connect-btn"
+                                    type="button"
+                                    class="px-3.5 py-1.5 rounded-lg bg-surface2 border border-line text-[12px] font-bold hover:bg-surface3 transition"
+                                >
+                                    Connect
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Design-only for now, not wired up yet -->
+                        <div class="text-[10px] font-extrabold uppercase tracking-wider text-muted mb-2 mt-7">
+                            About Safely
+                        </div>
+                        <div class="bg-surface border border-line rounded-2xl p-4 divide-y divide-line">
+                            <div class="flex justify-between py-2.5 text-[13px]">
+                                <span class="text-muted">Version</span>
+                                <span class="font-semibold num">1.0.0</span>
+                            </div>
+                            <div class="flex justify-between py-2.5 text-[13px]">
+                                <span class="text-muted">Terms &amp; Privacy</span>
+                                <a href="#" class="font-semibold text-brand hover:underline">View</a>
+                            </div>
+                            <div class="flex justify-between py-2.5 text-[13px]">
+                                <span class="text-muted">Contact support</span>
+                                <a href="mailto:hello@safely.app" class="font-semibold text-brand hover:underline">hello@safely.app</a>
+                            </div>
+                        </div>
+
+                        <!-- Design-only for now, not wired up yet -->
+                        <div class="text-[10px] font-extrabold uppercase tracking-wider text-coral mb-2 mt-7">
+                            Danger Zone
+                        </div>
+                        <div class="bg-coral/5 border border-coral/25 rounded-2xl p-4">
+                            <div class="flex items-center justify-between gap-4">
+                                <div>
+                                    <div class="text-[13px] font-bold">Delete account</div>
+                                    <div class="text-[12px] text-muted mt-0.5">
+                                        Permanently delete your account and all associated data. This cannot be undone.
+                                    </div>
+                                </div>
+                                <button
+                                    id="delete-account-btn"
+                                    type="button"
+                                    class="flex-shrink-0 px-3.5 py-2 rounded-lg bg-coral text-white text-[12px] font-bold hover:bg-coral/90 transition"
+                                >
+                                    Delete Account
+                                </button>
                             </div>
                         </div>
                     </div>

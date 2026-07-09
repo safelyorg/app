@@ -454,31 +454,53 @@ async function loadSettingsData() {
   }
 }
 
-function toggleNameEdit(showEdit) {
-  var displayEl = document.getElementById("settings-name-display");
-  var editEl = document.getElementById("settings-name-edit");
-  var input = document.getElementById("settings-name-input");
+// One toggle now covers both the avatar and the name together, instead
+// of each having its own separate edit control. The avatar still uploads
+// immediately the moment a photo is picked (same as before - nothing
+// about that upload logic changed), so "Cancel" only ever needs to
+// revert the name field, since the avatar was never "staged" in the
+// first place.
+function toggleProfileEdit(showEdit) {
+  var editBtn = document.getElementById("profile-edit-btn");
+  var actions = document.getElementById("profile-edit-actions");
+  var nameDisplay = document.getElementById("settings-name");
+  var nameInput = document.getElementById("settings-name-input");
+  var avatarOverlay = document.getElementById("avatar-edit-overlay");
   var errorEl = document.getElementById("settings-name-error");
-  if (!displayEl || !editEl) return;
+  if (!editBtn || !actions || !nameDisplay || !nameInput) return;
 
   if (showEdit) {
-    var currentName = document.getElementById("settings-name").textContent;
-    input.value = currentName === "User" ? "" : currentName;
-    displayEl.classList.add("hidden");
-    editEl.classList.remove("hidden");
-    errorEl.classList.add("hidden");
-    input.focus();
+    nameInput.value = nameDisplay.textContent === "User" ? "" : nameDisplay.textContent;
+    editBtn.classList.add("hidden");
+    actions.classList.remove("hidden");
+    actions.classList.add("flex");
+    nameDisplay.classList.add("hidden");
+    nameInput.classList.remove("hidden");
+    if (avatarOverlay) {
+      avatarOverlay.classList.remove("hidden");
+      avatarOverlay.classList.add("flex");
+    }
+    if (errorEl) errorEl.classList.add("hidden");
+    nameInput.focus();
   } else {
-    displayEl.classList.remove("hidden");
-    editEl.classList.add("hidden");
+    editBtn.classList.remove("hidden");
+    actions.classList.add("hidden");
+    actions.classList.remove("flex");
+    nameDisplay.classList.remove("hidden");
+    nameInput.classList.add("hidden");
+    if (avatarOverlay) {
+      avatarOverlay.classList.add("hidden");
+      avatarOverlay.classList.remove("flex");
+    }
   }
 }
 
-async function saveNameEdit() {
+async function saveProfileEdit() {
   var input = document.getElementById("settings-name-input");
   var errorEl = document.getElementById("settings-name-error");
-  var saveBtn = document.getElementById("settings-name-save");
+  var saveBtn = document.getElementById("profile-save-btn");
   var newName = input.value.trim();
+  var currentName = document.getElementById("settings-name").textContent;
 
   errorEl.classList.add("hidden");
 
@@ -488,6 +510,14 @@ async function saveNameEdit() {
     return;
   }
 
+  // Nothing to save if the name wasn't actually changed - just close
+  // edit mode without a pointless network round-trip.
+  if (newName === currentName) {
+    toggleProfileEdit(false);
+    return;
+  }
+
+  var originalText = saveBtn.textContent;
   saveBtn.disabled = true;
   saveBtn.textContent = "Saving...";
 
@@ -512,13 +542,13 @@ async function saveNameEdit() {
 
     document.getElementById("settings-name").textContent = newName;
     updateSidebarUserName(newName);
-    toggleNameEdit(false);
+    toggleProfileEdit(false);
   } catch (e) {
     errorEl.textContent = "Could not save. Please try again.";
     errorEl.classList.remove("hidden");
   } finally {
     saveBtn.disabled = false;
-    saveBtn.textContent = "Save";
+    saveBtn.textContent = originalText;
   }
 }
 
@@ -878,27 +908,43 @@ document.addEventListener("DOMContentLoaded", function () {
     });
   }
 
-  var nameEditBtn = document.getElementById("settings-name-edit-btn");
-  if (nameEditBtn) {
-    nameEditBtn.addEventListener("click", function () {
-      toggleNameEdit(true);
+  var profileEditBtn = document.getElementById("profile-edit-btn");
+  if (profileEditBtn) {
+    profileEditBtn.addEventListener("click", function () {
+      toggleProfileEdit(true);
     });
   }
-  var nameCancelBtn = document.getElementById("settings-name-cancel");
-  if (nameCancelBtn) {
-    nameCancelBtn.addEventListener("click", function () {
-      toggleNameEdit(false);
+  var profileCancelBtn = document.getElementById("profile-cancel-btn");
+  if (profileCancelBtn) {
+    profileCancelBtn.addEventListener("click", function () {
+      toggleProfileEdit(false);
     });
   }
-  var nameSaveBtn = document.getElementById("settings-name-save");
-  if (nameSaveBtn) {
-    nameSaveBtn.addEventListener("click", saveNameEdit);
+  var profileSaveBtn = document.getElementById("profile-save-btn");
+  if (profileSaveBtn) {
+    profileSaveBtn.addEventListener("click", saveProfileEdit);
   }
   var nameInput = document.getElementById("settings-name-input");
   if (nameInput) {
     nameInput.addEventListener("keydown", function (e) {
-      if (e.key === "Enter") saveNameEdit();
-      if (e.key === "Escape") toggleNameEdit(false);
+      if (e.key === "Enter") saveProfileEdit();
+      if (e.key === "Escape") toggleProfileEdit(false);
+    });
+  }
+
+  // Danger Zone / Connect Google are visual-only for now, per request -
+  // clicking either just says so rather than doing nothing silently or
+  // pretending to succeed.
+  var deleteBtn = document.getElementById("delete-account-btn");
+  if (deleteBtn) {
+    deleteBtn.addEventListener("click", function () {
+      alert("Account deletion isn'\''t wired up yet - this is a design preview.");
+    });
+  }
+  var googleConnectBtn = document.getElementById("google-connect-btn");
+  if (googleConnectBtn) {
+    googleConnectBtn.addEventListener("click", function () {
+      alert("Connecting Google here isn'\''t wired up yet - this is a design preview.");
     });
   }
 
