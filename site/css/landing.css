@@ -268,9 +268,7 @@ summary:focus-visible {
     backdrop-filter: blur(14px) saturate(160%);
     border: var(--bd);
     border-radius: 20px;
-    box-shadow:
-        var(--sh),
-        0 20px 40px -22px rgba(25, 28, 34, 0.28);
+    box-shadow: var(--sh), 0 20px 40px -22px rgba(25, 28, 34, 0.28);
 }
 .nav .btn {
     padding: 9px 17px;
@@ -418,12 +416,7 @@ summary:focus-visible {
    ============================================================ */
 .hero {
     position: relative;
-    background: radial-gradient(
-        120% 100% at 50% 0%,
-        #86c0f2 0%,
-        var(--sky) 55%,
-        #5ea8e8 100%
-    );
+    background: radial-gradient(120% 100% at 50% 0%, #86c0f2 0%, var(--sky) 55%, #5ea8e8 100%);
     margin-top: calc(-1 * var(--navh));
     padding-top: calc(var(--navh) + clamp(22px, 4vw, 42px));
     padding-bottom: clamp(96px, 12vw, 150px);
@@ -469,14 +462,10 @@ summary:focus-visible {
 @keyframes ctaGlow {
     0%,
     100% {
-        box-shadow:
-            var(--sh-lg),
-            0 0 0 0 rgba(255, 185, 55, 0.45);
+        box-shadow: var(--sh-lg), 0 0 0 0 rgba(255, 185, 55, 0.45);
     }
     50% {
-        box-shadow:
-            var(--sh-lg),
-            0 0 26px 4px rgba(255, 185, 55, 0.45);
+        box-shadow: var(--sh-lg), 0 0 26px 4px rgba(255, 185, 55, 0.45);
     }
 }
 .hero-cta .btn-sun {
@@ -914,9 +903,7 @@ summary:focus-visible {
 .bcard {
     border: var(--bd);
     border-radius: var(--r-lg);
-    box-shadow:
-        var(--sh),
-        0 18px 34px -18px rgba(25, 28, 34, 0.18);
+    box-shadow: var(--sh), 0 18px 34px -18px rgba(25, 28, 34, 0.18);
     background: var(--paper);
     overflow: hidden;
     display: flex;
@@ -927,9 +914,7 @@ summary:focus-visible {
 }
 .bento .bcard:hover {
     transform: translate(-3px, -3px);
-    box-shadow:
-        var(--sh-lg),
-        0 26px 44px -18px rgba(25, 28, 34, 0.24);
+    box-shadow: var(--sh-lg), 0 26px 44px -18px rgba(25, 28, 34, 0.24);
     transition-delay: 0s;
 }
 .bviz {
@@ -1143,9 +1128,7 @@ summary:focus-visible {
 .pcard {
     border: var(--bd);
     border-radius: var(--r-lg);
-    box-shadow:
-        var(--sh),
-        0 16px 30px -16px rgba(25, 28, 34, 0.16);
+    box-shadow: var(--sh), 0 16px 30px -16px rgba(25, 28, 34, 0.16);
     padding: 24px;
     background: var(--paper);
     position: relative;
@@ -1155,22 +1138,13 @@ summary:focus-visible {
 }
 .price-grid .pcard:hover {
     transform: translate(-3px, -3px);
-    box-shadow:
-        var(--sh-lg),
-        0 24px 40px -16px rgba(25, 28, 34, 0.22);
+    box-shadow: var(--sh-lg), 0 24px 40px -16px rgba(25, 28, 34, 0.22);
     transition-delay: 0s;
 }
 .pcard.feat {
-    background: linear-gradient(
-        160deg,
-        #a8d4fa 0%,
-        var(--sky-card) 55%,
-        #7fc0f2 100%
-    );
+    background: linear-gradient(160deg, #a8d4fa 0%, var(--sky-card) 55%, #7fc0f2 100%);
     transform: translateY(-6px);
-    box-shadow:
-        var(--sh),
-        0 22px 46px -14px rgba(47, 134, 221, 0.35);
+    box-shadow: var(--sh), 0 22px 46px -14px rgba(47, 134, 221, 0.35);
 }
 .price-grid .pcard.feat:hover {
     transform: translate(-3px, -9px);
@@ -1203,6 +1177,19 @@ summary:focus-visible {
     align-items: baseline;
     gap: 6px;
     margin: 13px 0 18px;
+    flex-wrap: wrap;
+}
+.pprice-prefix {
+    font-family: var(--body);
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--muted);
+}
+.pprice .amt-prefix {
+    font-family: var(--body);
+    font-weight: 700;
+    font-size: 14px;
+    color: var(--muted);
 }
 .pprice .amt {
     font-family: var(--disp);
@@ -1210,6 +1197,7 @@ summary:focus-visible {
     font-size: 38px;
     line-height: 1;
     letter-spacing: -0.02em;
+    white-space: nowrap;
 }
 .pprice .per {
     font-size: 13px;
@@ -1258,46 +1246,65 @@ summary:focus-visible {
    ============================================================ */
 .ptoggle-wrap {
     text-align: center;
-    margin-bottom: 36px;
+    margin-bottom: 48px;
+    padding-block: 6px;
 }
 .ptoggle {
+    position: relative;
     display: inline-flex;
     align-items: center;
     border: var(--bd);
     border-radius: 999px;
     box-shadow: var(--sh-sm);
     background: var(--paper);
-    padding: 4px;
+    padding: 7px;
+}
+.ptoggle-thumb {
+    position: absolute;
+    top: 7px;
+    left: 7px;
+    height: calc(100% - 14px);
+    width: 0;
+    background: var(--sun);
+    border: var(--bd-thin);
+    border-radius: 999px;
+    box-shadow: var(--sh-sm);
+    transition:
+        transform 0.32s cubic-bezier(0.22, 0.61, 0.36, 1),
+        width 0.32s cubic-bezier(0.22, 0.61, 0.36, 1);
+    z-index: 0;
+    pointer-events: none;
 }
 .ptoggle-btn {
-    padding: 10px 24px;
+    position: relative;
+    z-index: 1;
+    padding: 14px 38px;
     border-radius: 999px;
     font-family: var(--body);
     font-size: 14px;
     font-weight: 700;
     color: var(--muted);
-    transition: all 0.15s ease;
+    transition: color 0.2s ease;
     display: inline-flex;
     align-items: center;
-    gap: 8px;
+    gap: 12px;
     cursor: pointer;
 }
 .ptoggle-btn:hover {
     color: var(--ink);
 }
 .ptoggle-btn.active {
-    background: var(--sun);
     color: var(--ink);
-    box-shadow: var(--sh-sm);
 }
 .psave-badge {
     display: inline-block;
     background: var(--mint);
     font-size: 10px;
     font-weight: 800;
-    padding: 2px 8px;
+    padding: 4px 12px;
     border-radius: 999px;
     letter-spacing: 0.02em;
+    margin-right: 2px;
 }
 
 .pfor {
@@ -1823,6 +1830,24 @@ footer {
 #si-toggle:checked ~ .signin {
     opacity: 1;
     pointer-events: auto;
+}
+
+/* When .signin wraps a single embedded iframe (the landing page's
+   overlay now just hosts /signin.html) rather than the old two-column
+   si-left/si-right layout directly, the grid-template-columns above
+   leaves an empty second column with nothing in it - this override
+   drops back to a plain single-box layout so the iframe fills the
+   whole overlay instead of just the first column. The two-column
+   split itself still exists, it just now lives entirely inside the
+   iframe's own document (signin.html), not out here. */
+.signin.signin-embed {
+    display: block;
+}
+.signin.signin-embed iframe {
+    display: block;
+    width: 100%;
+    height: 100%;
+    border: 0;
 }
 .si-left {
     display: flex;

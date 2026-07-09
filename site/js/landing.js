@@ -37,63 +37,18 @@
   });
 
   // ============================================================
-  // Google sign-in: this is a real navigation, not a fetch. Clicking
-  // sends the browser to the backend, which 302s to Google's actual
-  // consent screen. The backend handles everything after that and
-  // eventually lands the person on /dashboard#session=<token>.
+  // Sign-in itself (Google + magic link) now lives entirely inside the
+  // shared /signin.html, embedded here via <iframe> - this page only
+  // needs to know how to CLOSE that overlay when the iframe's own close
+  // button is clicked, since the iframe can't reach outside itself to
+  // uncheck #si-toggle directly.
   // ============================================================
-  var googleBtn = document.getElementById("siGoogle");
-  if (googleBtn) {
-    googleBtn.addEventListener("click", function () {
-      window.location.href = "/api/v1/auth/google";
-    });
-  }
-
-  // ============================================================
-  // Magic link: this one does need a real fetch, since we have to
-  // wait for the backend to confirm the email was accepted before
-  // showing "check your email" - a plain link/redirect can't do that.
-  // ============================================================
-  var magicBtn = document.getElementById("siMagic");
-  var emailInput = document.getElementById("siEmail");
-  var siCard = document.getElementById("siCard");
-  var siOkMail = document.getElementById("siOkMail");
-
-  if (magicBtn && emailInput) {
-    magicBtn.addEventListener("click", function () {
-      var email = emailInput.value.trim();
-      if (!email || email.indexOf("@") === -1) {
-        emailInput.focus();
-        return;
-      }
-
-      magicBtn.disabled = true;
-      var originalText = magicBtn.textContent;
-      magicBtn.textContent = "Sending...";
-
-      fetch("/api/v1/auth/magic-link", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: email }),
-      })
-        .then(function (res) {
-          if (!res.ok) throw new Error("Request failed");
-          return res.json();
-        })
-        .then(function () {
-          if (siOkMail) {
-            siOkMail.textContent =
-              "We sent a secure sign-in link to " + email + ".";
-          }
-          if (siCard) siCard.classList.add("sent");
-        })
-        .catch(function () {
-          magicBtn.disabled = false;
-          magicBtn.textContent = originalText;
-          alert("Something went wrong sending the link. Please try again.");
-        });
-    });
-  }
+  window.addEventListener("message", function (e) {
+    if (e.data === "safely:closeSignin") {
+      var si = document.getElementById("si-toggle");
+      if (si) si.checked = false;
+    }
+  });
 
   // ============================================================
   // Pricing toggle: Monthly / Yearly billing switch. Every price
@@ -105,6 +60,24 @@
   var billToggleBtns = document.querySelectorAll(".ptoggle-btn");
   if (billToggleBtns.length) {
     var billFields = document.querySelectorAll("[data-mo]");
+    var thumb = document.querySelector(".ptoggle-thumb");
+
+    // Monthly and Yearly aren't the same width (Yearly carries the extra
+    // "Save ~20%" badge), so the sliding thumb can't just be a fixed 50%
+    // - it measures the actual active button's box each time and moves
+    // to match it exactly.
+    var positionThumb = function (period) {
+      if (!thumb) return;
+      var activeBtn = Array.prototype.filter.call(
+        billToggleBtns,
+        function (btn) {
+          return btn.dataset.bill === period;
+        },
+      )[0];
+      if (!activeBtn) return;
+      thumb.style.width = activeBtn.offsetWidth + "px";
+      thumb.style.transform = "translateX(" + activeBtn.offsetLeft + "px)";
+    };
 
     var setBillingPeriod = function (period) {
       billToggleBtns.forEach(function (btn) {
@@ -114,12 +87,38 @@
         var value = period === "mo" ? el.dataset.mo : el.dataset.yr;
         if (value !== undefined) el.textContent = value;
       });
+      positionThumb(period);
     };
 
     billToggleBtns.forEach(function (btn) {
       btn.addEventListener("click", function () {
         setBillingPeriod(btn.dataset.bill);
       });
+    });
+
+    // Position the thumb correctly on first load, matching whichever
+    // button starts with the "active" class in the HTML.
+    positionThumb("mo");
+
+    // If the custom web font hadn't finished loading yet at the moment
+    // above, the button was measured using a fallback system font -
+    // often narrower than the real one, leaving the thumb visibly
+    // short of the button's true edge (looking exactly like missing
+    // padding, even though the padding itself is fine). Re-measuring
+    // once fonts are confirmed ready corrects that regardless of how
+    // fast or slow the font happened to load on this visit.
+    if (document.fonts && document.fonts.ready) {
+      document.fonts.ready.then(function () {
+        var current = document.querySelector(".ptoggle-btn.active");
+        positionThumb(current ? current.dataset.bill : "mo");
+      });
+    }
+
+    // Also re-measure on window resize, since button widths can change
+    // at different viewport sizes.
+    window.addEventListener("resize", function () {
+      var current = document.querySelector(".ptoggle-btn.active");
+      positionThumb(current ? current.dataset.bill : "mo");
     });
   }
 })();

@@ -217,40 +217,12 @@
         <input type="checkbox" id="mobile-nav-toggle" class="hidden" />
 
         <!-- LOGIN GATE -->
-        <div
-            id="login-gate"
-            class="w-full h-full flex flex-col items-center justify-center gap-5 text-center px-6"
-        >
-            <div
-                class="w-11 h-11 rounded-xl bg-surface2 border border-line flex items-center justify-center"
-            >
-                <svg
-                    width="20"
-                    height="20"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="#6fb3ef"
-                    stroke-width="2"
-                >
-                    <path d="M12 3l8 3v6c0 5-3.4 8-8 9-4.6-1-8-4-8-9V6l8-3z" />
-                    <path
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                        d="M9 12l2 2 4-4"
-                    />
-                </svg>
-            </div>
-            <div>
-                <div class="text-lg font-extrabold tracking-tight">Safely</div>
-                <div class="text-muted text-sm mt-1 max-w-xs">
-                    Sign in to view your dashboard.
-                </div>
-            </div>
-            <a
-                href="/"
-                class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-ink text-bg text-sm font-bold hover:bg-white transition"
-                >Go to sign in</a
-            >
+        <div id="login-gate" class="w-full h-full">
+            <iframe
+                src="/signin.html"
+                title="Sign in to Safely"
+                class="w-full h-full border-0"
+            ></iframe>
         </div>
 
         <div id="app" class="hidden flex-1 flex h-full w-full relative">
