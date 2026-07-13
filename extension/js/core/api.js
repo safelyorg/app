@@ -104,6 +104,12 @@
         scraped = window.__safelyScrapers.scrapeFacebook();
       }
 
+      // Folded into the same payload as everything else - the backend
+      // turns this into one more entry in the signals list, rendered
+      // through the exact same Risk/Intelligence UI, no separate
+      // system needed on either side.
+      var domainCheck = window.__safelyScrapers.checkDomain();
+
       var payload = {
         platform: platform,
         listing_url: listing_url,
@@ -123,6 +129,12 @@
         seller_join_date: scraped.seller_join_date || null,
         seller_location: scraped.seller_location || null,
         seller_last_active: scraped.seller_last_active || null,
+        domain_check_status: domainCheck ? domainCheck.status : null,
+        domain_check_real_name: domainCheck ? domainCheck.realName : null,
+        domain_check_real_domain: domainCheck ? domainCheck.realDomain : null,
+        domain_check_current_domain: domainCheck
+          ? domainCheck.currentDomain || window.location.hostname
+          : null,
       };
 
       var data = await window.__safelyAPI.analyze(payload);

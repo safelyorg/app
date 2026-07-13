@@ -59,6 +59,15 @@ pub struct AnalyzeRequest {
     pub seller_join_date: Option<String>,
     pub seller_location: Option<String>,
     pub seller_last_active: Option<String>,
+
+    #[serde(default)]
+    pub domain_check_status: Option<String>,
+    #[serde(default)]
+    pub domain_check_real_name: Option<String>,
+    #[serde(default)]
+    pub domain_check_real_domain: Option<String>,
+    #[serde(default)]
+    pub domain_check_current_domain: Option<String>,
 }
 
 #[derive(Debug, Serialize)]

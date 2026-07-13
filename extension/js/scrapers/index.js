@@ -1,6 +1,88 @@
-// scrapers/index.js — detectPlatform + routes to correct scraper
+// scrapers/index.js — detectPlatform + routes to correct scraper +
+// domain legitimacy checking
 (function () {
   "use strict";
+
+  var PROTECTED_DOMAINS = [
+    { name: "OLX Pakistan", domain: "olx.com.pk" },
+    { name: "Facebook", domain: "facebook.com" },
+    { name: "Amazon", domain: "amazon.com" },
+    { name: "eBay", domain: "ebay.com" },
+  ];
+
+  function normalize(hostname) {
+    return hostname
+      .toLowerCase()
+      .replace(/0/g, "o")
+      .replace(/1/g, "l")
+      .replace(/rn/g, "m")
+      .replace(/vv/g, "w")
+      .replace(/-/g, "");
+  }
+
+  function editDistance(a, b) {
+    var m = a.length,
+      n = b.length;
+    var dp = [];
+    for (var i = 0; i <= m; i++) dp.push([i]);
+    for (var j = 0; j <= n; j++) dp[0][j] = j;
+    for (i = 1; i <= m; i++) {
+      for (j = 1; j <= n; j++) {
+        dp[i][j] =
+          a[i - 1] === b[j - 1]
+            ? dp[i - 1][j - 1]
+            : 1 + Math.min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1]);
+      }
+    }
+    return dp[m][n];
+  }
+
+  function isGenuineDomain(hostname, realDomain) {
+    return hostname === realDomain || hostname.endsWith("." + realDomain);
+  }
+
+  /**
+   * Checks the CURRENT page's domain against the protected marketplace
+   * list. Returns one of three shapes:
+   *  - { status: "legitimate", realName, realDomain } - genuinely the
+   *    real site.
+   *  - { status: "suspicious", realName, realDomain, currentDomain,
+   *      reason } - a lookalike/typosquat of a protected site.
+   *  - null - this domain isn't close to any protected site at all,
+   *    nothing meaningful to report either way.
+   */
+  function checkDomain() {
+    var hostname = window.location.hostname;
+
+    for (var i = 0; i < PROTECTED_DOMAINS.length; i++) {
+      var entry = PROTECTED_DOMAINS[i];
+
+      if (isGenuineDomain(hostname, entry.domain)) {
+        return {
+          status: "legitimate",
+          realName: entry.name,
+          realDomain: entry.domain,
+        };
+      }
+
+      var homoglyphMatch = normalize(hostname) === normalize(entry.domain);
+      var distance = editDistance(hostname, entry.domain);
+      var closeEnough = distance > 0 && distance <= 2 && entry.domain.length > 5;
+
+      if (homoglyphMatch || closeEnough) {
+        return {
+          status: "suspicious",
+          realName: entry.name,
+          realDomain: entry.domain,
+          currentDomain: hostname,
+          reason: homoglyphMatch ? "lookalike-characters" : "similar-spelling",
+        };
+      }
+    }
+
+    return null;
+  }
+
   /**
    * Detects which platform the current page belongs to.
    * @returns {string} 'olx' | 'facebook' | 'unknown'
@@ -12,15 +94,6 @@
     return "unknown";
   }
 
-  /**
-   * Whether the CURRENT page is actually a single listing Safely can
-   * read - not just "this domain is one we support at all". Being on
-   * facebook.com's home feed or your own profile is a supported SITE,
-   * but there is no listing there to analyze - this is the check that
-   * keeps those pages from silently producing an empty "Untitled
-   * listing" entry in someone's dashboard history.
-   * @returns {boolean}
-   */
   function isListingPage() {
     var url = window.location.href;
     var platform = detectPlatform();
@@ -29,26 +102,6 @@
     return false;
   }
 
-  /**
-   * Routes to the correct scraper based on detected platform.
-   * Returns a normalized data object with identical structure regardless of platform.
-   *
-   * Normalized shape:
-   * {
-   *   listing_id: string | null,
-   *   title: string | null,
-   *   price: number | null,           // in paisas (smallest unit)
-   *   description: string | null,
-   *   image_urls: string[] | null,    // max 3 images
-   *   seller_name: string | null,
-   *   seller_join_date: string | null,
-   *   seller_profile_url: string | null,
-   *   platform_id: string | null,
-   *   seller_location: string | null,
-   *   seller_last_active: string | null,
-   *   platform: string                // 'olx' | 'facebook'
-   * }
-   */
   function scrape() {
     var platform = detectPlatform();
     if (platform === "olx") {
@@ -76,9 +129,10 @@
       platform: "unknown",
     };
   }
-  // Expose on global namespace
+
   window.__safelyScrapers = window.__safelyScrapers || {};
   window.__safelyScrapers.detectPlatform = detectPlatform;
   window.__safelyScrapers.isListingPage = isListingPage;
+  window.__safelyScrapers.checkDomain = checkDomain;
   window.__safelyScrapers.scrape = scrape;
 })();

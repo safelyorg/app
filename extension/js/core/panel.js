@@ -50,9 +50,14 @@
   var toolbarInner = document.getElementById("safely-toolbar-inner");
   var unsupportedContent = document.getElementById("safely-tab-unsupported");
 
+  // Domain check display moved into the Risk tab itself, integrated
+  // with the Seller Information section, rather than a floating strip
+  // at the top of the whole panel - see tabs/risk.js for where this
+  // now actually renders.
+
   // ── Reserve icon positions: the 3 real tabs PLUS one dedicated
   // "unsupported" icon, kept as separate slots so exactly one relevant
-  // set is ever visible at a time - never a mix of both. ──
+  // set is ever visible at a time - never a mix SAof both. ──
   var TAB_ORDER = ["risk", "intelligence", "protect"];
   var iconSlots = {};
 

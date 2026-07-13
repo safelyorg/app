@@ -13,7 +13,7 @@ use crate::{
         listings::{create_listing, get_monthly_visit_activity},
         scoring::calculate_risk_score,
         sellers::{create_seller, find_seller},
-        signals::build_signals,
+        signals::{build_domain_signal, build_signals},
     },
 };
 use axum::{Json, extract::State, http::HeaderMap};
@@ -107,7 +107,23 @@ pub async fn analyze(
     .await
     .map_err(|e| e.to_string())?;
 
-    let signals = build_signals(&claude_analysis, &seller);
+    let mut signals = build_signals(&claude_analysis, &seller);
+
+    // The extension's own client-side check for lookalike/typosquat
+    // domains - folded in here as just one more signal, so it renders
+    // through the exact same Risk/Intelligence UI as everything else,
+    // with no separate system needed. Placed first since a fake domain
+    // is arguably the most fundamental thing to know before trusting
+    // anything else on the page.
+    if let Some(domain_signal) = build_domain_signal(
+        request.domain_check_status.as_deref(),
+        request.domain_check_real_name.as_deref(),
+        request.domain_check_real_domain.as_deref(),
+        request.domain_check_current_domain.as_deref(),
+    ) {
+        signals.insert(0, domain_signal);
+    }
+
     let risk_score = calculate_risk_score(&claude_analysis, fraud_count);
     let risk_level = match risk_score {
         0..=33 => RiskLevel::Low,
