@@ -8,11 +8,17 @@
   var currentTab = "";
   var collapseTimer;
   var intentionallyClosed = false;
+  var isCurrentlySupported = null; // null = not yet determined
+  var tabsHaveBeenBuilt = false;
+  var pendingTabRegistrations = [];
 
   var tabIds = [];
   var tabTitles = {};
 
-  // Base DOM Structure
+  // Base DOM Structure — the unsupported notice exists from the start
+  // as its own permanent piece of the panel, separate from tabsArea
+  // (where the 3 real tabs get built) - this way there's no possibility
+  // of the real tabs ever appearing alongside it by accident.
   var root = document.createElement("div");
   root.id = "safely-root";
   root.innerHTML =
@@ -22,6 +28,11 @@
     '<div class="safely-close-btn" id="safely-close-btn">\u00d7</div>' +
     "</div>" +
     '<div class="safely-tabs-area" id="safely-tabs-area"></div>' +
+    '<div class="safely-tab-content" id="safely-tab-unsupported" style="display:none; padding: 20px; font-size: 13px; line-height: 1.5; color: #8a8a93;">' +
+    "Safely isn't reading this page — it only activates on an actual " +
+    "listing (like a specific item on OLX or a Facebook Marketplace " +
+    "listing page), not a site's general pages." +
+    "</div>" +
     "</div>" +
     '<div id="safely-toolbar"><span class="safely-toolbar-letter">S</span><div class="safely-toolbar-inner" id="safely-toolbar-inner">' +
     '<span class="safely-toolbar-label" id="safely-collapse-btn">Safely</span>' +
@@ -37,8 +48,11 @@
   var closeBtn = document.getElementById("safely-close-btn");
   var tabsArea = document.getElementById("safely-tabs-area");
   var toolbarInner = document.getElementById("safely-toolbar-inner");
+  var unsupportedContent = document.getElementById("safely-tab-unsupported");
 
-  // Reserve icon positions in left-to-right order BEFORE any tab loads
+  // ── Reserve icon positions: the 3 real tabs PLUS one dedicated
+  // "unsupported" icon, kept as separate slots so exactly one relevant
+  // set is ever visible at a time - never a mix of both. ──
   var TAB_ORDER = ["risk", "intelligence", "protect"];
   var iconSlots = {};
 
@@ -55,13 +69,36 @@
     iconSlots[id] = iconDiv;
   });
 
+  var unsupportedIcon = document.createElement("div");
+  unsupportedIcon.className = "safely-toolbar-icon";
+  unsupportedIcon.dataset.open = "unsupported";
+  unsupportedIcon.title = "Not a listing page";
+  unsupportedIcon.style.display = "none";
+  unsupportedIcon.innerHTML =
+    '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>';
+  toolbarInner.insertBefore(unsupportedIcon, collapseBtn);
+  unsupportedIcon.addEventListener("click", function (e) {
+    e.stopPropagation();
+    togglePanel("unsupported");
+  });
+
   function switchTab(tab) {
     currentTab = tab;
-    panelTitle.textContent = tabTitles[tab] || tab;
-    tabIds.forEach(function (id) {
-      var el = document.getElementById("safely-tab-" + id);
-      if (el) el.style.display = id === tab ? "block" : "none";
-    });
+    if (tab === "unsupported") {
+      panelTitle.textContent = "Safely";
+      tabIds.forEach(function (id) {
+        var el = document.getElementById("safely-tab-" + id);
+        if (el) el.style.display = "none";
+      });
+      unsupportedContent.style.display = "block";
+    } else {
+      panelTitle.textContent = tabTitles[tab] || tab;
+      unsupportedContent.style.display = "none";
+      tabIds.forEach(function (id) {
+        var el = document.getElementById("safely-tab-" + id);
+        if (el) el.style.display = id === tab ? "block" : "none";
+      });
+    }
     if (tabsArea) tabsArea.scrollTop = 0;
   }
 
@@ -88,8 +125,9 @@
     panel.classList.remove("safely-visible");
   }
 
-  // Global function for other files to register their tabs dynamically
-  window.__safelyAddTab = function (id, title, html, iconSvg, initFn) {
+  // The REAL tab-building logic, exactly as before - this only ever
+  // actually runs once we're certain we're on a genuine listing.
+  function reallyAddTab(id, title, html, iconSvg, initFn) {
     tabIds.push(id);
     tabTitles[id] = title;
 
@@ -109,7 +147,33 @@
 
     if (id === "risk") switchTab(id);
     if (typeof initFn === "function") initFn(root);
+  }
+
+  // Until we know for certain this is a real listing page, calls from
+  // tabs/risk.js, tabs/intelligence.js, and tabs/protect.js (which run
+  // and self-register on every page regardless, per the manifest) are
+  // only QUEUED, never actually built into the DOM. This is what
+  // guarantees the three real tabs can never appear - even briefly, even
+  // due to a timing quirk - on a page that isn't a listing at all.
+  window.__safelyAddTab = function (id, title, html, iconSvg, initFn) {
+    pendingTabRegistrations.push({
+      id: id,
+      title: title,
+      html: html,
+      iconSvg: iconSvg,
+      initFn: initFn,
+    });
   };
+
+  function buildQueuedTabsIfNeeded() {
+    if (tabsHaveBeenBuilt) return;
+    tabsHaveBeenBuilt = true;
+    window.__safelyAddTab = reallyAddTab;
+    pendingTabRegistrations.forEach(function (t) {
+      reallyAddTab(t.id, t.title, t.html, t.iconSvg, t.initFn);
+    });
+    pendingTabRegistrations = [];
+  }
 
   // Global helper to stop inputs from bubbling to the host page
   window.__safelyPreventInputBubbling = function () {
@@ -132,6 +196,34 @@
       });
     });
   };
+
+  // ── Switches between "real listing" and "not supported" - can be
+  // called repeatedly as navigation happens, which is what makes this
+  // work correctly on single-page-app sites without ever needing a
+  // manual refresh. ──
+  function updateSupportState() {
+    var supported = window.__safelyScrapers.isListingPage();
+    isCurrentlySupported = supported;
+
+    if (supported) {
+      buildQueuedTabsIfNeeded();
+      unsupportedIcon.style.display = "none";
+      TAB_ORDER.forEach(function (id) {
+        if (iconSlots[id] && tabTitles[id]) {
+          iconSlots[id].style.display = "flex";
+        }
+      });
+      if (tabIds.indexOf("risk") !== -1) switchTab("risk");
+      window.__safelyResetState();
+      window.__safelyAPI.fetchAnalysis();
+    } else {
+      TAB_ORDER.forEach(function (id) {
+        if (iconSlots[id]) iconSlots[id].style.display = "none";
+      });
+      unsupportedIcon.style.display = "flex";
+      switchTab("unsupported");
+    }
+  }
 
   // ── Toolbar Hover Events ──
   toolbar.addEventListener("mouseenter", function () {
@@ -201,22 +293,15 @@
     }
   });
 
-  // ── Fetch initial analysis ──
-  await window.__safelyAPI.fetchAnalysis();
+  // ── Initial check, then keep checking on every URL change ──
+  updateSupportState();
 
-  // ── Detect URL changes for single page app navigation ──
   var lastUrl = window.location.href;
   new MutationObserver(function () {
     var currentUrl = window.location.href;
     if (currentUrl !== lastUrl) {
       lastUrl = currentUrl;
-      if (
-        currentUrl.includes("iid-") ||
-        currentUrl.includes("facebook.com/marketplace")
-      ) {
-        window.__safelyResetState();
-        window.__safelyAPI.fetchAnalysis();
-      }
+      updateSupportState();
     }
   }).observe(document.body, { subtree: true, childList: true });
 })();

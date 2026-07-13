@@ -1,7 +1,6 @@
 // scrapers/index.js — detectPlatform + routes to correct scraper
 (function () {
   "use strict";
-
   /**
    * Detects which platform the current page belongs to.
    * @returns {string} 'olx' | 'facebook' | 'unknown'
@@ -11,6 +10,23 @@
     if (url.includes("olx.com.pk")) return "olx";
     if (url.includes("facebook.com")) return "facebook";
     return "unknown";
+  }
+
+  /**
+   * Whether the CURRENT page is actually a single listing Safely can
+   * read - not just "this domain is one we support at all". Being on
+   * facebook.com's home feed or your own profile is a supported SITE,
+   * but there is no listing there to analyze - this is the check that
+   * keeps those pages from silently producing an empty "Untitled
+   * listing" entry in someone's dashboard history.
+   * @returns {boolean}
+   */
+  function isListingPage() {
+    var url = window.location.href;
+    var platform = detectPlatform();
+    if (platform === "olx") return url.includes("iid-");
+    if (platform === "facebook") return url.includes("/marketplace/item/");
+    return false;
   }
 
   /**
@@ -60,9 +76,9 @@
       platform: "unknown",
     };
   }
-
   // Expose on global namespace
   window.__safelyScrapers = window.__safelyScrapers || {};
   window.__safelyScrapers.detectPlatform = detectPlatform;
+  window.__safelyScrapers.isListingPage = isListingPage;
   window.__safelyScrapers.scrape = scrape;
 })();

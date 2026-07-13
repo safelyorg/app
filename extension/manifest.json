@@ -25,7 +25,7 @@
   },
   "content_scripts": [
     {
-      "matches": ["*://*.olx.com.pk/*", "*://*.facebook.com/*"],
+      "matches": ["http://*/*", "https://*/*"],
       "css": ["css/panel.css"],
       "js": [
         "js/core/state.js",

@@ -83,6 +83,14 @@
       var platform = window.__safelyScrapers.detectPlatform();
       if (platform === "unknown") return;
 
+      // Defense-in-depth: panel.js already gates this before calling
+      // fetchAnalysis at all, but checking again here means this stays
+      // safe even if something else ever calls it directly - being on a
+      // supported SITE isn't the same as being on an actual listing, and
+      // this is what stops a plain facebook.com page from producing an
+      // empty "Untitled listing" in someone's dashboard history.
+      if (!window.__safelyScrapers.isListingPage()) return;
+
       var listing_url = window.location.href;
 
       // Get scraped data from the appropriate scraper
