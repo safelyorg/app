@@ -37,6 +37,73 @@
     return dp[m][n];
   }
 
+  // Standard Levenshtein alignment, but instead of just returning a
+  // number, this walks back through the comparison to identify EXACTLY
+  // which characters differ between the two strings - a substitution,
+  // an extra character, or a missing one. This is what actually solves
+  // the real problem: characters like "l" and "I", or "0" and "o", are
+  // deliberately designed to look near-identical in plain text, so
+  // simply showing both domains side by side doesn't help someone
+  // actually spot the difference - marking the specific character does.
+  function highlightDiff(a, b) {
+    var m = a.length,
+      n = b.length;
+    var dp = [];
+    for (var i = 0; i <= m; i++) {
+      dp.push([]);
+      for (var j = 0; j <= n; j++) {
+        if (i === 0) dp[i][j] = j;
+        else if (j === 0) dp[i][j] = i;
+        else if (a[i - 1] === b[j - 1]) dp[i][j] = dp[i - 1][j - 1];
+        else {
+          dp[i][j] =
+            1 + Math.min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1]);
+        }
+      }
+    }
+
+    var aMarks = new Array(m).fill(false);
+    var bMarks = new Array(n).fill(false);
+    var i2 = m,
+      j2 = n;
+    while (i2 > 0 || j2 > 0) {
+      if (
+        i2 > 0 &&
+        j2 > 0 &&
+        a[i2 - 1] === b[j2 - 1] &&
+        dp[i2][j2] === dp[i2 - 1][j2 - 1]
+      ) {
+        i2--;
+        j2--;
+      } else if (i2 > 0 && j2 > 0 && dp[i2][j2] === dp[i2 - 1][j2 - 1] + 1) {
+        aMarks[i2 - 1] = true;
+        bMarks[j2 - 1] = true;
+        i2--;
+        j2--;
+      } else if (i2 > 0 && dp[i2][j2] === dp[i2 - 1][j2] + 1) {
+        aMarks[i2 - 1] = true;
+        i2--;
+      } else {
+        bMarks[j2 - 1] = true;
+        j2--;
+      }
+    }
+
+    function build(str, marks) {
+      var html = "";
+      for (var k = 0; k < str.length; k++) {
+        html += marks[k]
+          ? '<mark style="background:#ff5d5d33;color:#ff5d5d;font-weight:800;border-radius:3px;padding:0 2px;">' +
+            str[k] +
+            "</mark>"
+          : str[k];
+      }
+      return html;
+    }
+
+    return { currentHtml: build(a, aMarks), realHtml: build(b, bMarks) };
+  }
+
   function isGenuineDomain(hostname, realDomain) {
     return hostname === realDomain || hostname.endsWith("." + realDomain);
   }
@@ -70,12 +137,15 @@
       var closeEnough = distance > 0 && distance <= 2 && entry.domain.length > 5;
 
       if (homoglyphMatch || closeEnough) {
+        var diffed = highlightDiff(hostname, entry.domain);
         return {
           status: "suspicious",
           realName: entry.name,
           realDomain: entry.domain,
           currentDomain: hostname,
           reason: homoglyphMatch ? "lookalike-characters" : "similar-spelling",
+          currentDomainHtml: diffed.currentHtml,
+          realDomainHtml: diffed.realHtml,
         };
       }
     }

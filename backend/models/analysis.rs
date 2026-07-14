@@ -68,6 +68,10 @@ pub struct AnalyzeRequest {
     pub domain_check_real_domain: Option<String>,
     #[serde(default)]
     pub domain_check_current_domain: Option<String>,
+    #[serde(default)]
+    pub domain_check_current_html: Option<String>,
+    #[serde(default)]
+    pub domain_check_real_html: Option<String>,
 }
 
 #[derive(Debug, Serialize)]

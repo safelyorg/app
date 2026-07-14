@@ -135,6 +135,12 @@
         domain_check_current_domain: domainCheck
           ? domainCheck.currentDomain || window.location.hostname
           : null,
+        domain_check_current_html: domainCheck
+          ? domainCheck.currentDomainHtml || null
+          : null,
+        domain_check_real_html: domainCheck
+          ? domainCheck.realDomainHtml || null
+          : null,
       };
 
       var data = await window.__safelyAPI.analyze(payload);

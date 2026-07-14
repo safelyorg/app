@@ -109,17 +109,17 @@ pub async fn analyze(
 
     let mut signals = build_signals(&claude_analysis, &seller);
 
-    // The extension's own client-side check for lookalike/typosquat
-    // domains - folded in here as just one more signal, so it renders
-    // through the exact same Risk/Intelligence UI as everything else,
-    // with no separate system needed. Placed first since a fake domain
-    // is arguably the most fundamental thing to know before trusting
-    // anything else on the page.
+    // Domain check appears here as one more listing signal, alongside
+    // the AI-driven ones - matches the exact same Intelligence tab
+    // display everything else already uses. Placed first, as the most
+    // fundamental thing to know before trusting anything else shown.
     if let Some(domain_signal) = build_domain_signal(
         request.domain_check_status.as_deref(),
         request.domain_check_real_name.as_deref(),
         request.domain_check_real_domain.as_deref(),
         request.domain_check_current_domain.as_deref(),
+        request.domain_check_current_html.as_deref(),
+        request.domain_check_real_html.as_deref(),
     ) {
         signals.insert(0, domain_signal);
     }

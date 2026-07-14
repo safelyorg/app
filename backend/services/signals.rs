@@ -32,6 +32,8 @@ pub fn build_domain_signal(
     real_name: Option<&str>,
     real_domain: Option<&str>,
     current_domain: Option<&str>,
+    current_domain_html: Option<&str>,
+    real_domain_html: Option<&str>,
 ) -> Option<Signal> {
     match status {
         Some("legitimate") => Some(Signal {
@@ -43,17 +45,30 @@ pub fn build_domain_signal(
             value: "Verified".to_string(),
             signal_type: "good".to_string(),
         }),
-        Some("suspicious") => Some(Signal {
-            label: "Domain check".to_string(),
-            sub: format!(
-                "This does not match {}'s real domain ({}). You're currently on {} instead.",
-                real_name.unwrap_or("the marketplace"),
-                real_domain.unwrap_or("unknown"),
-                current_domain.unwrap_or("an unrecognized domain"),
-            ),
-            value: "Suspicious".to_string(),
-            signal_type: "bad".to_string(),
-        }),
+        Some("suspicious") => {
+            // Prefer the character-highlighted versions when the
+            // extension provided them - the specific differing letter
+            // (e.g. "l" swapped for "I", or "0" for "o") is marked
+            // directly, since those characters are deliberately designed
+            // to look near-identical in plain text otherwise. Falls back
+            // to the plain domain strings if highlighting wasn't sent.
+            let current_display = current_domain_html
+                .or(current_domain)
+                .unwrap_or("an unrecognized domain");
+            let real_display = real_domain_html.or(real_domain).unwrap_or("unknown");
+
+            Some(Signal {
+                label: "Domain check".to_string(),
+                sub: format!(
+                    "This does not match {}'s real domain ({}). You're currently on {} instead.",
+                    real_name.unwrap_or("the marketplace"),
+                    real_display,
+                    current_display,
+                ),
+                value: "Suspicious".to_string(),
+                signal_type: "bad".to_string(),
+            })
+        }
         _ => None,
     }
 }
