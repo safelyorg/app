@@ -48,11 +48,6 @@
       var token = getToken();
       return token ? { Authorization: "Bearer " + token } : {};
     },
-    // Deletes the session on the server first, not just the local token -
-    // without this, a stolen or leaked token would keep working forever
-    // even after someone thought they'd logged out. A network hiccup
-    // here still lets the person log out locally regardless (caught and
-    // ignored, not blocking the redirect).
     logout: async function () {
       var token = getToken();
       if (token) {
@@ -82,11 +77,6 @@
   }
 })();
 
-// ============================================================
-// Colors + helpers - kept in one place so the risk palette (mint/
-// amber/coral) stays consistent between rows, chips, gauge, and
-// signal list rather than drifting between hand-picked shades.
-// ============================================================
 var API_BASE = "/api/v1";
 var currentHistory = [];
 var currentReports = [];
@@ -127,18 +117,10 @@ function formatDate(isoString) {
   return isoString ? isoString.slice(0, 10) : "";
 }
 
-// Escapes a URL for safe use inside an href="" attribute in a string we're
-// building by hand - prevents a stray quote in a scraped URL from breaking
-// out of the attribute.
 function escapeAttr(str) {
   return String(str).replace(/"/g, "&quot;");
 }
 
-// Identifies card brand from the leading digits only - standard, public
-// numbering rules (not anything secret about the card itself). Visa
-// always starts with 4; Mastercard's classic range starts with 51-55,
-// plus a newer 2221-2720 range introduced when the classic range ran
-// low. Anything else returns null, which just means no logo shows yet.
 function detectCardBrand(digits) {
   if (/^4/.test(digits)) return "visa";
   if (/^5[1-5]/.test(digits)) return "mastercard";
@@ -156,9 +138,6 @@ function updateCardBrandIcon(digits) {
   if (mcIcon) mcIcon.classList.toggle("hidden", brand !== "mastercard");
 }
 
-// ============================================================
-// Real data loading.
-// ============================================================
 async function loadDashboardData() {
   var headers = window.safelyAuth.authHeader();
 
@@ -184,9 +163,6 @@ async function loadDashboardData() {
     console.error("Safely: failed to load dashboard data", e);
   }
 
-  // The sidebar name needs to be correct from the moment the page loads,
-  // not only after the person happens to open Settings - so it's fetched
-  // here too, separately from loadSettingsData's fuller fetch.
   try {
     var meRes = await fetch(API_BASE + "/me", { headers: headers });
     if (meRes.ok) {
@@ -199,26 +175,11 @@ async function loadDashboardData() {
   }
 }
 
-// No name set (most commonly: signed in via magic link, never visited
-// Settings to set one) falls back to plain "User" - consistently, in
-// both the sidebar and the Settings page, rather than "Not set" in one
-// place and blank/hardcoded text in the other.
 function updateSidebarUserName(name) {
   var el = document.getElementById("sidebar-user-name");
   if (el) el.textContent = name || "User";
 }
 
-// Toggles between the placeholder icon and the real photo in both
-// places at once - the sidebar's small circle and the larger one in
-// Settings - so a person can never see stale/mismatched versions of
-// their own picture between the two.
-//
-// The avatar now lives in the database, served through an authenticated
-// endpoint (GET /api/v1/me/avatar) - not a plain static file URL. A
-// plain <img src="..."> can't attach the Bearer token itself, so this
-// fetches the actual image bytes with the auth header first, then hands
-// the browser the result as an object URL. hasAvatar is just the boolean
-// flag from /api/v1/me telling us whether to bother fetching at all.
 var currentAvatarObjectUrl = null;
 
 async function updateAvatar(hasAvatar) {
@@ -252,9 +213,6 @@ async function updateAvatar(hasAvatar) {
 
     var blob = await res.blob();
 
-    // Release the previous object URL before creating a new one - these
-    // aren't automatically garbage collected, and without this a person
-    // changing their photo repeatedly would slowly leak memory.
     if (currentAvatarObjectUrl) URL.revokeObjectURL(currentAvatarObjectUrl);
     currentAvatarObjectUrl = URL.createObjectURL(blob);
 
@@ -300,10 +258,6 @@ async function uploadAvatar(file) {
     var formData = new FormData();
     formData.append("avatar", file);
 
-    // Deliberately no "Content-Type" header here - the browser sets the
-    // multipart boundary itself when given a FormData body, and manually
-    // setting Content-Type would break that boundary and corrupt the
-    // upload.
     var res = await fetch(API_BASE + "/me/avatar", {
       method: "POST",
       headers: window.safelyAuth.authHeader(),
@@ -358,7 +312,6 @@ function renderHistoryRows() {
       )
         .toLowerCase()
         .replace(/"/g, "");
-      var border = verdictBorderClass(item.risk_level);
       return (
         '<tr data-risk="' +
         item.risk_level +
@@ -366,9 +319,7 @@ function renderHistoryRows() {
         searchText +
         '" data-id="' +
         item.id +
-        '" class="history-row border-b border-line last:border-b-0 border-l-[3px] ' +
-        border +
-        ' hover:bg-surface2/60 cursor-pointer transition">' +
+        '" class="history-row border-b border-line last:border-b-0 hover:bg-surface2/60 cursor-pointer transition">' +
         '<td class="hidden sm:table-cell px-4 py-3.5 text-muted num text-[12px]">' +
         formatDate(item.created_at) +
         "</td>" +
@@ -421,7 +372,7 @@ function renderReportRows() {
   tbody.innerHTML = currentReports
     .map(function (item) {
       return (
-        '<tr class="border-b border-line last:border-b-0 border-l-[3px] border-coral">' +
+        '<tr class="border-b border-line last:border-b-0">' +
         '<td class="hidden sm:table-cell px-4 py-3.5 text-muted num text-[12px]">' +
         formatDate(item.reported_at) +
         "</td>" +
@@ -446,9 +397,6 @@ function renderReportRows() {
     .join("");
 }
 
-// ============================================================
-// Settings panel - read-only account info.
-// ============================================================
 var settingsLoaded = false;
 
 async function loadSettingsData() {
@@ -493,12 +441,6 @@ async function loadSettingsData() {
   }
 }
 
-// One toggle now covers both the avatar and the name together, instead
-// of each having its own separate edit control. The avatar still uploads
-// immediately the moment a photo is picked (same as before - nothing
-// about that upload logic changed), so "Cancel" only ever needs to
-// revert the name field, since the avatar was never "staged" in the
-// first place.
 function toggleProfileEdit(showEdit) {
   var editBtn = document.getElementById("profile-edit-btn");
   var actions = document.getElementById("profile-edit-actions");
@@ -549,8 +491,6 @@ async function saveProfileEdit() {
     return;
   }
 
-  // Nothing to save if the name wasn't actually changed - just close
-  // edit mode without a pointless network round-trip.
   if (newName === currentName) {
     toggleProfileEdit(false);
     return;
@@ -591,12 +531,6 @@ async function saveProfileEdit() {
   }
 }
 
-// ============================================================
-// Signature element: segmented instrument-style risk gauge, same
-// arc-drawing technique as the landing page's hero gauge, so the
-// dashboard's "risk reading" looks like the same instrument across
-// the whole product rather than a plain progress-bar circle.
-// ============================================================
 function buildRiskGauge(score, level) {
   var color = riskHex(level);
   var r = 44;
@@ -648,9 +582,6 @@ function buildRiskGauge(score, level) {
   );
 }
 
-// ============================================================
-// Full rich detail panel - fetches GET /api/v1/history/:id.
-// ============================================================
 async function openDetail(analysisId) {
   var panel = document.getElementById("detail-view");
   var loading = document.getElementById("detail-loading");
@@ -712,7 +643,6 @@ function renderDetailBody(data) {
     }
   }
 
-  // --- Risk tab ---
   document.getElementById("detail-gauge-wrap").innerHTML = buildRiskGauge(
     data.risk_score,
     data.risk_level,
@@ -772,7 +702,6 @@ function renderDetailBody(data) {
   document.getElementById("detail-network-summary").textContent =
     data.seller.network_summary || "";
 
-  // --- Intelligence tab ---
   var signals = data.signals || [];
   var badCount = signals.filter(function (s) {
     return s.type !== "good" && s.type !== "info";
@@ -801,30 +730,23 @@ function renderDetailBody(data) {
   signalsList.innerHTML = signals
     .map(function (s) {
       return (
-        '<div class="flex justify-between gap-3 px-4 py-3.5 border-b border-line last:border-b-0 border-l-[3px] ' +
-        (s.type === "good"
-          ? "border-mint"
-          : s.type === "info"
-            ? "border-line"
-            : s.type === "caution"
-              ? "border-amber"
-              : "border-coral") +
-        '"><div class="min-w-0"><div class="font-semibold text-[13px]">' +
+        '<div class="bg-surface border border-line rounded-xl p-4 mb-2.5 last:mb-0">' +
+        '<div class="flex justify-between items-baseline gap-3">' +
+        '<div class="font-semibold text-[13px]">' +
         s.label +
-        '</div><div class="text-[11px] text-muted mt-0.5">' +
-        (s.sub || "") +
-        '</div></div><div class="text-[13px] font-bold whitespace-nowrap ' +
+        "</div>" +
+        '<div class="text-[13px] font-bold whitespace-nowrap ' +
         signalTextClass(s.type) +
         '">' +
         s.value +
+        "</div></div>" +
+        '<div class="text-[12px] text-muted mt-1.5">' +
+        (s.sub || "") +
         "</div></div>"
       );
     })
     .join("");
 
-  // --- Report tab --- shows EVERY report filed against this specific
-  // listing, not just the most recent one - a listing can be reported
-  // more than once, with different reasons each time.
   var filedBlock = document.getElementById("detail-report-filed");
   var emptyBlock = document.getElementById("detail-report-empty");
   var reports = data.reports || [];
@@ -873,10 +795,6 @@ function closeDetailPanel() {
   if (panel) panel.classList.add("hidden");
 }
 
-// Reflects whether Google is linked - "Connected" normally, but on
-// hover swaps to a red "Disconnect" affordance so the destructive action
-// isn't the default thing a person sees, only what they see when they
-// deliberately hover with intent to act.
 function setGoogleButtonState(connected) {
   var btn = document.getElementById("google-connect-btn");
   if (!btn) return;
@@ -914,10 +832,6 @@ async function handleGoogleButtonClick() {
   if (!btn) return;
 
   if (btn.dataset.connected === "true") {
-    // No confirmation prompt - disconnecting is fully reversible (just
-    // click Connect again any time), so a popup here is only friction,
-    // not real protection the way it would be for something destructive
-    // like deleting the account.
     btn.disabled = true;
     try {
       var res = await fetch(API_BASE + "/me/google/disconnect", {
@@ -931,17 +845,9 @@ async function handleGoogleButtonClick() {
       if (!res.ok) throw new Error("Failed to disconnect");
       setGoogleButtonState(false);
 
-      // Google is no longer valid for signing back in, so this label
-      // updates immediately - not just after the next real login - to
-      // avoid the confusing state of showing "Google" as the sign-in
-      // method for an account that's no longer connected to Google at
-      // all.
       var signinMethodEl = document.getElementById("settings-signin-method");
       if (signinMethodEl) signinMethodEl.textContent = "Email magic link";
 
-      // A plain in-page message, not a popup - and deliberately not
-      // saved anywhere, so it's only ever visible for this one session
-      // right after the action, and is simply gone on the next reload.
       var statusEl = document.getElementById("google-status-message");
       if (statusEl) {
         statusEl.textContent =
@@ -953,20 +859,12 @@ async function handleGoogleButtonClick() {
       btn.disabled = false;
     }
   } else {
-    // Plain navigation, not a fetch - the session token has to travel
-    // as a URL parameter since a full page navigation can't carry an
-    // Authorization header the way fetch() can.
     var token = window.safelyAuth.getToken();
     window.location.href =
       API_BASE + "/auth/google/connect?session=" + encodeURIComponent(token);
   }
 }
 
-// Surfaces the outcome of the connect flow when it redirects back here -
-// either a plain success flag or one of a few error codes, both arriving
-// as a query string rather than a fragment (the backend redirect uses
-// query params for this, distinct from the #session= fragment used for
-// login).
 function checkGoogleConnectResult() {
   var params = new URLSearchParams(window.location.search);
   var error = params.get("error");
@@ -999,7 +897,6 @@ function checkGoogleConnectResult() {
 document.addEventListener("DOMContentLoaded", function () {
   checkGoogleConnectResult();
 
-
   if (window.safelyAuth && window.safelyAuth.getToken()) {
     loadDashboardData();
   }
@@ -1011,12 +908,6 @@ document.addEventListener("DOMContentLoaded", function () {
 
   var navHistory = document.getElementById("view-history");
   var navReports = document.getElementById("view-reports");
-  // "change" only fires when the radio's checked state actually flips -
-  // if you're already on History and click History again while a detail
-  // is open, nothing about the radio changes, so "change" never fires and
-  // the detail panel never gets closed. "click" fires every time
-  // regardless, so it's added alongside "change" (not instead of it) to
-  // catch that case too.
   if (navHistory) {
     navHistory.addEventListener("change", closeDetailPanel);
     navHistory.addEventListener("click", closeDetailPanel);
@@ -1045,14 +936,6 @@ document.addEventListener("DOMContentLoaded", function () {
       if (!settingsLoaded) loadSettingsData();
     });
 
-    // Browsers can restore a radio's checked state after Back/Forward
-    // navigation without ever firing a "change" event - that's silent
-    // DOM restoration, not a user action. Checking at DOMContentLoaded
-    // is too early: that restoration can happen slightly later in the
-    // page's load sequence, so the check below can miss it. "pageshow"
-    // is the event actually designed for this - it only fires once
-    // whatever the browser is going to restore has already been applied,
-    // whether this is a fresh load or a history-restored one.
     if (navSettings.checked && !settingsLoaded) {
       loadSettingsData();
     }
@@ -1097,13 +980,6 @@ document.addEventListener("DOMContentLoaded", function () {
     });
   }
 
-  // Danger Zone / Connect Google are visual-only for now, per request -
-  // clicking either just says so rather than doing nothing silently or
-  // pretending to succeed.
-  // Delete account - requires typing the account's own email exactly
-  // before the button even becomes clickable, deliberately more friction
-  // than a plain confirm() popup, since this is genuinely irreversible
-  // (unlike disconnecting Google, which just needs one click to undo).
   var deleteBtn = document.getElementById("delete-account-btn");
   var deleteConfirmBox = document.getElementById("delete-account-confirm");
   var deleteConfirmEmailEl = document.getElementById("delete-confirm-email");
@@ -1160,9 +1036,6 @@ document.addEventListener("DOMContentLoaded", function () {
         }
         if (!res.ok) throw new Error("Failed to delete account");
 
-        // The account is gone - clear the local token directly (there's
-        // no session left on the server to also delete, unlike a normal
-        // logout) and send them to the homepage.
         window.safelyAuth.clearToken();
         window.location.href = "/";
       } catch (e) {
@@ -1182,14 +1055,6 @@ document.addEventListener("DOMContentLoaded", function () {
     googleConnectBtn.addEventListener("click", handleGoogleButtonClick);
   }
 
-  // Plan & Billing - design-only for now. The show/hide of the card
-  // form is real, functioning UI (no backend needed for that part);
-  // only the actual save/change-plan actions are placeholders pending
-  // a real payment provider being wired in.
-  // Change plan - the dropdown itself, and swapping which plan is shown
-  // as "Active", are both real working UI. Only an actual plan CHANGE
-  // taking effect (billing, prorating, etc.) needs a real backend later -
-  // this is purely a visual preview of picking a different plan.
   var changePlanBtn = document.getElementById("change-plan-btn");
   var changePlanDropdown = document.getElementById("change-plan-dropdown");
 
@@ -1247,9 +1112,6 @@ document.addEventListener("DOMContentLoaded", function () {
       paymentForm.classList.add("hidden");
     });
   }
-  // Card number: groups into 4-digit blocks as you type, capped at 16
-  // digits (the standard Visa/Mastercard length), and shows the matching
-  // brand logo the moment enough digits identify it.
   var cardNumberInput = document.getElementById("card-number-input");
   if (cardNumberInput) {
     cardNumberInput.addEventListener("input", function (e) {
@@ -1260,11 +1122,6 @@ document.addEventListener("DOMContentLoaded", function () {
     });
   }
 
-  // Expiry: typing digits alone builds "MM/YY" - a single first digit of
-  // 2-9 is auto-padded to "0X" immediately (since no valid month starts
-  // with 2-9 as its only digit), the slash is inserted automatically
-  // right after the month is complete, and the month is clamped to a
-  // maximum of 12.
   var cardExpiryInput = document.getElementById("card-expiry-input");
   if (cardExpiryInput) {
     cardExpiryInput.addEventListener("input", function (e) {
@@ -1297,7 +1154,6 @@ document.addEventListener("DOMContentLoaded", function () {
     });
   }
 
-  // CVC: digits only, capped at 3.
   var cardCvcInput = document.getElementById("card-cvc-input");
   if (cardCvcInput) {
     cardCvcInput.addEventListener("input", function (e) {
@@ -1341,7 +1197,7 @@ document.addEventListener("DOMContentLoaded", function () {
       if (paymentForm) paymentForm.classList.add("hidden");
 
       alert(
-        "Payment processing isn'\''t wired up yet - this is a design preview. " +
+        "Payment processing isn't wired up yet - this is a design preview. " +
           "The card details above are shown for preview only and were not actually saved anywhere.",
       );
     });
@@ -1405,9 +1261,6 @@ document.addEventListener("DOMContentLoaded", function () {
     });
   }
 
-  // Native <details> only closes itself when its own <summary> is clicked
-  // again - clicking anywhere else on the page does nothing on its own.
-  // This closes the account menu on any click outside it.
   document.addEventListener("click", function (e) {
     var menu = document.getElementById("account-menu");
     if (menu && menu.open && !menu.contains(e.target)) {

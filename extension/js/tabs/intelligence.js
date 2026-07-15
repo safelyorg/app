@@ -23,23 +23,31 @@
             : bad + " of " + signals.length + " signals need your attention.";
         return JSON.stringify({ level: level, text: text });
       },
+      // Redesigned to match the Recommended Checks card style - separate
+      // rounded cards with spacing between them, instead of a single
+      // bordered list with colored differentiator lines. The status
+      // word itself (Verified/Suspicious/Detected/etc.) is now the only
+      // color differentiation, shown directly next to the label.
       build_signal_rows: function (j) {
         var signals = JSON.parse(j);
+        var COLORS = { good: "#35d0a6", caution: "#f2b84c", info: "#8e8e93" };
         return signals
           .map(function (s) {
+            var color = COLORS[s.type] || "#ff5d5d";
             return (
-              '<div class="safely-signal-row"><span class="safely-signal-label-wrap">' +
-              '<span class="safely-signal-label">' +
+              '<div class="safely-check-card">' +
+              '<div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;">' +
+              '<div class="safely-check-title">' +
               s.label +
-              "</span>" +
-              '<span class="safely-signal-sublabel">' +
-              s.sub +
-              "</span>" +
-              '</span><span class="safely-signal-value safely-signal-' +
-              s.type +
-              '">' +
+              "</div>" +
+              '<div style="font-weight:700;white-space:nowrap;font-size:13px;color:' +
+              color +
+              ';">' +
               s.value +
-              "</span></div>"
+              "</div></div>" +
+              '<div class="safely-check-body">' +
+              (s.sub || "") +
+              "</div></div>"
             );
           })
           .join("");
@@ -62,7 +70,7 @@
       '"><span>&#9679;</span><span>' +
       summaryText +
       "</span></div>" +
-      '<div class="safely-section-label" style="margin-top:14px">Listing signals</div><div class="safely-signal-list">' +
+      '<div class="safely-section-label" style="margin-top:14px">Listing signals</div><div style="display:flex;flex-direction:column;gap:8px">' +
       wasm.build_signal_rows(JSON.stringify(pageData.signals)) +
       "</div>" +
       (function () {

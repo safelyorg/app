@@ -114,14 +114,26 @@ pub fn verification_badge(status: &str) -> String {
     )
 }
 
+/// Redesigned to match the Recommended Checks card style - separate
+/// rounded cards with spacing between them (safely-check-card), instead
+/// of a single bordered list with a colored left-border line per row.
+/// The status word itself (Verified/Suspicious/Detected/etc.) is now
+/// the only color differentiation, shown as colored text next to the
+/// label rather than as a border color.
 #[wasm_bindgen]
 pub fn build_signal_rows(signals_json: &str) -> String {
     let signals: Vec<Signal> = serde_json::from_str(signals_json).unwrap_or_default();
 
     signals.iter().map(|s| {
+        let color = match s.signal_type.as_str() {
+            "good" => "#35d0a6",
+            "caution" => "#f2b84c",
+            "info" => "#8e8e93",
+            _ => "#ff5d5d",
+        };
         format!(
-            r#"<div class="safely-signal-row"><span class="safely-signal-label-wrap"><span class="safely-signal-label">{}</span><span class="safely-signal-sublabel">{}</span></span><span class="safely-signal-value safely-signal-{}">{}</span></div>"#,
-            s.label, s.sub, s.signal_type, s.value
+            r#"<div class="safely-check-card"><div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;"><div class="safely-check-title">{}</div><div style="font-weight:700;white-space:nowrap;font-size:13px;color:{};">{}</div></div><div class="safely-check-body">{}</div></div>"#,
+            s.label, color, s.value, s.sub
         )
     }).collect::<Vec<_>>().join("")
 }
