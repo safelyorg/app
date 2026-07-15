@@ -57,7 +57,7 @@
       var token = getToken();
       if (token) {
         try {
-          await fetch("http://localhost:3000/api/v1/auth/logout", {
+          await fetch("/api/v1/auth/logout", {
             method: "POST",
             headers: { Authorization: "Bearer " + token },
           });
@@ -87,7 +87,7 @@
 // amber/coral) stays consistent between rows, chips, gauge, and
 // signal list rather than drifting between hand-picked shades.
 // ============================================================
-var API_BASE = "http://localhost:3000/api/v1";
+var API_BASE = "/api/v1";
 var currentHistory = [];
 var currentReports = [];
 
