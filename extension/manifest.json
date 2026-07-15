@@ -3,12 +3,22 @@
   "name": "Safely",
   "version": "1.0.0",
   "description": "Secure your online transactions. Seller risk check and payment protection everywhere you shop.",
-  "permissions": ["activeTab", "storage"],
-  "host_permissions": ["<all_urls>"],
+  "permissions": [
+    "activeTab",
+    "storage"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
   "web_accessible_resources": [
     {
-      "resources": ["pkg/wasm.js", "pkg/wasm_bg.wasm"],
-      "matches": ["<all_urls>"]
+      "resources": [
+        "pkg/wasm.js",
+        "pkg/wasm_bg.wasm"
+      ],
+      "matches": [
+        "<all_urls>"
+      ]
     }
   ],
   "action": {
@@ -25,7 +35,10 @@
   },
   "content_scripts": [
     {
-      "matches": ["http://*/*", "https://*/*"],
+      "matches": [
+        "http://*/*",
+        "https://*/*"
+      ],
       "css": ["css/panel.css"],
       "js": [
         "js/core/state.js",
@@ -41,8 +54,12 @@
       "run_at": "document_idle"
     },
     {
-      "matches": ["http://localhost:3000/*"],
-      "js": ["js/auth-bridge.js"],
+      "matches": [
+        "https://safely.sh/*"
+      ],
+      "js": [
+        "js/auth-bridge.js"
+      ],
       "run_at": "document_idle"
     }
   ],
