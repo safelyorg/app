@@ -143,5 +143,11 @@
       var current = document.querySelector(".ptoggle-btn.active");
       positionThumb(current ? current.dataset.bill : "mo");
     });
+
+    window.addEventListener("hashchange", function () {
+      if (window.location.hash === "#_") {
+        history.replaceState(null, "", window.location.pathname + window.location.search);
+      }
+    });
   }
 })();
