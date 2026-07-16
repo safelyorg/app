@@ -73,6 +73,12 @@
     }
   });
 
+  window.addEventListener("hashchange", function () {
+    if (window.location.hash === "#_") {
+      history.replaceState(null, "", window.location.pathname + window.location.search);
+    }
+  });
+
   // ============================================================
   // Pricing toggle: Monthly / Yearly billing switch. Every price
   // element already stores both values directly in the HTML
@@ -142,12 +148,6 @@
     window.addEventListener("resize", function () {
       var current = document.querySelector(".ptoggle-btn.active");
       positionThumb(current ? current.dataset.bill : "mo");
-    });
-
-    window.addEventListener("hashchange", function () {
-      if (window.location.hash === "#_") {
-        history.replaceState(null, "", window.location.pathname + window.location.search);
-      }
     });
   }
 })();
