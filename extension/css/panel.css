@@ -1347,13 +1347,12 @@
         inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
 .safely-toolbar-letter {
-    font-family: var(--disp);
-    font-size: 22px;
-    font-weight: 900;
-    color: var(--sky);
-    line-height: 1;
+    width: 34px;
+    height: 34px;
+    object-fit: contain;
     position: absolute;
     pointer-events: none;
+    margin-top: -4px;
     transition: opacity 0.12s ease 0.06s;
 }
 #safely-toolbar.safely-toolbar-expanded .safely-toolbar-letter {

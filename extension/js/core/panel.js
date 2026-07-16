@@ -34,7 +34,9 @@
     "listing page), not a site's general pages." +
     "</div>" +
     "</div>" +
-    '<div id="safely-toolbar"><span class="safely-toolbar-letter">S</span><div class="safely-toolbar-inner" id="safely-toolbar-inner">' +
+    '<div id="safely-toolbar"><img class="safely-toolbar-letter" src="' +
+    chrome.runtime.getURL("icons/icon48.png") +
+    '" alt="Safely" /><div class="safely-toolbar-inner" id="safely-toolbar-inner">' +
     '<span class="safely-toolbar-label" id="safely-collapse-btn">Safely</span>' +
     "</div></div>";
 
