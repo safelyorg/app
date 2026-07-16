@@ -1877,6 +1877,22 @@ footer {
     width: 18px;
     height: 18px;
 }
+
+.brand .mk,
+.si-brand .mk {
+    background: none;
+    border: none;
+    box-shadow: none;
+    border-radius: 0;
+}
+.brand .mk img,
+.si-brand .mk img {
+    width: 28px;
+    height: 28px;
+    object-fit: contain;
+    display: block;
+}
+
 .si-mid {
     flex: 1;
     display: flex;
