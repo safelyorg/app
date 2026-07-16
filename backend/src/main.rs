@@ -1,7 +1,11 @@
 use crate::db::{bootstrap::run_grants, connection::load_pool};
 use axum::http::{HeaderValue, header};
 use axum::{Router, response::Redirect, routing::get};
-use tower_http::{cors::CorsLayer, services::ServeDir, set_header::SetResponseHeaderLayer};
+use tower_http::{
+    cors::CorsLayer,
+    services::{ServeDir, ServeFile},
+    set_header::SetResponseHeaderLayer,
+};
 
 #[path = "../db/mod.rs"]
 pub mod db;
@@ -13,7 +17,6 @@ pub mod models;
 pub mod routes;
 #[path = "../services/mod.rs"]
 pub mod services;
-
 #[tokio::main]
 async fn main() {
     let admin_pool = load_pool("ADMIN_URL").await;
@@ -23,7 +26,6 @@ async fn main() {
         .await
         .expect("migration expected");
     run_grants(&admin_pool).await;
-
     let app = Router::new()
         .merge(routes::analyze::analyze_routes())
         .merge(routes::fraud_reports::fraud_reports_routes())
@@ -42,24 +44,30 @@ async fn main() {
             "/extension",
             ServeDir::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../extension")),
         )
+        .route_service(
+            "/",
+            ServeFile::new(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../site/templates/index.html"
+            )),
+        )
+        .route_service(
+            "/signin.html",
+            ServeFile::new(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../site/templates/signin.html"
+            )),
+        )
         .fallback_service(
             ServeDir::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../site"))
                 .append_index_html_on_directories(true),
         )
-        // Forces every response - including the dashboard's HTML/JS/CSS -
-        // to be revalidated with the server on every load rather than
-        // silently reused from the browser's own cache. This is what was
-        // letting a stale copy of index.html get served right after the
-        // sign-in redirect, even after the real file on disk was already
-        // fixed - the browser just never asked the server for a fresh
-        // copy at that exact moment.
         .layer(SetResponseHeaderLayer::overriding(
             header::CACHE_CONTROL,
             HeaderValue::from_static("no-cache, no-store, must-revalidate"),
         ))
         .layer(CorsLayer::permissive())
         .with_state(app_pool);
-
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
     println!("Server running on port: 3000");
     axum::serve(listener, app).await.unwrap();
