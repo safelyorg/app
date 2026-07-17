@@ -70,7 +70,8 @@
     },
     {
       "matches": [
-        "https://safely.sh/*"
+        "https://safely.sh/*",
+        "http://localhost:3000/*"
       ],
       "js": [
         "js/auth-bridge.js"

@@ -2,7 +2,12 @@
 (function () {
   "use strict";
 
-  var API_BASE = "https://safely.sh/api/v1";
+  var SAFELY_ENV = "local";
+
+  var API_BASE =
+    SAFELY_ENV === "local"
+      ? "http://localhost:3000/api/v1"
+      : "https://safely.sh/api/v1";
 
   // Reads the session token that auth-bridge.js relayed from the website.
   // Returns an empty object (no Authorization header) if the person isn't
