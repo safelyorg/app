@@ -1,6 +1,4 @@
-/** ============================================================
-SIGN-IN PAGE
-============================================================ */
+/** ======== SIGN-IN PAGE ========= */
 
 /* ---------- brand mark overrides for img logo ---------- */
 .brand .mk,
@@ -31,6 +29,7 @@ SIGN-IN PAGE
     transition: opacity 0.25s ease;
     overflow-y: auto;
 }
+
 #si-toggle:checked ~ .signin {
     opacity: 1;
     pointer-events: auto;
