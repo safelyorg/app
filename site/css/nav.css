@@ -1,0 +1,167 @@
+/* ============================================================
+   NAV — Top nav, mobile drawer, hamburger menu
+   ============================================================ */
+.navwrap {
+    position: sticky;
+    top: 0;
+    z-index: 120;
+    padding-top: 14px;
+    padding-bottom: 6px;
+}
+.nav {
+    display: flex;
+    align-items: center;
+    gap: 24px;
+    height: 64px;
+    padding: 0 16px 0 22px;
+    background: rgba(255, 255, 255, 0.86);
+    -webkit-backdrop-filter: blur(14px) saturate(160%);
+    backdrop-filter: blur(14px) saturate(160%);
+    border: var(--bd);
+    border-radius: 20px;
+    box-shadow: var(--sh), 0 20px 40px -22px rgba(25, 28, 34, 0.28);
+}
+.nav .btn {
+    padding: 9px 17px;
+    font-size: 14.5px;
+    box-shadow: var(--sh-sm);
+}
+.nav .btn:hover {
+    box-shadow: var(--sh);
+}
+.nav-links {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: 8px;
+}
+.nav-links a {
+    font-size: 15.5px;
+    font-weight: 600;
+    padding: 8px 12px;
+    border-radius: 10px;
+    transition:
+        background 0.18s ease,
+        color 0.18s ease;
+}
+.nav-links a:hover {
+    color: var(--sky-deep);
+    background: var(--cream);
+}
+.nav-right {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+/* ---------- hamburger ---------- */
+.hamb {
+    display: none;
+    width: 46px;
+    height: 46px;
+    border: var(--bd);
+    border-radius: 13px;
+    background: var(--paper);
+    box-shadow: var(--sh-sm);
+    place-items: center;
+}
+.hamb span,
+.hamb span::before,
+.hamb span::after {
+    content: "";
+    display: block;
+    width: 20px;
+    height: 2.6px;
+    background: var(--ink);
+    border-radius: 3px;
+    position: relative;
+    transition:
+        transform 0.3s ease,
+        opacity 0.2s;
+}
+.hamb span::before {
+    position: absolute;
+    top: -6px;
+}
+.hamb span::after {
+    position: absolute;
+    top: 6px;
+}
+#nav-toggle:checked ~ .navwrap .hamb span {
+    background: transparent;
+}
+#nav-toggle:checked ~ .navwrap .hamb span::before {
+    transform: translateY(6px) rotate(45deg);
+}
+#nav-toggle:checked ~ .navwrap .hamb span::after {
+    transform: translateY(-6px) rotate(-45deg);
+}
+
+/* ---------- screen-reader toggle ---------- */
+.sr-toggle {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 1px;
+    height: 1px;
+    opacity: 0;
+    margin: 0;
+    border: 0;
+    z-index: -1;
+}
+.sr-toggle:focus-visible ~ .navwrap .hamb {
+    outline: 3px solid var(--sky-deep);
+    outline-offset: 3px;
+}
+
+/* ---------- mobile drawer ---------- */
+.drawer {
+    position: fixed;
+    left: var(--pad-x);
+    right: var(--pad-x);
+    top: 84px;
+    z-index: 115;
+    background: var(--paper);
+    border: var(--bd);
+    border-radius: var(--r);
+    box-shadow: var(--sh-lg);
+    padding: 14px 16px 20px;
+    opacity: 0;
+    transform: translateY(-10px);
+    pointer-events: none;
+    transition:
+        opacity 0.22s ease,
+        transform 0.22s ease;
+}
+#nav-toggle:checked ~ .drawer {
+    opacity: 1;
+    transform: none;
+    pointer-events: auto;
+}
+.drawer-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 114;
+    background: rgba(20, 22, 28, 0.18);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s ease;
+}
+#nav-toggle:checked ~ .drawer-backdrop {
+    opacity: 1;
+    pointer-events: auto;
+}
+.drawer a:not(.btn) {
+    display: block;
+    padding: 12px 8px;
+    font-size: 17px;
+    font-weight: 600;
+    border-bottom: 2px solid var(--cream-2);
+}
+.drawer .btn {
+    width: 100%;
+    margin-top: 14px;
+    display: flex;
+    white-space: nowrap;
+}

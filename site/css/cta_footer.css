@@ -1,0 +1,151 @@
+/* ============================================================
+   FINAL CTA + FOOTER (dark)
+   ============================================================ */
+
+/* ---------- final CTA ---------- */
+.finalcta .box {
+    position: relative;
+    border: var(--bd);
+    border-radius: var(--r-lg);
+    box-shadow: var(--sh-lg);
+    background: var(--mint);
+    text-align: center;
+    padding: clamp(46px, 7vw, 82px) var(--pad-x);
+    overflow: hidden;
+}
+.finalcta .box h2 {
+    font-family: var(--disp);
+    font-weight: 800;
+    font-size: clamp(32px, 5.6vw, 64px);
+    line-height: 0.98;
+    letter-spacing: -0.03em;
+    max-width: 18ch;
+    margin-inline: auto;
+    text-transform: uppercase;
+}
+.finalcta .box p {
+    font-size: 18px;
+    font-weight: 600;
+    color: #0e4a35;
+    margin: 18px auto 0;
+    max-width: 50ch;
+}
+.finalcta .cta-row {
+    display: flex;
+    gap: 13px;
+    justify-content: center;
+    margin-top: 26px;
+    flex-wrap: wrap;
+}
+.finalcta .deco {
+    position: absolute;
+    font-size: 40px;
+    animation: wob 5s ease-in-out infinite;
+}
+.finalcta .deco.d1 {
+    top: 18px;
+    left: 6%;
+}
+.finalcta .deco.d2 {
+    bottom: 22px;
+    right: 8%;
+    animation-delay: 1s;
+}
+
+/* ---------- footer ---------- */
+footer {
+    position: relative;
+    background: var(--ink2);
+    color: var(--on-dark);
+    padding-block: clamp(72px, 9vw, 96px) 32px;
+}
+.fgrid {
+    display: grid;
+    grid-template-columns: 1.5fr repeat(4, 1fr);
+    gap: 32px;
+}
+.fbrand .brand {
+    margin-bottom: 16px;
+    color: #fff;
+}
+.fbrand p {
+    font-size: 14.5px;
+    color: var(--on-dark-mut);
+    font-weight: 500;
+    max-width: 34ch;
+    margin-bottom: 20px;
+}
+.socials {
+    display: flex;
+    gap: 9px;
+}
+.socials a {
+    width: 42px;
+    height: 42px;
+    border: 2px solid var(--ink-line);
+    border-radius: 12px;
+    background: var(--ink-card);
+    display: grid;
+    place-items: center;
+    transition:
+        transform 0.12s ease,
+        border-color 0.15s,
+        background 0.15s;
+}
+.socials a:hover {
+    transform: translateY(-3px);
+    border-color: #525a6b;
+    background: #2a2f3a;
+}
+.socials svg {
+    width: 18px;
+    height: 18px;
+    color: var(--on-dark);
+}
+.fcol h5 {
+    font-family: var(--disp);
+    font-weight: 600;
+    font-size: 13px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #fff;
+    margin-bottom: 14px;
+}
+.fcol a {
+    display: block;
+    font-size: 14.5px;
+    color: var(--on-dark-mut);
+    font-weight: 500;
+    padding: 5px 0;
+    transition: color 0.15s;
+}
+.fcol a:hover {
+    color: #fff;
+}
+.fbottom {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    margin-top: clamp(40px, 5vw, 56px);
+    padding-top: 24px;
+    border-top: 2px solid var(--ink-line);
+    flex-wrap: wrap;
+}
+.fbottom .cp {
+    font-size: 14px;
+    color: var(--on-dark-mut);
+    font-weight: 500;
+}
+.fbottom .links {
+    display: flex;
+    gap: 18px;
+}
+.fbottom .links a {
+    font-size: 14px;
+    color: var(--on-dark-mut);
+    font-weight: 600;
+}
+.fbottom .links a:hover {
+    color: #fff;
+}

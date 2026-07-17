@@ -1,0 +1,305 @@
+/* ============================================================
+   PRICING — Cards, monthly/yearly toggle, comparison table
+   ============================================================ */
+
+/* ---------- pricing cards ---------- */
+.price-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+    align-items: start;
+}
+.pcard {
+    border: var(--bd);
+    border-radius: var(--r-lg);
+    box-shadow: var(--sh), 0 16px 30px -16px rgba(25, 28, 34, 0.16);
+    padding: 24px;
+    background: var(--paper);
+    position: relative;
+    transition:
+        transform 0.18s cubic-bezier(0.22, 0.61, 0.36, 1),
+        box-shadow 0.18s cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+.price-grid .pcard:hover {
+    transform: translate(-3px, -3px);
+    box-shadow: var(--sh-lg), 0 24px 40px -16px rgba(25, 28, 34, 0.22);
+    transition-delay: 0s;
+}
+.pcard.feat {
+    background: linear-gradient(160deg, #a8d4fa 0%, var(--sky-card) 55%, #7fc0f2 100%);
+    transform: translateY(-6px);
+    box-shadow: var(--sh), 0 22px 46px -14px rgba(47, 134, 221, 0.35);
+}
+.price-grid .pcard.feat:hover {
+    transform: translate(-3px, -9px);
+    box-shadow: var(--sh-lg);
+    transition-delay: 0s;
+}
+.pbadge {
+    position: absolute;
+    top: -15px;
+    left: 22px;
+    background: var(--ink);
+    color: #fff;
+    border: var(--bd-thin);
+    border-radius: 999px;
+    font-size: 10.5px;
+    font-weight: 800;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    padding: 5px 12px;
+    box-shadow: var(--sh-sm);
+}
+.pname {
+    font-family: var(--disp);
+    font-weight: 800;
+    font-size: 20px;
+    letter-spacing: -0.01em;
+}
+.pprice {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    margin: 13px 0 18px;
+    flex-wrap: wrap;
+}
+.pprice-prefix {
+    font-family: var(--body);
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--muted);
+}
+.pprice .amt {
+    font-family: var(--disp);
+    font-weight: 800;
+    font-size: 38px;
+    line-height: 1;
+    letter-spacing: -0.02em;
+    white-space: nowrap;
+}
+.pprice .per {
+    font-size: 13px;
+    font-weight: 600;
+    color: #555;
+}
+.pcard.feat .per {
+    color: #1d3550;
+}
+.pcard .btn {
+    width: 100%;
+    font-size: 14px;
+    padding: 12px 16px;
+}
+.plist {
+    display: grid;
+    gap: 10px;
+    margin-top: 20px;
+}
+.plist li {
+    display: flex;
+    gap: 9px;
+    font-size: 13.8px;
+    font-weight: 600;
+    align-items: flex-start;
+}
+.plist .ck {
+    width: 19px;
+    height: 19px;
+    border: var(--bd-thin);
+    border-radius: 50%;
+    background: #fff;
+    display: grid;
+    place-items: center;
+    flex: none;
+    margin-top: 1px;
+}
+.plist .ck svg {
+    width: 11px;
+    height: 11px;
+    color: var(--mint-deep);
+}
+.pfor {
+    font-size: 13px;
+    color: var(--muted);
+    font-weight: 500;
+    margin-top: 4px;
+    line-height: 1.4;
+}
+.p-billed {
+    font-size: 11.5px;
+    color: var(--mint-deep);
+    font-weight: 700;
+    min-height: 18px;
+    margin-top: -8px;
+    margin-bottom: 14px;
+}
+.p-trial {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--muted);
+    text-align: center;
+    margin-bottom: 16px;
+    letter-spacing: 0.02em;
+}
+
+/* ---------- monthly / yearly toggle ---------- */
+.ptoggle-wrap {
+    text-align: center;
+    margin-bottom: 48px;
+    padding-block: 6px;
+}
+.ptoggle {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    border: var(--bd);
+    border-radius: 999px;
+    box-shadow: var(--sh-sm);
+    background: var(--paper);
+    padding: 7px;
+}
+.ptoggle-thumb {
+    position: absolute;
+    top: 7px;
+    left: 7px;
+    height: calc(100% - 14px);
+    width: 0;
+    background: var(--sun);
+    border: var(--bd-thin);
+    border-radius: 999px;
+    box-shadow: var(--sh-sm);
+    transition:
+        transform 0.32s cubic-bezier(0.22, 0.61, 0.36, 1),
+        width 0.32s cubic-bezier(0.22, 0.61, 0.36, 1);
+    z-index: 0;
+    pointer-events: none;
+}
+.ptoggle-btn {
+    position: relative;
+    z-index: 1;
+    padding: 14px 38px;
+    border-radius: 999px;
+    font-family: var(--body);
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--muted);
+    transition: color 0.2s ease;
+    display: inline-flex;
+    align-items: center;
+    gap: 12px;
+    cursor: pointer;
+}
+.ptoggle-btn:hover {
+    color: var(--ink);
+}
+.ptoggle-btn.active {
+    color: var(--ink);
+}
+.psave-badge {
+    display: inline-block;
+    background: var(--mint);
+    font-size: 10px;
+    font-weight: 800;
+    padding: 4px 12px;
+    border-radius: 999px;
+    letter-spacing: 0.02em;
+    margin-right: 2px;
+}
+
+/* ---------- comparison table ---------- */
+.comp-wrap {
+    margin-top: clamp(52px, 7vw, 80px);
+}
+.comp-wrap > h3 {
+    font-family: var(--disp);
+    font-weight: 800;
+    font-size: clamp(24px, 3.5vw, 38px);
+    text-align: center;
+    margin-bottom: 28px;
+    letter-spacing: -0.025em;
+}
+.comp-scroll {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    border-radius: var(--r);
+    border: var(--bd);
+    box-shadow: var(--sh);
+}
+.comp-table {
+    width: 100%;
+    min-width: 640px;
+    border-collapse: collapse;
+    background: var(--paper);
+    font-size: 13.5px;
+}
+.comp-table thead th {
+    background: var(--cream);
+    border-bottom: var(--bd);
+    padding: 14px 18px;
+    font-family: var(--disp);
+    font-weight: 700;
+    font-size: 14px;
+    text-align: center;
+    white-space: nowrap;
+    position: sticky;
+    top: 0;
+    z-index: 2;
+}
+.comp-table thead th:first-child {
+    text-align: left;
+}
+.comp-table thead th.feat-col {
+    background: var(--sky-card);
+}
+.comp-table tbody td {
+    padding: 11px 18px;
+    border-bottom: 1.5px solid var(--cream-2);
+    text-align: center;
+    font-weight: 600;
+    color: var(--muted);
+}
+.comp-table tbody td:first-child {
+    text-align: left;
+    font-weight: 600;
+    color: var(--ink);
+    white-space: nowrap;
+}
+.comp-table tbody tr:last-child td {
+    border-bottom: none;
+}
+.comp-cat td {
+    background: var(--cream) !important;
+    font-family: var(--disp);
+    font-weight: 700;
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+    padding: 10px 18px !important;
+    border-bottom: var(--bd-thin) !important;
+}
+.tck {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    border: var(--bd-thin);
+    border-radius: 50%;
+    background: var(--mint);
+    flex-shrink: 0;
+}
+.tck svg {
+    width: 12px;
+    height: 12px;
+    color: #fff;
+}
+.tdash {
+    color: #c5c3bc;
+    font-size: 16px;
+    line-height: 1;
+}
+.tval {
+    font-weight: 700;
+    color: var(--ink);
+}

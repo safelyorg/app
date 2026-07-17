@@ -1,0 +1,183 @@
+/* ============================================================
+   REVEAL ON SCROLL + ALL MEDIA QUERIES
+   Must load last to ensure proper cascade overrides
+   ============================================================ */
+
+/* ---------- reveal animation ---------- */
+.reveal {
+    opacity: 0;
+}
+.reveal.in {
+    animation: revIn 0.6s ease both;
+}
+@keyframes revIn {
+    from {
+        opacity: 0;
+        translate: 0 26px;
+    }
+    to {
+        opacity: 1;
+        translate: 0 0;
+    }
+}
+.reveal.d1.in {
+    animation-delay: 0.06s;
+}
+.reveal.d2.in {
+    animation-delay: 0.12s;
+}
+.reveal.d3.in {
+    animation-delay: 0.18s;
+}
+
+/* ---------- tablet (≤ 980px) ---------- */
+@media (max-width: 980px) {
+    .nav-links {
+        display: none;
+    }
+    .nav-right .btn {
+        display: none;
+    }
+    .hamb {
+        display: grid;
+    }
+    .f1 {
+        grid-template-columns: 1fr;
+        gap: 28px;
+    }
+    .steps {
+        grid-template-columns: 1fr;
+    }
+    .bento {
+        grid-template-columns: 1fr;
+    }
+    .statbar {
+        grid-template-columns: 1fr 1fr;
+    }
+    .statbar .it:nth-child(2) {
+        border-right: none;
+    }
+    .statbar .it:nth-child(1),
+    .statbar .it:nth-child(2) {
+        border-bottom: var(--bd-thin);
+    }
+    .price-grid {
+        grid-template-columns: 1fr 1fr;
+    }
+    .pcard.feat,
+    .pcard.feat:hover {
+        transform: none;
+    }
+    .lgrid {
+        grid-template-columns: 1fr 1fr;
+    }
+    .fgrid {
+        grid-template-columns: 1fr 1fr;
+        gap: 30px;
+    }
+    .fbrand {
+        grid-column: 1/-1;
+    }
+    .comp-wrap {
+        margin-top: 40px;
+    }
+}
+
+/* ---------- sign-in tablet (≤ 900px) ---------- */
+/* ---------- sign-in tablet (≤ 900px) ---------- */
+@media (max-width: 900px) {
+    .signin {
+        grid-template-columns: 1fr;
+        background: var(--cream);
+    }
+
+    .si-right {
+        display: none;
+    }
+
+    /* Let left column breathe */
+    .si-left {
+        padding: 28px 24px 40px;
+        min-height: auto;
+    }
+
+    /* Center the form vertically with padding instead of flex */
+    .si-mid {
+        margin: 40px auto 0;
+        max-width: 400px;
+    }
+
+    /* Card gets full available width cleanly */
+    .si-card {
+        border-radius: 20px;
+        padding: 28px 24px;
+    }
+
+    /* Tighten heading for smaller screens */
+    .si-card h2 {
+        font-size: 24px;
+    }
+
+    /* Close button sits inside the flow, not fixed */
+    .si-close {
+        position: absolute;
+        top: 28px;
+        right: 24px;
+        z-index: 310;
+    }
+
+    /* Make si-left the positioning context */
+    .si-left {
+        position: relative;
+    }
+
+    /* Legal text slightly smaller */
+    .si-legal {
+        font-size: 12px;
+        margin-top: 20px;
+    }
+}
+
+/* ---------- mobile (≤ 560px) ---------- */
+@media (max-width: 560px) {
+    .hero-cta .btn {
+        width: 100%;
+    }
+    .statbar {
+        grid-template-columns: 1fr;
+    }
+    .statbar .it {
+        border-right: none;
+        border-bottom: var(--bd-thin);
+    }
+    .statbar .it:last-child {
+        border-bottom: none;
+    }
+    .price-grid {
+        grid-template-columns: 1fr;
+        max-width: 420px;
+        margin-inline: auto;
+    }
+    .siglist {
+        grid-template-columns: 1fr;
+    }
+    .lgrid {
+        grid-template-columns: 1fr;
+    }
+    .fgrid {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* ---------- reduced motion ---------- */
+@media (prefers-reduced-motion: reduce) {
+    * {
+        animation: none !important;
+        transition: none !important;
+        scroll-behavior: auto !important;
+    }
+    .reveal {
+        opacity: 1;
+        transform: none;
+    }
+}
