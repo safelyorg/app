@@ -1,0 +1,38 @@
+/* ============================================================
+   PREMIUM POLISH — soft elevation + lit edges on surfaces
+   ============================================================ */
+#safely-root .card,
+#safely-root .safely-seller-card,
+#safely-root .safely-signal-list,
+#safely-root .safely-platform-card,
+#safely-root .safely-activity-card,
+#safely-root .safely-price-compare,
+#safely-root .safely-check-card,
+#safely-root .safely-chip,
+#safely-root .banking-qr-container,
+#safely-root .safely-waiting-card,
+#safely-root .safely-report-reasons {
+    box-shadow: var(--sh-card);
+}
+#safely-root .safely-close-btn {
+    box-shadow: var(--hi);
+}
+#safely-root .safely-bar-track,
+#safely-root .safely-compare-track {
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.3);
+}
+
+#safely-domain-strip {
+    padding: 8px 14px;
+    font-size: 11.5px;
+    font-weight: 600;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+#safely-domain-strip.safely-domain-ok {
+    background: rgba(53, 208, 166, 0.12);
+    color: #35d0a6;
+}
+#safely-domain-strip.safely-domain-warn {
+    background: rgba(255, 93, 93, 0.14);
+    color: #ff5d5d;
+}

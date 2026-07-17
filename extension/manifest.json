@@ -47,7 +47,13 @@
         "https://*/*"
       ],
       "css": [
-        "css/panel.css"
+        "css/base.css",
+        "css/panel_shell.css",
+        "css/toolbar.css",
+        "css/risk_tab.css",
+        "css/intelligence_tab.css",
+        "css/protect_tab.css",
+        "css/polish.css"
       ],
       "js": [
         "js/core/state.js",

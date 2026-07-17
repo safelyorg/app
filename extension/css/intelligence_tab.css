@@ -1,0 +1,153 @@
+/* ── Signals list - left accent bar per row, matching the dashboard's
+      color-coded row treatment in the History table and signal list ── */
+.safely-signal-list {
+    background: var(--surface);
+    border: var(--bd);
+    border-radius: var(--r);
+    overflow: hidden;
+}
+.safely-signal-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 11px 16px;
+    gap: 12px;
+    border-left: 3px solid transparent;
+}
+.safely-signal-row + .safely-signal-row {
+    border-top: 1px solid var(--line-soft);
+}
+.safely-signal-label-wrap {
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+    max-width: 55%;
+}
+.safely-signal-label {
+    font-size: 13px;
+    color: var(--text);
+    font-weight: 600;
+}
+.safely-signal-sublabel {
+    font-size: 10px;
+    color: var(--muted);
+    margin-top: 2px;
+    display: block;
+    line-height: 1.3;
+    font-weight: 500;
+}
+.safely-signal-value {
+    font-size: 13px;
+    font-weight: 700;
+    text-align: right;
+    word-break: break-word;
+}
+.safely-signal-good {
+    color: var(--mint);
+}
+.safely-signal-row:has(.safely-signal-good) {
+    border-left-color: var(--mint);
+}
+.safely-signal-bad {
+    color: var(--coral);
+}
+.safely-signal-row:has(.safely-signal-bad) {
+    border-left-color: var(--coral);
+}
+.safely-signal-neutral {
+    color: var(--muted);
+}
+.safely-signal-info {
+    color: var(--text);
+}
+.safely-signal-row:has(.safely-signal-info) {
+    border-left-color: var(--line);
+}
+.safely-signal-caution {
+    color: var(--amber);
+}
+.safely-signal-row:has(.safely-signal-caution) {
+    border-left-color: var(--amber);
+}
+
+/* ── Price compare ── */
+.safely-price-compare {
+    background: var(--surface);
+    border: var(--bd);
+    border-radius: 12px;
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.safely-compare-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 0;
+    border-bottom: 1px solid var(--line-soft);
+}
+.safely-compare-row:last-child {
+    border-bottom: none;
+}
+.safely-compare-label {
+    font-size: 11px;
+    color: var(--muted);
+    width: 88px;
+    flex-shrink: 0;
+    font-weight: 500;
+}
+.safely-compare-track {
+    flex: 1;
+    height: 7px;
+    background: var(--surface-3);
+    border-radius: 4px;
+    overflow: hidden;
+}
+.safely-compare-fill {
+    height: 100%;
+    border-radius: 4px;
+}
+.safely-fill-primary {
+    background: var(--sky);
+}
+.safely-fill-neutral {
+    background: var(--muted);
+}
+.safely-fill-low {
+    background: var(--mint);
+}
+.safely-fill-danger {
+    background: var(--coral);
+}
+.safely-compare-val {
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--text);
+    width: 32px;
+    text-align: right;
+    flex-shrink: 0;
+}
+
+/* ── Recommended-check cards ── */
+.safely-check-card {
+    background: var(--surface);
+    border: var(--bd);
+    border-radius: 10px;
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.safely-check-title {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--text);
+}
+.safely-check-body {
+    font-size: 11px;
+    color: var(--muted);
+    line-height: 1.5;
+    font-weight: 500;
+}

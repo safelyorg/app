@@ -1,0 +1,97 @@
+/* ============================================================
+   TOOLBAR (floating launcher)
+   ============================================================ */
+#safely-toolbar {
+    position: absolute;
+    top: -24px;
+    right: 0;
+    background: var(--surface);
+    width: 48px;
+    height: 48px;
+    border: var(--bd);
+    border-radius: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    user-select: none;
+    flex-shrink: 0;
+    overflow: hidden;
+    box-shadow:
+        0 10px 26px -6px rgba(0, 0, 0, 0.55),
+        inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    transition:
+        width 0.4s cubic-bezier(0.4, 0, 0.2, 1),
+        padding 0.4s cubic-bezier(0.4, 0, 0.2, 1),
+        background 0.15s ease,
+        box-shadow 0.15s ease;
+}
+#safely-toolbar:hover {
+    background: var(--surface-2);
+}
+#safely-toolbar.safely-toolbar-expanded {
+    width: fit-content;
+    padding: 0 16px;
+    justify-content: flex-end;
+    box-shadow:
+        0 10px 26px -6px rgba(0, 0, 0, 0.55),
+        inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+.safely-toolbar-letter {
+    width: 34px;
+    height: 34px;
+    object-fit: contain;
+    position: absolute;
+    pointer-events: none;
+    margin-top: -4px;
+    transition: opacity 0.12s ease 0.06s;
+}
+#safely-toolbar.safely-toolbar-expanded .safely-toolbar-letter {
+    opacity: 0;
+    transition: opacity 0.1s ease 0s;
+}
+.safely-toolbar-inner {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    opacity: 0;
+    pointer-events: none;
+    width: 100%;
+    justify-content: space-between;
+    white-space: nowrap;
+    overflow: hidden;
+    transition: opacity 0.1s ease 0s;
+}
+#safely-toolbar.safely-toolbar-expanded .safely-toolbar-inner {
+    opacity: 1;
+    pointer-events: all;
+    transition: opacity 0.2s ease 0.18s;
+}
+.safely-toolbar-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    cursor: pointer;
+    padding: 4px;
+    border-radius: 7px;
+    transition: background 0.15s ease;
+}
+.safely-toolbar-icon:hover {
+    background: rgba(255, 255, 255, 0.08);
+}
+.safely-toolbar-icon svg {
+    width: 18px;
+    height: 18px;
+    stroke: var(--text);
+}
+.safely-toolbar-label {
+    font-family: var(--disp);
+    font-size: 14px;
+    font-weight: 900;
+    color: var(--text);
+    letter-spacing: -0.3px;
+    flex-shrink: 0;
+    cursor: pointer;
+    padding: 4px 0;
+}

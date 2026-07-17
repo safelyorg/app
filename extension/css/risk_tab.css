@@ -1,0 +1,278 @@
+/* ── Risk score header ── */
+.safely-risk-row {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    margin-bottom: 4px;
+}
+.safely-risk-number {
+    font-family: var(--mono);
+    font-size: 46px;
+    font-weight: 700;
+    letter-spacing: -1px;
+    line-height: 1;
+    margin: 0;
+}
+.safely-risk-label {
+    font-size: 14px;
+    font-weight: 700;
+    margin: 4px 0 0 0;
+}
+.safely-risk-desc {
+    font-size: 12px;
+    color: var(--muted);
+    margin: 2px 0 0 0;
+    font-weight: 500;
+}
+.safely-risk-low {
+    color: var(--mint);
+}
+.safely-risk-caution {
+    color: var(--amber);
+}
+.safely-risk-high {
+    color: var(--coral);
+}
+.safely-status-circle {
+    width: 42px;
+    height: 42px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-top: 6px;
+    flex-shrink: 0;
+}
+.safely-status-circle svg {
+    width: 20px;
+    height: 20px;
+}
+.safely-circle-low {
+    background: var(--mint-soft);
+}
+.safely-circle-low svg {
+    stroke: var(--mint);
+}
+.safely-circle-caution {
+    background: var(--sun-soft);
+}
+.safely-circle-caution svg {
+    stroke: var(--amber);
+}
+.safely-circle-high {
+    background: var(--coral-soft);
+}
+.safely-circle-high svg {
+    stroke: var(--coral);
+}
+
+/* ── Progress bar ── */
+.safely-bar-track {
+    height: 9px;
+    background: var(--surface-3);
+    border-radius: 5px;
+    margin: 16px 0 14px;
+    position: relative;
+    overflow: visible;
+}
+.safely-bar-fill {
+    height: 100%;
+    border-radius: 5px;
+    position: relative;
+    transition: width 0.4s ease;
+}
+.safely-bar-fill::after {
+    content: "";
+    position: absolute;
+    right: -5px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 13px;
+    height: 13px;
+    background: #ffffff;
+    border-radius: 50%;
+    box-shadow: 0 0 0 3px var(--bg);
+}
+.safely-bar-low {
+    background: var(--mint);
+}
+.safely-bar-caution {
+    background: var(--amber);
+}
+.safely-bar-high {
+    background: var(--coral);
+}
+
+/* ── Chips ── */
+.safely-chips-row {
+    display: flex;
+    gap: 8px;
+    margin: 14px 0 18px;
+}
+.safely-chip {
+    flex: 1;
+    background: var(--surface-2);
+    border: var(--bd);
+    border-radius: 10px;
+    padding: 10px 8px;
+    text-align: center;
+}
+.safely-chip-num {
+    font-family: var(--mono);
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--text);
+    line-height: 1.2;
+}
+.safely-chip-lbl {
+    font-size: 10px;
+    color: var(--muted);
+    margin-top: 3px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+/* ── Seller card ── */
+.safely-seller-card {
+    background: var(--surface);
+    border: var(--bd);
+    border-radius: var(--r);
+    padding: 16px;
+}
+.safely-seller-name {
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--text);
+    margin-bottom: 2px;
+}
+.safely-seller-handle {
+    font-size: 13px;
+    color: var(--muted);
+    margin-bottom: 14px;
+    font-weight: 500;
+}
+.safely-seller-detail {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 8px 0;
+    border-top: 1px solid var(--line-soft);
+    font-size: 13px;
+}
+.safely-seller-detail span:first-child {
+    color: var(--muted);
+    font-weight: 500;
+    flex-shrink: 0;
+}
+.safely-seller-detail span:last-child {
+    color: var(--text);
+    font-weight: 600;
+    text-align: right;
+}
+
+/* ── Verification badges ── */
+.safely-verified-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-weight: 600;
+}
+.safely-badge-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    display: inline-block;
+    flex-shrink: 0;
+}
+.safely-dot-blue {
+    background: var(--sky);
+}
+.safely-dot-gray {
+    background: var(--muted);
+}
+.safely-dot-red {
+    background: var(--coral);
+}
+.safely-badge-verified {
+    color: var(--mint);
+}
+.safely-badge-unknown {
+    color: var(--muted);
+}
+.safely-badge-reported {
+    color: var(--coral);
+}
+
+/* ── Platform / activity cards ── */
+.safely-platform-card,
+.safely-activity-card {
+    background: var(--surface);
+    border: var(--bd);
+    border-radius: 12px;
+    padding: 10px 12px;
+}
+.safely-platform-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 7px 0;
+    border-bottom: 1px solid var(--line-soft);
+}
+.safely-platform-row:last-child {
+    border-bottom: none;
+}
+.safely-platform-name {
+    font-size: 12px;
+    color: var(--text);
+    font-weight: 600;
+}
+.safely-platform-status {
+    font-size: 11px;
+    font-weight: 700;
+}
+.safely-pstatus-active {
+    color: var(--mint);
+}
+.safely-pstatus-none {
+    color: var(--muted);
+}
+.safely-activity-bar {
+    flex: 1;
+    border-radius: 2px 2px 0 0;
+    background: var(--sky);
+    min-height: 2px;
+}
+
+/* ── Alerts ── */
+.safely-network-alert,
+.safely-intel-summary {
+    border-radius: 10px;
+    padding: 10px 12px;
+    font-size: 11.5px;
+    line-height: 1.5;
+    display: flex;
+    gap: 8px;
+    align-items: flex-start;
+    font-weight: 500;
+    border: 1px solid transparent;
+}
+.safely-intel-summary {
+    margin-bottom: 4px;
+}
+.safely-alert-low {
+    background: var(--mint-soft);
+    color: var(--mint);
+    border-color: rgba(53, 208, 166, 0.35);
+}
+.safely-alert-caution {
+    background: var(--sun-soft);
+    color: var(--amber);
+    border-color: rgba(242, 184, 76, 0.35);
+}
+.safely-alert-high {
+    background: var(--coral-soft);
+    color: var(--coral);
+    border-color: rgba(255, 93, 93, 0.4);
+}

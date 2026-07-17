@@ -1,0 +1,153 @@
+/* ============================================================
+   SAFELY — extension UI
+   Recolored to match the Safely dashboard's design system exactly:
+   near-black surfaces, brand blue / mint / amber / coral accents,
+   JetBrains Mono for numerics. Every original selector is kept so
+   panel.js / risk.js / intelligence.js / protect.js work unchanged -
+   this file only changes WHAT COLOR things are, never what exists.
+   ============================================================ */
+
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@500;600;700;800&display=swap");
+
+#safely-root {
+    all: initial;
+    position: fixed;
+    top: 90%;
+    right: 19px;
+    z-index: 2147483647;
+    font-family:
+        "Inter",
+        -apple-system,
+        BlinkMacSystemFont,
+        "Segoe UI",
+        Roboto,
+        sans-serif;
+    width: 0;
+    height: 0;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+
+    /* ── surfaces (matches dashboard's bg/surface/surface2/surface3) ── */
+    --bg: #0a0a0c;
+    --surface: #131316;
+    --surface-2: #1b1b20;
+    --surface-3: #24242b;
+    --line: rgba(255, 255, 255, 0.07);
+    --line-soft: rgba(255, 255, 255, 0.05);
+
+    /* ── text (matches dashboard's ink/muted, not warm cream anymore) ── */
+    --text: #f2f1ed;
+    --text-dim: #cfcecb;
+    --muted: #8a8a93;
+
+    /* ── accents (identical hex values to the dashboard's palette) ── */
+    --ink: #0a0a0c; /* dark text used on bright fills */
+    --mint: #35d0a6;
+    --mint-deep: #35d0a6;
+    --coral: #ff5d5d;
+    --coral-deep: #ff5d5d;
+    --sky: #6fb3ef; /* "brand" in the dashboard */
+    --sky-deep: #6fb3ef;
+    --amber: #f2b84c;
+
+    /* ── tinted backgrounds for status pills/alerts ── */
+    --mint-soft: rgba(53, 208, 166, 0.13);
+    --sun-soft: rgba(242, 184, 76, 0.14);
+    --coral-soft: rgba(255, 93, 93, 0.14);
+    --sky-soft: rgba(111, 179, 239, 0.13);
+
+    --bd: 1px solid var(--line);
+    --hi: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    --sh-panel:
+        0 24px 60px -16px rgba(0, 0, 0, 0.7),
+        0 10px 24px -14px rgba(0, 0, 0, 0.55);
+    --sh-card:
+        0 1px 2px rgba(0, 0, 0, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+    --ring: 0 0 0 3px rgba(111, 179, 239, 0.25);
+    --r: 15px;
+    --r-lg: 20px;
+
+    --disp:
+        "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui,
+        sans-serif;
+    --mono: "JetBrains Mono", "SF Mono", "Fira Code", monospace;
+}
+#safely-root * {
+    box-sizing: border-box;
+    font-family: inherit;
+}
+
+/* ============================================================
+   Light-touch recoloring of hardcoded inline hex values from the
+   JS files - this is the mechanism that lets risk.js and protect.js
+   stay completely unedited (aside from risk.js's gauge, rebuilt
+   below) while still picking up the new palette. Each rule matches
+   a literal substring inside an inline style="" attribute and
+   overrides it, regardless of which CSS property originally used
+   that hex value.
+   ============================================================ */
+
+/* risk.js risk-level colors (was iOS system green/orange/red) */
+#safely-root [style*="#34c759"] {
+    color: var(--mint) !important;
+    border-color: var(--mint) !important;
+}
+#safely-root [style*="#ff9f0a"] {
+    color: var(--amber) !important;
+    border-color: var(--amber) !important;
+}
+#safely-root [style*="#ff3b30"] {
+    color: var(--coral) !important;
+    border-color: var(--coral) !important;
+}
+
+/* shared muted-gray text/icon values used across risk.js + protect.js */
+#safely-root [style*="color:#a0a0a0"],
+#safely-root [style*="color: #a0a0a0"] {
+    color: var(--muted) !important;
+}
+#safely-root [style*="color:#636366"],
+#safely-root [style*="color: #636366"] {
+    color: var(--muted) !important;
+}
+#safely-root [style*="color:#e0e0e0"],
+#safely-root [style*="color: #e0e0e0"] {
+    color: var(--text) !important;
+}
+#safely-root [style*="color:#1d9bf0"] {
+    color: var(--sky) !important;
+}
+#safely-root [style*="color:#ff453a"] {
+    color: var(--coral) !important;
+}
+
+/* surface fills used inline in protect.js's escrow markup */
+#safely-root [style*="background:#0a0a0a"],
+#safely-root [style*="background:#0f0f0f"],
+#safely-root [style*="background: #0a0a0a"],
+#safely-root [style*="background: #0f0f0f"] {
+    background: var(--surface-2) !important;
+}
+#safely-root [style*="background:#1a1a1a"],
+#safely-root [style*="background: #1a1a1a"] {
+    background: var(--surface-3) !important;
+}
+#safely-root [style*="border:1.5px dashed #1a1a1a"],
+#safely-root [style*="border: 1.5px dashed #1a1a1a"] {
+    border-color: var(--line) !important;
+}
+
+/* icon stroke colors */
+#safely-root svg[stroke="#1d9bf0"] {
+    stroke: var(--sky);
+}
+#safely-root svg[stroke="#a0a0a0"] {
+    stroke: var(--muted);
+}
+#safely-root svg[stroke="#636366"] {
+    stroke: var(--muted);
+}
+#safely-root svg[stroke="#34c759"] {
+    stroke: var(--mint);
+}

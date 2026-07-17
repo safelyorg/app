@@ -114,12 +114,6 @@ pub fn verification_badge(status: &str) -> String {
     )
 }
 
-/// Redesigned to match the Recommended Checks card style - separate
-/// rounded cards with spacing between them (safely-check-card), instead
-/// of a single bordered list with a colored left-border line per row.
-/// The status word itself (Verified/Suspicious/Detected/etc.) is now
-/// the only color differentiation, shown as colored text next to the
-/// label rather than as a border color.
 #[wasm_bindgen]
 pub fn build_signal_rows(signals_json: &str) -> String {
     let signals: Vec<Signal> = serde_json::from_str(signals_json).unwrap_or_default();
