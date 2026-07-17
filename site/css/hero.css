@@ -28,9 +28,10 @@
 }
 .hero-title {
     position: relative;
-    display: inline-block;
+    display: block;
+    width: 100%;
+    max-width: 700px;
     margin: clamp(34px, 6vw, 58px) auto 0;
-    min-height: clamp(120px, 27vw, 280px);
 }
 .hero-title h1 {
     font-family: "Clash Display Optional", var(--disp);
