@@ -1,26 +1,23 @@
 /* ============================================================
-     Everything below is state/interaction logic that Tailwind's
-     utility classes can't express directly (arbitrary :has() and
-     :target selectors). All appearance still comes from Tailwind
-     classes in the markup - this block only decides what shows.
-     ============================================================ */
+   Functional state/interaction logic - Tailwind can't express
+   arbitrary :has()/:target selectors, so this file stays purely
+   about WHAT SHOWS, never appearance (aside from a small active-
+   state color layer near the bottom).
+   ============================================================ */
 
-/* default hidden panels/overlays */
 #panel-history,
 #panel-reports,
-.detail-overlay {
+#panel-settings {
     display: none;
 }
 
-/* single shared radio group drives ALL top-level view switching -
-     nav tabs and every detail view are options in the same group, so
-     picking any one automatically deselects whatever was selected
-     before it. This is what lets a nav click close an open detail
-     view and switch tabs in one action, with no ambiguity. */
 body:has(#view-history:checked) #panel-history {
     display: block;
 }
 body:has(#view-reports:checked) #panel-reports {
+    display: block;
+}
+body:has(#view-settings:checked) #panel-settings {
     display: block;
 }
 body:has(#view-detail-h1:checked) #detail-h1 {
@@ -37,14 +34,6 @@ body:has(#view-detail-h4:checked) #detail-h4 {
 }
 body:has(#view-detail-h5:checked) #detail-h5 {
     display: block;
-}
-body:has(#view-history:checked) label[for="view-history"] {
-    background: #27272a;
-    color: #fff;
-}
-body:has(#view-reports:checked) label[for="view-reports"] {
-    background: #27272a;
-    color: #fff;
 }
 
 /* per-listing sub-tabs (Risk / Intelligence / Report) */
@@ -75,18 +64,6 @@ body:has(#view-reports:checked) label[for="view-reports"] {
 .detail-overlay:has(.tab-report:checked) .content-report {
     display: block;
 }
-.detail-overlay:has(.tab-risk:checked) label[for$="-tab-risk"] {
-    background: #3f3f46;
-    color: #fff;
-}
-.detail-overlay:has(.tab-intel:checked) label[for$="-tab-intel"] {
-    background: #3f3f46;
-    color: #fff;
-}
-.detail-overlay:has(.tab-report:checked) label[for$="-tab-report"] {
-    background: #3f3f46;
-    color: #fff;
-}
 
 /* risk-level filter on the History table */
 body:has(#risk-low:checked) tr[data-risk]:not([data-risk="low"]) {
@@ -98,15 +75,90 @@ body:has(#risk-caution:checked) tr[data-risk]:not([data-risk="caution"]) {
 body:has(#risk-high:checked) tr[data-risk]:not([data-risk="high"]) {
     display: none;
 }
-body:has(#risk-all:checked) label[for="risk-all"],
-body:has(#risk-low:checked) label[for="risk-low"],
-body:has(#risk-caution:checked) label[for="risk-caution"],
-body:has(#risk-high:checked) label[for="risk-high"] {
-    background: #27272a;
-    color: #fff;
-}
 
 /* search: JS toggles this attribute per row, this rule just hides it */
 tr[data-search-hidden="true"] {
     display: none;
+}
+
+/* mobile sidebar drawer - off-canvas below md, static above it */
+@media (max-width: 767px) {
+    #sidebar {
+        position: fixed;
+        inset-block: 0;
+        left: 0;
+        z-index: 40;
+        transform: translateX(-100%);
+        transition: transform 0.22s ease;
+    }
+    body:has(#mobile-nav-toggle:checked) #sidebar {
+        transform: translateX(0);
+    }
+    #sidebar {
+        z-index: 60;
+    }
+    #mobile-backdrop {
+        display: none;
+    }
+    body:has(#mobile-nav-toggle:checked) #mobile-backdrop {
+        display: block;
+    }
+}
+
+/* ============================================================
+   Visual layer - active-state styling for nav, filters, tabs.
+   ============================================================ */
+body:has(#view-history:checked) label[for="view-history"] {
+    color: #f2f1ed;
+    background: #1b1b20;
+}
+body:has(#view-history:checked) label[for="view-history"] .nav-accent {
+    opacity: 1;
+}
+body:has(#view-reports:checked) label[for="view-reports"] {
+    color: #f2f1ed;
+    background: #1b1b20;
+}
+body:has(#view-reports:checked) label[for="view-reports"] .nav-accent {
+    opacity: 1;
+}
+
+body:has(#risk-all:checked) label[for="risk-all"],
+body:has(#risk-low:checked) label[for="risk-low"],
+body:has(#risk-caution:checked) label[for="risk-caution"],
+body:has(#risk-high:checked) label[for="risk-high"] {
+    background: #24242b;
+    color: #f2f1ed;
+}
+
+.detail-overlay:has(.tab-risk:checked) label[for$="-tab-risk"],
+.detail-overlay:has(.tab-intel:checked) label[for$="-tab-intel"],
+.detail-overlay:has(.tab-report:checked) label[for$="-tab-report"] {
+    background: #24242b;
+    color: #f2f1ed;
+}
+
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+::-webkit-scrollbar-thumb {
+    background: #24242b;
+    border-radius: 8px;
+}
+::-webkit-scrollbar-thumb:hover {
+    background: #2e2e37;
+}
+
+:focus-visible {
+    outline: 2px solid #6fb3ef;
+    outline-offset: 2px;
+}
+
+.num {
+    font-family: "JetBrains Mono", monospace;
+    font-variant-numeric: tabular-nums;
 }
