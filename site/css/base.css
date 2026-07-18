@@ -131,10 +131,6 @@ ul {
     height: 100%;
     display: block;
 }
-.wv.up {
-    top: 0;
-    transform: translateY(-99%);
-}
 .wv.down {
     bottom: -1px;
 }
@@ -210,12 +206,6 @@ ul {
 }
 .btn-sun:hover {
     background: linear-gradient(180deg, #fff0b8 0%, var(--sun-2) 60%);
-}
-.btn-mint {
-    background: var(--mint);
-}
-.btn-mint:hover {
-    background: #7fe1b8;
 }
 .btn-dark {
     background: linear-gradient(180deg, #2a2e38 0%, var(--ink) 60%);

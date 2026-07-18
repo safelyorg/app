@@ -18,8 +18,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.token) {
       chrome.storage.local.set({ safely_session_token: message.token });
     } else {
-      // token is null - the person logged out on the website, so clear
-      // the extension's copy too rather than keep using a dead token.
+      // token is null - the person logged out on the website.
       chrome.storage.local.remove("safely_session_token");
     }
     sendResponse({ status: "ok" });

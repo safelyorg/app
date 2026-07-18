@@ -1,12 +1,3 @@
-/* ============================================================
-   SAFELY — extension UI
-   Recolored to match the Safely dashboard's design system exactly:
-   near-black surfaces, brand blue / mint / amber / coral accents,
-   JetBrains Mono for numerics. Every original selector is kept so
-   panel.js / risk.js / intelligence.js / protect.js work unchanged -
-   this file only changes WHAT COLOR things are, never what exists.
-   ============================================================ */
-
 @import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@500;600;700;800&display=swap");
 
 #safely-root {

@@ -25,7 +25,7 @@
       // privacy modes) - fail quietly rather than break the page.
     }
 
-    if (token === lastSent) return; // nothing changed since last check
+    if (token === lastSent) return;
     lastSent = token;
 
     chrome.runtime.sendMessage({
@@ -36,10 +36,5 @@
 
   relayToken();
 
-  // A page writing to its own localStorage does NOT fire a 'storage' event
-  // in that same tab (only other open tabs get notified of the change) -
-  // so there is no free "tell me when this changes" signal to listen for
-  // here. Polling every couple seconds is simple, cheap, and reliable
-  // enough for something that only changes on login/logout.
   setInterval(relayToken, 2000);
 })();
