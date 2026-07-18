@@ -5,10 +5,6 @@ chrome.runtime.onInstalled.addListener((details) => {
 });
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (message.type === "PING") {
-    sendResponse({ status: "ok" });
-  }
-
   // Sent by auth-bridge.js, which runs only on Safely's own site. This is
   // the one place chrome.storage.local gets written for the session token -
   // every other content script (on OLX, Facebook, etc.) only ever READS

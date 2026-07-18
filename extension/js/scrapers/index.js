@@ -172,37 +172,8 @@
     return false;
   }
 
-  function scrape() {
-    var platform = detectPlatform();
-    if (platform === "olx") {
-      var data = window.__safelyScrapers.scrapeOLX();
-      data.platform = "olx";
-      return data;
-    }
-    if (platform === "facebook") {
-      var data = window.__safelyScrapers.scrapeFacebook();
-      data.platform = "facebook";
-      return data;
-    }
-    return {
-      listing_id: null,
-      title: null,
-      price: null,
-      description: null,
-      image_urls: null,
-      seller_name: null,
-      seller_join_date: null,
-      seller_profile_url: null,
-      platform_id: null,
-      seller_location: null,
-      seller_last_active: null,
-      platform: "unknown",
-    };
-  }
-
   window.__safelyScrapers = window.__safelyScrapers || {};
   window.__safelyScrapers.detectPlatform = detectPlatform;
   window.__safelyScrapers.isListingPage = isListingPage;
   window.__safelyScrapers.checkDomain = checkDomain;
-  window.__safelyScrapers.scrape = scrape;
 })();

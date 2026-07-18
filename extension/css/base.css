@@ -79,20 +79,6 @@
    that hex value.
    ============================================================ */
 
-/* risk.js risk-level colors (was iOS system green/orange/red) */
-#safely-root [style*="#34c759"] {
-    color: var(--mint) !important;
-    border-color: var(--mint) !important;
-}
-#safely-root [style*="#ff9f0a"] {
-    color: var(--amber) !important;
-    border-color: var(--amber) !important;
-}
-#safely-root [style*="#ff3b30"] {
-    color: var(--coral) !important;
-    border-color: var(--coral) !important;
-}
-
 /* shared muted-gray text/icon values used across risk.js + protect.js */
 #safely-root [style*="color:#a0a0a0"],
 #safely-root [style*="color: #a0a0a0"] {
@@ -109,15 +95,10 @@
 #safely-root [style*="color:#1d9bf0"] {
     color: var(--sky) !important;
 }
-#safely-root [style*="color:#ff453a"] {
-    color: var(--coral) !important;
-}
 
 /* surface fills used inline in protect.js's escrow markup */
 #safely-root [style*="background:#0a0a0a"],
-#safely-root [style*="background:#0f0f0f"],
-#safely-root [style*="background: #0a0a0a"],
-#safely-root [style*="background: #0f0f0f"] {
+#safely-root [style*="background: #0a0a0a"] {
     background: var(--surface-2) !important;
 }
 #safely-root [style*="background:#1a1a1a"],
@@ -138,7 +119,4 @@
 }
 #safely-root svg[stroke="#636366"] {
     stroke: var(--muted);
-}
-#safely-root svg[stroke="#34c759"] {
-    stroke: var(--mint);
 }
