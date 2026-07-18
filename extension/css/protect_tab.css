@@ -193,10 +193,6 @@
 #safely-root .btn-ghost:hover {
     background: var(--surface-3);
 }
-#safely-root .btn-sm {
-    padding: 7px 14px;
-    font-size: 12px;
-}
 
 /* ── Upload zones ── */
 #safely-root .upload-zone {
@@ -343,43 +339,6 @@
 }
 #safely-root .seller-block.method-hidden {
     display: none;
-}
-#safely-root .img-upload-row {
-    display: flex;
-    align-items: center;
-    gap: 14px;
-    padding: 4px 0;
-}
-#safely-root .img-upload-thumb {
-    width: 56px;
-    height: 56px;
-    border: 1px solid var(--line);
-    border-radius: 12px;
-    background: var(--surface-2);
-    flex-shrink: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    overflow: hidden;
-}
-#safely-root .img-upload-info {
-    flex: 1;
-    min-width: 0;
-}
-#safely-root .img-upload-title {
-    font-size: 13px;
-    font-weight: 700;
-    color: var(--text);
-    margin-bottom: 2px;
-}
-#safely-root .img-upload-sub {
-    font-size: 12px;
-    color: var(--muted);
-    margin: 0;
-    font-weight: 500;
-}
-#safely-root .img-upload-btn {
-    flex-shrink: 0;
 }
 #safely-root .field-group {
     display: flex;
