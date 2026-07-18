@@ -60,9 +60,6 @@
       verification_badge: function (s) {
         return '<span class="safely-verified-badge">' + s + "</span>";
       },
-      status_icon: function (l) {
-        return "";
-      },
     };
   }
 
@@ -145,7 +142,7 @@
 
     // 1. Gauge
     var circleHTML =
-      '<div class="safely-risk-hero" style="text-align:center;padding:20px 16px 10px">' +
+      '<div style="text-align:center;padding:20px 16px 10px">' +
       '<div style="width:120px;height:120px;margin:0 auto 12px">' +
       buildRiskGauge(score, lvl) +
       "</div>" +
@@ -316,95 +313,74 @@
         submitBtn.textContent = "Submitting...";
         submitBtn.disabled = true;
 
-        var authHeaders = {};
-        try {
-          var result = await chrome.storage.local.get("safely_session_token");
-          if (result.safely_session_token) {
-            authHeaders = {
-              Authorization: "Bearer " + result.safely_session_token,
-            };
-          }
-        } catch (e) {
-          // fall back to anonymous if storage is unavailable
+        var reportData = {
+          platform: pageData.seller.platform || "olx",
+          platform_id: pageData.seller.platformId || null,
+          report_type: selected.value,
+          description: null,
+          listing_url: window.location.href,
+        };
+
+        var result = await window.__safelyAPI.submitReport(reportData);
+
+        if (!result) {
+          submitBtn.textContent = "Submit Report";
+          submitBtn.disabled = false;
+          alert("Failed to submit report. Please try again.");
+          return;
         }
 
-        fetch("http://localhost:3000/api/v1/report", {
-          method: "POST",
-          headers: Object.assign(
-            { "Content-Type": "application/json" },
-            authHeaders,
-          ),
-          body: JSON.stringify({
-            platform: pageData.seller.platform || "olx",
-            platform_id: pageData.seller.platformId || null,
-            report_type: selected.value,
-            description: null,
-            listing_url: window.location.href,
-          }),
-        })
-          .then(function (res) {
-            if (!res.ok) {
-              return res.text().then(function (err) {
-                throw new Error(err);
-              });
-            }
-            var success = root.querySelector("#safely-report-success");
-            if (success) success.style.display = "flex";
-            submitBtn.style.display = "none";
+        var success = root.querySelector("#safely-report-success");
+        if (success) success.style.display = "flex";
+        submitBtn.style.display = "none";
 
-            // Reflect the report immediately without another /analyze
-            // call - each analyze() adds one to that month's visit count,
-            // so re-fetching here just to refresh "reported" status would
-            // quietly double-count this visit. Updating the already-loaded
-            // data in place and redrawing only the seller section avoids
-            // that entirely.
-            // Mirrors the exact fraud-count contribution used by the
-            // backend's calculate_risk_score (services/scoring.rs) - a step
-            // function, not a flat +N per report, so the increment has to
-            // match brackets exactly rather than guessing at a fixed bump.
-            function fraudCountContribution(count) {
-              if (count === 0) return 0;
-              if (count === 1) return 20;
-              if (count === 2) return 35;
-              return 50;
-            }
+        // Reflect the report immediately without another /analyze
+        // call - each analyze() adds one to that month's visit count,
+        // so re-fetching here just to refresh "reported" status would
+        // quietly double-count this visit. Updating the already-loaded
+        // data in place and redrawing only the seller section avoids
+        // that entirely.
+        // Mirrors the exact fraud-count contribution used by the
+        // backend's calculate_risk_score (services/scoring.rs) - a step
+        // function, not a flat +N per report, so the increment has to
+        // match brackets exactly rather than guessing at a fixed bump.
+        function fraudCountContribution(count) {
+          if (count === 0) return 0;
+          if (count === 1) return 20;
+          if (count === 2) return 35;
+          return 50;
+        }
 
-            var oldCount = window.__safelyData.fraudReportCount || 0;
-            var newCount = oldCount + 1;
-            var delta =
-              fraudCountContribution(newCount) -
-              fraudCountContribution(oldCount);
+        var oldCount = window.__safelyData.fraudReportCount || 0;
+        var newCount = oldCount + 1;
+        var delta =
+          fraudCountContribution(newCount) -
+          fraudCountContribution(oldCount);
 
-            window.__safelyData.fraudReportCount = newCount;
-            window.__safelyData.seller.verification = "reported";
-            window.__safelyData.riskScore = Math.min(
-              100,
-              (window.__safelyData.riskScore || 0) + delta,
+        window.__safelyData.fraudReportCount = newCount;
+        window.__safelyData.seller.verification = "reported";
+        window.__safelyData.riskScore = Math.min(
+          100,
+          (window.__safelyData.riskScore || 0) + delta,
+        );
+
+        // The network-alert sentence ("2 fraud reports found on Safely
+        // network...") is plain text that came from the server on the
+        // last analyze call - it doesn't recompute itself just because
+        // fraudReportCount changed. Swap in the new count directly
+        // wherever a standalone number appears in that sentence.
+        if (window.__safelyData.seller.networkSummary) {
+          window.__safelyData.seller.networkSummary =
+            window.__safelyData.seller.networkSummary.replace(
+              /\d+/,
+              String(newCount),
             );
+        }
 
-            // The network-alert sentence ("2 fraud reports found on Safely
-            // network...") is plain text that came from the server on the
-            // last analyze call - it doesn't recompute itself just because
-            // fraudReportCount changed. Swap in the new count directly
-            // wherever a standalone number appears in that sentence.
-            if (window.__safelyData.seller.networkSummary) {
-              window.__safelyData.seller.networkSummary =
-                window.__safelyData.seller.networkSummary.replace(
-                  /\d+/,
-                  String(newCount),
-                );
-            }
-
-            var sellerContent = document.getElementById(
-              "safely-risk-seller-content",
-            );
-            if (sellerContent) sellerContent.innerHTML = buildSellerSection();
-          })
-          .catch(function (err) {
-            submitBtn.textContent = "Submit Report";
-            submitBtn.disabled = false;
-            alert("Failed to submit: " + err.message);
-          });
+        var sellerContent = document.getElementById(
+          "safely-risk-seller-content",
+        );
+        if (sellerContent) sellerContent.innerHTML = buildSellerSection();
       });
     }
   }
