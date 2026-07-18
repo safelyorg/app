@@ -1,35 +1,4 @@
-/*.safely-sub-tabs {
-    display: flex;
-    gap: 4px;
-    margin-bottom: 18px;
-    background: var(--surface-2);
-    border: 1px solid var(--line);
-    border-radius: 11px;
-    padding: 3px;
-}
-.safely-sub-tab {
-    flex: 1;
-    background: transparent;
-    border: none;
-    border-radius: 8px;
-    color: var(--muted);
-    font-size: 12px;
-    font-weight: 700;
-    padding: 7px 4px;
-    cursor: pointer;
-    transition: all 0.15s;
-    text-align: center;
-}
-.safely-sub-tab.safely-active {
-    background: var(--surface-3);
-    color: var(--text);
-    box-shadow:
-        0 1px 2px rgba(0, 0, 0, 0.25),
-        var(--hi);
-}
-
-# ---- Empty orders
-.safely-orders-empty {
+/*.safely-orders-empty {
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -58,7 +27,6 @@
 }
 
 
-# ---- FORM PRIMITIVES
 #safely-root .field {
     width: 100%;
     padding: 11px 14px;
@@ -99,7 +67,6 @@
     cursor: pointer;
 }
 
-# ---- Cards
 #safely-root .card {
     background: var(--surface);
     border: var(--bd);
@@ -145,7 +112,6 @@
     margin: 0;
 }
 
-# ---- Buttons
 #safely-root .btn {
     display: inline-flex;
     align-items: center;
@@ -191,7 +157,6 @@
     background: var(--surface-3);
 }
 
-# ---- Upload zones
 #safely-root .upload-zone {
     display: flex;
     flex-direction: column;
@@ -223,7 +188,6 @@
     border-color: var(--sky) !important;
 }
 
-# ---- Misc
 #safely-root .back-link {
     font-size: 13px;
     font-weight: 600;
@@ -246,7 +210,6 @@
     font-family: var(--mono);
 }
 
-# ---- Step indicator (buyer flow)
 #safely-root .step-indicator-row {
     display: flex;
     align-items: center;
@@ -298,7 +261,6 @@
     margin: 0 4px;
 }
 
-# ---- Payment-method pills
 #safely-root .pm-pill {
     padding: 8px 14px;
     border-radius: 9px;
@@ -328,7 +290,6 @@
     stroke: var(--sky);
 }
 
-# ---- Seller block / image upload
 #safely-root .seller-block {
     display: flex;
     flex-direction: column;
@@ -355,7 +316,6 @@
     display: block;
 }
 
-# ---- Seller lookup card
 #safely-root .seller-lookup-card {
     margin-top: 10px;
     padding: 12px 14px;
@@ -382,7 +342,6 @@
     font-weight: 500;
 }
 
-# ----  Phone row ──
 #safely-root .phone-row {
     display: flex;
     gap: 8px;
@@ -408,7 +367,6 @@
     font-weight: 500;
 }
 
-# ---- Product preview
 #safely-root .product-preview,
 #safely-root .safely-product-img-placeholder {
     height: 120px;
@@ -440,7 +398,6 @@
     right: 12px;
 }
 
-# ---- Banking / QR
 #safely-root .banking-qr-container {
     background: var(--surface);
     border: var(--bd);
@@ -490,7 +447,6 @@
     font-weight: 600;
 }
 
-# ---- Banners
 #safely-root .banner {
     padding: 14px 16px;
     border: 1px solid transparent;
@@ -516,7 +472,6 @@
     color: var(--text);
 }
 
-# ---- Sub views
 #safely-root .sub {
     display: none;
     flex-direction: column;
@@ -526,7 +481,6 @@
     display: flex;
 }
 
-# ----  Success state
 #safely-root .success-icon {
     width: 58px;
     height: 58px;
@@ -596,7 +550,6 @@
 }
 
 
-# ----  SELLER FLOW (protect.js) - colors only, structure untouched
 .safely-seller-lookup-empty {
     display: flex;
     flex-direction: column;
@@ -851,7 +804,6 @@
     gap: 10px;
 }
 
-# ---- REPORT SECTION
 .safely-report-section {
     padding-top: 4px;
 }

@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS sellers (
     completion_rate INTEGER,
     location TEXT,
     last_seen_at TIMESTAMPTZ,
+    last_active_text TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     UNIQUE(platform, platform_id)

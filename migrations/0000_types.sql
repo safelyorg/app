@@ -45,10 +45,3 @@ CREATE TYPE risk_level_type AS ENUM (
     'caution',
     'high'
 );
-
-CREATE TYPE platforms_list AS ENUM (
-    'olx',
-    'facebook',
-    'daraz',
-    'instagram'
-);
