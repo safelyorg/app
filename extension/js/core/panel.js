@@ -28,6 +28,7 @@
     '<div class="safely-close-btn" id="safely-close-btn">\u00d7</div>' +
     "</div>" +
     '<div class="safely-tabs-area" id="safely-tabs-area"></div>' +
+    '<div class="safely-loading-overlay" id="safely-loading-overlay"><div class="safely-loading-dots"><span></span><span></span><span></span></div></div>' +
     '<div class="safely-tab-content" id="safely-tab-unsupported" style="display:none; padding: 20px; font-size: 13px; line-height: 1.5; color: #8a8a93;">' +
     "Safely isn't reading this page — it only activates on an actual " +
     "listing (like a specific item on OLX or a Facebook Marketplace " +
@@ -49,6 +50,7 @@
   var panelTitle = document.getElementById("safely-panel-title");
   var closeBtn = document.getElementById("safely-close-btn");
   var tabsArea = document.getElementById("safely-tabs-area");
+  var loadingOverlay = document.getElementById("safely-loading-overlay");
   var toolbarInner = document.getElementById("safely-toolbar-inner");
   var unsupportedContent = document.getElementById("safely-tab-unsupported");
 
@@ -221,6 +223,8 @@
       });
       if (tabIds.indexOf("risk") !== -1) switchTab("risk");
       window.__safelyResetState();
+      if (loadingOverlay) loadingOverlay.classList.add("safely-visible");
+      if (tabsArea) tabsArea.classList.add("safely-loading-blur");
       window.__safelyAPI.fetchAnalysis();
     } else {
       TAB_ORDER.forEach(function (id) {
@@ -297,6 +301,15 @@
         intentionallyClosed = false;
       }, 150);
     }
+  });
+
+  // ── Hides the loading overlay the moment fresh analysis data has
+  // actually arrived and been rendered - the same event api.js already
+  // dispatches for the tabs themselves to redraw, so this stays in
+  // lockstep with real data being ready rather than a guessed delay. ──
+  window.addEventListener("safely-data-ready", function () {
+    if (loadingOverlay) loadingOverlay.classList.remove("safely-visible");
+    if (tabsArea) tabsArea.classList.remove("safely-loading-blur");
   });
 
   // ── Initial check, then keep checking on every URL change ──
