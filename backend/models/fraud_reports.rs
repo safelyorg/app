@@ -39,28 +39,3 @@ pub struct FraudReportsRequest {
     // and there's no other way to know which ad prompted the report.
     pub listing_url: Option<String>,
 }
-
-#[derive(Debug, Serialize)]
-pub struct FraudReportsResponse {
-    pub id: Uuid,
-    pub seller_id: Option<Uuid>,
-    pub platform: Option<String>,
-    pub report_type: ReportTypes,
-    pub description: Option<String>,
-    pub listing_url: Option<String>,
-    pub reported_at: DateTime<Utc>,
-}
-
-impl From<FraudReports> for FraudReportsResponse {
-    fn from(f: FraudReports) -> Self {
-        Self {
-            id: f.id,
-            seller_id: f.seller_id,
-            platform: f.platform,
-            report_type: f.report_type,
-            description: f.description,
-            listing_url: f.listing_url,
-            reported_at: f.reported_at,
-        }
-    }
-}

@@ -46,10 +46,7 @@ pub async fn create_fraud_report(
     .bind(&user_id)
     .execute(&pool)
     .await
-    .map_err(|e| {
-        println!("DEBUG INSERT error: {}", e);
-        e.to_string()
-    })?;
+    .map_err(|e| e.to_string())?;
 
     Ok(Json(serde_json::json!({ "success": true })))
 }
