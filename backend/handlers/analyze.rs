@@ -16,18 +16,28 @@ use crate::{
         signals::{build_domain_signal, build_signals},
     },
 };
-use axum::{Json, extract::State, http::HeaderMap};
+use axum::{
+    Json,
+    extract::State,
+    http::{HeaderMap, StatusCode},
+};
 use sqlx::{Pool, Postgres};
 
 pub async fn analyze(
     State(pool): State<Pool<Postgres>>,
     headers: HeaderMap,
     Json(request): Json<AnalyzeRequest>,
-) -> Result<Json<AnalyzeResponse>, String> {
-    // None if not logged in, or if the token is missing/invalid - either
-    // way the request proceeds exactly as it always has, just without a
-    // user_id attached to the saved analysis row.
-    let user_id = extract_user_id(&headers, &pool).await;
+) -> Result<Json<AnalyzeResponse>, (StatusCode, String)> {
+    // Real analysis costs real Claude API money per request, so this is
+    // the one endpoint that must actually reject an anonymous caller
+    // rather than just proceed without a user_id - the extension itself
+    // already gates this on its own side (showing a sign-in prompt
+    // instead of ever calling this endpoint), but that check lives in a
+    // browser and can be bypassed by anyone willing to call this URL
+    // directly. This is what makes that bypass actually pointless.
+    let user_id = extract_user_id(&headers, &pool)
+        .await
+        .ok_or((StatusCode::UNAUTHORIZED, "Sign in required".to_string()))?;
 
     let seller_req = SellersRequest {
         platform: request.platform.clone(),
@@ -57,12 +67,12 @@ pub async fn analyze(
     let platform_id = request.platform_id.as_deref().unwrap_or("");
     let existing_seller = find_seller(&pool, &request.platform, platform_id)
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     let preliminary_fraud_count = if let Some(ref s) = existing_seller {
         count_fraud_reports(&pool, s.id)
             .await
-            .map_err(|e| e.to_string())?
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
     } else {
         0
     };
@@ -75,16 +85,16 @@ pub async fn analyze(
 
     let seller = create_seller(&pool, &seller_req, verification)
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     let fraud_count = count_fraud_reports(&pool, seller.id)
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     let network_summary = build_network_summary(fraud_count);
 
     let listing = create_listing(&pool, &listing_req, seller.id)
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     let account_age = seller
         .join_date
@@ -105,7 +115,7 @@ pub async fn analyze(
         image_urls,
     )
     .await
-    .map_err(|e| e.to_string())?;
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     let mut signals = build_signals(&claude_analysis, &seller);
 
@@ -131,7 +141,8 @@ pub async fn analyze(
         _ => RiskLevel::High,
     };
 
-    let signals_json = serde_json::to_value(&signals).map_err(|e| e.to_string())?;
+    let signals_json = serde_json::to_value(&signals)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     let saved_analysis = create_analysis(
         &pool,
@@ -144,7 +155,7 @@ pub async fn analyze(
         user_id,
     )
     .await
-    .map_err(|e| e.to_string())?;
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     let monthly_activity = get_monthly_visit_activity(&pool, seller.id)
         .await

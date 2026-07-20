@@ -28,15 +28,6 @@ pub struct Analysis {
 }
 
 #[derive(Debug, Deserialize)]
-pub struct AnalysisRequest {
-    pub listing_id: Uuid,
-    pub risk_score: i16,
-    pub risk_level: RiskLevel,
-    pub signals: Value,
-    pub price_analysis: Option<Value>,
-}
-
-#[derive(Debug, Deserialize)]
 pub struct AnalyzeRequest {
     // shared
     pub platform: String,
@@ -85,35 +76,10 @@ pub struct AnalyzeResponse {
 }
 
 #[derive(Debug, Serialize)]
-pub struct AnalysisResponse {
-    pub id: Uuid,
-    pub risk_score: i16,
-    pub risk_level: RiskLevel,
-    pub signals: Value,
-    pub price_analysis: Option<Value>,
-    pub network_summary: Option<String>,
-    pub created_at: DateTime<Utc>,
-}
-
-#[derive(Debug, Serialize)]
 pub struct Signal {
     pub label: String,
     pub sub: String,
     pub value: String,
     #[serde(rename = "type")]
     pub signal_type: String,
-}
-
-impl From<Analysis> for AnalysisResponse {
-    fn from(a: Analysis) -> Self {
-        Self {
-            id: a.id,
-            risk_score: a.risk_score,
-            risk_level: a.risk_level,
-            signals: a.signals,
-            price_analysis: a.price_analysis,
-            network_summary: a.network_summary,
-            created_at: a.created_at,
-        }
-    }
 }

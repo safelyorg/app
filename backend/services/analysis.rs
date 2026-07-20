@@ -10,7 +10,7 @@ pub async fn create_analysis(
     signals: serde_json::Value,
     network_summary: String,
     claude_raw: String,
-    user_id: Option<Uuid>,
+    user_id: Uuid,
 ) -> Result<Analysis, Error> {
     let id = Uuid::now_v7();
     let analysis = sqlx::query_as::<_, Analysis>(
