@@ -13,23 +13,6 @@ pub struct User {
     pub last_login_at: Option<DateTime<Utc>>,
 }
 
-#[derive(Debug, Serialize)]
-pub struct UserResponse {
-    pub id: Uuid,
-    pub email: String,
-    pub name: Option<String>,
-}
-
-impl From<User> for UserResponse {
-    fn from(u: User) -> Self {
-        Self {
-            id: u.id,
-            email: u.email,
-            name: u.name,
-        }
-    }
-}
-
 #[derive(Debug, FromRow)]
 pub struct MagicLink {
     pub id: Uuid,
@@ -37,15 +20,6 @@ pub struct MagicLink {
     pub token: String,
     pub expires_at: DateTime<Utc>,
     pub used_at: Option<DateTime<Utc>>,
-    pub created_at: DateTime<Utc>,
-}
-
-#[derive(Debug, FromRow)]
-pub struct Session {
-    pub id: Uuid,
-    pub user_id: Uuid,
-    pub token: String,
-    pub expires_at: DateTime<Utc>,
     pub created_at: DateTime<Utc>,
 }
 

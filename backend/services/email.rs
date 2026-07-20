@@ -2,10 +2,9 @@ use std::env;
 
 pub async fn send_magic_link_email(to_email: &str, verify_url: &str) -> Result<(), String> {
     let api_key = env::var("RESEND_API_KEY").map_err(|_| "RESEND_API_KEY not set".to_string())?;
-    // While your domain isn't verified in Resend yet, this "from" address
-    // must stay as onboarding@resend.dev and can only deliver to the email
-    // you signed up to Resend with. Once you verify your domain (the
-    // start@safely.sh subdomain you set up), switch this to your own address.
+    // Domain verified in Resend (start.safely.sh) - RESEND_FROM_EMAIL is
+    // set to a real address on that domain. The onboarding@resend.dev
+    // fallback below only ever applies if that env var is somehow unset.
     let from_address =
         env::var("RESEND_FROM_EMAIL").unwrap_or_else(|_| "onboarding@resend.dev".to_string());
     let client = reqwest::Client::new();
