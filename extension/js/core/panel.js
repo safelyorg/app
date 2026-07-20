@@ -34,6 +34,15 @@
     "listing (like a specific item on OLX or a Facebook Marketplace " +
     "listing page), not a site's general pages." +
     "</div>" +
+    '<div class="safely-tab-content" id="safely-tab-signin-required" style="display:none; padding: 20px; text-align: center;">' +
+    '<div style="font-size:13px; line-height:1.6; color:#8a8a93; margin-bottom:16px;">' +
+    "Sign in to Safely to analyze this listing. It only takes a moment, " +
+    "and your risk history stays saved to your account." +
+    "</div>" +
+    '<a href="' +
+    window.__safelyAPI.SITE_BASE +
+    '" target="_blank" class="safely-signin-required-btn">Sign in to Safely</a>' +
+    "</div>" +
     "</div>" +
     '<div id="safely-toolbar"><img class="safely-toolbar-letter" src="' +
     chrome.runtime.getURL("icons/icon48.png") +
@@ -53,6 +62,9 @@
   var loadingOverlay = document.getElementById("safely-loading-overlay");
   var toolbarInner = document.getElementById("safely-toolbar-inner");
   var unsupportedContent = document.getElementById("safely-tab-unsupported");
+  var signinRequiredContent = document.getElementById(
+    "safely-tab-signin-required",
+  );
 
   // Domain check lives entirely inside services/signals.rs on the
   // backend now, appearing as one more entry in the Intelligence tab's
@@ -90,18 +102,35 @@
     togglePanel("unsupported");
   });
 
+  var signinRequiredIcon = document.createElement("div");
+  signinRequiredIcon.className = "safely-toolbar-icon";
+  signinRequiredIcon.dataset.open = "signin-required";
+  signinRequiredIcon.title = "Sign in required";
+  signinRequiredIcon.style.display = "none";
+  signinRequiredIcon.innerHTML =
+    '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 012 2v14a2 2 0 01-2 2h-4"></path><polyline points="10 17 15 12 10 7"></polyline><line x1="15" y1="12" x2="3" y2="12"></line></svg>';
+  toolbarInner.insertBefore(signinRequiredIcon, collapseBtn);
+  signinRequiredIcon.addEventListener("click", function (e) {
+    e.stopPropagation();
+    togglePanel("signin-required");
+  });
+
   function switchTab(tab) {
     currentTab = tab;
-    if (tab === "unsupported") {
+    if (tab === "unsupported" || tab === "signin-required") {
       panelTitle.textContent = "Safely";
       tabIds.forEach(function (id) {
         var el = document.getElementById("safely-tab-" + id);
         if (el) el.style.display = "none";
       });
-      unsupportedContent.style.display = "block";
+      unsupportedContent.style.display =
+        tab === "unsupported" ? "block" : "none";
+      signinRequiredContent.style.display =
+        tab === "signin-required" ? "block" : "none";
     } else {
       panelTitle.textContent = tabTitles[tab] || tab;
       unsupportedContent.style.display = "none";
+      signinRequiredContent.style.display = "none";
       tabIds.forEach(function (id) {
         var el = document.getElementById("safely-tab-" + id);
         if (el) el.style.display = id === tab ? "block" : "none";
@@ -214,22 +243,41 @@
     isCurrentlySupported = supported;
 
     if (supported) {
-      buildQueuedTabsIfNeeded();
       unsupportedIcon.style.display = "none";
-      TAB_ORDER.forEach(function (id) {
-        if (iconSlots[id] && tabTitles[id]) {
-          iconSlots[id].style.display = "flex";
+
+      // Real, chargeable AI analysis only ever runs for a signed-in
+      // person - checking this here, before fetchAnalysis is ever
+      // called, means an anonymous visitor never triggers a real
+      // Claude API call at all. chrome.storage is what auth-bridge.js
+      // (running on safely.sh) fills in whenever someone is actually
+      // logged in there.
+      chrome.storage.local.get("safely_session_token", function (result) {
+        if (result.safely_session_token) {
+          signinRequiredIcon.style.display = "none";
+          buildQueuedTabsIfNeeded();
+          TAB_ORDER.forEach(function (id) {
+            if (iconSlots[id] && tabTitles[id]) {
+              iconSlots[id].style.display = "flex";
+            }
+          });
+          if (tabIds.indexOf("risk") !== -1) switchTab("risk");
+          window.__safelyResetState();
+          if (loadingOverlay) loadingOverlay.classList.add("safely-visible");
+          if (tabsArea) tabsArea.classList.add("safely-loading-blur");
+          window.__safelyAPI.fetchAnalysis();
+        } else {
+          TAB_ORDER.forEach(function (id) {
+            if (iconSlots[id]) iconSlots[id].style.display = "none";
+          });
+          signinRequiredIcon.style.display = "flex";
+          switchTab("signin-required");
         }
       });
-      if (tabIds.indexOf("risk") !== -1) switchTab("risk");
-      window.__safelyResetState();
-      if (loadingOverlay) loadingOverlay.classList.add("safely-visible");
-      if (tabsArea) tabsArea.classList.add("safely-loading-blur");
-      window.__safelyAPI.fetchAnalysis();
     } else {
       TAB_ORDER.forEach(function (id) {
         if (iconSlots[id]) iconSlots[id].style.display = "none";
       });
+      signinRequiredIcon.style.display = "none";
       unsupportedIcon.style.display = "flex";
       switchTab("unsupported");
     }
@@ -310,6 +358,19 @@
   window.addEventListener("safely-data-ready", function () {
     if (loadingOverlay) loadingOverlay.classList.remove("safely-visible");
     if (tabsArea) tabsArea.classList.remove("safely-loading-blur");
+  });
+
+  // If someone signs in on a separate tab while this panel is showing
+  // "sign in required," this picks that up the moment auth-bridge.js
+  // relays the new token - no refresh needed on this tab at all.
+  chrome.storage.onChanged.addListener(function (changes, area) {
+    if (
+      area === "local" &&
+      changes.safely_session_token &&
+      currentTab === "signin-required"
+    ) {
+      updateSupportState();
+    }
   });
 
   // ── Initial check, then keep checking on every URL change ──

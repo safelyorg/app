@@ -9,6 +9,14 @@
       ? "http://localhost:3000/api/v1"
       : "https://safely.sh/api/v1";
 
+  // Same toggle, but for the actual website (not the /api/v1 path) -
+  // used anywhere the extension needs to link a person TO the site
+  // itself, like the sign-in prompt. Kept as one single source of
+  // truth alongside API_BASE, so both always move together and
+  // nothing ever needs a second, separately-hardcoded address.
+  var SITE_BASE =
+    SAFELY_ENV === "local" ? "http://localhost:3000" : "https://safely.sh";
+
   // Reads the session token that auth-bridge.js relayed from the website.
   // Returns an empty object (no Authorization header) if the person isn't
   // logged in - every existing call keeps working exactly as before for
@@ -26,6 +34,7 @@
   }
 
   window.__safelyAPI = {
+    SITE_BASE: SITE_BASE,
     analyze: async function (scrapedData) {
       try {
         var authHeaders = await getAuthHeaders();
