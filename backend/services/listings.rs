@@ -3,22 +3,6 @@ use uuid::Uuid;
 
 use crate::models::listings::{Listings, ListingsRequest};
 
-pub async fn find_listing(
-    pool: &Pool<Postgres>,
-    listing_url: &str,
-) -> Result<Option<Listings>, Error> {
-    let listing = sqlx::query_as::<_, Listings>(
-        "SELECT * FROM listings
-         WHERE listing_url = $1
-         LIMIT 1",
-    )
-    .bind(listing_url)
-    .fetch_optional(pool)
-    .await?;
-
-    Ok(listing)
-}
-
 pub async fn create_listing(
     pool: &Pool<Postgres>,
     request: &ListingsRequest,

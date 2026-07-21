@@ -2,7 +2,7 @@ use crate::{
     models::{
         analysis::{AnalyzeRequest, AnalyzeResponse, RiskLevel},
         helpers::format_account_age,
-        listings::ListingsRequest,
+        models_listings::ListingsRequest,
         sellers::{SellerVerification, SellersRequest, SellersResponse},
     },
     services::{
@@ -10,9 +10,9 @@ use crate::{
         auth::extract_user_id,
         claude::call_claude,
         fraud_reports::{build_network_summary, count_fraud_reports},
-        listings::{create_listing, get_monthly_visit_activity},
         scoring::calculate_risk_score,
         sellers::{create_seller, find_seller},
+        services_listings::{create_listing, get_monthly_visit_activity},
         signals::{build_domain_signal, build_signals},
     },
 };

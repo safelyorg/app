@@ -152,7 +152,7 @@ pub async fn call_claude(
 ) -> Result<ClaudeAnalysis, reqwest::Error> {
     let client = Client::new();
     let api_key = std::env::var("ANTHROPIC_API_KEY")
-        .expect("ANTHROPIC_API_URL needs to be present in the .env file");
+        .expect("ANTHROPIC_API_KEY needs to be present in the .env file");
     dotenvy::dotenv().expect("The .env file should be accessed");
 
     let prompt = content(

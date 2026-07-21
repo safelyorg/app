@@ -64,30 +64,3 @@ pub struct ListingsRequest {
     pub image_urls: Option<Vec<String>>,
     pub posted_date: Option<NaiveDate>,
 }
-
-#[derive(Debug, Serialize)]
-pub struct ListingsResponse {
-    pub id: Uuid,
-    pub platform: String,
-    pub listing_url: String,
-    pub title: Option<String>,
-    pub price: Option<i64>,
-    pub category: Option<ListingCategory>,
-    pub posted_date: Option<NaiveDate>,
-    pub first_seen_at: DateTime<Utc>,
-}
-
-impl From<Listings> for ListingsResponse {
-    fn from(l: Listings) -> Self {
-        Self {
-            id: l.id,
-            platform: l.platform,
-            listing_url: l.listing_url,
-            title: l.title,
-            price: l.price,
-            category: l.category,
-            posted_date: l.posted_date,
-            first_seen_at: l.first_seen_at,
-        }
-    }
-}
