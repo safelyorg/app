@@ -1,7 +1,5 @@
-use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use sqlx::{Type, prelude::FromRow};
-use uuid::Uuid;
+use sqlx::Type;
 
 #[derive(Debug, Serialize, Deserialize, Type)]
 #[sqlx(type_name = "report_types", rename_all = "snake_case")]
@@ -13,18 +11,6 @@ pub enum ReportTypes {
     WrongItem,
     Counterfeit,
     NonResponsive,
-}
-
-#[derive(Debug, Serialize, Deserialize, FromRow)]
-pub struct FraudReports {
-    pub id: Uuid,
-    pub seller_id: Option<Uuid>,
-    pub platform: Option<String>,
-    pub platform_id: Option<String>,
-    pub report_type: ReportTypes,
-    pub description: Option<String>,
-    pub listing_url: Option<String>,
-    pub reported_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Deserialize)]

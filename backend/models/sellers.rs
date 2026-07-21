@@ -24,9 +24,6 @@ pub struct Sellers {
     pub profile_url: Option<String>,
     pub join_date: Option<NaiveDate>,
     pub verification: SellerVerification,
-    pub total_deals: i32,
-    pub disputes: i32,
-    pub completion_rate: Option<i64>,
     pub location: Option<String>,
     pub last_seen_at: Option<DateTime<Utc>>,
     pub last_active_text: Option<String>,
@@ -59,20 +56,10 @@ pub struct SellersResponse {
     pub handle: Option<String>,
     pub account_age: String,
     pub verification: SellerVerification,
-    pub total_deals: i32,
-    pub disputes: i32,
-    pub completion_rate: String,
     pub location: Option<String>,
     pub last_active: Option<String>,
     pub network_summary: String,
     pub monthly_activity: Vec<i32>,
-}
-
-#[derive(Debug, Serialize)]
-pub struct PlatformResponse {
-    pub name: String,
-    pub status: String,
-    pub platform_type: String,
 }
 
 impl From<Sellers> for SellersResponse {
@@ -88,12 +75,6 @@ impl From<Sellers> for SellersResponse {
                 .map(|d| format_account_age(d))
                 .unwrap_or_else(|| "Unknown".to_string()),
             verification: s.verification,
-            total_deals: s.total_deals,
-            disputes: s.disputes,
-            completion_rate: s
-                .completion_rate
-                .map(|c| format!("{:.0}%", c))
-                .unwrap_or_else(|| "N/A".to_string()),
             location: s.location,
             // Prefer the real scraped text ("3 hours ago") over the
             // server-computed last_seen_at timestamp - the scraped text

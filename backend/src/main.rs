@@ -19,6 +19,7 @@ pub mod routes;
 pub mod services;
 #[tokio::main]
 async fn main() {
+    dotenvy::dotenv().ok();
     let admin_pool = load_pool("ADMIN_URL").await;
     let app_pool = load_pool("APP_URL").await;
     sqlx::migrate!("../migrations")

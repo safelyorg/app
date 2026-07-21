@@ -1,9 +1,8 @@
 use sqlx::{Pool, Postgres, postgres::PgPoolOptions};
 
 pub async fn load_pool(env_key: &str) -> Pool<Postgres> {
-    dotenvy::dotenv().expect("The .env file should be accessed");
-    let database_url =
-        std::env::var(env_key).expect("DATABASE_URL needs to be present in the .env file");
+    let database_url = std::env::var(env_key)
+        .unwrap_or_else(|_| panic!("{} needs to be present in the .env file", env_key));
 
     let db_pool = PgPoolOptions::new()
         .max_connections(5)

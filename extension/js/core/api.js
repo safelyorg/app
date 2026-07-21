@@ -95,7 +95,10 @@
 
     fetchAnalysis: async function () {
       var platform = window.__safelyScrapers.detectPlatform();
-      if (platform === "unknown") return;
+      if (platform === "unknown") {
+        window.dispatchEvent(new CustomEvent("safely-analysis-finished"));
+        return;
+      }
 
       // Defense-in-depth: panel.js already gates this before calling
       // fetchAnalysis at all, but checking again here means this stays
@@ -103,7 +106,10 @@
       // supported SITE isn't the same as being on an actual listing, and
       // this is what stops a plain facebook.com page from producing an
       // empty "Untitled listing" in someone's dashboard history.
-      if (!window.__safelyScrapers.isListingPage()) return;
+      if (!window.__safelyScrapers.isListingPage()) {
+        window.dispatchEvent(new CustomEvent("safely-analysis-finished"));
+        return;
+      }
 
       var listing_url = window.location.href;
 
@@ -158,7 +164,10 @@
       };
 
       var data = await window.__safelyAPI.analyze(payload);
-      if (!data) return;
+      if (!data) {
+        window.dispatchEvent(new CustomEvent("safely-analysis-finished"));
+        return;
+      }
 
       window.__safelyData = {
         riskScore: data.risk_score,
@@ -170,9 +179,6 @@
           handle: data.seller.handle || "",
           accountAge: data.seller.account_age,
           verification: data.seller.verification,
-          totalDeals: data.seller.total_deals,
-          disputes: data.seller.disputes,
-          completionRate: data.seller.completion_rate,
           location: data.seller.location || "Unknown",
           lastActive:
             scraped.seller_last_active || data.seller.last_active || "Unknown",
@@ -191,6 +197,7 @@
       };
 
       window.dispatchEvent(new CustomEvent("safely-data-ready"));
+      window.dispatchEvent(new CustomEvent("safely-analysis-finished"));
     },
   };
 })();

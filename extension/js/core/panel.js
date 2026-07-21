@@ -355,7 +355,7 @@
   // actually arrived and been rendered - the same event api.js already
   // dispatches for the tabs themselves to redraw, so this stays in
   // lockstep with real data being ready rather than a guessed delay. ──
-  window.addEventListener("safely-data-ready", function () {
+  window.addEventListener("safely-analysis-finished", function () {
     if (loadingOverlay) loadingOverlay.classList.remove("safely-visible");
     if (tabsArea) tabsArea.classList.remove("safely-loading-blur");
   });

@@ -43,9 +43,6 @@ pub async fn create_seller(
             profile_url,
             join_date,
             verification,
-            total_deals,
-            disputes,
-            completion_rate,
             location,
             last_active_text,
             created_at,
@@ -54,7 +51,7 @@ pub async fn create_seller(
         VALUES (
             $1, $2, $3, $4, $5,
             $6, $7, $8, $9, $10,
-            $11, $12, $13, $14, NOW(), NOW()
+            $11, NOW(), NOW()
         )
         ON CONFLICT (platform, platform_id)
         DO UPDATE SET
@@ -76,9 +73,6 @@ pub async fn create_seller(
     .bind(&request.profile_url)
     .bind(join_date)
     .bind(verification)
-    .bind(0_i32)
-    .bind(0_i32)
-    .bind(None::<i64>)
     .bind(&request.location)
     .bind(&request.last_active)
     .fetch_one(pool)

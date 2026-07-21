@@ -29,8 +29,6 @@ pub struct ImageSource {
     pub url: String,
 }
 
-// ----------
-
 // 2. Gives you the text(that contains the actual fraud analysis) from the content block
 #[derive(Debug, Deserialize)]
 struct ClaudeEnvelope {
@@ -73,14 +71,11 @@ pub struct ImageAssessment {
     pub verdict: String,
     pub reasoning: String,
 }
-// ----------
 
 pub fn content(
     platform: &str,
     seller_name: &str,
     seller_account_age: &str,
-    seller_total_deals: i32,
-    seller_disputes: i32,
     title: &str,
     price: i64,
     description: &str,
@@ -93,8 +88,6 @@ pub fn content(
         Platform: {platform}
         Seller name: {seller_name}
         Seller account age: {seller_account_age}
-        Seller total deals: {seller_total_deals}
-        Seller disputes: {seller_disputes}
         Listing title: {title}
         Listing price: PKR {price}
         Listing description: {description}
@@ -143,8 +136,6 @@ pub async fn call_claude(
     platform: &str,
     seller_name: &str,
     seller_account_age: &str,
-    seller_total_deals: i32,
-    seller_disputes: i32,
     title: &str,
     price: i64,
     description: &str,
@@ -153,14 +144,11 @@ pub async fn call_claude(
     let client = Client::new();
     let api_key = std::env::var("ANTHROPIC_API_KEY")
         .expect("ANTHROPIC_API_KEY needs to be present in the .env file");
-    dotenvy::dotenv().expect("The .env file should be accessed");
 
     let prompt = content(
         platform,
         seller_name,
         seller_account_age,
-        seller_total_deals,
-        seller_disputes,
         title,
         price,
         description,

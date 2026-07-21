@@ -107,8 +107,6 @@ pub async fn analyze(
         &listing.platform,
         seller.name.as_deref().unwrap_or("Unknown"),
         &account_age,
-        seller.total_deals,
-        seller.disputes,
         listing.title.as_deref().unwrap_or("Untitled"),
         listing.price.unwrap_or(0),
         listing.description.as_deref().unwrap_or(""),
