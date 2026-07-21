@@ -9,7 +9,6 @@ CREATE TABLE IF NOT EXISTS sellers (
     join_date DATE,
     verification seller_verification NOT NULL DEFAULT 'unknown',
     location TEXT,
-    last_seen_at TIMESTAMPTZ,
     last_active_text TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),

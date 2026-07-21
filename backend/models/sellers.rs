@@ -1,4 +1,4 @@
-use super::helpers::{format_account_age, format_last_active};
+use super::helpers::format_account_age;
 use chrono::{DateTime, NaiveDate, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::{Type, prelude::FromRow};
@@ -25,7 +25,6 @@ pub struct Sellers {
     pub join_date: Option<NaiveDate>,
     pub verification: SellerVerification,
     pub location: Option<String>,
-    pub last_seen_at: Option<DateTime<Utc>>,
     pub last_active_text: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -76,14 +75,7 @@ impl From<Sellers> for SellersResponse {
                 .unwrap_or_else(|| "Unknown".to_string()),
             verification: s.verification,
             location: s.location,
-            // Prefer the real scraped text ("3 hours ago") over the
-            // server-computed last_seen_at timestamp - the scraped text
-            // is what the extension already showed, so this keeps both
-            // surfaces saying the same thing instead of two different
-            // notions of "last active."
-            last_active: s
-                .last_active_text
-                .or_else(|| s.last_seen_at.map(|t| format_last_active(t))),
+            last_active: s.last_active_text,
             network_summary: String::new(),
             monthly_activity: vec![],
         }
