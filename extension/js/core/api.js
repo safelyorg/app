@@ -17,14 +17,6 @@
   var SITE_BASE =
     SAFELY_ENV === "local" ? "http://localhost:3000" : "https://safely.sh";
 
-  // Counts every REAL /analyze request actually sent to the server -
-  // not every page visit, not every fetchAnalysis() call (some of
-  // those exit early without sending anything). Logged right before
-  // each real request goes out, so testing the rate limit means
-  // watching this number directly instead of counting page visits by
-  // eye and guessing at why the count doesn't quite match.
-  var analyzeRequestCount = 0;
-
   // Reads the session token that auth-bridge.js relayed from the website.
   // Returns an empty object (no Authorization header) if the person isn't
   // logged in - every existing call keeps working exactly as before for
@@ -68,7 +60,13 @@
         );
         if (!response.ok || rawText.startsWith("error")) {
           console.error("Safely: backend error:", rawText.substring(0, 300));
-          if (response.status === 429) return { error: "rate_limited" };
+          if (response.status === 429) {
+            var match = rawText.match(/RATE_LIMITED:(\d+)/);
+            return {
+              error: "rate_limited",
+              retryAfterSeconds: match ? parseInt(match[1], 10) : null,
+            };
+          }
           if (response.status === 401) return { error: "unauthorized" };
           return null;
         }
@@ -192,7 +190,10 @@
       if (!data || data.error) {
         window.dispatchEvent(
           new CustomEvent("safely-analysis-finished", {
-            detail: { error: data && data.error ? data.error : "generic" },
+            detail: {
+              error: data && data.error ? data.error : "generic",
+              retryAfterSeconds: data && data.retryAfterSeconds,
+            },
           }),
         );
         return;

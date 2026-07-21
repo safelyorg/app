@@ -383,6 +383,44 @@
   // actually arrived and been rendered - the same event api.js already
   // dispatches for the tabs themselves to redraw, so this stays in
   // lockstep with real data being ready rather than a guessed delay. ──
+  // Keeps track of the running countdown timer, so a new failure (or
+  // navigating away) can always clear whatever was ticking before,
+  // rather than ever having two countdowns running at once.
+  var rateLimitCountdownTimer = null;
+
+  function formatCountdown(totalSeconds) {
+    var minutes = Math.floor(totalSeconds / 60);
+    var seconds = totalSeconds % 60;
+    return minutes + ":" + (seconds < 10 ? "0" : "") + seconds;
+  }
+
+  function startRateLimitCountdown(seconds) {
+    if (rateLimitCountdownTimer) clearInterval(rateLimitCountdownTimer);
+    var remaining = seconds;
+
+    function render() {
+      if (failedMessage) {
+        failedMessage.textContent =
+          remaining > 0
+            ? "You've checked several listings quickly. Try again in " +
+              formatCountdown(remaining) +
+              "."
+            : "You can check another listing now.";
+      }
+    }
+
+    render();
+    rateLimitCountdownTimer = setInterval(function () {
+      remaining -= 1;
+      if (remaining <= 0) {
+        clearInterval(rateLimitCountdownTimer);
+        rateLimitCountdownTimer = null;
+        remaining = 0;
+      }
+      render();
+    }, 1000);
+  }
+
   window.addEventListener("safely-analysis-finished", function (e) {
     if (loadingOverlay) loadingOverlay.classList.remove("safely-visible");
     if (tabsArea) tabsArea.classList.remove("safely-loading-blur");
@@ -402,11 +440,11 @@
       return;
     }
 
-    if (failedMessage) {
+    if (reason === "rate_limited" && e.detail.retryAfterSeconds) {
+      startRateLimitCountdown(e.detail.retryAfterSeconds);
+    } else if (failedMessage) {
       failedMessage.textContent =
-        reason === "rate_limited"
-          ? "You've checked several listings quickly. Please wait a few minutes before checking another."
-          : "Couldn't analyze this listing right now. Please try again in a moment.";
+        "Couldn't analyze this listing right now. Please try again in a moment.";
     }
     analysisFailedIcon.style.display = "flex";
     TAB_ORDER.forEach(function (id) {

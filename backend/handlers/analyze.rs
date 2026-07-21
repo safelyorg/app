@@ -44,10 +44,17 @@ pub async fn analyze(
     // person calling this dozens of times a minute is either a stuck
     // script or someone testing the limits of the system, not genuine
     // browsing.
-    if !check_rate_limit(user_id) {
+    // Checked right after login, before any real work (or Claude cost)
+    // happens - a signed-in account is still just one person, and one
+    // person calling this dozens of times a minute is either a stuck
+    // script or someone testing the limits of the system, not genuine
+    // browsing. The exact remaining seconds is calculated here (not
+    // guessed by the browser) and passed along so the person can be
+    // told a real, accurate wait time rather than a vague message.
+    if let Err(retry_after_secs) = check_rate_limit(user_id) {
         return Err((
             StatusCode::TOO_MANY_REQUESTS,
-            "Too many requests. Please wait a moment before analyzing another listing.".to_string(),
+            format!("RATE_LIMITED:{}", retry_after_secs),
         ));
     }
 

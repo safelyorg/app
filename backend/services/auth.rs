@@ -251,11 +251,13 @@ static RATE_LIMITS: std::sync::OnceLock<
 const RATE_LIMIT_WINDOW: std::time::Duration = std::time::Duration::from_secs(300);
 const RATE_LIMIT_MAX_REQUESTS: u32 = 10;
 
-/// Returns true if this user is still within their allowed request
-/// count for the current window, and counts this call toward it.
-/// Returns false if they've already hit the limit - the caller decides
-/// what to do with that (currently: reject with 429 Too Many Requests).
-pub fn check_rate_limit(user_id: Uuid) -> bool {
+/// Ok(()) if this user is still within their allowed request count for
+/// the current window - this also counts the call toward it. Err(secs)
+/// if they've already hit the limit, where secs is exactly how much
+/// longer they need to wait - calculated here, once, from the real
+/// window start time, rather than the caller (or the browser) having
+/// to guess at it separately.
+pub fn check_rate_limit(user_id: Uuid) -> Result<(), u64> {
     let map = RATE_LIMITS.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()));
     let mut map = map.lock().unwrap();
     let now = std::time::Instant::now();
@@ -268,7 +270,14 @@ pub fn check_rate_limit(user_id: Uuid) -> bool {
     }
 
     entry.0 += 1;
-    entry.0 <= RATE_LIMIT_MAX_REQUESTS
+
+    if entry.0 <= RATE_LIMIT_MAX_REQUESTS {
+        Ok(())
+    } else {
+        let elapsed = now.duration_since(entry.1);
+        let remaining = RATE_LIMIT_WINDOW.saturating_sub(elapsed);
+        Err(remaining.as_secs())
+    }
 }
 
 pub async fn link_google_account(
