@@ -1,8 +1,8 @@
 use crate::db::{bootstrap::run_grants, connection::load_pool};
-use axum::http::{HeaderValue, header};
+use axum::http::{HeaderValue, Method, header};
 use axum::{Router, response::Redirect, routing::get};
 use tower_http::{
-    cors::CorsLayer,
+    cors::{Any, CorsLayer},
     services::{ServeDir, ServeFile},
     set_header::SetResponseHeaderLayer,
 };
@@ -17,6 +17,7 @@ pub mod models;
 pub mod routes;
 #[path = "../services/mod.rs"]
 pub mod services;
+
 #[tokio::main]
 async fn main() {
     dotenvy::dotenv().ok();
@@ -67,7 +68,20 @@ async fn main() {
             header::CACHE_CONTROL,
             HeaderValue::from_static("no-cache, no-store, must-revalidate"),
         ))
-        .layer(CorsLayer::permissive())
+        .layer(
+            // Origin stays open (Any) since content scripts send requests
+            // using the origin of whatever website they're running on
+            // (OLX, Facebook, or any site the domain-check runs on) - not
+            // safely.sh itself, so restricting origin here would break
+            // the extension's own analyze calls. Methods and headers are
+            // narrowed to exactly what this app actually uses, so
+            // anything else gets refused automatically rather than
+            // reaching a handler at all.
+            CorsLayer::new()
+                .allow_origin(Any)
+                .allow_methods([Method::GET, Method::POST, Method::PATCH, Method::DELETE])
+                .allow_headers([header::CONTENT_TYPE, header::AUTHORIZATION]),
+        )
         .with_state(app_pool);
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
     println!("Server running on port: 3000");

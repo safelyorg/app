@@ -295,10 +295,14 @@
 
         var result = await window.__safelyAPI.submitReport(reportData);
 
-        if (!result) {
+        if (!result || result.error) {
           submitBtn.textContent = "Submit Report";
           submitBtn.disabled = false;
-          alert("Failed to submit report. Please try again.");
+          if (result && result.error === "unauthorized") {
+            alert("Please sign in again to submit a report.");
+          } else {
+            alert("Failed to submit report. Please try again.");
+          }
           return;
         }
 

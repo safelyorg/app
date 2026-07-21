@@ -79,7 +79,12 @@
         var rawText = await response.text();
         if (!response.ok || rawText.startsWith("error")) {
           console.error("Safely: report error:", rawText.substring(0, 300));
-          return null;
+          // 401 specifically means the session expired or was never
+          // there - distinguishing this from other failures lets the
+          // caller show "please sign in" instead of a generic error.
+          return response.status === 401
+            ? { error: "unauthorized" }
+            : null;
         }
 
         return JSON.parse(rawText);
