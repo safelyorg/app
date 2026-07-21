@@ -21,7 +21,6 @@ pub struct Analysis {
     pub risk_score: i16,
     pub risk_level: RiskLevel,
     pub signals: Value,
-    pub price_analysis: Option<Value>,
     pub network_summary: Option<String>,
     pub claude_raw: Option<String>,
     pub created_at: DateTime<Utc>,

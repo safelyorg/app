@@ -5,7 +5,6 @@ CREATE TABLE IF NOT EXISTS analysis (
     risk_score SMALLINT NOT NULL CHECK (risk_score >= 0 AND risk_score <= 100),
     risk_level risk_level_type NOT NULL,
     signals JSONB NOT NULL,
-    price_analysis JSONB,
     network_summary TEXT,
     claude_raw TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()

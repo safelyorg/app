@@ -21,7 +21,6 @@ pub async fn create_analysis(
             risk_score,
             risk_level,
             signals,
-            price_analysis,
             network_summary,
             claude_raw,
             user_id,
@@ -29,7 +28,7 @@ pub async fn create_analysis(
         )
         VALUES (
             $1,  $2,  $3,  $4,   $5,
-            $6,  $7,  $8,  $9,   NOW()
+            $6,  $7,  $8,  NOW()
         )
         RETURNING *
         ",
@@ -39,7 +38,6 @@ pub async fn create_analysis(
     .bind(&risk_score)
     .bind(&risk_level)
     .bind(&signals)
-    .bind(None::<serde_json::Value>)
     .bind(&network_summary)
     .bind(&claude_raw)
     .bind(&user_id)
