@@ -17,6 +17,14 @@
   var SITE_BASE =
     SAFELY_ENV === "local" ? "http://localhost:3000" : "https://safely.sh";
 
+  // Counts every REAL /analyze request actually sent to the server -
+  // not every page visit, not every fetchAnalysis() call (some of
+  // those exit early without sending anything). Logged right before
+  // each real request goes out, so testing the rate limit means
+  // watching this number directly instead of counting page visits by
+  // eye and guessing at why the count doesn't quite match.
+  var analyzeRequestCount = 0;
+
   // Reads the session token that auth-bridge.js relayed from the website.
   // Returns an empty object (no Authorization header) if the person isn't
   // logged in - every existing call keeps working exactly as before for
@@ -38,6 +46,10 @@
     analyze: async function (scrapedData) {
       try {
         var authHeaders = await getAuthHeaders();
+        analyzeRequestCount++;
+        console.log(
+          "Safely: sending /analyze request #" + analyzeRequestCount,
+        );
         var response = await fetch(API_BASE + "/analyze", {
           method: "POST",
           headers: Object.assign(
@@ -48,8 +60,16 @@
         });
 
         var rawText = await response.text();
+        console.log(
+          "Safely: /analyze request #" +
+            analyzeRequestCount +
+            " result: " +
+            response.status,
+        );
         if (!response.ok || rawText.startsWith("error")) {
           console.error("Safely: backend error:", rawText.substring(0, 300));
+          if (response.status === 429) return { error: "rate_limited" };
+          if (response.status === 401) return { error: "unauthorized" };
           return null;
         }
 
@@ -169,8 +189,12 @@
       };
 
       var data = await window.__safelyAPI.analyze(payload);
-      if (!data) {
-        window.dispatchEvent(new CustomEvent("safely-analysis-finished"));
+      if (!data || data.error) {
+        window.dispatchEvent(
+          new CustomEvent("safely-analysis-finished", {
+            detail: { error: data && data.error ? data.error : "generic" },
+          }),
+        );
         return;
       }
 
@@ -188,7 +212,6 @@
           lastActive:
             scraped.seller_last_active || data.seller.last_active || "Unknown",
           networkSummary: data.seller.network_summary,
-          platforms: data.seller.platforms,
           monthlyActivity: data.seller.monthly_activity,
         },
         signals: data.signals.map(function (s) {

@@ -43,6 +43,10 @@
     window.__safelyAPI.SITE_BASE +
     '" target="_blank" class="safely-signin-required-btn">Sign in to Safely</a>' +
     "</div>" +
+    '<div class="safely-tab-content" id="safely-tab-analysis-failed" style="display:none; padding: 20px; text-align: center;">' +
+    '<div class="safely-failed-icon">&#9888;</div>' +
+    '<div class="safely-failed-message" id="safely-failed-message" style="font-size:13px; line-height:1.6; color:#8a8a93; margin-top:10px;"></div>' +
+    "</div>" +
     "</div>" +
     '<div id="safely-toolbar"><img class="safely-toolbar-letter" src="' +
     chrome.runtime.getURL("icons/icon48.png") +
@@ -65,6 +69,10 @@
   var signinRequiredContent = document.getElementById(
     "safely-tab-signin-required",
   );
+  var analysisFailedContent = document.getElementById(
+    "safely-tab-analysis-failed",
+  );
+  var failedMessage = document.getElementById("safely-failed-message");
 
   // Domain check lives entirely inside services/signals.rs on the
   // backend now, appearing as one more entry in the Intelligence tab's
@@ -115,9 +123,23 @@
     togglePanel("signin-required");
   });
 
+  var analysisFailedIcon = document.createElement("div");
+  analysisFailedIcon.className = "safely-toolbar-icon";
+  analysisFailedIcon.dataset.open = "analysis-failed";
+  analysisFailedIcon.title = "Couldn't analyze this listing";
+  analysisFailedIcon.style.display = "none";
+  analysisFailedIcon.innerHTML =
+    '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>';
+  toolbarInner.insertBefore(analysisFailedIcon, collapseBtn);
+  analysisFailedIcon.addEventListener("click", function (e) {
+    e.stopPropagation();
+    togglePanel("analysis-failed");
+  });
+
   function switchTab(tab) {
     currentTab = tab;
-    if (tab === "unsupported" || tab === "signin-required") {
+    var specialStates = ["unsupported", "signin-required", "analysis-failed"];
+    if (specialStates.indexOf(tab) !== -1) {
       panelTitle.textContent = "Safely";
       tabIds.forEach(function (id) {
         var el = document.getElementById("safely-tab-" + id);
@@ -127,10 +149,13 @@
         tab === "unsupported" ? "block" : "none";
       signinRequiredContent.style.display =
         tab === "signin-required" ? "block" : "none";
+      analysisFailedContent.style.display =
+        tab === "analysis-failed" ? "block" : "none";
     } else {
       panelTitle.textContent = tabTitles[tab] || tab;
       unsupportedContent.style.display = "none";
       signinRequiredContent.style.display = "none";
+      analysisFailedContent.style.display = "none";
       tabIds.forEach(function (id) {
         var el = document.getElementById("safely-tab-" + id);
         if (el) el.style.display = id === tab ? "block" : "none";
@@ -254,6 +279,7 @@
       chrome.storage.local.get("safely_session_token", function (result) {
         if (result.safely_session_token) {
           signinRequiredIcon.style.display = "none";
+          analysisFailedIcon.style.display = "none";
           buildQueuedTabsIfNeeded();
           TAB_ORDER.forEach(function (id) {
             if (iconSlots[id] && tabTitles[id]) {
@@ -270,6 +296,7 @@
             if (iconSlots[id]) iconSlots[id].style.display = "none";
           });
           signinRequiredIcon.style.display = "flex";
+          analysisFailedIcon.style.display = "none";
           switchTab("signin-required");
         }
       });
@@ -278,6 +305,7 @@
         if (iconSlots[id]) iconSlots[id].style.display = "none";
       });
       signinRequiredIcon.style.display = "none";
+      analysisFailedIcon.style.display = "none";
       unsupportedIcon.style.display = "flex";
       switchTab("unsupported");
     }
@@ -355,9 +383,36 @@
   // actually arrived and been rendered - the same event api.js already
   // dispatches for the tabs themselves to redraw, so this stays in
   // lockstep with real data being ready rather than a guessed delay. ──
-  window.addEventListener("safely-analysis-finished", function () {
+  window.addEventListener("safely-analysis-finished", function (e) {
     if (loadingOverlay) loadingOverlay.classList.remove("safely-visible");
     if (tabsArea) tabsArea.classList.remove("safely-loading-blur");
+
+    var reason = e.detail && e.detail.error;
+    if (!reason) return; // success - tabs are already showing real data
+
+    if (reason === "unauthorized") {
+      // Session expired mid-visit - the sign-in panel already has a
+      // real "Sign in to Safely" button, more useful here than a
+      // plain message with nothing to click.
+      signinRequiredIcon.style.display = "flex";
+      TAB_ORDER.forEach(function (id) {
+        if (iconSlots[id]) iconSlots[id].style.display = "none";
+      });
+      switchTab("signin-required");
+      return;
+    }
+
+    if (failedMessage) {
+      failedMessage.textContent =
+        reason === "rate_limited"
+          ? "You've checked several listings quickly. Please wait a few minutes before checking another."
+          : "Couldn't analyze this listing right now. Please try again in a moment.";
+    }
+    analysisFailedIcon.style.display = "flex";
+    TAB_ORDER.forEach(function (id) {
+      if (iconSlots[id]) iconSlots[id].style.display = "none";
+    });
+    switchTab("analysis-failed");
   });
 
   // If someone signs in on a separate tab while this panel is showing

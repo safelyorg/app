@@ -179,3 +179,14 @@
 .safely-signin-required-btn:hover {
     filter: brightness(1.08);
 }
+
+/* ============================================================
+   Analysis-failed message - shown when a real request failure
+   happens (rate-limited, network issue, server error), so the
+   person sees a clear reason instead of stale or blank data.
+   ============================================================ */
+.safely-failed-icon {
+    font-size: 28px;
+    color: var(--amber);
+    line-height: 1;
+}
