@@ -229,6 +229,48 @@ pub async fn extract_user_id(headers: &HeaderMap, pool: &Pool<Postgres>) -> Opti
     Some(user.id)
 }
 
+// ============================================================
+// Per-user rate limiting for expensive endpoints (currently just
+// /analyze, since that's the one that costs real Claude API money per
+// call). Requiring login already stops anonymous abuse; this stops a
+// single signed-in account - by accident (a stuck script, a retry
+// loop) or on purpose - from calling it far more often than any real
+// person actually would.
+//
+// Kept in plain memory rather than the database or Redis: this is a
+// single-server deployment, so an in-process map is both simpler and
+// faster than a network round-trip for something checked on every
+// request. If this ever runs across multiple server instances, this
+// would need to move to something shared (Redis is the usual choice)
+// since each instance would otherwise track its own separate counts.
+// ============================================================
+static RATE_LIMITS: std::sync::OnceLock<
+    std::sync::Mutex<std::collections::HashMap<Uuid, (u32, std::time::Instant)>>,
+> = std::sync::OnceLock::new();
+
+const RATE_LIMIT_WINDOW: std::time::Duration = std::time::Duration::from_secs(300);
+const RATE_LIMIT_MAX_REQUESTS: u32 = 10;
+
+/// Returns true if this user is still within their allowed request
+/// count for the current window, and counts this call toward it.
+/// Returns false if they've already hit the limit - the caller decides
+/// what to do with that (currently: reject with 429 Too Many Requests).
+pub fn check_rate_limit(user_id: Uuid) -> bool {
+    let map = RATE_LIMITS.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()));
+    let mut map = map.lock().unwrap();
+    let now = std::time::Instant::now();
+
+    let entry = map.entry(user_id).or_insert((0, now));
+
+    if now.duration_since(entry.1) > RATE_LIMIT_WINDOW {
+        entry.0 = 0;
+        entry.1 = now;
+    }
+
+    entry.0 += 1;
+    entry.0 <= RATE_LIMIT_MAX_REQUESTS
+}
+
 pub async fn link_google_account(
     pool: &Pool<Postgres>,
     user_id: Uuid,

@@ -7,7 +7,7 @@ use crate::{
     },
     services::{
         analysis::create_analysis,
-        auth::extract_user_id,
+        auth::{check_rate_limit, extract_user_id},
         claude::call_claude,
         fraud_reports::{build_network_summary, count_fraud_reports},
         listings::{create_listing, get_monthly_visit_activity},
@@ -38,6 +38,18 @@ pub async fn analyze(
     let user_id = extract_user_id(&headers, &pool)
         .await
         .ok_or((StatusCode::UNAUTHORIZED, "Sign in required".to_string()))?;
+
+    // Checked right after login, before any real work (or Claude cost)
+    // happens - a signed-in account is still just one person, and one
+    // person calling this dozens of times a minute is either a stuck
+    // script or someone testing the limits of the system, not genuine
+    // browsing.
+    if !check_rate_limit(user_id) {
+        return Err((
+            StatusCode::TOO_MANY_REQUESTS,
+            "Too many requests. Please wait a moment before analyzing another listing.".to_string(),
+        ));
+    }
 
     let seller_req = SellersRequest {
         platform: request.platform.clone(),
