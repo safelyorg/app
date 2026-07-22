@@ -46,6 +46,10 @@
     '<div class="safely-tab-content" id="safely-tab-analysis-failed" style="display:none; padding: 20px; text-align: center;">' +
     '<div class="safely-failed-icon">&#9888;</div>' +
     '<div class="safely-failed-message" id="safely-failed-message" style="font-size:13px; line-height:1.6; color:#8a8a93; margin-top:10px;"></div>' +
+    '<button class="safely-retry-btn" id="safely-retry-btn" style="display:none;">' +
+    '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"></polyline><path d="M3.51 15a9 9 0 102.13-9.36L1 10"></path></svg>' +
+    "Reload" +
+    "</button>" +
     "</div>" +
     "</div>" +
     '<div id="safely-toolbar"><img class="safely-toolbar-letter" src="' +
@@ -73,6 +77,16 @@
     "safely-tab-analysis-failed",
   );
   var failedMessage = document.getElementById("safely-failed-message");
+  var retryBtn = document.getElementById("safely-retry-btn");
+  if (retryBtn) {
+    retryBtn.addEventListener("click", function () {
+      // Reuses the exact same check-then-fetch flow that already runs
+      // on every real navigation - re-verifies login, resets state, and
+      // fires a fresh analysis, all without the person ever needing to
+      // reload the actual browser tab.
+      updateSupportState();
+    });
+  }
 
   // Domain check lives entirely inside services/signals.rs on the
   // backend now, appearing as one more entry in the Intelligence tab's
@@ -407,6 +421,7 @@
               "."
             : "You can check another listing now.";
       }
+      if (retryBtn) retryBtn.style.display = remaining > 0 ? "none" : "flex";
     }
 
     render();
@@ -445,6 +460,7 @@
     } else if (failedMessage) {
       failedMessage.textContent =
         "Couldn't analyze this listing right now. Please try again in a moment.";
+      if (retryBtn) retryBtn.style.display = "flex";
     }
     analysisFailedIcon.style.display = "flex";
     TAB_ORDER.forEach(function (id) {

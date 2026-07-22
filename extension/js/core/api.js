@@ -38,10 +38,6 @@
     analyze: async function (scrapedData) {
       try {
         var authHeaders = await getAuthHeaders();
-        analyzeRequestCount++;
-        console.log(
-          "Safely: sending /analyze request #" + analyzeRequestCount,
-        );
         var response = await fetch(API_BASE + "/analyze", {
           method: "POST",
           headers: Object.assign(
@@ -52,12 +48,6 @@
         });
 
         var rawText = await response.text();
-        console.log(
-          "Safely: /analyze request #" +
-            analyzeRequestCount +
-            " result: " +
-            response.status,
-        );
         if (!response.ok || rawText.startsWith("error")) {
           console.error("Safely: backend error:", rawText.substring(0, 300));
           if (response.status === 429) {

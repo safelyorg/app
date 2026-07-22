@@ -190,3 +190,29 @@
     color: var(--amber);
     line-height: 1;
 }
+
+.safely-retry-btn {
+    display: none;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    margin-top: 14px;
+    margin-left: auto;
+    margin-right: auto;
+    padding: 9px 18px;
+    border: none;
+    border-radius: 10px;
+    background: var(--sky);
+    color: var(--ink);
+    font-size: 13px;
+    font-weight: 700;
+    font-family: inherit;
+    cursor: pointer;
+    transition: filter 0.15s ease;
+}
+.safely-retry-btn:hover {
+    filter: brightness(1.08);
+}
+.safely-retry-btn svg {
+    flex-shrink: 0;
+}
