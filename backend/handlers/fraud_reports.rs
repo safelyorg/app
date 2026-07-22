@@ -59,5 +59,17 @@ pub async fn create_fraud_report(
     .await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
+    // The frontend already shows "Reported" immediately for this same
+    // session as soon as submission succeeds - but that's only ever a
+    // temporary, in-memory display update. This is what makes it real
+    // and permanent: without this, the dashboard (reading the seller's
+    // actual stored status later) would keep showing "Unknown" forever,
+    // since nothing had ever actually updated the real record.
+    sqlx::query("UPDATE sellers SET verification = 'reported' WHERE id = $1")
+        .bind(seller_id)
+        .execute(&pool)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
     Ok(Json(serde_json::json!({ "success": true })))
 }

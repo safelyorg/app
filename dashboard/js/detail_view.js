@@ -3,7 +3,6 @@ function buildRiskGauge(score, level) {
   var r = 44;
   var circumference = 2 * Math.PI * r;
   var offset = circumference * (1 - score / 100);
-
   var ticks = "";
   var tickCount = 48;
   for (var i = 0; i < tickCount; i++) {
@@ -23,7 +22,6 @@ function buildRiskGauge(score, level) {
       angle +
       ' 60 60)" />';
   }
-
   return (
     '<svg viewBox="0 0 120 120" class="w-full h-full">' +
     ticks +
@@ -48,24 +46,20 @@ function buildRiskGauge(score, level) {
     "</svg>"
   );
 }
-
 async function openDetail(analysisId) {
   var panel = document.getElementById("detail-view");
   var loading = document.getElementById("detail-loading");
   var body = document.getElementById("detail-body");
   if (!panel) return;
-
   panel.classList.remove("hidden");
   loading.classList.remove("hidden");
   loading.textContent = "Loading...";
   body.classList.add("hidden");
   document.getElementById("detail-title").textContent = "";
-
   try {
     var res = await fetch(API_BASE + "/history/" + analysisId, {
       headers: window.safelyAuth.authHeader(),
     });
-
     if (res.status === 401) {
       window.safelyAuth.logout();
       return;
@@ -74,10 +68,8 @@ async function openDetail(analysisId) {
       loading.textContent = "Could not load this listing.";
       return;
     }
-
     var data = await res.json();
     renderDetailBody(data);
-
     loading.classList.add("hidden");
     body.classList.remove("hidden");
   } catch (e) {
@@ -85,7 +77,6 @@ async function openDetail(analysisId) {
     loading.textContent = "Could not load this listing.";
   }
 }
-
 function renderDetailBody(data) {
   var tabBtn = document.querySelector(".detail-tab-btn");
   if (tabBtn && tabBtn.parentElement) {
@@ -96,10 +87,8 @@ function renderDetailBody(data) {
   var reportTab = document.getElementById("detail-tab-content-report");
   if (intelTab) intelTab.classList.remove("max-w-2xl");
   if (reportTab) reportTab.classList.remove("max-w-2xl");
-
   document.getElementById("detail-title").textContent =
     data.listing_title || "Untitled listing";
-
   var linkEl = document.getElementById("detail-listing-link");
   if (linkEl) {
     if (data.listing_url) {
@@ -109,12 +98,10 @@ function renderDetailBody(data) {
       linkEl.classList.add("hidden");
     }
   }
-
   document.getElementById("detail-gauge-wrap").innerHTML = buildRiskGauge(
     data.risk_score,
     data.risk_level,
   );
-
   var levelEl = document.getElementById("detail-risk-level");
   levelEl.textContent =
     data.risk_level.charAt(0).toUpperCase() +
@@ -122,23 +109,19 @@ function renderDetailBody(data) {
     " risk";
   levelEl.className =
     "text-[15px] font-extrabold mt-1 " + verdictTextClass(data.risk_level);
-
   document.getElementById("detail-chip-reports").textContent =
     data.fraud_report_count || 0;
   document.getElementById("detail-chip-reports").className =
     "num text-lg font-bold " +
     (data.fraud_report_count > 0 ? "text-coral" : "text-muted");
-
   var statusText =
     data.seller.verification === "verified"
       ? "Verified"
-      : data.seller.verification === "flagged"
-        ? "Flagged"
+      : data.seller.verification === "reported"
+        ? "Reported"
         : "Unknown";
   document.getElementById("detail-chip-status").textContent = statusText;
-
   document.getElementById("detail-chip-platform").textContent = data.platform;
-
   document.getElementById("detail-seller-name").textContent =
     data.seller.name || "Unknown";
   document.getElementById("detail-seller-age").textContent =
@@ -147,7 +130,6 @@ function renderDetailBody(data) {
     data.seller.location || "Unknown";
   document.getElementById("detail-seller-lastactive").textContent =
     data.seller.last_active || "Unknown";
-
   var chart = document.getElementById("detail-activity-chart");
   var activity = data.seller.monthly_activity || new Array(12).fill(0);
   var max = Math.max.apply(null, activity) || 1;
@@ -165,15 +147,12 @@ function renderDetailBody(data) {
       );
     })
     .join("");
-
   document.getElementById("detail-network-summary").textContent =
     data.seller.network_summary || "";
-
   var signals = data.signals || [];
   var badCount = signals.filter(function (s) {
     return s.type !== "good" && s.type !== "info";
   }).length;
-
   var summaryEl = document.getElementById("detail-intel-summary");
   if (badCount === 0) {
     summaryEl.className =
@@ -192,7 +171,6 @@ function renderDetailBody(data) {
       signals.length +
       " signals need your attention.</span>";
   }
-
   var signalsList = document.getElementById("detail-signals-list");
   signalsList.innerHTML = signals
     .map(function (s) {
@@ -213,11 +191,9 @@ function renderDetailBody(data) {
       );
     })
     .join("");
-
   var filedBlock = document.getElementById("detail-report-filed");
   var emptyBlock = document.getElementById("detail-report-empty");
   var reports = data.reports || [];
-
   if (reports.length > 0) {
     filedBlock.classList.remove("hidden");
     emptyBlock.classList.add("hidden");
@@ -241,10 +217,8 @@ function renderDetailBody(data) {
     filedBlock.innerHTML = "";
     emptyBlock.classList.remove("hidden");
   }
-
   switchDetailTab("risk");
 }
-
 function switchDetailTab(tab) {
   ["risk", "intel", "report"].forEach(function (name) {
     var content = document.getElementById("detail-tab-content-" + name);
@@ -256,7 +230,6 @@ function switchDetailTab(tab) {
     btn.classList.toggle("text-ink", active);
   });
 }
-
 function closeDetailPanel() {
   var panel = document.getElementById("detail-view");
   if (panel) panel.classList.add("hidden");
