@@ -48,7 +48,7 @@ function renderHistoryRows() {
 
   if (currentHistory.length === 0) {
     tbody.innerHTML =
-      '<tr><td colspan="4" class="px-4 py-14 text-center text-muted text-[13px]">No listings analyzed yet. Open a listing on OLX or Facebook with the Safely extension to get started.</td></tr>';
+      '<tr><td colspan="4" class="px-4 py-14 text-center text-muted text-[13px]">No listings analyzed yet. Open a listing on OLX with the Safely extension to get started.</td></tr>';
     return;
   }
 

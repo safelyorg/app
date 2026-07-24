@@ -71,7 +71,7 @@ async fn main() {
         .layer(
             // Origin stays open (Any) since content scripts send requests
             // using the origin of whatever website they're running on
-            // (OLX, Facebook, or any site the domain-check runs on) - not
+            // (OLX, or any site the domain-check runs on) - not
             // safely.sh itself, so restricting origin here would break
             // the extension's own analyze calls. Methods and headers are
             // narrowed to exactly what this app actually uses, so

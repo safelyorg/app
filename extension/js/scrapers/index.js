@@ -160,7 +160,6 @@
   function detectPlatform() {
     var url = window.location.href;
     if (url.includes("olx.com.pk")) return "olx";
-    if (url.includes("facebook.com")) return "facebook";
     return "unknown";
   }
 
@@ -168,7 +167,6 @@
     var url = window.location.href;
     var platform = detectPlatform();
     if (platform === "olx") return url.includes("iid-");
-    if (platform === "facebook") return url.includes("/marketplace/item/");
     return false;
   }
 

@@ -31,7 +31,7 @@
     '<div class="safely-loading-overlay" id="safely-loading-overlay"><div class="safely-loading-dots"><span></span><span></span><span></span></div></div>' +
     '<div class="safely-tab-content" id="safely-tab-unsupported" style="display:none; padding: 20px; font-size: 13px; line-height: 1.5; color: #8a8a93;">' +
     "Safely isn't reading this page — it only activates on an actual " +
-    "listing (like a specific item on OLX or a Facebook Marketplace " +
+    "listing (like a specific item's on OLX " +
     "listing page), not a site's general pages." +
     "</div>" +
     '<div class="safely-tab-content" id="safely-tab-signin-required" style="display:none; padding: 20px; text-align: center;">' +

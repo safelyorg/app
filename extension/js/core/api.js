@@ -133,8 +133,6 @@
           setTimeout(resolve, 1500);
         });
         scraped = window.__safelyScrapers.scrapeOLX();
-      } else if (platform === "facebook") {
-        scraped = window.__safelyScrapers.scrapeFacebook();
       }
 
       // Folded into the same payload as everything else - the backend

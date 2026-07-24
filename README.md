@@ -4,7 +4,7 @@ Safely is a Chrome extension (plus a small backend and dashboard) that warns peo
 
 It also checks the current website's address against a list of known marketplaces, to catch lookalike/phishing domains pretending to be the real thing.
 
-**Status:** Fully live on OLX. Facebook Marketplace support is in progress. More marketplaces are on the roadmap.
+**Status:** Fully live on OLX. More marketplaces are on the roadmap.
 
 ---
 
