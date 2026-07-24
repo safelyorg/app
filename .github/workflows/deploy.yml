@@ -18,6 +18,7 @@ jobs:
             set -e
             source $HOME/.cargo/env
             cd ~/safely
-            git pull
+            git fetch origin
+            git reset --hard origin/main
             cargo build --release
             sudo systemctl restart safely
