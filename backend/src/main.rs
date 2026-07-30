@@ -9,6 +9,8 @@ use tower_http::{
 
 #[path = "../db/mod.rs"]
 pub mod db;
+#[path = "../errors/mod.rs"]
+pub mod errors;
 #[path = "../handlers/mod.rs"]
 pub mod handlers;
 #[path = "../models/mod.rs"]

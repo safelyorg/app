@@ -1,19 +1,22 @@
-use crate::models::users::{GoogleTokenResponse, GoogleUserInfo};
-use std::env;
+use crate::{
+    errors::google_oauth::GoogleOauthConfigError,
+    models::users::{GoogleTokenEndpoint, GoogleUserInfoEndpoint},
+};
+use std::env::var;
+use urlencoding::encode;
 
-pub fn build_google_authorize_url(state: &str) -> Result<String, String> {
-    let client_id =
-        env::var("GOOGLE_CLIENT_ID").map_err(|_| "GOOGLE_CLIENT_ID not set".to_string())?;
+pub fn build_google_authorize_url(state: &str) -> Result<String, GoogleOauthConfigError> {
+    let client_id = var("GOOGLE_CLIENT_ID").map_err(|_| GoogleOauthConfigError::GoogleClientId)?;
     let redirect_uri =
-        env::var("GOOGLE_REDIRECT_URI").map_err(|_| "GOOGLE_REDIRECT_URI not set".to_string())?;
+        var("GOOGLE_REDIRECT_URI").map_err(|_| GoogleOauthConfigError::GoogleRedirectUri)?;
 
     let url = format!(
         "https://accounts.google.com/o/oauth2/v2/auth?\
          client_id={}&redirect_uri={}&response_type=code&\
          scope=openid%20email%20profile&state={}&prompt=select_account",
-        urlencoding::encode(&client_id),
-        urlencoding::encode(&redirect_uri),
-        urlencoding::encode(state),
+        encode(&client_id),
+        encode(&redirect_uri),
+        encode(state),
     );
 
     Ok(url)
@@ -21,22 +24,22 @@ pub fn build_google_authorize_url(state: &str) -> Result<String, String> {
 
 /// Exchanges an authorization code for an access token, then fetches the
 /// user's profile. Two plain HTTP calls — no OAuth crate needed for this.
-pub async fn exchange_code_for_user(code: &str) -> Result<GoogleUserInfo, String> {
-    let client_id =
-        env::var("GOOGLE_CLIENT_ID").map_err(|_| "GOOGLE_CLIENT_ID not set".to_string())?;
+pub async fn exchange_code_for_user(
+    code: &str,
+) -> Result<GoogleUserInfoEndpoint, GoogleOauthConfigError> {
+    let client_id = var("GOOGLE_CLIENT_ID").map_err(|_| GoogleOauthConfigError::GoogleClientId)?;
     let client_secret =
-        env::var("GOOGLE_CLIENT_SECRET").map_err(|_| "GOOGLE_CLIENT_SECRET not set".to_string())?;
+        var("GOOGLE_CLIENT_SECRET").map_err(|_| GoogleOauthConfigError::GoogleClientSecret)?;
     let redirect_uri =
-        env::var("GOOGLE_REDIRECT_URI").map_err(|_| "GOOGLE_REDIRECT_URI not set".to_string())?;
-
+        var("GOOGLE_REDIRECT_URI").map_err(|_| GoogleOauthConfigError::GoogleRedirectUri)?;
     let client = reqwest::Client::new();
 
     let form_body = format!(
         "code={}&client_id={}&client_secret={}&redirect_uri={}&grant_type=authorization_code",
-        urlencoding::encode(code),
-        urlencoding::encode(&client_id),
-        urlencoding::encode(&client_secret),
-        urlencoding::encode(&redirect_uri),
+        encode(code),
+        encode(&client_id),
+        encode(&client_secret),
+        encode(&redirect_uri),
     );
 
     let token_res = client
@@ -45,29 +48,32 @@ pub async fn exchange_code_for_user(code: &str) -> Result<GoogleUserInfo, String
         .body(form_body)
         .send()
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| GoogleOauthConfigError::TokenRequestFailed(e.to_string()))?;
 
     if !token_res.status().is_success() {
         let text = token_res.text().await.unwrap_or_default();
-        return Err(format!("Google token exchange failed: {}", text));
+        return Err(GoogleOauthConfigError::TokenExchangeFailed(text));
     }
 
-    let token_data: GoogleTokenResponse = token_res.json().await.map_err(|e| e.to_string())?;
+    let token_data: GoogleTokenEndpoint = token_res
+        .json()
+        .await
+        .map_err(|e| GoogleOauthConfigError::TokenResponseParseFailed(e.to_string()))?;
 
     let userinfo_res = client
         .get("https://www.googleapis.com/oauth2/v3/userinfo")
         .bearer_auth(&token_data.access_token)
         .send()
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| GoogleOauthConfigError::UserInfoRequestFailed(e.to_string()))?;
 
     if !userinfo_res.status().is_success() {
         let text = userinfo_res.text().await.unwrap_or_default();
-        return Err(format!("Google userinfo fetch failed: {}", text));
+        return Err(GoogleOauthConfigError::UserInfoFetchFailed(text));
     }
 
     userinfo_res
-        .json::<GoogleUserInfo>()
+        .json::<GoogleUserInfoEndpoint>()
         .await
-        .map_err(|e| e.to_string())
+        .map_err(|e| GoogleOauthConfigError::UserInfoResponseParseFailed(e.to_string()))
 }

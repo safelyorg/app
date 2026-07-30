@@ -218,3 +218,36 @@
     });
   }
 })();
+
+// ============================================================
+// Shows a brief confirmation toast if this page was just reached
+// via a successful account deletion (redirected here from the
+// dashboard with ?account_deleted=1) - purely additive, doesn't
+// touch or depend on anything else on this page.
+// ============================================================
+(function () {
+  var params = new URLSearchParams(window.location.search);
+  if (params.get("account_deleted") !== "1") return;
+
+  var toast = document.createElement("div");
+  toast.textContent = "Your account has been deleted.";
+  toast.style.cssText =
+    "position:fixed;top:16px;left:50%;transform:translateX(-50%);" +
+    "background:#1b1b20;color:#f2f1ed;border:1px solid rgba(255,255,255,0.12);" +
+    "padding:12px 18px;border-radius:12px;font-size:13px;font-weight:500;" +
+    "max-width:90vw;text-align:center;z-index:9999;" +
+    "box-shadow:0 12px 32px -8px rgba(0,0,0,0.5);" +
+    "font-family:Inter,-apple-system,sans-serif;";
+  document.body.appendChild(toast);
+  setTimeout(function () {
+    toast.style.transition = "opacity 0.3s ease";
+    toast.style.opacity = "0";
+    setTimeout(function () {
+      toast.remove();
+    }, 300);
+  }, 3000);
+
+  // Clean the URL so refreshing doesn't keep showing this same
+  // message again.
+  history.replaceState(null, "", window.location.pathname);
+})();

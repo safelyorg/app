@@ -1,34 +1,34 @@
-use sqlx::PgPool;
+use sqlx::{PgPool, query};
 
 pub async fn run_grants(pool: &PgPool) {
-    sqlx::query(
+    query(
         r#"
             GRANT USAGE ON SCHEMA public TO safely;
         "#,
     )
     .execute(pool)
     .await
-    .expect("grant usage should be executed");
+    .expect("public schema access should be granted to safely role");
 
-    sqlx::query(
+    query(
         r#"
             GRANT CREATE ON SCHEMA public TO safely;
         "#,
     )
     .execute(pool)
     .await
-    .expect("grant should be executed");
+    .expect("safely role should be allowed to create new objects in the public schema");
 
-    sqlx::query(
+    query(
         r#"
             GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO safely;
         "#,
     )
     .execute(pool)
     .await
-    .expect("grant should be executed");
+    .expect("safely role should have all privileges on existing tables in the public schema");
 
-    sqlx::query(
+    query(
         r#"
             ALTER DEFAULT PRIVILEGES IN SCHEMA public
             GRANT ALL ON TABLES TO safely;
@@ -36,5 +36,5 @@ pub async fn run_grants(pool: &PgPool) {
     )
     .execute(pool)
     .await
-    .expect("grant should be executed");
+    .expect("new tables should automatically grant privileges to safely role");
 }

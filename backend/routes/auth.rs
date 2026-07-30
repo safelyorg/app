@@ -2,8 +2,12 @@ use crate::handlers::auth::{
     google_callback, google_connect_redirect, google_redirect, logout, request_magic_link,
     verify_magic_link,
 };
-use axum::{Router, routing::get, routing::post};
+use axum::{
+    Router,
+    routing::{get, post},
+};
 use sqlx::{Pool, Postgres};
+
 pub fn auth_routes() -> Router<Pool<Postgres>> {
     Router::new()
         .route("/api/v1/auth/magic-link", post(request_magic_link))

@@ -12,37 +12,34 @@ document.addEventListener("DOMContentLoaded", function () {
 
   var navHistory = document.getElementById("view-history");
   var navReports = document.getElementById("view-reports");
+  var navSettings = document.getElementById("view-settings");
   if (navHistory) {
-    navHistory.addEventListener("change", closeDetailPanel);
-    navHistory.addEventListener("click", closeDetailPanel);
+      navHistory.addEventListener("change", closeDetailPanel);
+      navHistory.addEventListener("click", closeDetailPanel);
   }
   if (navReports) {
-    navReports.addEventListener("change", closeDetailPanel);
-    navReports.addEventListener("click", closeDetailPanel);
+      navReports.addEventListener("change", closeDetailPanel);
+      navReports.addEventListener("click", closeDetailPanel);
   }
-
+  if (navSettings) {
+      navSettings.addEventListener("change", closeDetailPanel);
+      navSettings.addEventListener("click", closeDetailPanel);
+      navSettings.addEventListener("change", function () {
+          if (!settingsLoaded) loadSettingsData();
+      });
+      if (navSettings.checked && !settingsLoaded) {
+          loadSettingsData();
+      }
+  }
   var mobileToggle = document.getElementById("mobile-nav-toggle");
   if (mobileToggle) {
-    [navHistory, navReports].forEach(function (input) {
-      if (input) {
-        input.addEventListener("change", function () {
-          mobileToggle.checked = false;
-        });
-      }
-    });
-  }
-
-  var navSettings = document.getElementById("view-settings");
-  if (navSettings) {
-    navSettings.addEventListener("change", closeDetailPanel);
-    navSettings.addEventListener("click", closeDetailPanel);
-    navSettings.addEventListener("change", function () {
-      if (!settingsLoaded) loadSettingsData();
-    });
-
-    if (navSettings.checked && !settingsLoaded) {
-      loadSettingsData();
-    }
+      [navHistory, navReports, navSettings].forEach(function (input) {
+          if (input) {
+              input.addEventListener("change", function () {
+                  mobileToggle.checked = false;
+              });
+          }
+      });
   }
 
   window.addEventListener("pageshow", function () {
@@ -141,7 +138,7 @@ document.addEventListener("DOMContentLoaded", function () {
         if (!res.ok) throw new Error("Failed to delete account");
 
         window.safelyAuth.clearToken();
-        window.location.href = "/";
+        window.location.href = "/?account_deleted=1";
       } catch (e) {
         if (deleteConfirmError) {
           deleteConfirmError.textContent =

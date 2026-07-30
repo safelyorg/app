@@ -23,39 +23,40 @@ pub struct MagicLink {
     pub created_at: DateTime<Utc>,
 }
 
+// JSON text → struct = deserialize
 #[derive(Debug, Deserialize)]
 pub struct MagicLinkRequest {
     pub email: String,
 }
 
+// Struct → JSON text = serialize
 #[derive(Debug, Serialize)]
-pub struct AuthSuccessResponse {
+pub struct MagicLinkAuthResponse {
     pub success: bool,
     pub message: String,
 }
 
 #[derive(Debug, Deserialize)]
-pub struct GoogleCallbackQuery {
+pub struct VerifyMagicLinkToken {
+    pub token: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct GoogleAfterLoginQuery {
     pub code: Option<String>,
     pub state: Option<String>,
     pub error: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
-pub struct VerifyQuery {
-    pub token: String,
-}
-
-// Shape of Google's token endpoint response
-#[derive(Debug, Deserialize)]
-pub struct GoogleTokenResponse {
+pub struct GoogleTokenEndpoint {
     pub access_token: String,
 }
 
-// Shape of Google's userinfo endpoint response
 #[derive(Debug, Deserialize)]
-pub struct GoogleUserInfo {
-    pub sub: String,
+pub struct GoogleUserInfoEndpoint {
+    #[serde(rename = "sub")]
+    pub id: String,
     pub email: String,
     pub name: Option<String>,
 }
