@@ -23,6 +23,11 @@ CREATE TABLE IF NOT EXISTS subscriptions (
     status subscription_status NOT NULL,
     current_period_end TIMESTAMPTZ,
     canceled_at TIMESTAMPTZ,
+    -- Records a pending downgrade that should only take effect once
+    -- the current, already-paid-for period genuinely ends - not
+    -- immediately. NULL means no downgrade is currently scheduled.
+    scheduled_product_id TEXT,
+    scheduled_plan_name TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

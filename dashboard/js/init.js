@@ -280,12 +280,10 @@ document.addEventListener("DOMContentLoaded", function () {
   if (continueBtn) {
     continueBtn.addEventListener("click", async function () {
       if (!selectedPlanName) return;
-
       if (!selectedProductId) {
         showBillingToast(selectedPlanName + " isn't available yet - check back soon.");
         return;
       }
-
       var isActive = realSubscriptionStatus === "active" || realSubscriptionStatus === "trialing";
       if (isActive && realSubscriptionPlan === selectedPlanName) {
         showBillingToast("You're already subscribed to " + selectedPlanName + ".");
@@ -294,8 +292,45 @@ document.addEventListener("DOMContentLoaded", function () {
 
       var originalText = continueBtn.textContent;
       continueBtn.disabled = true;
-      continueBtn.textContent = "Redirecting...";
 
+      // Already have an active subscription - this is an upgrade or
+      // downgrade of an EXISTING plan, not a brand-new signup, so it
+      // goes through change-plan instead of checkout.
+      if (isActive) {
+        continueBtn.textContent = "Updating...";
+        try {
+          var res = await fetch(API_BASE + "/billing/change-plan", {
+            method: "POST",
+            headers: Object.assign(
+              { "Content-Type": "application/json" },
+              window.safelyAuth.authHeader(),
+            ),
+            body: JSON.stringify({ product_id: selectedProductId, plan_name: selectedPlanName }),
+          });
+          if (res.status === 401) {
+            window.safelyAuth.logout();
+            return;
+          }
+          if (!res.ok) throw new Error("Plan change failed");
+          var data = await res.json();
+          if (data.applied === "immediately") {
+            showBillingToast("You've been upgraded to " + selectedPlanName + ".");
+          } else {
+            showBillingToast("You'll switch to " + selectedPlanName + " when your current period ends.");
+          }
+          await loadRealSubscriptionStatus();
+          togglePlanSection(false);
+        } catch (e) {
+          showBillingToast("Couldn't update your plan. Please try again.");
+        } finally {
+          continueBtn.disabled = false;
+          continueBtn.textContent = originalText;
+        }
+        return;
+      }
+
+      // No active subscription at all - brand-new signup, same as before.
+      continueBtn.textContent = "Redirecting...";
       try {
         var res = await fetch(API_BASE + "/billing/checkout", {
           method: "POST",

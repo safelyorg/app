@@ -126,3 +126,38 @@ pub async fn upsert_subscription(
 
     Ok(())
 }
+
+/// Calls Creem's real subscription-upgrade endpoint - used both for a
+/// genuine immediate upgrade (proration-charge-immediately) and for
+/// actually applying a downgrade that was previously scheduled, once
+/// its period has genuinely ended (proration-none, since nothing new
+/// is being gained mid-cycle at that point).
+pub async fn change_creem_subscription_product(
+    sub_id: &str,
+    new_product_id: &str,
+    update_behavior: &str,
+) -> Result<(), String> {
+    let api_key =
+        std::env::var("CREEM_API_KEY").map_err(|_| "CREEM_API_KEY not set".to_string())?;
+    let creem_base_url = std::env::var("CREEM_API_BASE_URL")
+        .unwrap_or_else(|_| "https://test-api.creem.io".to_string());
+    let client = reqwest::Client::new();
+    let response = client
+        .post(format!(
+            "{}/v1/subscriptions/{}/upgrade",
+            creem_base_url, sub_id
+        ))
+        .header("x-api-key", api_key)
+        .json(&serde_json::json!({
+            "product_id": new_product_id,
+            "update_behavior": update_behavior,
+        }))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    if !response.status().is_success() {
+        let text = response.text().await.unwrap_or_default();
+        return Err(format!("Creem rejected plan change: {}", text));
+    }
+    Ok(())
+}
