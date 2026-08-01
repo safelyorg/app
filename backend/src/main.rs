@@ -35,6 +35,7 @@ async fn main() {
         .merge(routes::fraud_reports::fraud_reports_routes())
         .merge(routes::auth::auth_routes())
         .merge(routes::dashboard::dashboard_routes())
+        .merge(routes::billing::billing_routes())
         .route(
             "/dashboard",
             get(|| async { Redirect::permanent("/dashboard/") }),

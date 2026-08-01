@@ -69,6 +69,7 @@ pub async fn request_magic_link(
     }))
 }
 
+/// GET /api/v1/auth/verify?token=...
 pub async fn verify_magic_link(
     State(pool): State<Pool<Postgres>>,
     Query(query): Query<VerifyMagicLinkToken>,

@@ -156,152 +156,230 @@ document.addEventListener("DOMContentLoaded", function () {
     googleConnectBtn.addEventListener("click", handleGoogleButtonClick);
   }
 
-  var changePlanBtn = document.getElementById("change-plan-btn");
-  var changePlanDropdown = document.getElementById("change-plan-dropdown");
-
-  function togglePlanDropdown(show) {
-    if (!changePlanDropdown) return;
-    changePlanDropdown.classList.toggle("hidden", !show);
+  // ============================================================
+  // Plan & Billing - inline expanding section
+  // ============================================================
+  function showBillingToast(message) {
+    var toast = document.createElement("div");
+    toast.textContent = message;
+    toast.style.cssText =
+      "position:fixed;top:16px;left:50%;transform:translateX(-50%);" +
+      "background:#1b1b20;color:#f2f1ed;border:1px solid rgba(255,255,255,0.12);" +
+      "padding:12px 18px;border-radius:12px;font-size:13px;font-weight:500;" +
+      "max-width:90vw;text-align:center;z-index:9999;" +
+      "box-shadow:0 12px 32px -8px rgba(0,0,0,0.5);" +
+      "font-family:Inter,-apple-system,sans-serif;";
+    document.body.appendChild(toast);
+    setTimeout(function () {
+      toast.style.transition = "opacity 0.3s ease";
+      toast.style.opacity = "0";
+      setTimeout(function () {
+        toast.remove();
+      }, 300);
+    }, 3000);
   }
 
-  if (changePlanBtn && changePlanDropdown) {
-    changePlanBtn.addEventListener("click", function (e) {
-      e.stopPropagation();
-      togglePlanDropdown(changePlanDropdown.classList.contains("hidden"));
+  var planBillingToggle = document.getElementById("plan-billing-toggle");
+  var planBillingExpanded = document.getElementById("plan-billing-expanded");
+  var planBillingChevron = document.getElementById("plan-billing-chevron");
+  var continueBtn = document.getElementById("plan-continue-btn");
+  var cancelSubBtn = document.getElementById("cancel-subscription-btn");
+  var cancelSubConfirm = document.getElementById("cancel-sub-confirm");
+  var currentPlanBadge = document.getElementById("current-plan-badge");
+  var selectedProductId = null;
+  var selectedPlanName = null;
+  var realSubscriptionStatus = null;
+  var realSubscriptionPlan = null;
+
+  function togglePlanSection(show) {
+      if (!planBillingExpanded) return;
+      planBillingExpanded.style.maxHeight = show ? "600px" : "0";
+      if (planBillingChevron) {
+        planBillingChevron.style.transform = show ? "rotate(180deg)" : "";
+      }
+  }
+
+  if (planBillingToggle) {
+    planBillingToggle.addEventListener("click", function () {
+      var isCurrentlyOpen =
+        planBillingExpanded.style.maxHeight &&
+        planBillingExpanded.style.maxHeight !== "0px" &&
+        planBillingExpanded.style.maxHeight !== "0";
+      togglePlanSection(!isCurrentlyOpen);
     });
+  }
 
-    document.querySelectorAll(".plan-option").forEach(function (opt) {
-      opt.addEventListener("click", function () {
-        var planName = opt.dataset.plan;
-        var planPrice = opt.dataset.price;
-
-        var nameEl = document.getElementById("current-plan-name");
-        var priceEl = document.getElementById("current-plan-price");
-        if (nameEl) nameEl.textContent = planName;
-        if (priceEl) priceEl.textContent = planPrice + " \u00b7 Renews Aug 9, 2026";
-
-        document.querySelectorAll(".plan-option .plan-check").forEach(function (c) {
-          c.classList.add("hidden");
-        });
-        var check = opt.querySelector(".plan-check");
-        if (check) check.classList.remove("hidden");
-
-        togglePlanDropdown(false);
+  async function loadRealSubscriptionStatus() {
+    try {
+      var res = await fetch(API_BASE + "/billing/subscription-status", {
+        headers: window.safelyAuth.authHeader(),
       });
-    });
+      if (!res.ok) return;
+      var data = await res.json();
+      realSubscriptionStatus = data.status;
+      realSubscriptionPlan = data.plan_name;
 
-    document.addEventListener("click", function (e) {
-      if (
-        !changePlanDropdown.classList.contains("hidden") &&
-        !changePlanDropdown.contains(e.target) &&
-        e.target !== changePlanBtn
-      ) {
-        togglePlanDropdown(false);
-      }
-    });
-  }
-  var addPaymentBtn = document.getElementById("add-payment-btn");
-  var paymentForm = document.getElementById("payment-form");
-  if (addPaymentBtn && paymentForm) {
-    addPaymentBtn.addEventListener("click", function () {
-      paymentForm.classList.remove("hidden");
-    });
-  }
-  var paymentCancelBtn = document.getElementById("payment-cancel-btn");
-  if (paymentCancelBtn && paymentForm) {
-    paymentCancelBtn.addEventListener("click", function () {
-      paymentForm.classList.add("hidden");
-    });
-  }
-  var cardNumberInput = document.getElementById("card-number-input");
-  if (cardNumberInput) {
-    cardNumberInput.addEventListener("input", function (e) {
-      var digits = e.target.value.replace(/\D/g, "").slice(0, 16);
-      var groups = digits.match(/.{1,4}/g) || [];
-      e.target.value = groups.join(" ");
-      updateCardBrandIcon(digits);
-    });
-  }
+      var isActive = data.status === "active" || data.status === "trialing";
+      var nameEl = document.getElementById("current-plan-name");
+      var priceEl = document.getElementById("current-plan-price");
 
-  var cardExpiryInput = document.getElementById("card-expiry-input");
-  if (cardExpiryInput) {
-    cardExpiryInput.addEventListener("input", function (e) {
-      var raw = e.target.value.replace(/\D/g, "").slice(0, 4);
-
-      if (raw.length === 0) {
-        e.target.value = "";
-        return;
-      }
-
-      if (raw.length === 1) {
-        if (parseInt(raw, 10) >= 2) {
-          e.target.value = "0" + raw + "/";
-        } else {
-          e.target.value = raw;
-        }
-        return;
-      }
-
-      var month = parseInt(raw.slice(0, 2), 10);
-      if (month === 0) month = 1;
-      if (month > 12) month = 12;
-      var monthStr = month < 10 ? "0" + month : String(month);
-
-      if (raw.length === 2) {
-        e.target.value = monthStr + "/";
+      if (isActive) {
+        if (nameEl) nameEl.textContent = data.plan_name;
+        if (currentPlanBadge) currentPlanBadge.classList.remove("hidden");
       } else {
-        e.target.value = monthStr + "/" + raw.slice(2, 4);
+        if (nameEl) nameEl.textContent = "No active plan";
+        if (priceEl) priceEl.textContent = "Choose a plan below to get started";
+        if (currentPlanBadge) currentPlanBadge.classList.add("hidden");
       }
-    });
+
+      document.querySelectorAll(".plan-option").forEach(function (opt) {
+        var check = opt.querySelector(".plan-check");
+        if (!check) return;
+        check.classList.toggle("hidden", !(isActive && opt.dataset.plan === data.plan_name));
+      });
+    } catch (e) {
+      console.error("Safely: failed to load subscription status", e);
+    }
+  }
+  loadRealSubscriptionStatus();
+
+  // Detect a successful checkout redirect, show a friendly
+  // confirmation, then clean Creem's appended parameters out of the
+  // URL bar - purely cosmetic, since nothing here is read or trusted
+  // for anything security-related.
+  var checkoutParams = new URLSearchParams(window.location.search);
+  if (checkoutParams.get("checkout") === "success") {
+    showBillingToast("Welcome! Your subscription is now active.");
+    history.replaceState(null, "", window.location.pathname);
+    // The webhook may have already arrived by the time we're back
+    // here - refresh the real status so "Active" shows up without
+    // needing a manual reload.
+    loadRealSubscriptionStatus();
   }
 
-  var cardCvcInput = document.getElementById("card-cvc-input");
-  if (cardCvcInput) {
-    cardCvcInput.addEventListener("input", function (e) {
-      e.target.value = e.target.value.replace(/\D/g, "").slice(0, 3);
+  document.querySelectorAll(".plan-option").forEach(function (opt) {
+    opt.addEventListener("click", function () {
+      document.querySelectorAll(".plan-option .plan-check").forEach(function (c) {
+        c.classList.add("hidden");
+      });
+      var check = opt.querySelector(".plan-check");
+      if (check) check.classList.remove("hidden");
+
+      selectedProductId = opt.dataset.productId || null;
+      selectedPlanName = opt.dataset.plan;
+      if (continueBtn) continueBtn.disabled = false;
     });
-  }
+  });
 
-  var paymentSaveBtn = document.getElementById("payment-save-btn");
-  if (paymentSaveBtn) {
-    paymentSaveBtn.addEventListener("click", function () {
-      var digits = cardNumberInput
-        ? cardNumberInput.value.replace(/\D/g, "")
-        : "";
-      var brand = detectCardBrand(digits);
-      var last4 = digits.slice(-4);
+  if (continueBtn) {
+    continueBtn.addEventListener("click", async function () {
+      if (!selectedPlanName) return;
 
-      var iconEl = document.getElementById("payment-method-icon");
-      var labelEl = document.getElementById("payment-method-label");
+      if (!selectedProductId) {
+        showBillingToast(selectedPlanName + " isn't available yet - check back soon.");
+        return;
+      }
 
-      if (last4.length === 4 && iconEl && labelEl) {
-        if (brand === "visa") {
-          iconEl.className =
-            "w-9 h-6 rounded bg-[#1a1f71] flex items-center justify-center text-white text-[8px] font-black flex-shrink-0";
-          iconEl.textContent = "VISA";
-          labelEl.textContent = "Visa ending in " + last4;
-        } else if (brand === "mastercard") {
-          iconEl.className =
-            "w-9 h-6 rounded bg-surface2 border border-line flex items-center justify-center flex-shrink-0";
-          iconEl.innerHTML =
-            '<svg width="20" height="12" viewBox="0 0 26 16"><circle cx="9" cy="8" r="7" fill="#EB001B"/><circle cx="17" cy="8" r="7" fill="#F79E1B" fill-opacity="0.9"/></svg>';
-          labelEl.textContent = "Mastercard ending in " + last4;
-        } else {
-          iconEl.className =
-            "w-9 h-6 rounded bg-surface2 border border-line flex items-center justify-center text-[9px] font-bold text-muted flex-shrink-0";
-          iconEl.textContent = "CARD";
-          labelEl.textContent = "Card ending in " + last4;
+      var isActive = realSubscriptionStatus === "active" || realSubscriptionStatus === "trialing";
+      if (isActive && realSubscriptionPlan === selectedPlanName) {
+        showBillingToast("You're already subscribed to " + selectedPlanName + ".");
+        return;
+      }
+
+      var originalText = continueBtn.textContent;
+      continueBtn.disabled = true;
+      continueBtn.textContent = "Redirecting...";
+
+      try {
+        var res = await fetch(API_BASE + "/billing/checkout", {
+          method: "POST",
+          headers: Object.assign(
+            { "Content-Type": "application/json" },
+            window.safelyAuth.authHeader(),
+          ),
+          body: JSON.stringify({ product_id: selectedProductId }),
+        });
+        if (res.status === 401) {
+          window.safelyAuth.logout();
+          return;
         }
-        labelEl.classList.remove("text-muted");
+        if (!res.ok) throw new Error("Checkout creation failed");
+        var data = await res.json();
+        window.location.href = data.checkout_url;
+      } catch (e) {
+        console.error("Safely: failed to start checkout", e);
+        showBillingToast("Couldn't start checkout. Please try again.");
+        continueBtn.disabled = false;
+        continueBtn.textContent = originalText;
       }
-
-      if (paymentForm) paymentForm.classList.add("hidden");
-
-      alert(
-        "Payment processing isn't wired up yet - this is a design preview. " +
-          "The card details above are shown for preview only and were not actually saved anywhere.",
-      );
     });
+  }
+
+  function toggleCancelConfirm(show) {
+      if (!cancelSubConfirm) return;
+      cancelSubConfirm.style.maxHeight = show ? "200px" : "0";
+  }
+
+  if (cancelSubBtn) {
+      cancelSubBtn.addEventListener("click", function () {
+        var isActive = realSubscriptionStatus === "active" || realSubscriptionStatus === "trialing";
+        if (!isActive) {
+          showBillingToast("You don't have an active subscription to cancel.");
+          return;
+        }
+        toggleCancelConfirm(true);
+      });
+  }
+
+  var cancelSubConfirmNo = document.getElementById("cancel-sub-confirm-no");
+  if (cancelSubConfirmNo) {
+      cancelSubConfirmNo.addEventListener("click", function () {
+        toggleCancelConfirm(false);
+      });
+  }
+
+  var cancelSubConfirmYes = document.getElementById("cancel-sub-confirm-yes");
+  if (cancelSubConfirmYes) {
+      cancelSubConfirmYes.addEventListener("click", async function () {
+        var originalText = cancelSubConfirmYes.textContent;
+        cancelSubConfirmYes.disabled = true;
+        cancelSubConfirmYes.textContent = "Canceling...";
+
+        try {
+          var res = await fetch(API_BASE + "/billing/cancel-subscription", {
+            method: "POST",
+            headers: window.safelyAuth.authHeader(),
+          });
+          if (res.status === 401) {
+            window.safelyAuth.logout();
+            return;
+          }
+          if (!res.ok) throw new Error("Cancel failed");
+
+          // Update everything on screen directly, right now - the real database
+          // row only updates later, once Creem's webhook actually arrives, so
+          // waiting on a fresh fetch here would show stale, still-active data.
+          realSubscriptionStatus = "canceled";
+          realSubscriptionPlan = null;
+
+          var nameEl = document.getElementById("current-plan-name");
+          var priceEl = document.getElementById("current-plan-price");
+          if (nameEl) nameEl.textContent = "No active plan";
+          if (priceEl) priceEl.textContent = "Choose a plan below to get started";
+          if (currentPlanBadge) currentPlanBadge.classList.add("hidden");
+          document.querySelectorAll(".plan-option .plan-check").forEach(function (c) {
+              c.classList.add("hidden");
+          });
+
+          toggleCancelConfirm(false);
+          togglePlanSection(false);
+          showBillingToast("Your subscription has been canceled.");
+        } catch (e) {
+          showBillingToast("Couldn't cancel your subscription. Please try again.");
+          cancelSubConfirmYes.disabled = false;
+          cancelSubConfirmYes.textContent = originalText;
+        }
+      });
   }
 
   var termsBtn = document.getElementById("terms-privacy-btn");
