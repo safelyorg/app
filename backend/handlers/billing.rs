@@ -234,21 +234,24 @@ pub async fn get_subscription_status(
         .await
         .ok_or(StatusCode::UNAUTHORIZED)?;
 
-    let row: Option<(String, String)> = sqlx::query_as(
-        "SELECT plan_name, status::text FROM subscriptions
+    let row: Option<(String, String, Option<chrono::DateTime<chrono::Utc>>)> = sqlx::query_as(
+        "SELECT plan_name, status::text, current_period_end FROM subscriptions
          WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1",
     )
     .bind(user_id)
     .fetch_optional(&pool)
     .await
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-
     match row {
-        Some((plan_name, status)) => Ok(Json(
-            serde_json::json!({ "plan_name": plan_name, "status": status }),
-        )),
-        None => Ok(Json(
-            serde_json::json!({ "plan_name": null, "status": null }),
-        )),
+        Some((plan_name, status, current_period_end)) => Ok(Json(serde_json::json!({
+            "plan_name": plan_name,
+            "status": status,
+            "current_period_end": current_period_end,
+        }))),
+        None => Ok(Json(serde_json::json!({
+            "plan_name": null,
+            "status": null,
+            "current_period_end": null,
+        }))),
     }
 }

@@ -224,8 +224,14 @@ document.addEventListener("DOMContentLoaded", function () {
       var priceEl = document.getElementById("current-plan-price");
 
       if (isActive) {
-        if (nameEl) nameEl.textContent = data.plan_name;
-        if (currentPlanBadge) currentPlanBadge.classList.remove("hidden");
+          if (nameEl) nameEl.textContent = data.plan_name;
+          if (priceEl && data.current_period_end) {
+              var renewDate = new Date(data.current_period_end);
+              var formatted = renewDate.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+              var label = data.status === "trialing" ? "Trial ends" : "Renews at";
+              priceEl.textContent = label + " " + formatted;
+          }
+          if (currentPlanBadge) currentPlanBadge.classList.remove("hidden");
       } else {
         if (nameEl) nameEl.textContent = "No active plan";
         if (priceEl) priceEl.textContent = "Choose a plan below to get started";
