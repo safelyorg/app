@@ -249,6 +249,13 @@ document.addEventListener("DOMContentLoaded", function () {
   }
   loadRealSubscriptionStatus();
 
+  var billingParams = new URLSearchParams(window.location.search);
+  if (billingParams.get("manage_billing") === "1") {
+      document.getElementById("view-settings").checked = true;
+      togglePlanSection(true);
+      history.replaceState(null, "", window.location.pathname);
+  }
+
   // Detect a successful checkout redirect, show a friendly
   // confirmation, then clean Creem's appended parameters out of the
   // URL bar - purely cosmetic, since nothing here is read or trusted

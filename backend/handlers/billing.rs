@@ -147,6 +147,23 @@ pub async fn creem_webhook(
                     "subscription.expired" => "expired",
                     _ => "canceled",
                 };
+
+                // Check what status this row already had BEFORE this webhook -
+                // if it's already "canceled", our own cancel_subscription_handler
+                // already handled this and sent the correct email itself; this
+                // webhook is just Creem's normal, redundant confirmation of
+                // something we already know. Only a genuine, first-time
+                // transition into "canceled" - one we didn't already cause
+                // ourselves - means Creem's own automatic retries were
+                // exhausted, and THAT'S when the payment-failure email applies.
+                let previous_status: Option<String> = sqlx::query_scalar(
+                    "SELECT status::text FROM subscriptions WHERE creem_subscription_id = $1",
+                )
+                .bind(&parsed.id)
+                .fetch_optional(&pool)
+                .await
+                .unwrap_or(None);
+
                 if let Some(user_id) = parsed
                     .metadata
                     .as_ref()
@@ -157,7 +174,10 @@ pub async fn creem_webhook(
                         eprintln!("Failed to upsert subscription: {}", e);
                     }
                 }
-                if event.event_type == "subscription.canceled" {
+
+                if event.event_type == "subscription.canceled"
+                    && previous_status.as_deref() != Some("canceled")
+                {
                     if let Err(e) = send_subscription_ended_email(&parsed.customer.email).await {
                         eprintln!("Failed to send subscription-ended email: {:?}", e);
                     }
@@ -251,6 +271,25 @@ pub async fn cancel_subscription_handler(
     .execute(&pool)
     .await
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    // Fetch the real email to send the correct, voluntary-cancellation
+    // message - genuinely different wording from the automatic,
+    // payment-failure version the webhook sends.
+    let email: Option<String> = sqlx::query_scalar(
+        "SELECT u.email FROM users u
+         JOIN subscriptions s ON s.user_id = u.id
+         WHERE s.creem_subscription_id = $1",
+    )
+    .bind(&sub_id)
+    .fetch_optional(&pool)
+    .await
+    .unwrap_or(None);
+
+    if let Some(email) = email {
+        if let Err(e) = crate::services::email::send_subscription_canceled_email(&email).await {
+            eprintln!("Failed to send cancellation confirmation email: {:?}", e);
+        }
+    }
 
     Ok(Json(serde_json::json!({ "success": true })))
 }
