@@ -409,8 +409,8 @@ pub async fn change_plan_handler(
         .await
         .ok_or(StatusCode::UNAUTHORIZED)?;
 
-    let current: Option<(String, String)> = sqlx::query_as(
-        "SELECT creem_subscription_id, plan_name FROM subscriptions
+    let current: Option<(String, String, String)> = sqlx::query_as(
+        "SELECT creem_subscription_id, plan_name, status::text FROM subscriptions
          WHERE user_id = $1 AND status IN ('active', 'trialing')
          ORDER BY created_at DESC LIMIT 1",
     )
@@ -419,7 +419,8 @@ pub async fn change_plan_handler(
     .await
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    let (sub_id, current_plan) = current.ok_or(StatusCode::NOT_FOUND)?;
+    let (sub_id, current_plan, current_status) = current.ok_or(StatusCode::NOT_FOUND)?;
+    let is_trialing = current_status == "trialing";
 
     // Only two tiers exist right now, so this simple check correctly
     // identifies which direction the change is - revisit this if a
@@ -427,6 +428,15 @@ pub async fn change_plan_handler(
     // ranking instead of a plain name comparison.
     let is_upgrade = current_plan == "Team" && body.plan_name == "Enterprise";
     let is_downgrade = current_plan == "Enterprise" && body.plan_name == "Team";
+
+    if is_trialing {
+        // Creem's own /upgrade endpoint explicitly requires "active"
+        // status before allowing any modification - confirmed directly
+        // via a real rejected request. Rather than fight this, we're
+        // honest about the limitation: switching plans isn't available
+        // until the trial genuinely converts to a paid subscription.
+        return Err(StatusCode::CONFLICT);
+    }
 
     if !is_upgrade && !is_downgrade {
         return Err(StatusCode::BAD_REQUEST);

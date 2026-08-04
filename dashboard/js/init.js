@@ -339,7 +339,12 @@ document.addEventListener("DOMContentLoaded", async function () {
             window.safelyAuth.logout();
             return;
           }
+          if (res.status === 409) {
+              showBillingToast("You can switch plans once your trial ends.");
+              return;
+          }
           if (!res.ok) throw new Error("Plan change failed");
+
           var data = await res.json();
           if (data.applied === "immediately") {
             showBillingToast("You've been upgraded to " + selectedPlanName + ".");
