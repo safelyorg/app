@@ -279,12 +279,16 @@ document.addEventListener("DOMContentLoaded", async function () {
   // for anything security-related.
   var checkoutParams = new URLSearchParams(window.location.search);
   if (checkoutParams.get("checkout") === "success") {
-    showBillingToast("Welcome! Your subscription is now active.");
-    history.replaceState(null, "", window.location.pathname);
-    // The webhook may have already arrived by the time we're back
-    // here - refresh the real status so "Active" shows up without
-    // needing a manual reload.
-    loadRealSubscriptionStatus();
+      history.replaceState(null, "", window.location.pathname);
+      // Wait for the real status before deciding which message to show -
+      // don't assume "active" when it might genuinely be "trialing".
+      loadRealSubscriptionStatus().then(function () {
+          if (realSubscriptionStatus === "trialing") {
+              showBillingToast("Welcome! Your 7-day free trial has started.");
+          } else {
+              showBillingToast("Welcome! Your subscription is now active.");
+          }
+      });
   }
 
   document.querySelectorAll(".plan-option").forEach(function (opt) {

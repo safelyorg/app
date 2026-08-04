@@ -83,7 +83,6 @@ pub async fn creem_webhook(
 
     let event: CreemWebhookEvent =
         serde_json::from_str(raw_body).map_err(|_| StatusCode::BAD_REQUEST)?;
-
     eprintln!("Creem webhook: {} received", event.event_type);
 
     match event.event_type.as_str() {
@@ -102,11 +101,12 @@ pub async fn creem_webhook(
                     .and_then(|m| m.safely_user_id.as_ref())
                     .and_then(|s| Uuid::parse_str(s).ok())
                 {
-                    let status = match event.event_type.as_str() {
-                        "subscription.trialing" => "trialing",
-                        _ => "active",
-                    };
-                    if let Err(e) = upsert_subscription(&pool, user_id, &parsed, status).await {
+                    // Use Creem's own real status field directly, rather than
+                    // guessing from which event name fired - the event type
+                    // alone doesn't reliably distinguish trialing from active.
+                    if let Err(e) =
+                        upsert_subscription(&pool, user_id, &parsed, &parsed.status).await
+                    {
                         eprintln!("Failed to upsert subscription: {}", e);
                     }
                 } else {
