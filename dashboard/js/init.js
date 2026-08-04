@@ -1,4 +1,4 @@
-document.addEventListener("DOMContentLoaded", function () {
+document.addEventListener("DOMContentLoaded", async function () {
   checkGoogleConnectResult();
 
   if (window.safelyAuth && window.safelyAuth.getToken()) {
@@ -155,6 +155,23 @@ document.addEventListener("DOMContentLoaded", function () {
     wireGoogleButtonHover();
     googleConnectBtn.addEventListener("click", handleGoogleButtonClick);
   }
+
+  async function loadProductIds() {
+      try {
+          var res = await fetch(API_BASE + "/billing/product-ids");
+          if (!res.ok) return;
+          var ids = await res.json();
+          document.querySelectorAll(".plan-option").forEach(function (opt) {
+              var realId = ids[opt.dataset.plan];
+              if (realId) {
+                  opt.dataset.productId = realId;
+              }
+          });
+      } catch (e) {
+          console.error("Safely: failed to load product IDs", e);
+      }
+  }
+  await loadProductIds();
 
   // ============================================================
   // Plan & Billing - inline expanding section

@@ -474,3 +474,12 @@ pub async fn change_plan_handler(
 
     Ok(Json(serde_json::json!({ "applied": "scheduled" })))
 }
+
+pub async fn get_product_ids() -> Json<serde_json::Value> {
+    let team_id = std::env::var("CREEM_TEAM_PRODUCT_ID").unwrap_or_default();
+    let enterprise_id = std::env::var("CREEM_ENTERPRISE_PRODUCT_ID").unwrap_or_default();
+    Json(serde_json::json!({
+        "Team": team_id,
+        "Enterprise": enterprise_id,
+    }))
+}
