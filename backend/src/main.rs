@@ -1,24 +1,12 @@
-use crate::db::{bootstrap::run_grants, connection::load_pool};
 use axum::http::{HeaderValue, Method, header};
 use axum::{Router, response::Redirect, routing::get};
+use backend::db::{bootstrap::run_grants, connection::load_pool};
+use backend::routes::{analyze, auth, billing, dashboard, fraud_reports};
 use tower_http::{
     cors::{Any, CorsLayer},
     services::{ServeDir, ServeFile},
     set_header::SetResponseHeaderLayer,
 };
-
-#[path = "../db/mod.rs"]
-pub mod db;
-#[path = "../errors/mod.rs"]
-pub mod errors;
-#[path = "../handlers/mod.rs"]
-pub mod handlers;
-#[path = "../models/mod.rs"]
-pub mod models;
-#[path = "../routes/mod.rs"]
-pub mod routes;
-#[path = "../services/mod.rs"]
-pub mod services;
 
 #[tokio::main]
 async fn main() {
@@ -31,11 +19,11 @@ async fn main() {
         .expect("migration expected");
     run_grants(&admin_pool).await;
     let app = Router::new()
-        .merge(routes::analyze::analyze_routes())
-        .merge(routes::fraud_reports::fraud_reports_routes())
-        .merge(routes::auth::auth_routes())
-        .merge(routes::dashboard::dashboard_routes())
-        .merge(routes::billing::billing_routes())
+        .merge(analyze::analyze_routes())
+        .merge(fraud_reports::fraud_reports_routes())
+        .merge(auth::auth_routes())
+        .merge(dashboard::dashboard_routes())
+        .merge(billing::billing_routes())
         .route(
             "/dashboard",
             get(|| async { Redirect::permanent("/dashboard/") }),
