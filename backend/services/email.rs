@@ -1,5 +1,5 @@
 use crate::errors::auth::AuthError;
-use reqwest::Client;
+use reqwest::{Client, StatusCode};
 use serde_json::json;
 use std::{env::var, sync::OnceLock};
 use tera::{Context, Tera};
@@ -34,7 +34,10 @@ fn get_tera() -> &'static Tera {
     })
 }
 
-pub async fn send_magic_link_email(to_email: &str, verify_url: &str) -> Result<(), AuthError> {
+pub async fn send_magic_link_email(
+    to_email: &str,
+    verify_url: &str,
+) -> Result<StatusCode, AuthError> {
     let api_key = var("RESEND_API_KEY").map_err(|_| {
         AuthError::InternalServerError("RESEND_API_KEY needs to be setup".to_string())
     })?;
@@ -82,7 +85,7 @@ pub async fn send_magic_link_email(to_email: &str, verify_url: &str) -> Result<(
             status, text
         )));
     }
-    Ok(())
+    Ok(response.status())
 }
 
 /// Sent exactly once per account - only when find_or_create_user_by_email
