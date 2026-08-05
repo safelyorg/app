@@ -6,9 +6,10 @@ use crate::{
     },
     services::{
         auth::{
-            check_last_login, create_magic_link, create_session, delete_session, extract_user_id,
+            check_last_login, create_session, delete_session, extract_user_id,
             find_or_create_user_by_email, find_or_create_user_by_google, find_user_by_google_id,
-            find_user_by_id, link_google_account, set_login_method, validate_magic_link,
+            find_user_by_id, insert_magic_link, link_google_account, set_login_method,
+            validate_magic_link,
         },
         email::{send_magic_link_email, send_welcome_email},
         google_oauth::{build_google_authorize_url, exchange_code_for_user},
@@ -37,20 +38,26 @@ pub struct GoogleConnectQuery {
     pub session: String,
 }
 
+pub fn validate_email_format(email: &str) -> Result<String, AuthError> {
+    let trimmed = email.trim().to_lowercase();
+    if trimmed.is_empty() || !trimmed.contains('@') {
+        return Err(AuthError::BadRequest);
+    }
+    Ok(trimmed)
+}
+
 /// POST /api/v1/auth/magic-link
 pub async fn request_magic_link(
     State(pool): State<Pool<Postgres>>,
     Json(req): Json<MagicLinkRequest>,
 ) -> Result<Json<MagicLinkAuthResponse>, AuthError> {
-    let email_trimmed = req.email.trim().to_lowercase();
-    if email_trimmed.is_empty() || !email_trimmed.contains('@') {
-        return Err(AuthError::BadRequest);
-    }
-
-    let token = create_magic_link(&pool, &email_trimmed)
+    let email_trimmed = validate_email_format(&req.email)?;
+    let token = insert_magic_link(&pool, &email_trimmed)
         .await
         .map_err(|_| {
-            AuthError::InternalServerError("magic link needs to be created".to_string())
+            AuthError::InternalServerError(
+                "magic link needs to be inserted in the database".to_string(),
+            )
         })?;
 
     let base_url = var("PUBLIC_BASE_URL").map_err(|_| {
@@ -58,9 +65,8 @@ pub async fn request_magic_link(
     })?;
 
     let verify_url = format!("{}/api/v1/auth/verify?token={}", base_url, token);
-
     if let Err(e) = send_magic_link_email(&email_trimmed, &verify_url).await {
-        eprintln!("Failed to send magic link email: {:?}", e);
+        eprintln!("Error: failed to send a magic link email: {:?}", e);
     }
 
     Ok(Json(MagicLinkAuthResponse {
@@ -81,6 +87,7 @@ pub async fn verify_magic_link(
             AuthError::DashboardPath("server_error".to_string())
         })?
         .ok_or_else(|| AuthError::DashboardPath("expired_link".to_string()))?;
+
     let (user, is_new) = find_or_create_user_by_email(&pool, &link.email)
         .await
         .map_err(|e| {
@@ -88,6 +95,7 @@ pub async fn verify_magic_link(
             AuthError::DashboardPath("server_error".to_string())
         })?;
     let session_token = finish_sign_in(&pool, user.id, is_new, &link.email, "email").await?;
+
     Ok(Redirect::to(&format!(
         "{}#session={}",
         DASHBOARD_PATH, session_token

@@ -5,7 +5,7 @@ use sqlx::{Error, Pool, Postgres, Row, query, query_as, query_scalar};
 use uuid::Uuid;
 
 /// Creates a magic link record and returns the raw token to embed in the email URL.
-pub async fn create_magic_link(pool: &Pool<Postgres>, email: &str) -> Result<String, Error> {
+pub async fn insert_magic_link(pool: &Pool<Postgres>, email: &str) -> Result<String, Error> {
     let id = Uuid::now_v7();
     let token = Uuid::new_v4().to_string();
     let expires_at = Utc::now() + Duration::minutes(15);

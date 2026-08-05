@@ -73,7 +73,10 @@ pub async fn send_magic_link_email(to_email: &str, verify_url: &str) -> Result<(
 
     if !response.status().is_success() {
         let status = response.status();
-        let text = response.text().await.unwrap_or_default();
+        let text = response
+            .text()
+            .await
+            .unwrap_or_else(|_| "could not read the response text".to_string());
         return Err(AuthError::InternalServerError(format!(
             "Resend error ({}): {}",
             status, text
