@@ -6,6 +6,7 @@ use axum::{
     http::{Request, StatusCode},
 };
 use backend::{
+    errors::auth::AuthError,
     handlers::auth::request_magic_link,
     models::users::MagicLinkRequest,
     routes::auth::auth_routes,
@@ -142,6 +143,7 @@ async fn requesting_magic_link() {
             .fetch_optional(&pool)
             .await
             .expect("query is expecting email from magic link");
+
     assert!(
         row.is_some(),
         "expected a magic link row to actually exist in the database"
@@ -168,36 +170,94 @@ async fn requesting_magic_link() {
 #[tokio::test]
 async fn checking_magic_link_insertion() {
     let pool = test_pool().await;
-    let id = Uuid::now_v7();
-    let token = Uuid::new_v4().to_string();
-    let expires_at = Utc::now() + Duration::minutes(15);
     let email = "test_user@example.com";
     cleanup_test_user(&pool, email).await;
 
+    // Method 1 - manual, direct SQL insert
+    let manual_id = Uuid::now_v7();
+    let manual_token = Uuid::new_v4().to_string();
+    let expires_at = Utc::now() + Duration::minutes(15);
+
     query("INSERT INTO magic_links (id, email, token, expires_at) VALUES($1, $2, $3, $4)")
-        .bind(id)
+        .bind(manual_id)
         .bind(email)
-        .bind(&token)
+        .bind(&manual_token)
         .bind(expires_at)
         .execute(&pool)
         .await
-        .expect("magic link needs to be inserted");
+        .expect("manual magic link needs to be inserted");
 
-    let email_address: String =
-        query_scalar("SELECT email FROM magic_links WHERE token = $1 AND expires_at = $2")
-            .bind(&token)
-            .bind(expires_at)
-            .fetch_one(&pool)
-            .await
-            .expect("magic link row needs to exist");
+    // Method 2 - calling the real, actual function
+    let function_token = insert_magic_link(&pool, email)
+        .await
+        .expect("expected insert_magic_link to succeed");
 
-    assert_eq!(email_address, String::from(email));
+    // The tokens themselves will NEVER match - they're independently
+    // random by design. What we CAN genuinely verify: both rows
+    // exist, are tied to the same email, and are two DISTINCT rows
+    // (proving insert_magic_link doesn't collide with or overwrite
+    // an existing row for the same email).
+    let manual_row_email: String = query_scalar("SELECT email FROM magic_links WHERE token = $1")
+        .bind(&manual_token)
+        .fetch_one(&pool)
+        .await
+        .expect("manual row should exist");
 
-    cleanup_test_user(&pool, &email).await;
+    let function_row_email: String = query_scalar("SELECT email FROM magic_links WHERE token = $1")
+        .bind(&function_token)
+        .fetch_one(&pool)
+        .await
+        .expect("function-created row should exist");
+
+    assert_eq!(manual_row_email, email);
+    assert_eq!(function_row_email, email);
+    assert_ne!(
+        manual_token, function_token,
+        "expected two genuinely distinct tokens"
+    );
+
+    cleanup_test_user(&pool, email).await;
 }
 
-// #[tokio::test]
-// async fn sending_magic_link_email() {
-//     let from_address = "delivered@resend.dev";
+#[tokio::test]
+async fn sending_magic_link_email_succeeds() {
+    dotenvy::dotenv().ok();
 
-// }
+    let to_email = "delivered@resend.dev";
+    let to_validated =
+        validate_email_format(to_email).expect("needs to have a validated email address");
+    let base_url = "http://localhost:3000";
+    let verify_url = format!("{}/api/v1/auth/verify?token=1234", base_url);
+
+    let result = send_magic_link_email(&to_validated, &verify_url).await;
+
+    assert!(
+        result.is_ok(),
+        "expected the email to send successfully, got: {:?}",
+        result
+    );
+}
+
+#[tokio::test]
+async fn sending_magic_link_email_fails_for_a_blocked_domain() {
+    dotenvy::dotenv().ok();
+
+    let to_email = "test_user@example.com";
+    let to_validated =
+        validate_email_format(to_email).expect("needs to have a validated email address");
+    let base_url = "http://localhost:3000";
+    let verify_url = format!("{}/api/v1/auth/verify?token=1234", base_url);
+
+    let result = send_magic_link_email(&to_validated, &verify_url).await;
+
+    match result {
+        Err(AuthError::InternalServerError(message)) => {
+            assert!(
+                message.contains("Invalid `to` field"),
+                "expected Resend's specific rejection message, got: {}",
+                message
+            )
+        }
+        other => panic!("expected an InternalServerError, got: {:?}", other),
+    }
+}

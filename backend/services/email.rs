@@ -1,4 +1,4 @@
-use crate::errors::auth::AuthError;
+use crate::{errors::auth::AuthError, services::auth::validate_email_format};
 use reqwest::{Client, StatusCode};
 use serde_json::json;
 use std::{env::var, sync::OnceLock};
@@ -14,7 +14,7 @@ const SUBSCRIPTION_CANCELED_TEMPLATE: &str =
 const SUBSCRIPTION_ENDED_TEMPLATE: &str =
     include_str!("../templates/subscription_ended_email.html");
 
-fn get_tera() -> &'static Tera {
+pub fn get_tera() -> &'static Tera {
     TERA.get_or_init(|| {
         let mut tera = Tera::default();
         tera.add_raw_template("email.html", EMAIL_TEMPLATE)
@@ -44,8 +44,11 @@ pub async fn send_magic_link_email(
     let base_url = var("PUBLIC_BASE_URL").map_err(|_| {
         AuthError::InternalServerError("PUBLIC_BASE_URL needs to be configured".to_string())
     })?;
-    let from_address =
+    let from_email =
         var("RESEND_FROM_EMAIL").unwrap_or_else(|_| "onboarding@resend.dev".to_string());
+    let from_validated =
+        validate_email_format(&from_email).expect("needs to have a formatted email address");
+    let to_validated = validate_email_format(to_email).expect("needs to have a formatted address");
 
     let tera = get_tera();
     let client = Client::new();
@@ -60,8 +63,8 @@ pub async fn send_magic_link_email(
         .expect("tera needs to render the html file");
 
     let body = json!({
-        "from": format!("Safely <{}>", from_address),
-        "to": [to_email],
+        "from": format!("Safely <{}>", from_validated),
+        "to": [to_validated],
         "subject": "Sign in to Safely",
         "html": html_body,
     });

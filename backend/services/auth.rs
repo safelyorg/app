@@ -12,10 +12,12 @@ pub async fn insert_magic_link(pool: &Pool<Postgres>, email: &str) -> Result<Str
     let id = Uuid::now_v7();
     let token = Uuid::new_v4().to_string();
     let expires_at = Utc::now() + Duration::minutes(15);
+    let validated_email = validate_email_format(email)
+        .unwrap_or_else(|_| "failed to validate the email format".to_string());
 
     query("INSERT INTO magic_links (id, email, token, expires_at) VALUES ($1, $2, $3, $4)")
         .bind(id)
-        .bind(email)
+        .bind(validated_email)
         .bind(&token)
         .bind(expires_at)
         .execute(pool)
