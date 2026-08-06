@@ -7,11 +7,14 @@ use axum::{
 };
 use backend::{
     errors::auth::AuthError,
-    handlers::auth::request_magic_link,
+    handlers::auth::{finish_sign_in, request_magic_link},
     models::users::MagicLinkRequest,
     routes::auth::auth_routes,
     services::{
-        auth::{insert_magic_link, validate_email_format},
+        auth::{
+            find_or_create_user_by_email, insert_magic_link, validate_email_format,
+            validate_magic_link,
+        },
         email::{get_tera, send_magic_link_email},
     },
 };
@@ -278,4 +281,35 @@ fn get_tera_loads_all_five_email_templates() {
             registered_names
         )
     }
+}
+
+#[tokio::test]
+async fn checking_email_link_verification() {
+    let pool = test_pool().await;
+    let email = "test_user@example.com";
+    let validated_email = validate_email_format(email).expect("required to have a formatted email");
+    cleanup_test_user(&pool, email).await;
+
+    let real_token = insert_magic_link(&pool, &validated_email)
+        .await
+        .expect("it's expected to have the magic link inserted into the database");
+
+    let validate = validate_magic_link(&pool, &real_token)
+        .await
+        .expect("expected the query to succeed")
+        .expect("expected a valid, unexpired magic link to be found");
+
+    assert_eq!(validate.email, email);
+
+    let (user, is_new) = find_or_create_user_by_email(&pool, &validate.email)
+        .await
+        .expect("expected to find or create the user");
+
+    let session_token = finish_sign_in(&pool, user.id, is_new, &validate.email, "email")
+        .await
+        .expect("expected sign-in to complete successfully");
+
+    assert!(!session_token.is_empty(), "expected a real session token");
+
+    cleanup_test_user(&pool, &validated_email).await;
 }

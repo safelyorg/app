@@ -72,7 +72,7 @@ pub async fn verify_magic_link(
     State(pool): State<Pool<Postgres>>,
     Query(query): Query<VerifyMagicLinkToken>,
 ) -> Result<Redirect, AuthError> {
-    let link = validate_magic_link(&pool, &query.token)
+    let validate = validate_magic_link(&pool, &query.token)
         .await
         .map_err(|e| {
             eprintln!("verify_magic_link db error: {}", e);
@@ -80,13 +80,13 @@ pub async fn verify_magic_link(
         })?
         .ok_or_else(|| AuthError::DashboardPath("expired_link".to_string()))?;
 
-    let (user, is_new) = find_or_create_user_by_email(&pool, &link.email)
+    let (user, is_new) = find_or_create_user_by_email(&pool, &validate.email)
         .await
         .map_err(|e| {
             eprintln!("find_or_create_user_by_email error: {}", e);
             AuthError::DashboardPath("server_error".to_string())
         })?;
-    let session_token = finish_sign_in(&pool, user.id, is_new, &link.email, "email").await?;
+    let session_token = finish_sign_in(&pool, user.id, is_new, &validate.email, "email").await?;
 
     Ok(Redirect::to(&format!(
         "{}#session={}",
@@ -262,7 +262,7 @@ pub async fn logout(State(pool): State<Pool<Postgres>>, headers: HeaderMap) -> J
 /// brand-new or existing - both flows do the exact same remaining
 /// work: send a welcome email if genuinely new, update login
 /// bookkeeping, and create a real session.
-async fn finish_sign_in(
+pub async fn finish_sign_in(
     pool: &Pool<Postgres>,
     user_id: Uuid,
     is_new: bool,

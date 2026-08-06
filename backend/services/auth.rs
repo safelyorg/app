@@ -26,6 +26,14 @@ pub async fn insert_magic_link(pool: &Pool<Postgres>, email: &str) -> Result<Str
     Ok(token)
 }
 
+pub fn validate_email_format(email: &str) -> Result<String, AuthError> {
+    let trimmed = email.trim().to_lowercase();
+    if trimmed.is_empty() || !trimmed.contains('@') {
+        return Err(AuthError::BadRequest);
+    }
+    Ok(trimmed)
+}
+
 /// Validates a magic link token: must exist, be unused, and not expired.
 /// Marks it used on success so it can never be replayed.
 pub async fn validate_magic_link(
@@ -47,14 +55,6 @@ pub async fn validate_magic_link(
     }
 
     Ok(link)
-}
-
-pub fn validate_email_format(email: &str) -> Result<String, AuthError> {
-    let trimmed = email.trim().to_lowercase();
-    if trimmed.is_empty() || !trimmed.contains('@') {
-        return Err(AuthError::BadRequest);
-    }
-    Ok(trimmed)
 }
 
 /// Finds a user by email, or creates one if none exists. The bool
