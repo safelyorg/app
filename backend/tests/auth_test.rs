@@ -12,7 +12,7 @@ use backend::{
     routes::auth::auth_routes,
     services::{
         auth::{insert_magic_link, validate_email_format},
-        email::send_magic_link_email,
+        email::{get_tera, send_magic_link_email},
     },
 };
 use chrono::{Duration, Utc};
@@ -192,11 +192,6 @@ async fn checking_magic_link_insertion() {
         .await
         .expect("expected insert_magic_link to succeed");
 
-    // The tokens themselves will NEVER match - they're independently
-    // random by design. What we CAN genuinely verify: both rows
-    // exist, are tied to the same email, and are two DISTINCT rows
-    // (proving insert_magic_link doesn't collide with or overwrite
-    // an existing row for the same email).
     let manual_row_email: String = query_scalar("SELECT email FROM magic_links WHERE token = $1")
         .bind(&manual_token)
         .fetch_one(&pool)
@@ -259,5 +254,28 @@ async fn sending_magic_link_email_fails_for_a_blocked_domain() {
             )
         }
         other => panic!("expected an InternalServerError, got: {:?}", other),
+    }
+}
+
+#[test]
+fn get_tera_loads_all_five_email_templates() {
+    let tera = get_tera();
+    let registered_names: Vec<&str> = tera.get_template_names().collect();
+
+    let expected_templates = [
+        "email.html",
+        "welcome_email.html",
+        "payment_failed_email.html",
+        "subscription_ended_email.html",
+        "subscription_canceled_email.html",
+    ];
+
+    for name in expected_templates {
+        assert!(
+            registered_names.contains(&name),
+            "expected template '{}' to be registered, found: {:?}",
+            name,
+            registered_names
+        )
     }
 }

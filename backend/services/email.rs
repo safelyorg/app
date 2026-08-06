@@ -30,6 +30,7 @@ pub fn get_tera() -> &'static Tera {
             SUBSCRIPTION_CANCELED_TEMPLATE,
         )
         .expect("tera should add the subscription canceled raw template");
+
         tera
     })
 }
@@ -44,6 +45,7 @@ pub async fn send_magic_link_email(
     let base_url = var("PUBLIC_BASE_URL").map_err(|_| {
         AuthError::InternalServerError("PUBLIC_BASE_URL needs to be configured".to_string())
     })?;
+
     let from_email =
         var("RESEND_FROM_EMAIL").unwrap_or_else(|_| "onboarding@resend.dev".to_string());
     let from_validated =
@@ -138,6 +140,7 @@ pub async fn send_welcome_email(to_email: &str) -> Result<(), AuthError> {
         .send()
         .await
         .map_err(|e| AuthError::InternalServerError(e.to_string()))?;
+
     if !response.status().is_success() {
         let status = response.status();
         let text = response.text().await.unwrap_or_default();
