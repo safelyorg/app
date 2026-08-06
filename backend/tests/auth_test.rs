@@ -2,15 +2,19 @@ mod common;
 
 use axum::http::{Request, StatusCode};
 use backend::{
-    handlers::auth::validate_email_format,
     routes::auth::auth_routes,
-    services::{auth::insert_magic_link, email::send_magic_link_email},
+    services::{
+        auth::{insert_magic_link, validate_email_format},
+        email::send_magic_link_email,
+    },
 };
+use chrono::{Duration, Utc};
 use common::{cleanup_test_user, test_pool};
 use dotenvy::var;
 use reqwest::Body;
-use sqlx::query_as;
+use sqlx::{query, query_as, query_scalar};
 use tower::ServiceExt;
+use uuid::Uuid;
 
 #[tokio::test]
 async fn requesting_a_magic_link_succeeds_for_a_valid_email() {
@@ -85,7 +89,7 @@ async fn requesting_magic_link() {
     let pool = test_pool().await;
     let trimmed_email = validate_email_format(test_email).expect("email needs to be trimmed");
 
-    cleanup_test_user(&pool, &trimmed_email).await; // clean slate, regardless of last run
+    cleanup_test_user(&pool, &trimmed_email).await;
 
     let email_token = insert_magic_link(&pool, trimmed_email.as_str())
         .await
@@ -110,4 +114,35 @@ async fn requesting_magic_link() {
     );
 
     cleanup_test_user(&pool, &trimmed_email).await;
+}
+
+#[tokio::test]
+async fn checking_magic_link_insertion() {
+    let pool = test_pool().await;
+    let id = Uuid::now_v7();
+    let token = Uuid::new_v4().to_string();
+    let expires_at = Utc::now() + Duration::minutes(15);
+    let email = "test_user@example.com";
+    cleanup_test_user(&pool, email).await;
+
+    query("INSERT INTO magic_links (id, email, token, expires_at) VALUES($1, $2, $3, $4)")
+        .bind(id)
+        .bind(email)
+        .bind(&token)
+        .bind(expires_at)
+        .execute(&pool)
+        .await
+        .expect("magic link needs to be inserted");
+
+    let email_address: String =
+        query_scalar("SELECT email FROM magic_links WHERE token = $1 AND expires_at = $2")
+            .bind(&token)
+            .bind(expires_at)
+            .fetch_one(&pool)
+            .await
+            .expect("magic link row needs to exist");
+
+    assert_eq!(email_address, String::from(email));
+
+    cleanup_test_user(&pool, &email).await;
 }

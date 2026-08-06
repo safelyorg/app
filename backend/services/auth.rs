@@ -1,4 +1,7 @@
-use crate::models::users::{MagicLink, User};
+use crate::{
+    errors::auth::AuthError,
+    models::users::{MagicLink, User},
+};
 use axum::http::HeaderMap;
 use chrono::{DateTime, Duration, Utc};
 use sqlx::{Error, Pool, Postgres, Row, query, query_as, query_scalar};
@@ -42,6 +45,14 @@ pub async fn validate_magic_link(
     }
 
     Ok(link)
+}
+
+pub fn validate_email_format(email: &str) -> Result<String, AuthError> {
+    let trimmed = email.trim().to_lowercase();
+    if trimmed.is_empty() || !trimmed.contains('@') {
+        return Err(AuthError::BadRequest);
+    }
+    Ok(trimmed)
 }
 
 /// Finds a user by email, or creates one if none exists. The bool

@@ -9,7 +9,7 @@ use crate::{
             check_last_login, create_session, delete_session, extract_user_id,
             find_or_create_user_by_email, find_or_create_user_by_google, find_user_by_google_id,
             find_user_by_id, insert_magic_link, link_google_account, set_login_method,
-            validate_magic_link,
+            validate_email_format, validate_magic_link,
         },
         email::{send_magic_link_email, send_welcome_email},
         google_oauth::{build_google_authorize_url, exchange_code_for_user},
@@ -36,14 +36,6 @@ const OAUTH_LINK_USER_COOKIE: &str = "oauth_link_user_id";
 #[derive(Debug, Deserialize)]
 pub struct GoogleConnectQuery {
     pub session: String,
-}
-
-pub fn validate_email_format(email: &str) -> Result<String, AuthError> {
-    let trimmed = email.trim().to_lowercase();
-    if trimmed.is_empty() || !trimmed.contains('@') {
-        return Err(AuthError::BadRequest);
-    }
-    Ok(trimmed)
 }
 
 /// POST /api/v1/auth/magic-link
