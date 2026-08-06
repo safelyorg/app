@@ -47,10 +47,10 @@ pub async fn send_magic_link_email(
     let from_address =
         var("RESEND_FROM_EMAIL").unwrap_or_else(|_| "onboarding@resend.dev".to_string());
 
+    let tera = get_tera();
     let client = Client::new();
     let mut context = Context::new();
     let logo_url = format!("{}/images/white_logo.png", base_url);
-    let tera = get_tera();
 
     context.insert("verify_url", verify_url);
     context.insert("logo_url", &logo_url);

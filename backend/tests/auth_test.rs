@@ -1,7 +1,13 @@
 mod common;
 
-use axum::http::{Request, StatusCode};
+use axum::{
+    Json,
+    extract::State,
+    http::{Request, StatusCode},
+};
 use backend::{
+    handlers::auth::request_magic_link,
+    models::users::MagicLinkRequest,
     routes::auth::auth_routes,
     services::{
         auth::{insert_magic_link, validate_email_format},
@@ -32,7 +38,10 @@ async fn requesting_a_magic_link_succeeds_for_a_valid_email() {
         .body(Body::from(body_test_email))
         .expect("the request needs to be built");
 
-    let response = app.oneshot(request).await.unwrap();
+    let response = app
+        .oneshot(request)
+        .await
+        .expect("expected to get the response");
 
     assert_eq!(response.status(), StatusCode::OK);
 
@@ -41,9 +50,20 @@ async fn requesting_a_magic_link_succeeds_for_a_valid_email() {
             .bind(test_email)
             .fetch_optional(&pool)
             .await
-            .unwrap();
+            .expect("expected to select a query from magic link");
 
     assert!(row.is_some(), "expected a magic link to be inserted");
+
+    let magic_link_response = request_magic_link(
+        State(pool.clone()),
+        Json(MagicLinkRequest {
+            email: test_email.to_string(),
+        }),
+    )
+    .await
+    .expect("expected to request the magic link");
+
+    assert!(magic_link_response.success);
 
     cleanup_test_user(&pool, test_email).await;
 }
@@ -51,7 +71,7 @@ async fn requesting_a_magic_link_succeeds_for_a_valid_email() {
 #[tokio::test]
 async fn requesting_a_magic_link_rejects_an_invalid_email() {
     let pool = test_pool().await;
-    let app = auth_routes().with_state(pool);
+    let app = auth_routes().with_state(pool.clone());
 
     let request = Request::builder()
         .method("POST")
@@ -60,9 +80,25 @@ async fn requesting_a_magic_link_rejects_an_invalid_email() {
         .body(Body::from(r#"{"email": "not-an-email"}"#))
         .unwrap();
 
-    let response = app.oneshot(request).await.unwrap();
+    let response = app
+        .oneshot(request)
+        .await
+        .expect("expected to get the response");
 
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+
+    let result = request_magic_link(
+        State(pool.clone()),
+        Json(MagicLinkRequest {
+            email: "not-an-email".to_string(),
+        }),
+    )
+    .await;
+
+    assert!(
+        result.is_err(),
+        "expected the invalid email address to be rejected"
+    );
 }
 
 #[tokio::test]
@@ -87,33 +123,46 @@ async fn checking_email_format() {
 async fn requesting_magic_link() {
     let test_email = "delivered@resend.dev ";
     let pool = test_pool().await;
-    let trimmed_email = validate_email_format(test_email).expect("email needs to be trimmed");
+    let validated_email = validate_email_format(test_email).expect("email needs to be trimmed");
+    cleanup_test_user(&pool, &validated_email).await;
 
-    cleanup_test_user(&pool, &trimmed_email).await;
-
-    let email_token = insert_magic_link(&pool, trimmed_email.as_str())
+    let email_token = insert_magic_link(&pool, validated_email.as_str())
         .await
         .expect("the magic link needs to be inserted");
     let base_url = var("PUBLIC_BASE_URL").expect("public base url needs to be configured");
     let verify_url = format!("{}/api/v1/auth/verify?token={}", base_url, email_token);
 
-    send_magic_link_email(&trimmed_email, &verify_url)
+    send_magic_link_email(&validated_email, &verify_url)
         .await
         .expect("magic link needs to be sent");
 
     let row: Option<(String,)> =
         query_as("SELECT email FROM magic_links WHERE email = $1 ORDER BY created_at DESC LIMIT 1")
-            .bind(&trimmed_email)
+            .bind(&validated_email)
             .fetch_optional(&pool)
             .await
             .expect("query is expecting email from magic link");
-
     assert!(
         row.is_some(),
         "expected a magic link row to actually exist in the database"
     );
 
-    cleanup_test_user(&pool, &trimmed_email).await;
+    let result = request_magic_link(
+        State(pool.clone()),
+        Json(MagicLinkRequest {
+            email: validated_email.clone(),
+        }),
+    )
+    .await
+    .expect("expected the magic link request to succeed");
+
+    assert_eq!(result.success, true);
+    assert_eq!(
+        result.message,
+        "If that email is valid, a sign-in link is on its way."
+    );
+
+    cleanup_test_user(&pool, &validated_email).await;
 }
 
 #[tokio::test]
@@ -146,3 +195,9 @@ async fn checking_magic_link_insertion() {
 
     cleanup_test_user(&pool, &email).await;
 }
+
+// #[tokio::test]
+// async fn sending_magic_link_email() {
+//     let from_address = "delivered@resend.dev";
+
+// }
