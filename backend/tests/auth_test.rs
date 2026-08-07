@@ -6,15 +6,19 @@ use axum::{
     http::{Request, StatusCode},
     response::IntoResponse,
 };
+use axum_extra::extract::{CookieJar, cookie::Cookie};
 use backend::{
     errors::auth::AuthError,
-    handlers::auth::{finish_sign_in, request_magic_link, verify_magic_link},
-    models::users::{MagicLinkRequest, VerifyMagicLinkToken},
+    handlers::auth::{
+        OAUTH_LINK_USER_COOKIE, finish_sign_in, handle_google_connect, request_magic_link,
+        verify_magic_link,
+    },
+    models::users::{GoogleUserInfoEndpoint, MagicLinkRequest, VerifyMagicLinkToken},
     routes::auth::auth_routes,
     services::{
         auth::{
-            find_or_create_user_by_email, find_user_by_email, insert_magic_link,
-            validate_email_format, validate_magic_link,
+            find_or_create_user_by_email, find_user_by_email, find_user_by_google_id,
+            insert_magic_link, link_google_account, validate_email_format, validate_magic_link,
         },
         email::{get_tera, send_magic_link_email},
     },
@@ -492,4 +496,130 @@ async fn find_or_create_user_by_email_returns_the_existing_user_when_one_already
     );
 
     cleanup_test_user(&pool, email).await;
+}
+
+#[tokio::test]
+async fn handle_google_connect_succeeds_when_emails_match() {
+    let pool = test_pool().await;
+    let email = "google_link_success@example.com";
+    cleanup_test_user(&pool, email).await;
+
+    let (user, _) = find_or_create_user_by_email(&pool, email)
+        .await
+        .expect("expected to create the base user");
+
+    let link_cookie = Cookie::new(OAUTH_LINK_USER_COOKIE, user.id.to_string());
+    let google_user = GoogleUserInfoEndpoint {
+        id: "google_id_success_123".to_string(),
+        email: email.to_string(), // matches the Safely account's real email
+        name: Some("Test User".to_string()),
+    };
+
+    let jar = CookieJar::new();
+    let result = handle_google_connect(&pool, jar, link_cookie, &google_user).await;
+
+    assert!(
+        result.is_ok(),
+        "expected linking to succeed, got: {:?}",
+        result
+    );
+
+    // Confirm the actual database was genuinely updated.
+    let linked = find_user_by_google_id(&pool, "google_id_success_123")
+        .await
+        .expect("expected the query to succeed");
+    assert!(
+        linked.is_some(),
+        "expected the user to now have a linked Google account"
+    );
+    assert_eq!(linked.unwrap().id, user.id);
+
+    cleanup_test_user(&pool, email).await;
+}
+
+#[tokio::test]
+async fn handle_google_connect_rejects_a_mismatched_email() {
+    let pool = test_pool().await;
+    let email = "google_link_mismatch@example.com";
+    cleanup_test_user(&pool, email).await;
+
+    let (user, _) = find_or_create_user_by_email(&pool, email)
+        .await
+        .expect("expected to create the base user");
+
+    let link_cookie = Cookie::new(OAUTH_LINK_USER_COOKIE, user.id.to_string());
+    let google_user = GoogleUserInfoEndpoint {
+        id: "google_id_mismatch_456".to_string(),
+        email: "a_totally_different_email@example.com".to_string(), // deliberately different
+        name: None,
+    };
+
+    let jar = CookieJar::new();
+    let result = handle_google_connect(&pool, jar, link_cookie, &google_user).await;
+
+    assert!(result.is_err(), "expected mismatched emails to be rejected");
+
+    cleanup_test_user(&pool, email).await;
+}
+
+#[tokio::test]
+async fn handle_google_connect_rejects_a_google_account_already_linked_elsewhere() {
+    let pool = test_pool().await;
+    let email_a = "google_link_owner@example.com";
+    let email_b = "google_link_intruder@example.com";
+    cleanup_test_user(&pool, email_a).await;
+    cleanup_test_user(&pool, email_b).await;
+
+    let (user_a, _) = find_or_create_user_by_email(&pool, email_a)
+        .await
+        .expect("expected to create user A");
+    let (user_b, _) = find_or_create_user_by_email(&pool, email_b)
+        .await
+        .expect("expected to create user B");
+
+    let shared_google_id = "google_id_already_taken_789";
+
+    // User A already linked this Google account.
+    link_google_account(&pool, user_a.id, shared_google_id)
+        .await
+        .expect("expected the first link to succeed");
+
+    // Now user B tries to link the SAME Google account.
+    let link_cookie = Cookie::new(OAUTH_LINK_USER_COOKIE, user_b.id.to_string());
+    let google_user = GoogleUserInfoEndpoint {
+        id: shared_google_id.to_string(),
+        email: email_b.to_string(), // matches user B's own email - only the Google ID conflicts
+        name: None,
+    };
+
+    let jar = CookieJar::new();
+    let result = handle_google_connect(&pool, jar, link_cookie, &google_user).await;
+
+    assert!(
+        result.is_err(),
+        "expected an already-linked Google account to be rejected"
+    );
+
+    cleanup_test_user(&pool, email_a).await;
+    cleanup_test_user(&pool, email_b).await;
+}
+
+#[tokio::test]
+async fn handle_google_connect_rejects_a_malformed_link_cookie() {
+    let pool = test_pool().await;
+
+    let link_cookie = Cookie::new(OAUTH_LINK_USER_COOKIE, "not-a-real-uuid");
+    let google_user = GoogleUserInfoEndpoint {
+        id: "google_id_whatever".to_string(),
+        email: "irrelevant@example.com".to_string(),
+        name: None,
+    };
+
+    let jar = CookieJar::new();
+    let result = handle_google_connect(&pool, jar, link_cookie, &google_user).await;
+
+    assert!(
+        result.is_err(),
+        "expected a malformed cookie value to be rejected"
+    );
 }

@@ -30,8 +30,8 @@ use time::Duration;
 use uuid::Uuid;
 
 const DASHBOARD_PATH: &str = "/dashboard/";
-const OAUTH_STATE_COOKIE: &str = "oauth_state";
-const OAUTH_LINK_USER_COOKIE: &str = "oauth_link_user_id";
+pub const OAUTH_STATE_COOKIE: &str = "oauth_state";
+pub const OAUTH_LINK_USER_COOKIE: &str = "oauth_link_user_id";
 
 #[derive(Debug, Deserialize)]
 pub struct GoogleConnectQuery {
@@ -99,7 +99,7 @@ pub async fn verify_magic_link(
 /// separately from a fresh sign-in, since it must attach Google to
 /// THIS SPECIFIC account, not whichever account happens to share the
 /// Google email.
-async fn handle_google_connect(
+pub async fn handle_google_connect(
     pool: &Pool<Postgres>,
     jar: CookieJar,
     link_cookie: Cookie<'static>,
