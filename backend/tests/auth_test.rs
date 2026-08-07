@@ -9,7 +9,7 @@ use axum::{
 use backend::{
     errors::auth::AuthError,
     handlers::auth::{finish_sign_in, request_magic_link, verify_magic_link},
-    models::users::{MagicLink, MagicLinkRequest, VerifyMagicLinkToken},
+    models::users::{MagicLinkRequest, VerifyMagicLinkToken},
     routes::auth::auth_routes,
     services::{
         auth::{
@@ -19,12 +19,11 @@ use backend::{
         email::{get_tera, send_magic_link_email},
     },
 };
-use chrono::{DateTime, Duration, Local, Utc};
+use chrono::{Duration, Utc};
 use common::{cleanup_test_user, test_pool};
 use dotenvy::var;
 use reqwest::Body;
 use sqlx::{query, query_as, query_scalar};
-use tokio::time;
 use tower::ServiceExt;
 use uuid::Uuid;
 
@@ -407,9 +406,10 @@ async fn verify_magic_link_rejects_a_token_that_was_already_used() {
 async fn find_user_by_email_finds_an_existing_user() {
     let pool = test_pool().await;
     let email = "test_user_find@example.com";
+    let formatted_email = validate_email_format(email).expect("expected to format the email");
     cleanup_test_user(&pool, email).await;
 
-    let (created_user, _) = find_or_create_user_by_email(&pool, email)
+    let (created_user, _) = find_or_create_user_by_email(&pool, &formatted_email)
         .await
         .expect("expected to create the user");
 
@@ -428,11 +428,68 @@ async fn find_user_by_email_finds_an_existing_user() {
 async fn find_user_by_email_returns_none_for_a_nonexistent_user() {
     let pool = test_pool().await;
     let email = "definitely_does_not_exist_anywhere@example.com";
+    let formatted_email = validate_email_format(email).expect("expected to format the email");
     cleanup_test_user(&pool, email).await;
 
-    let found = find_user_by_email(&pool, email)
+    let found = find_user_by_email(&pool, &formatted_email)
         .await
         .expect("expected the query itself to succeed");
 
     assert!(found.is_none(), "expected no user to be found");
+}
+
+#[tokio::test]
+async fn find_or_create_user_by_email_creates_a_new_user_when_none_exists() {
+    let pool = test_pool().await;
+    let email = "find_or_create_new@example.com";
+    cleanup_test_user(&pool, email).await;
+
+    let (user, is_new) = find_or_create_user_by_email(&pool, email)
+        .await
+        .expect("expected the call to succeed");
+
+    assert!(is_new, "expected a brand-new user to be reported as new");
+    assert_eq!(user.email, email);
+
+    // Confirm the row genuinely exists now, independent of the
+    // function's own return value.
+    let found = find_user_by_email(&pool, email)
+        .await
+        .expect("expected the query to succeed");
+
+    assert!(
+        found.is_some(),
+        "expected the new user to actually be in the database"
+    );
+
+    cleanup_test_user(&pool, email).await;
+}
+
+#[tokio::test]
+async fn find_or_create_user_by_email_returns_the_existing_user_when_one_already_exists() {
+    let pool = test_pool().await;
+    let email = "find_or_create_existing@example.com";
+    cleanup_test_user(&pool, email).await;
+
+    // First call - genuinely creates the user.
+    let (first_user, first_is_new) = find_or_create_user_by_email(&pool, email)
+        .await
+        .expect("expected the first call to succeed");
+    assert!(first_is_new, "expected the first call to report a new user");
+
+    // Second call, same email - should find the SAME user, not create another.
+    let (second_user, second_is_new) = find_or_create_user_by_email(&pool, email)
+        .await
+        .expect("expected the second call to succeed");
+
+    assert!(
+        !second_is_new,
+        "expected the second call to report an existing user, not new"
+    );
+    assert_eq!(
+        second_user.id, first_user.id,
+        "expected the exact same user to be returned"
+    );
+
+    cleanup_test_user(&pool, email).await;
 }
