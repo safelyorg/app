@@ -80,8 +80,10 @@ pub async fn find_or_create_user_by_email(
 }
 
 pub async fn find_user_by_email(pool: &Pool<Postgres>, email: &str) -> Result<Option<User>, Error> {
+    let formatted_email = validate_email_format(email).map_err(|_| Error::RowNotFound)?;
+
     query_as::<_, User>("SELECT * FROM users WHERE email = $1 LIMIT 1")
-        .bind(email)
+        .bind(formatted_email)
         .fetch_optional(pool)
         .await
 }

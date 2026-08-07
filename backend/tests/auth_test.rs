@@ -13,8 +13,8 @@ use backend::{
     routes::auth::auth_routes,
     services::{
         auth::{
-            find_or_create_user_by_email, insert_magic_link, validate_email_format,
-            validate_magic_link,
+            find_or_create_user_by_email, find_user_by_email, insert_magic_link,
+            validate_email_format, validate_magic_link,
         },
         email::{get_tera, send_magic_link_email},
     },
@@ -401,4 +401,38 @@ async fn verify_magic_link_rejects_a_token_that_was_already_used() {
     );
 
     cleanup_test_user(&pool, email).await;
+}
+
+#[tokio::test]
+async fn find_user_by_email_finds_an_existing_user() {
+    let pool = test_pool().await;
+    let email = "test_user_find@example.com";
+    cleanup_test_user(&pool, email).await;
+
+    let (created_user, _) = find_or_create_user_by_email(&pool, email)
+        .await
+        .expect("expected to create the user");
+
+    let found = find_user_by_email(&pool, email)
+        .await
+        .expect("expected the query to succeed");
+
+    let found_user = found.expect("expected to find the user that was just created");
+    assert_eq!(found_user.id, created_user.id);
+    assert_eq!(found_user.email, email);
+
+    cleanup_test_user(&pool, email).await;
+}
+
+#[tokio::test]
+async fn find_user_by_email_returns_none_for_a_nonexistent_user() {
+    let pool = test_pool().await;
+    let email = "definitely_does_not_exist_anywhere@example.com";
+    cleanup_test_user(&pool, email).await;
+
+    let found = find_user_by_email(&pool, email)
+        .await
+        .expect("expected the query itself to succeed");
+
+    assert!(found.is_none(), "expected no user to be found");
 }
