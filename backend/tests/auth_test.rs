@@ -2,13 +2,14 @@ mod common;
 
 use axum::{
     Json,
-    extract::State,
+    extract::{Query, State},
     http::{Request, StatusCode},
+    response::IntoResponse,
 };
 use backend::{
     errors::auth::AuthError,
-    handlers::auth::{finish_sign_in, request_magic_link},
-    models::users::MagicLinkRequest,
+    handlers::auth::{finish_sign_in, request_magic_link, verify_magic_link},
+    models::users::{MagicLink, MagicLinkRequest, VerifyMagicLinkToken},
     routes::auth::auth_routes,
     services::{
         auth::{
@@ -18,11 +19,12 @@ use backend::{
         email::{get_tera, send_magic_link_email},
     },
 };
-use chrono::{Duration, Utc};
+use chrono::{DateTime, Duration, Local, Utc};
 use common::{cleanup_test_user, test_pool};
 use dotenvy::var;
 use reqwest::Body;
 use sqlx::{query, query_as, query_scalar};
+use tokio::time;
 use tower::ServiceExt;
 use uuid::Uuid;
 
@@ -127,22 +129,22 @@ async fn checking_email_format() {
 async fn requesting_magic_link() {
     let test_email = "delivered@resend.dev ";
     let pool = test_pool().await;
-    let validated_email = validate_email_format(test_email).expect("email needs to be trimmed");
-    cleanup_test_user(&pool, &validated_email).await;
+    let formatted_email = validate_email_format(test_email).expect("email needs to be trimmed");
+    cleanup_test_user(&pool, &formatted_email).await;
 
-    let email_token = insert_magic_link(&pool, validated_email.as_str())
+    let email_token = insert_magic_link(&pool, formatted_email.as_str())
         .await
         .expect("the magic link needs to be inserted");
     let base_url = var("PUBLIC_BASE_URL").expect("public base url needs to be configured");
     let verify_url = format!("{}/api/v1/auth/verify?token={}", base_url, email_token);
 
-    send_magic_link_email(&validated_email, &verify_url)
+    send_magic_link_email(&formatted_email, &verify_url)
         .await
         .expect("magic link needs to be sent");
 
     let row: Option<(String,)> =
         query_as("SELECT email FROM magic_links WHERE email = $1 ORDER BY created_at DESC LIMIT 1")
-            .bind(&validated_email)
+            .bind(&formatted_email)
             .fetch_optional(&pool)
             .await
             .expect("query is expecting email from magic link");
@@ -155,7 +157,7 @@ async fn requesting_magic_link() {
     let result = request_magic_link(
         State(pool.clone()),
         Json(MagicLinkRequest {
-            email: validated_email.clone(),
+            email: formatted_email.clone(),
         }),
     )
     .await
@@ -167,7 +169,7 @@ async fn requesting_magic_link() {
         "If that email is valid, a sign-in link is on its way."
     );
 
-    cleanup_test_user(&pool, &validated_email).await;
+    cleanup_test_user(&pool, &formatted_email).await;
 }
 
 #[tokio::test]
@@ -221,13 +223,13 @@ async fn checking_magic_link_insertion() {
 async fn sending_magic_link_email_succeeds() {
     dotenvy::dotenv().ok();
 
-    let to_email = "delivered@resend.dev";
-    let to_validated =
-        validate_email_format(to_email).expect("needs to have a validated email address");
     let base_url = "http://localhost:3000";
+    let to_email = "delivered@resend.dev";
+    let to_formatted =
+        validate_email_format(to_email).expect("needs to have a validated email address");
     let verify_url = format!("{}/api/v1/auth/verify?token=1234", base_url);
 
-    let result = send_magic_link_email(&to_validated, &verify_url).await;
+    let result = send_magic_link_email(&to_formatted, &verify_url).await;
 
     assert!(
         result.is_ok(),
@@ -286,11 +288,11 @@ fn get_tera_loads_all_five_email_templates() {
 #[tokio::test]
 async fn checking_email_link_verification() {
     let pool = test_pool().await;
-    let email = "test_user@example.com";
-    let validated_email = validate_email_format(email).expect("required to have a formatted email");
+    let email = "test_user_verify_link@example.com";
+    let formatted_email = validate_email_format(email).expect("required to have a formatted email");
     cleanup_test_user(&pool, email).await;
 
-    let real_token = insert_magic_link(&pool, &validated_email)
+    let real_token = insert_magic_link(&pool, &formatted_email)
         .await
         .expect("it's expected to have the magic link inserted into the database");
 
@@ -311,5 +313,92 @@ async fn checking_email_link_verification() {
 
     assert!(!session_token.is_empty(), "expected a real session token");
 
-    cleanup_test_user(&pool, &validated_email).await;
+    cleanup_test_user(&pool, &formatted_email).await;
+}
+
+#[tokio::test]
+async fn verify_magic_link_succeeds_with_a_real_token() {
+    let pool = test_pool().await;
+    let email = "test_user_verify_handler@example.com";
+    cleanup_test_user(&pool, email).await;
+
+    let real_token = insert_magic_link(&pool, email)
+        .await
+        .expect("expected to insert a real magic link");
+
+    let result = verify_magic_link(
+        State(pool.clone()),
+        Query(VerifyMagicLinkToken { token: real_token }),
+    )
+    .await;
+
+    assert!(
+        result.is_ok(),
+        "expected verify_magic_link to succeed, got: {:?}",
+        result
+    );
+
+    let response = result.unwrap().into_response();
+    let location = response
+        .headers()
+        .get("location")
+        .expect("expected a Location header")
+        .to_str()
+        .unwrap();
+
+    assert!(location.starts_with("/dashboard/#session="));
+
+    cleanup_test_user(&pool, email).await;
+}
+
+#[tokio::test]
+async fn verify_magic_link_rejects_a_token_that_was_never_inserted() {
+    let pool = test_pool().await;
+    let fake_token = Uuid::new_v4().to_string();
+
+    let result = verify_magic_link(
+        State(pool.clone()),
+        Query(VerifyMagicLinkToken { token: fake_token }),
+    )
+    .await;
+
+    assert!(
+        result.is_err(),
+        "expected a nonexistent token to be rejected"
+    );
+}
+
+#[tokio::test]
+async fn verify_magic_link_rejects_a_token_that_was_already_used() {
+    let pool = test_pool().await;
+    let email = "test_user2@example.com";
+    cleanup_test_user(&pool, email).await;
+
+    let real_token = insert_magic_link(&pool, email)
+        .await
+        .expect("expected to insert a real magic link");
+
+    // First use - should succeed, and marks the token as used.
+    let first_result = verify_magic_link(
+        State(pool.clone()),
+        Query(VerifyMagicLinkToken {
+            token: real_token.clone(),
+        }),
+    )
+    .await;
+    assert!(first_result.is_ok(), "expected the first use to succeed");
+
+    // Second use, same token - should be rejected, since
+    // validate_magic_link only matches rows where used_at IS NULL.
+    let second_result = verify_magic_link(
+        State(pool.clone()),
+        Query(VerifyMagicLinkToken { token: real_token }),
+    )
+    .await;
+    assert!(
+        second_result.is_err(),
+        "expected a reused token to be rejected"
+    );
+
+    cleanup_test_user(&pool, email).await;
 }
