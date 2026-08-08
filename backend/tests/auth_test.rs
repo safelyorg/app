@@ -24,6 +24,7 @@ use backend::{
             insert_magic_link, link_google_account, validate_email_format, validate_magic_link,
         },
         email::{get_tera, send_magic_link_email},
+        google_oauth::build_google_authorize_url,
     },
 };
 use chrono::{Duration as chrono_duration, Utc};
@@ -677,5 +678,40 @@ async fn google_redirect_failure() {
         if let Some(value) = original_value {
             set_var("GOOGLE_CLIENT_ID", value);
         }
+    }
+}
+
+#[test]
+#[serial]
+fn google_authorize_url_success() {
+    let client_key = "GOOGLE_CLIENT_ID";
+    let uri_key = "GOOGLE_REDIRECT_URI";
+    let random_code = Uuid::new_v4().to_string();
+    let check_code = random_code.trim();
+
+    unsafe {
+        set_var(client_key, "CLIENT_VALUE");
+        set_var(uri_key, "URI_VALUE");
+    }
+
+    let result = build_google_authorize_url(check_code);
+    let url = result.expect("expected the URL to build successfully");
+
+    assert!(
+        url.contains("CLIENT_VALUE"),
+        "expected the URL to contain the client id"
+    );
+    assert!(
+        url.contains("URI_VALUE"),
+        "expected the URL to contain the redirect uri"
+    );
+    assert!(
+        url.contains(check_code),
+        "expected the URL to contain the state code"
+    );
+
+    unsafe {
+        remove_var(client_key);
+        remove_var(uri_key);
     }
 }
