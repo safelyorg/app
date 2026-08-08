@@ -715,3 +715,51 @@ fn google_authorize_url_success() {
         remove_var(uri_key);
     }
 }
+
+#[test]
+#[serial]
+fn google_authorize_url_failure_on_client_id_missing() {
+    let client_key = "GOOGLE_CLIENT_ID";
+    let uri_key = "GOOGLE_REDIRECT_URI";
+    let random_code = Uuid::new_v4().to_string();
+    let check_code = random_code.trim();
+
+    unsafe {
+        remove_var(client_key);
+        set_var(uri_key, "URI_VALUE");
+    }
+
+    let result = build_google_authorize_url(check_code);
+    assert!(
+        result.is_err(),
+        "expected the URL building to fail when GOOGLE_CLIENT_ID is missing"
+    );
+
+    unsafe {
+        remove_var(uri_key);
+    }
+}
+
+#[test]
+#[serial]
+fn google_authorize_url_failure_on_redirect_uri_missing() {
+    let client_key = "GOOGLE_CLIENT_ID";
+    let uri_key = "GOOGLE_REDIRECT_URI";
+    let random_code = Uuid::new_v4().to_string();
+    let check_code = random_code.trim();
+
+    unsafe {
+        set_var(client_key, "CLIENT_VALUE");
+        remove_var(uri_key);
+    }
+
+    let result = build_google_authorize_url(check_code);
+    assert!(
+        result.is_err(),
+        "expected the URL building to fail when GOOGLE_REDIRECT_URI is missing"
+    );
+
+    unsafe {
+        remove_var(client_key);
+    }
+}
