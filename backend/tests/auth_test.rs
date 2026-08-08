@@ -6,12 +6,15 @@ use axum::{
     http::{Request, StatusCode},
     response::IntoResponse,
 };
-use axum_extra::extract::{CookieJar, cookie::Cookie};
+use axum_extra::extract::{
+    CookieJar,
+    cookie::{Cookie, SameSite},
+};
 use backend::{
     errors::auth::AuthError,
     handlers::auth::{
-        OAUTH_LINK_USER_COOKIE, finish_sign_in, handle_google_connect, request_magic_link,
-        verify_magic_link,
+        OAUTH_LINK_USER_COOKIE, OAUTH_STATE_COOKIE, finish_sign_in, google_redirect,
+        handle_google_connect, request_magic_link, verify_magic_link,
     },
     models::users::{GoogleUserInfoEndpoint, MagicLinkRequest, VerifyMagicLinkToken},
     routes::auth::auth_routes,
@@ -23,11 +26,13 @@ use backend::{
         email::{get_tera, send_magic_link_email},
     },
 };
-use chrono::{Duration, Utc};
+use chrono::{Duration as chrono_duration, Utc};
 use common::{cleanup_test_user, test_pool};
 use dotenvy::var;
 use reqwest::Body;
+use serial_test::serial;
 use sqlx::{query, query_as, query_scalar};
+use std::env::{remove_var, set_var};
 use tower::ServiceExt;
 use uuid::Uuid;
 
@@ -184,7 +189,7 @@ async fn checking_magic_link_insertion() {
     // Method 1 - manual, direct SQL insert
     let manual_id = Uuid::now_v7();
     let manual_token = Uuid::new_v4().to_string();
-    let expires_at = Utc::now() + Duration::minutes(15);
+    let expires_at = Utc::now() + chrono_duration::minutes(15);
 
     query("INSERT INTO magic_links (id, email, token, expires_at) VALUES($1, $2, $3, $4)")
         .bind(manual_id)
@@ -622,4 +627,55 @@ async fn handle_google_connect_rejects_a_malformed_link_cookie() {
         result.is_err(),
         "expected a malformed cookie value to be rejected"
     );
+}
+
+#[tokio::test]
+async fn google_redirect_success() {
+    let jar = CookieJar::new();
+    let (returned_jar, _redirect) = google_redirect(jar)
+        .await
+        .expect("expected google_redirect to succeed");
+
+    let cookie = returned_jar
+        .get(OAUTH_STATE_COOKIE)
+        .expect("expected an oauth_state cookie to be present");
+
+    assert!(
+        !cookie.value().is_empty(),
+        "expected the cookie's value to be a real, non-empty code"
+    );
+    assert_eq!(cookie.path(), Some("/"));
+    assert_eq!(cookie.http_only(), Some(true));
+    assert_eq!(cookie.same_site(), Some(SameSite::Lax));
+    assert_eq!(cookie.max_age(), Some(time::Duration::minutes(10)));
+
+    let expected_secure = var("PUBLIC_BASE_URL")
+        .map(|url| url.starts_with("https://"))
+        .unwrap_or(false);
+
+    assert_eq!(cookie.secure(), Some(expected_secure))
+}
+
+#[tokio::test]
+#[serial]
+async fn google_redirect_failure() {
+    let original_value = var("GOOGLE_CLIENT_ID").ok();
+
+    unsafe {
+        remove_var("GOOGLE_CLIENT_ID");
+    }
+
+    let jar = CookieJar::new();
+    let result = google_redirect(jar).await;
+
+    assert!(
+        result.is_err(),
+        "expected google_redirect to fail when GOOGLE_CLIENT_ID is missing"
+    );
+
+    unsafe {
+        if let Some(value) = original_value {
+            set_var("GOOGLE_CLIENT_ID", value);
+        }
+    }
 }

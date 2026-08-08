@@ -164,10 +164,11 @@ pub async fn handle_google_connect(
 /// magic link does. Not to be confused with google_connect_redirect
 /// below, which links Google onto an account that's already logged in.
 pub async fn google_redirect(jar: CookieJar) -> Result<(CookieJar, Redirect), AuthError> {
-    let state = Uuid::new_v4().to_string();
+    let random_code = Uuid::new_v4().to_string();
+    let check_code = random_code.trim();
 
-    // create google login web address
-    let authorize_url = build_google_authorize_url(&state).map_err(|e| {
+    // create google sign-in web address
+    let authorize_url = build_google_authorize_url(check_code).map_err(|e| {
         eprintln!("build_google_authorize_url error: {}", e);
         AuthError::DashboardPath("server_error".to_string())
     })?;
@@ -176,7 +177,7 @@ pub async fn google_redirect(jar: CookieJar) -> Result<(CookieJar, Redirect), Au
         .map(|url| url.starts_with("https://"))
         .unwrap_or(false);
 
-    let mut cookie = Cookie::new(OAUTH_STATE_COOKIE, state);
+    let mut cookie = Cookie::new(OAUTH_STATE_COOKIE, random_code);
     // make it available across all the site
     cookie.set_path("/");
     cookie.set_max_age(Duration::minutes(10));

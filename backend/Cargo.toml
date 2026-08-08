@@ -26,3 +26,4 @@ uuid = { version = "1.23.3", features = ["serde", "v7", "v4"] }
 [dev-dependencies]
 tower = { version = "0.5.3", features = ["util"] }
 http-body-util = "0.1.4"
+serial_test = "4.0.1"
