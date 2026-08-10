@@ -631,7 +631,10 @@ async fn handle_google_connect_rejects_a_malformed_link_cookie() {
 }
 
 #[tokio::test]
+#[serial]
 async fn google_redirect_success() {
+    dotenvy::dotenv().ok();
+
     let jar = CookieJar::new();
     let (returned_jar, _redirect) = google_redirect(jar)
         .await
@@ -660,6 +663,7 @@ async fn google_redirect_success() {
 #[tokio::test]
 #[serial]
 async fn google_redirect_failure() {
+    dotenvy::dotenv().ok();
     let original_value = var("GOOGLE_CLIENT_ID").ok();
 
     unsafe {
@@ -716,13 +720,17 @@ fn google_authorize_url_success() {
     }
 }
 
-#[test]
+#[tokio::test]
 #[serial]
-fn google_authorize_url_failure_on_client_id_missing() {
+async fn google_authorize_url_failure_on_client_id_missing() {
+    dotenvy::dotenv().ok();
+
     let client_key = "GOOGLE_CLIENT_ID";
     let uri_key = "GOOGLE_REDIRECT_URI";
     let random_code = Uuid::new_v4().to_string();
     let check_code = random_code.trim();
+
+    let original_client_id = var(client_key).ok();
 
     unsafe {
         remove_var(client_key);
@@ -737,6 +745,9 @@ fn google_authorize_url_failure_on_client_id_missing() {
 
     unsafe {
         remove_var(uri_key);
+        if let Some(value) = original_client_id {
+            set_var(client_key, value);
+        }
     }
 }
 

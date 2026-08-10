@@ -177,7 +177,7 @@ pub async fn google_redirect(jar: CookieJar) -> Result<(CookieJar, Redirect), Au
         .map(|url| url.starts_with("https://"))
         .unwrap_or(false);
 
-    let mut cookie = Cookie::new(OAUTH_STATE_COOKIE, random_code);
+    let mut cookie = Cookie::new(OAUTH_STATE_COOKIE, check_code.to_string());
     // make it available across all the site
     cookie.set_path("/");
     cookie.set_max_age(Duration::minutes(10));
