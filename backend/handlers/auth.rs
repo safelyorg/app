@@ -39,6 +39,10 @@ pub struct GoogleConnectQuery {
 }
 
 /// POST /api/v1/auth/magic-link
+///
+/// This function validates the email address, insert the magic link
+/// token, build the clickable link, try to send it without breaking anything
+/// and always responds the same way, regardless of whether the email exists or not
 pub async fn request_magic_link(
     State(pool): State<Pool<Postgres>>,
     Json(req): Json<MagicLinkRequest>,
@@ -68,6 +72,10 @@ pub async fn request_magic_link(
 }
 
 /// GET /api/v1/auth/verify?token=...
+///
+/// It confirms the clicked link is genuinly real and hasn't expired or
+/// been used before. It finds or creates their account, complete the sign-in
+/// process and send them straight to the dashboard.
 pub async fn verify_magic_link(
     State(pool): State<Pool<Postgres>>,
     Query(query): Query<VerifyMagicLinkToken>,
@@ -94,11 +102,16 @@ pub async fn verify_magic_link(
     )))
 }
 
-/// Part A - Google is being connected onto an account that's ALREADY
-/// logged in (started by google_connect_redirect). Handled completely
-/// separately from a fresh sign-in, since it must attach Google to
-/// THIS SPECIFIC account, not whichever account happens to share the
-/// Google email.
+/// It runs when someone who's already logged into Safely finishes
+/// connecting their Google account and it makes sure Google gets
+/// attached to their specific account.
+///
+/// It cleans up two temporary cookies that were no longer needed,
+/// reads which account this connection request belongs to, confirms
+/// that the account genuinly exists.
+///
+/// First checks that the emails actually match and the secondly
+/// checks if the Google account already claimed by someone else.
 pub async fn handle_google_connect(
     pool: &Pool<Postgres>,
     jar: CookieJar,
@@ -160,14 +173,20 @@ pub async fn handle_google_connect(
 }
 
 /// GET /api/v1/auth/google
-/// Fresh sign-in via Google - creates a session at the end, same as
-/// magic link does. Not to be confused with google_connect_redirect
-/// below, which links Google onto an account that's already logged in.
+///
+/// The moment someone clicks "Sign in with Google",
+/// it prepares a secure trip to Google's real sign-in page,
+/// leaving itself a cookie to check when they come back.
+///
+/// It creates a random, one-time security code, builds the actual
+/// Google sign-in web address, checks if this is genuinely running in
+/// production, builds a cookie to remember that random security code,
+/// adds the cookie to the person's browser and sends their browser
+/// off to Google, carrying that cookie along.
 pub async fn google_redirect(jar: CookieJar) -> Result<(CookieJar, Redirect), AuthError> {
     let random_code = Uuid::new_v4().to_string();
     let check_code = random_code.trim();
 
-    // create google sign-in web address
     let authorize_url = build_google_authorize_url(check_code).map_err(|e| {
         eprintln!("build_google_authorize_url error: {}", e);
         AuthError::DashboardPath("server_error".to_string())
@@ -193,11 +212,19 @@ pub async fn google_redirect(jar: CookieJar) -> Result<(CookieJar, Redirect), Au
 }
 
 /// GET /api/v1/auth/google/connect?session=<token>
+///
 /// This runs the moment someone, already logged into their Safely account,
 /// clicks "Connect" next to Google in Settings. It double-checks
 /// they're really logged in, then sends them off to Google, carrying along
-/// a note about who they are, so Google's response can later be correctly
+/// a cookie about who they are, so Google's response can later be correctly
 /// linked back to their specific account.
+///
+/// It builds a normal login header from the session token in the URL,
+/// confirms this is genuinely a real, currently valid session, creates
+/// a random, one-time security code, builds the real Google sign-in address,
+/// checks if this is genuinely production, builds the first cookie - the random security code
+/// builds a second cookie — genuinely new here — recording who is asking,
+/// attaches both cookies to the browser, and sends them to Google.
 pub async fn google_connect_redirect(
     State(pool): State<Pool<Postgres>>,
     Query(query): Query<GoogleConnectQuery>,
@@ -241,13 +268,13 @@ pub async fn google_connect_redirect(
 }
 
 /// POST /api/v1/auth/logout
-/// Deletes the session row on the server, not just the token sitting in
-/// the browser's localStorage - without this, logging out only ever
-/// removed Safely's own memory of being logged in, while the token
-/// itself stayed valid indefinitely if it had ever leaked (XSS, a
-/// compromised device, a copied localStorage value). Always reports
-/// success regardless of whether a matching session was actually found,
-/// since the person's intent (be logged out) is satisfied either way.
+///
+/// When someone clicks "Log out" — it deletes their real login session from the database,
+/// so their old token genuinely stops working, not just appears logged out on their screen.
+///
+/// It checks if a real login header was actually sent, pulls the actual token out
+/// of that header, actually deletes that session from the database, and always
+/// reports success, regardless of what actually happened
 pub async fn logout(State(pool): State<Pool<Postgres>>, headers: HeaderMap) -> Json<Value> {
     if let Some(auth_header) = headers.get("authorization").and_then(|v| v.to_str().ok()) {
         if let Some(token) = auth_header.strip_prefix("Bearer ") {
@@ -257,11 +284,14 @@ pub async fn logout(State(pool): State<Pool<Postgres>>, headers: HeaderMap) -> J
     Json(json!({ "success": true }))
 }
 
-/// Shared final step for both sign-in flows (magic link, and fresh
-/// Google sign-in). Once we already have a real User - whether
-/// brand-new or existing - both flows do the exact same remaining
-/// work: send a welcome email if genuinely new, update login
-/// bookkeeping, and create a real session.
+/// It runs at the final, shared step of both sign-in methods (magic link and Google).
+/// It handles the welcome email if they're brand new, updates some login bookkeeping,
+/// and creates their real session.
+///
+/// It sends a welcome email — but only for genuinely new people, updates
+/// "last login" bookkeeping, records how they logged in this time,
+/// creates the real session — the one part that genuinely matters otherwise
+/// the whole sign-in fails
 pub async fn finish_sign_in(
     pool: &Pool<Postgres>,
     user_id: Uuid,
