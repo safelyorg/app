@@ -193,12 +193,11 @@ pub async fn google_redirect(jar: CookieJar) -> Result<(CookieJar, Redirect), Au
 }
 
 /// GET /api/v1/auth/google/connect?session=<token>
-/// Starts the "connect Google to my already-logged-in account" flow.
-/// This is a plain top-level page navigation triggered by clicking
-/// "Connect" in Settings - it can't carry the Bearer token as a header
-/// the way a fetch() call would, so the token travels as a query
-/// parameter instead. It's verified here exactly like any other
-/// authenticated request, just via a different transport.
+/// This runs the moment someone, already logged into their Safely account,
+/// clicks "Connect" next to Google in Settings. It double-checks
+/// they're really logged in, then sends them off to Google, carrying along
+/// a note about who they are, so Google's response can later be correctly
+/// linked back to their specific account.
 pub async fn google_connect_redirect(
     State(pool): State<Pool<Postgres>>,
     Query(query): Query<GoogleConnectQuery>,

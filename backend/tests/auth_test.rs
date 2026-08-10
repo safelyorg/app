@@ -13,15 +13,17 @@ use axum_extra::extract::{
 use backend::{
     errors::auth::AuthError,
     handlers::auth::{
-        OAUTH_LINK_USER_COOKIE, OAUTH_STATE_COOKIE, finish_sign_in, google_redirect,
-        handle_google_connect, request_magic_link, verify_magic_link,
+        GoogleConnectQuery, OAUTH_LINK_USER_COOKIE, OAUTH_STATE_COOKIE, finish_sign_in,
+        google_connect_redirect, google_redirect, handle_google_connect, request_magic_link,
+        verify_magic_link,
     },
     models::users::{GoogleUserInfoEndpoint, MagicLinkRequest, VerifyMagicLinkToken},
     routes::auth::auth_routes,
     services::{
         auth::{
-            find_or_create_user_by_email, find_user_by_email, find_user_by_google_id,
-            insert_magic_link, link_google_account, validate_email_format, validate_magic_link,
+            create_session, find_or_create_user_by_email, find_user_by_email,
+            find_user_by_google_id, insert_magic_link, link_google_account, validate_email_format,
+            validate_magic_link,
         },
         email::{get_tera, send_magic_link_email},
         google_oauth::build_google_authorize_url,
@@ -773,4 +775,75 @@ fn google_authorize_url_failure_on_redirect_uri_missing() {
     unsafe {
         remove_var(client_key);
     }
+}
+
+#[tokio::test]
+#[serial]
+async fn google_connect_redirect_succeeds_with_a_valid_session() {
+    dotenvy::dotenv().ok();
+
+    let pool = test_pool().await;
+    let email = "google_connect_success@example.com";
+    cleanup_test_user(&pool, email).await;
+
+    // Step 1 - set up a real, genuine logged-in user.
+    let (user, _) = find_or_create_user_by_email(&pool, email)
+        .await
+        .expect("expected to create the user");
+
+    let real_session_token = create_session(&pool, user.id)
+        .await
+        .expect("expected to create a real session");
+
+    // Step 2 - call the actual function, using that real token.
+    let jar = CookieJar::new();
+    let result = google_connect_redirect(
+        State(pool.clone()),
+        Query(GoogleConnectQuery {
+            session: real_session_token,
+        }),
+        jar,
+    )
+    .await;
+
+    assert!(
+        result.is_ok(),
+        "expected the connect flow to succeed, got: {:?}",
+        result
+    );
+
+    // Step 3 - confirm the special link_cookie contains the CORRECT
+    // user's real ID, not just that some cookie exists.
+    let (returned_jar, _redirect) = result.unwrap();
+    let link_cookie = returned_jar
+        .get(OAUTH_LINK_USER_COOKIE)
+        .expect("expected an oauth_link_user_id cookie to be present");
+
+    assert_eq!(link_cookie.value(), user.id.to_string());
+
+    cleanup_test_user(&pool, email).await;
+}
+
+#[tokio::test]
+#[serial]
+async fn google_connect_redirect_fails_with_an_invalid_session() {
+    dotenvy::dotenv().ok();
+
+    let pool = test_pool().await;
+    let fake_token = Uuid::new_v4().to_string();
+
+    let jar = CookieJar::new();
+    let result = google_connect_redirect(
+        State(pool.clone()),
+        Query(GoogleConnectQuery {
+            session: fake_token,
+        }),
+        jar,
+    )
+    .await;
+
+    assert!(
+        result.is_err(),
+        "expected an invalid session to be rejected"
+    );
 }
