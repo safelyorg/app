@@ -14,16 +14,18 @@ use backend::{
     errors::auth::AuthError,
     handlers::auth::{
         GoogleConnectQuery, OAUTH_LINK_USER_COOKIE, OAUTH_STATE_COOKIE, finish_sign_in,
-        google_connect_redirect, google_redirect, handle_google_connect, logout,
+        google_callback, google_connect_redirect, google_redirect, handle_google_connect, logout,
         request_magic_link, verify_magic_link,
     },
-    models::users::{GoogleUserInfoEndpoint, MagicLinkRequest, VerifyMagicLinkToken},
+    models::users::{
+        GoogleAfterLoginQuery, GoogleUserInfoEndpoint, MagicLinkRequest, VerifyMagicLinkToken,
+    },
     routes::auth::auth_routes,
     services::{
         auth::{
-            create_session, find_or_create_user_by_email, find_user_by_email,
-            find_user_by_google_id, insert_magic_link, link_google_account, validate_email_format,
-            validate_magic_link,
+            create_session, find_or_create_user_by_email, find_or_create_user_by_google,
+            find_user_by_email, find_user_by_google_id, insert_magic_link, link_google_account,
+            validate_email_format, validate_magic_link,
         },
         email::{get_tera, send_magic_link_email},
         google_oauth::build_google_authorize_url,
@@ -1002,6 +1004,126 @@ async fn finish_sign_in_with_old_user() {
         found.is_some(),
         "expected the session to genuinely exist in the database"
     );
+
+    cleanup_test_user(&pool, email).await;
+}
+
+#[tokio::test]
+#[serial]
+async fn google_callback_error_reported() {
+    let pool = test_pool().await;
+    let jar = CookieJar::new();
+    let query = GoogleAfterLoginQuery {
+        error: Some("access_denied".to_string()),
+        code: None,
+        state: None,
+    };
+
+    let result = google_callback(State(pool), jar, Query(query)).await;
+
+    assert!(
+        result.is_err(),
+        "expected google_callback to reject a Google-reported error"
+    );
+}
+
+#[tokio::test]
+#[serial]
+async fn google_callback_code_missing() {
+    let pool = test_pool().await;
+    let jar = CookieJar::new();
+    let query = GoogleAfterLoginQuery {
+        error: None,
+        code: None,
+        state: None,
+    };
+    let result = google_callback(State(pool), jar, Query(query)).await;
+    assert!(
+        result.is_err(),
+        "expected google_callback to reject a request with no authorization code"
+    );
+}
+
+#[tokio::test]
+#[serial]
+async fn google_callback_state_mismatch() {
+    let pool = test_pool().await;
+    let jar = CookieJar::new();
+    let query = GoogleAfterLoginQuery {
+        error: None,
+        code: Some("some_real_looking_code".to_string()),
+        state: Some("state_mismatch".to_string()),
+    };
+    let result = google_callback(State(pool), jar, Query(query)).await;
+    assert!(
+        result.is_err(),
+        "expected google_callback to reject a request with a mismatched or missing state"
+    );
+}
+
+#[tokio::test]
+#[serial]
+async fn fresh_google_signin_creates_account_and_session() {
+    dotenvy::dotenv().ok();
+    let pool = test_pool().await;
+    let email = "fresh_google_signin@example.com";
+    let google_id = "google_id_fresh_signin_001";
+    cleanup_test_user(&pool, email).await;
+
+    let (user, is_new) = find_or_create_user_by_google(&pool, google_id, email, Some("Test User"))
+        .await
+        .expect("expected to create a new user from Google info");
+
+    assert!(is_new, "expected a brand-new user to be created");
+    assert_eq!(user.email, email);
+
+    let session_token = finish_sign_in(&pool, user.id, is_new, email, "google")
+        .await
+        .expect("expected sign-in to complete");
+
+    assert!(!session_token.is_empty(), "expected a real session token");
+
+    cleanup_test_user(&pool, email).await;
+}
+
+#[tokio::test]
+#[serial]
+async fn google_signin_links_onto_an_existing_email_match() {
+    dotenvy::dotenv().ok();
+    let pool = test_pool().await;
+    let email = "existing_magic_link_user@example.com";
+    let google_id = "google_id_linking_to_existing_001";
+    cleanup_test_user(&pool, email).await;
+
+    // Set up an existing account, created the "magic link" way -
+    // no Google ID attached yet.
+    let (existing_user, _) = find_or_create_user_by_email(&pool, email)
+        .await
+        .expect("expected to create the existing user");
+
+    let (user, is_new) =
+        find_or_create_user_by_google(&pool, google_id, email, Some("Existing User"))
+            .await
+            .expect("expected the call to succeed");
+
+    assert!(
+        !is_new,
+        "expected this to link onto an existing account, not create a new one"
+    );
+    assert_eq!(
+        user.id, existing_user.id,
+        "expected the SAME user, not a new one"
+    );
+
+    let linked = find_user_by_google_id(&pool, google_id)
+        .await
+        .expect("expected the query to succeed");
+
+    assert!(
+        linked.is_some(),
+        "expected the existing user to now have this Google ID linked"
+    );
+    assert_eq!(linked.unwrap().id, existing_user.id);
 
     cleanup_test_user(&pool, email).await;
 }
