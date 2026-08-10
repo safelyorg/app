@@ -313,6 +313,16 @@ pub async fn finish_sign_in(
 }
 
 /// GET /api/v1/auth/google/callback
+///
+/// The moment Google sends someone back to your site, after they've signed in on
+/// Google's own page it carefully verifies everything is legitimate, then decides
+/// whether this is a brand-new sign-in or connecting Google to an already-logged-in account.
+///
+/// It checks that did Google itself report an error or Google actually
+/// send back the expected authorization code? It also checks whether
+/// the returned security code actually match what was sent? It exchanges the
+/// code for real Google account details. It checks fresh sign-in, or connecting
+/// to an existing account and upon success, sends it to the dashboard.
 pub async fn google_callback(
     State(pool): State<Pool<Postgres>>,
     jar: CookieJar,
