@@ -936,3 +936,72 @@ async fn logout_with_fake_token() {
     let response = logout(State(pool.clone()), headers).await;
     assert_eq!(response.0["success"], true);
 }
+
+#[tokio::test]
+#[serial]
+async fn finish_sign_in_with_new_user() {
+    dotenvy::dotenv().ok();
+    let pool = test_pool().await;
+    let email = "signin_with_new_user@example.com";
+    cleanup_test_user(&pool, email).await;
+
+    let (user, _) = find_or_create_user_by_email(&pool, email)
+        .await
+        .expect("expected to create the user");
+
+    let session_token = finish_sign_in(&pool, user.id, true, email, "google")
+        .await
+        .expect("expected sign-in to complete successfully");
+
+    assert!(
+        !session_token.is_empty(),
+        "expected a real, non-empty session token"
+    );
+
+    let found: Option<(String,)> = query_as("SELECT token FROM sessions WHERE token = $1")
+        .bind(&session_token)
+        .fetch_optional(&pool)
+        .await
+        .expect("expected the query to succeed");
+
+    assert!(
+        found.is_some(),
+        "expected the session to genuinely exist in the database"
+    );
+
+    cleanup_test_user(&pool, email).await;
+}
+#[tokio::test]
+#[serial]
+async fn finish_sign_in_with_old_user() {
+    dotenvy::dotenv().ok();
+    let pool = test_pool().await;
+    let email = "signin_with_old_user@example.com";
+    cleanup_test_user(&pool, email).await;
+
+    let (user, _) = find_or_create_user_by_email(&pool, email)
+        .await
+        .expect("expected to create the user");
+
+    let session_token = finish_sign_in(&pool, user.id, false, email, "google")
+        .await
+        .expect("expected sign-in to complete successfully");
+
+    assert!(
+        !session_token.is_empty(),
+        "expected a real, non-empty session token"
+    );
+
+    let found: Option<(String,)> = query_as("SELECT token FROM sessions WHERE token = $1")
+        .bind(&session_token)
+        .fetch_optional(&pool)
+        .await
+        .expect("expected the query to succeed");
+
+    assert!(
+        found.is_some(),
+        "expected the session to genuinely exist in the database"
+    );
+
+    cleanup_test_user(&pool, email).await;
+}
