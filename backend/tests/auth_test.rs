@@ -3,7 +3,7 @@ mod common;
 use axum::{
     Json,
     extract::{Query, State},
-    http::{Request, StatusCode},
+    http::{HeaderMap, HeaderValue, Request, StatusCode},
     response::IntoResponse,
 };
 use axum_extra::extract::{
@@ -14,8 +14,8 @@ use backend::{
     errors::auth::AuthError,
     handlers::auth::{
         GoogleConnectQuery, OAUTH_LINK_USER_COOKIE, OAUTH_STATE_COOKIE, finish_sign_in,
-        google_connect_redirect, google_redirect, handle_google_connect, request_magic_link,
-        verify_magic_link,
+        google_connect_redirect, google_redirect, handle_google_connect, logout,
+        request_magic_link, verify_magic_link,
     },
     models::users::{GoogleUserInfoEndpoint, MagicLinkRequest, VerifyMagicLinkToken},
     routes::auth::auth_routes,
@@ -846,4 +846,93 @@ async fn google_connect_redirect_fails_with_an_invalid_session() {
         result.is_err(),
         "expected an invalid session to be rejected"
     );
+}
+
+#[tokio::test]
+#[serial]
+async fn logout_with_session_present() {
+    dotenvy::dotenv().ok();
+    let pool = test_pool().await;
+    let email = "logged_out_success@example.com";
+    cleanup_test_user(&pool, email).await;
+
+    let (user, _) = find_or_create_user_by_email(&pool, email)
+        .await
+        .expect("expected to create the user");
+
+    let real_session_token = create_session(&pool, user.id)
+        .await
+        .expect("expected to create a real session");
+
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        "authorization",
+        HeaderValue::from_str(&format!("Bearer {}", real_session_token)).unwrap(),
+    );
+
+    let response = logout(State(pool.clone()), headers).await;
+    assert_eq!(response.0["success"], true);
+
+    let still_exists: Option<(String,)> = query_as("SELECT token FROM sessions WHERE token = $1")
+        .bind(&real_session_token)
+        .fetch_optional(&pool)
+        .await
+        .expect("expected the query to succeed");
+
+    assert!(still_exists.is_none(), "expected the session to be deleted");
+
+    cleanup_test_user(&pool, email).await;
+}
+
+#[tokio::test]
+#[serial]
+async fn logout_with_no_header() {
+    dotenvy::dotenv().ok();
+    let pool = test_pool().await;
+    let email = "logged_out_success@example.com";
+    cleanup_test_user(&pool, email).await;
+
+    let (user, _) = find_or_create_user_by_email(&pool, email)
+        .await
+        .expect("expected to create the user");
+
+    let real_session_token = create_session(&pool, user.id)
+        .await
+        .expect("expected to create a real session");
+
+    let headers = HeaderMap::new();
+
+    let response = logout(State(pool.clone()), headers).await;
+    assert_eq!(response.0["success"], true);
+
+    let still_exists: Option<(String,)> = query_as("SELECT token FROM sessions WHERE token = $1")
+        .bind(&real_session_token)
+        .fetch_optional(&pool)
+        .await
+        .expect("expected the query to succeed");
+
+    assert!(
+        still_exists.is_some(),
+        "expected the session to remain untouched, since no header was provided"
+    );
+
+    cleanup_test_user(&pool, email).await;
+}
+
+#[tokio::test]
+#[serial]
+async fn logout_with_fake_token() {
+    dotenvy::dotenv().ok();
+    let pool = test_pool().await;
+
+    let fake_session_token = Uuid::new_v4().to_string();
+
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        "authorization",
+        HeaderValue::from_str(&format!("Bearer {}", fake_session_token)).unwrap(),
+    );
+
+    let response = logout(State(pool.clone()), headers).await;
+    assert_eq!(response.0["success"], true);
 }
