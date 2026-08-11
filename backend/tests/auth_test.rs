@@ -13,12 +13,13 @@ use axum_extra::extract::{
 use backend::{
     errors::auth::AuthError,
     handlers::auth::{
-        GoogleConnectQuery, OAUTH_LINK_USER_COOKIE, OAUTH_STATE_COOKIE, finish_sign_in,
-        google_callback, google_connect_redirect, google_redirect, handle_google_connect, logout,
+        OAUTH_LINK_USER_COOKIE, OAUTH_STATE_COOKIE, finish_sign_in, google_callback,
+        google_connect_redirect, google_redirect, handle_google_connect, logout,
         request_magic_link, verify_magic_link,
     },
     models::users::{
-        GoogleAfterLoginQuery, GoogleUserInfoEndpoint, MagicLinkRequest, VerifyMagicLinkToken,
+        GoogleAfterLoginQuery, GoogleConnectQuery, GoogleUserInfoEndpoint, MagicLinkRequest,
+        VerifyMagicLinkToken,
     },
     routes::auth::auth_routes,
     services::{

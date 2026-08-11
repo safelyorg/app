@@ -1,8 +1,8 @@
 use crate::{
     errors::auth::AuthError,
     models::users::{
-        GoogleAfterLoginQuery, GoogleUserInfoEndpoint, MagicLinkAuthResponse, MagicLinkRequest,
-        VerifyMagicLinkToken,
+        GoogleAfterLoginQuery, GoogleConnectQuery, GoogleUserInfoEndpoint, MagicLinkAuthResponse,
+        MagicLinkRequest, VerifyMagicLinkToken,
     },
     services::{
         auth::{
@@ -22,7 +22,6 @@ use axum::{
     response::Redirect,
 };
 use axum_extra::extract::cookie::{Cookie, CookieJar, SameSite};
-use serde::Deserialize;
 use serde_json::{Value, json};
 use sqlx::{Pool, Postgres};
 use std::env::var;
@@ -32,11 +31,6 @@ use uuid::Uuid;
 const DASHBOARD_PATH: &str = "/dashboard/";
 pub const OAUTH_STATE_COOKIE: &str = "oauth_state";
 pub const OAUTH_LINK_USER_COOKIE: &str = "oauth_link_user_id";
-
-#[derive(Debug, Deserialize)]
-pub struct GoogleConnectQuery {
-    pub session: String,
-}
 
 /// POST /api/v1/auth/magic-link
 ///

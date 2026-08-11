@@ -60,3 +60,8 @@ pub struct GoogleUserInfoEndpoint {
     pub email: String,
     pub name: Option<String>,
 }
+
+#[derive(Debug, Deserialize)]
+pub struct GoogleConnectQuery {
+    pub session: String,
+}
