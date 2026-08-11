@@ -205,6 +205,7 @@ pub async fn logout(State(pool): State<Pool<Postgres>>, headers: HeaderMap) -> J
             let _ = delete_session(&pool, token).await;
         }
     }
+
     Json(json!({ "success": true }))
 }
 

@@ -1,14 +1,15 @@
 use crate::{
+    errors::analyze::AnalyzeError,
     models::{
-        analysis::{AnalyzeRequest, AnalyzeResponse, RiskLevel},
+        analysis::{AnalyzeRequest, AnalyzeResponse, RiskLevel, Signal},
         helpers::format_account_age,
-        listings::ListingsRequest,
-        sellers::{SellerVerification, SellersRequest, SellersResponse},
+        listings::{Listings, ListingsRequest},
+        sellers::{SellerVerification, Sellers, SellersRequest, SellersResponse},
     },
     services::{
         analysis::create_analysis,
         auth::extract_user_id,
-        claude::call_claude,
+        claude::{ClaudeAnalysis, call_claude},
         fraud_reports::{build_network_summary, count_fraud_reports},
         listings::{create_listing, get_monthly_visit_activity},
         scoring::calculate_risk_score,
@@ -22,34 +23,32 @@ use axum::{
     http::{HeaderMap, StatusCode},
 };
 use sqlx::{Pool, Postgres};
+use std::{
+    collections::HashMap,
+    sync::{Mutex, OnceLock},
+    time::{Duration, Instant},
+};
 use uuid::Uuid;
 
-// This stops any one person from calling the /analyze endpoint more than 10 times
-// within any 5-minute stretch.
-//
-// It sets up a way to track how many times each logged-in user has called the expensive
-// /analyze endpoint recently.
-static RATE_LIMITS: std::sync::OnceLock<
-    std::sync::Mutex<std::collections::HashMap<Uuid, (u32, std::time::Instant)>>,
-> = std::sync::OnceLock::new();
-
-const RATE_LIMIT_WINDOW: std::time::Duration = std::time::Duration::from_secs(300);
+// This stops any one person from calling the /analyze endpoint more than 10 times within any 5-minute stretch.
+// It sets up a way to track how many times each logged-in user has called the expensive /analyze endpoint recently.
+static RATE_LIMITS: OnceLock<Mutex<HashMap<Uuid, (u32, Instant)>>> = OnceLock::new();
+const RATE_LIMIT_WINDOW: Duration = Duration::from_secs(300);
 const RATE_LIMIT_MAX_REQUESTS: u32 = 10;
 
-/// Every time someone tries to use /analyze, this checks their notebook entry
-/// lets them through and counts it, unless they've already hit 10 within the last 5 minutes,
-/// in which case it tells them exactly how many seconds left until they can try again.
+/// Every time someone tries to use /analyze, this checks their notebook entry, lets them
+/// through and counts it, unless they've already hit 10 within the last 5 minutes, in which
+/// case it tells them exactly how many seconds until they can try again.
 ///
 /// Gets the notebook (creating it, if this is the very first time), finds this person's
 /// page in the notebook — or creates one, if they've never called before, checks
 /// if their 5-minute window has already run out and counts the current request,
 /// checks if they're still under the limit. If they've gone over and calculate
 /// exactly how long they need to wait.
-pub fn check_rate_limit(user_id: Uuid) -> Result<(), u64> {
-    let map = RATE_LIMITS.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()));
+fn check_rate_limit(user_id: Uuid) -> Result<(), AnalyzeError> {
+    let map = RATE_LIMITS.get_or_init(|| Mutex::new(HashMap::new()));
     let mut map = map.lock().unwrap();
     let now = std::time::Instant::now();
-
     let entry = map.entry(user_id).or_insert((0, now));
 
     if now.duration_since(entry.1) > RATE_LIMIT_WINDOW {
@@ -64,45 +63,37 @@ pub fn check_rate_limit(user_id: Uuid) -> Result<(), u64> {
     } else {
         let elapsed = now.duration_since(entry.1);
         let remaining = RATE_LIMIT_WINDOW.saturating_sub(elapsed);
-        Err(remaining.as_secs())
+        Err(AnalyzeError::RateLimited(remaining.as_secs()))
     }
 }
 
-pub async fn analyze(
-    State(pool): State<Pool<Postgres>>,
-    headers: HeaderMap,
-    Json(request): Json<AnalyzeRequest>,
-) -> Result<Json<AnalyzeResponse>, (StatusCode, String)> {
-    // Real analysis costs real Claude API money per request, so this is
-    // the one endpoint that must actually reject an anonymous caller
-    // rather than just proceed without a user_id - the extension itself
-    // already gates this on its own side (showing a sign-in prompt
-    // instead of ever calling this endpoint), but that check lives in a
-    // browser and can be bypassed by anyone willing to call this URL
-    // directly. This is what makes that bypass actually pointless.
-    let user_id = extract_user_id(&headers, &pool)
+/// Confirms the caller is genuinely signed in, then checks they haven't
+/// exceeded their request rate limit. Real analysis costs real Claude
+/// API money per request, so this endpoint must actually reject an
+/// anonymous or over-limit caller, not just proceed anyway.
+async fn authorize_request(
+    headers: &HeaderMap,
+    pool: &Pool<Postgres>,
+) -> Result<Uuid, (StatusCode, String)> {
+    let user_id = extract_user_id(headers, pool)
         .await
         .ok_or((StatusCode::UNAUTHORIZED, "Sign in required".to_string()))?;
 
-    // Checked right after login, before any real work (or Claude cost)
-    // happens - a signed-in account is still just one person, and one
-    // person calling this dozens of times a minute is either a stuck
-    // script or someone testing the limits of the system, not genuine
-    // browsing.
-    // Checked right after login, before any real work (or Claude cost)
-    // happens - a signed-in account is still just one person, and one
-    // person calling this dozens of times a minute is either a stuck
-    // script or someone testing the limits of the system, not genuine
-    // browsing. The exact remaining seconds is calculated here (not
-    // guessed by the browser) and passed along so the person can be
-    // told a real, accurate wait time rather than a vague message.
-    if let Err(retry_after_secs) = check_rate_limit(user_id) {
-        return Err((
-            StatusCode::TOO_MANY_REQUESTS,
-            format!("RATE_LIMITED:{}", retry_after_secs),
-        ));
+    if let Err(err) = check_rate_limit(user_id) {
+        return match err {
+            AnalyzeError::RateLimited(secs) => Err((
+                StatusCode::TOO_MANY_REQUESTS,
+                format!("RATE_LIMITED:{}", secs),
+            )),
+        };
     }
 
+    Ok(user_id)
+}
+
+/// Converts the incoming request into the two separate shapes the
+/// seller and listing creation functions each expect.
+fn build_requests(request: &AnalyzeRequest) -> (SellersRequest, ListingsRequest) {
     let seller_req = SellersRequest {
         platform: request.platform.clone(),
         platform_id: request.platform_id.clone(),
@@ -123,18 +114,30 @@ pub async fn analyze(
         title: request.title.clone(),
         price: request.price,
         description: request.description.clone(),
-        category: request.category,
+        category: request.category.clone(),
         image_urls: request.image_urls.clone(),
         posted_date: request.posted_date.clone(),
     };
 
-    let platform_id = request.platform_id.as_deref().unwrap_or("");
-    let existing_seller = find_seller(&pool, &request.platform, platform_id)
+    (seller_req, listing_req)
+}
+
+/// Finds or creates this seller, checking their fraud history BEFORE
+/// creation so the initial verification status reflects whether
+/// they've already been reported - then returns the real seller row
+/// alongside the final fraud count and a summary built from it.
+async fn resolve_seller(
+    pool: &Pool<Postgres>,
+    seller_req: &SellersRequest,
+    platform: &str,
+    platform_id: &str,
+) -> Result<(Sellers, i64, String), (StatusCode, String)> {
+    let existing_seller = find_seller(pool, platform, platform_id)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     let preliminary_fraud_count = if let Some(ref s) = existing_seller {
-        count_fraud_reports(&pool, s.id)
+        count_fraud_reports(pool, s.id)
             .await
             .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
     } else {
@@ -147,27 +150,34 @@ pub async fn analyze(
         SellerVerification::Unknown
     };
 
-    let seller = create_seller(&pool, &seller_req, verification)
+    let seller = create_seller(pool, seller_req, verification)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    let fraud_count = count_fraud_reports(&pool, seller.id)
+    let fraud_count = count_fraud_reports(pool, seller.id)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
     let network_summary = build_network_summary(fraud_count);
 
-    let listing = create_listing(&pool, &listing_req, seller.id)
-        .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    Ok((seller, fraud_count, network_summary))
+}
 
+/// Runs the actual Claude analysis on this listing - computes the
+/// seller's account age first, since that's one of the inputs Claude
+/// needs alongside the listing's own details.
+async fn run_claude_analysis(
+    listing: &Listings,
+    seller: &Sellers,
+) -> Result<ClaudeAnalysis, (StatusCode, String)> {
     let account_age = seller
         .join_date
-        .map(|d| format_account_age(d))
+        .map(format_account_age)
         .unwrap_or_else(|| "Unknown".to_string());
 
-    let image_urls = listing_req.image_urls.as_deref().unwrap_or(&[]);
+    let image_urls = listing.image_urls.as_deref().unwrap_or(&[]);
 
-    let claude_analysis = call_claude(
+    call_claude(
         &listing.platform,
         seller.name.as_deref().unwrap_or("Unknown"),
         &account_age,
@@ -177,14 +187,20 @@ pub async fn analyze(
         image_urls,
     )
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
+}
 
-    let mut signals = build_signals(&claude_analysis, &seller);
+/// Builds the full signal list Claude's analysis produces, then adds
+/// the domain-mismatch check as one more signal, placed first since
+/// it's the most fundamental thing to know before trusting anything
+/// else shown.
+fn build_all_signals(
+    claude_analysis: &ClaudeAnalysis,
+    seller: &Sellers,
+    request: &AnalyzeRequest,
+) -> Vec<Signal> {
+    let mut signals = build_signals(claude_analysis, seller);
 
-    // Domain check appears here as one more listing signal, alongside
-    // the AI-driven ones - matches the exact same Intelligence tab
-    // display everything else already uses. Placed first, as the most
-    // fundamental thing to know before trusting anything else shown.
     if let Some(domain_signal) = build_domain_signal(
         request.domain_check_status.as_deref(),
         request.domain_check_real_name.as_deref(),
@@ -196,19 +212,29 @@ pub async fn analyze(
         signals.insert(0, domain_signal);
     }
 
-    let risk_score = calculate_risk_score(&claude_analysis, fraud_count);
-    let risk_level = match risk_score {
-        0..=33 => RiskLevel::Low,
-        34..=66 => RiskLevel::Caution,
-        _ => RiskLevel::High,
-    };
+    signals
+}
 
+/// Saves the completed analysis, fetches the seller's visit history for
+/// the chart, and assembles the final response the caller actually sees.
+async fn save_and_build_response(
+    pool: &Pool<Postgres>,
+    listing_id: Uuid,
+    risk_score: i16,
+    risk_level: RiskLevel,
+    signals: Vec<Signal>,
+    claude_analysis: ClaudeAnalysis,
+    user_id: Uuid,
+    seller: Sellers,
+    fraud_count: i64,
+    network_summary: String,
+) -> Result<Json<AnalyzeResponse>, (StatusCode, String)> {
     let signals_json = serde_json::to_value(&signals)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     let saved_analysis = create_analysis(
-        &pool,
-        listing.id,
+        pool,
+        listing_id,
         risk_score,
         risk_level,
         signals_json,
@@ -219,7 +245,7 @@ pub async fn analyze(
     .await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    let monthly_activity = get_monthly_visit_activity(&pool, seller.id)
+    let monthly_activity = get_monthly_visit_activity(pool, seller.id)
         .await
         .unwrap_or_else(|_| vec![0i32; 12]);
 
@@ -235,4 +261,48 @@ pub async fn analyze(
         network_summary: claude_analysis.overall_risk_notes,
         fraud_report_count: fraud_count,
     }))
+}
+
+/// POST /api/v1/analyze
+pub async fn analyze(
+    State(pool): State<Pool<Postgres>>,
+    headers: HeaderMap,
+    Json(request): Json<AnalyzeRequest>,
+) -> Result<Json<AnalyzeResponse>, (StatusCode, String)> {
+    let user_id = authorize_request(&headers, &pool).await?;
+
+    let (seller_req, listing_req) = build_requests(&request);
+
+    let platform_id = request.platform_id.as_deref().unwrap_or("");
+    let (seller, fraud_count, network_summary) =
+        resolve_seller(&pool, &seller_req, &request.platform, platform_id).await?;
+
+    let listing = create_listing(&pool, &listing_req, seller.id)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    let claude_analysis = run_claude_analysis(&listing, &seller).await?;
+
+    let signals = build_all_signals(&claude_analysis, &seller, &request);
+
+    let risk_score = calculate_risk_score(&claude_analysis, fraud_count);
+    let risk_level = match risk_score {
+        0..=33 => RiskLevel::Low,
+        34..=66 => RiskLevel::Caution,
+        _ => RiskLevel::High,
+    };
+
+    save_and_build_response(
+        &pool,
+        listing.id,
+        risk_score,
+        risk_level,
+        signals,
+        claude_analysis,
+        user_id,
+        seller,
+        fraud_count,
+        network_summary,
+    )
+    .await
 }

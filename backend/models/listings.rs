@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::{Type, prelude::FromRow};
 use uuid::Uuid;
 
-#[derive(Debug, Serialize, Deserialize, Type)]
+#[derive(Debug, Serialize, Deserialize, Type, Clone, Copy)]
 #[sqlx(type_name = "listing_category", rename_all = "snake_case")]
 #[serde(rename_all = "snake_case")]
 pub enum ListingCategory {
