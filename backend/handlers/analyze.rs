@@ -17,11 +17,7 @@ use crate::{
         signals::{build_domain_signal, build_signals},
     },
 };
-use axum::{
-    Json,
-    extract::State,
-    http::{HeaderMap, StatusCode},
-};
+use axum::{Json, extract::State, http::HeaderMap};
 use sqlx::{Pool, Postgres};
 use std::{
     collections::HashMap,
@@ -48,7 +44,7 @@ const RATE_LIMIT_MAX_REQUESTS: u32 = 10;
 fn check_rate_limit(user_id: Uuid) -> Result<(), AnalyzeError> {
     let map = RATE_LIMITS.get_or_init(|| Mutex::new(HashMap::new()));
     let mut map = map.lock().unwrap();
-    let now = std::time::Instant::now();
+    let now = Instant::now();
     let entry = map.entry(user_id).or_insert((0, now));
 
     if now.duration_since(entry.1) > RATE_LIMIT_WINDOW {
@@ -74,19 +70,12 @@ fn check_rate_limit(user_id: Uuid) -> Result<(), AnalyzeError> {
 async fn authorize_request(
     headers: &HeaderMap,
     pool: &Pool<Postgres>,
-) -> Result<Uuid, (StatusCode, String)> {
+) -> Result<Uuid, AnalyzeError> {
     let user_id = extract_user_id(headers, pool)
         .await
-        .ok_or((StatusCode::UNAUTHORIZED, "Sign in required".to_string()))?;
+        .ok_or(AnalyzeError::Unauthorized)?;
 
-    if let Err(err) = check_rate_limit(user_id) {
-        return match err {
-            AnalyzeError::RateLimited(secs) => Err((
-                StatusCode::TOO_MANY_REQUESTS,
-                format!("RATE_LIMITED:{}", secs),
-            )),
-        };
-    }
+    check_rate_limit(user_id)?;
 
     Ok(user_id)
 }
@@ -131,15 +120,15 @@ async fn resolve_seller(
     seller_req: &SellersRequest,
     platform: &str,
     platform_id: &str,
-) -> Result<(Sellers, i64, String), (StatusCode, String)> {
+) -> Result<(Sellers, i64, String), AnalyzeError> {
     let existing_seller = find_seller(pool, platform, platform_id)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        .map_err(|e| AnalyzeError::Database(e.to_string()))?;
 
     let preliminary_fraud_count = if let Some(ref s) = existing_seller {
         count_fraud_reports(pool, s.id)
             .await
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+            .map_err(|e| AnalyzeError::Database(e.to_string()))?
     } else {
         0
     };
@@ -152,11 +141,11 @@ async fn resolve_seller(
 
     let seller = create_seller(pool, seller_req, verification)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        .map_err(|e| AnalyzeError::Database(e.to_string()))?;
 
     let fraud_count = count_fraud_reports(pool, seller.id)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        .map_err(|e| AnalyzeError::Database(e.to_string()))?;
 
     let network_summary = build_network_summary(fraud_count);
 
@@ -169,7 +158,7 @@ async fn resolve_seller(
 async fn run_claude_analysis(
     listing: &Listings,
     seller: &Sellers,
-) -> Result<ClaudeAnalysis, (StatusCode, String)> {
+) -> Result<ClaudeAnalysis, AnalyzeError> {
     let account_age = seller
         .join_date
         .map(format_account_age)
@@ -187,7 +176,7 @@ async fn run_claude_analysis(
         image_urls,
     )
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
+    .map_err(|e| AnalyzeError::ClaudeAnalysisFailed(e.to_string()))
 }
 
 /// Builds the full signal list Claude's analysis produces, then adds
@@ -228,9 +217,9 @@ async fn save_and_build_response(
     seller: Sellers,
     fraud_count: i64,
     network_summary: String,
-) -> Result<Json<AnalyzeResponse>, (StatusCode, String)> {
+) -> Result<Json<AnalyzeResponse>, AnalyzeError> {
     let signals_json = serde_json::to_value(&signals)
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        .map_err(|e| AnalyzeError::SerializationFailed(e.to_string()))?;
 
     let saved_analysis = create_analysis(
         pool,
@@ -243,7 +232,7 @@ async fn save_and_build_response(
         user_id,
     )
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    .map_err(|e| AnalyzeError::Database(e.to_string()))?;
 
     let monthly_activity = get_monthly_visit_activity(pool, seller.id)
         .await
@@ -268,7 +257,7 @@ pub async fn analyze(
     State(pool): State<Pool<Postgres>>,
     headers: HeaderMap,
     Json(request): Json<AnalyzeRequest>,
-) -> Result<Json<AnalyzeResponse>, (StatusCode, String)> {
+) -> Result<Json<AnalyzeResponse>, AnalyzeError> {
     let user_id = authorize_request(&headers, &pool).await?;
 
     let (seller_req, listing_req) = build_requests(&request);
@@ -279,7 +268,7 @@ pub async fn analyze(
 
     let listing = create_listing(&pool, &listing_req, seller.id)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        .map_err(|e| AnalyzeError::Database(e.to_string()))?;
 
     let claude_analysis = run_claude_analysis(&listing, &seller).await?;
 
