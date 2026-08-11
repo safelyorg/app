@@ -28,7 +28,7 @@ use uuid::Uuid;
 
 // This stops any one person from calling the /analyze endpoint more than 10 times within any 5-minute stretch.
 // It sets up a way to track how many times each logged-in user has called the expensive /analyze endpoint recently.
-static RATE_LIMITS: OnceLock<Mutex<HashMap<Uuid, (u32, Instant)>>> = OnceLock::new();
+pub static RATE_LIMITS: OnceLock<Mutex<HashMap<Uuid, (u32, Instant)>>> = OnceLock::new();
 const RATE_LIMIT_WINDOW: Duration = Duration::from_secs(300);
 const RATE_LIMIT_MAX_REQUESTS: u32 = 10;
 
@@ -41,9 +41,9 @@ const RATE_LIMIT_MAX_REQUESTS: u32 = 10;
 /// if their 5-minute window has already run out and counts the current request,
 /// checks if they're still under the limit. If they've gone over and calculate
 /// exactly how long they need to wait.
-fn check_rate_limit(user_id: Uuid) -> Result<(), AnalyzeError> {
+pub fn check_rate_limit(user_id: Uuid) -> Result<(), AnalyzeError> {
     let map = RATE_LIMITS.get_or_init(|| Mutex::new(HashMap::new()));
-    let mut map = map.lock().unwrap();
+    let mut map = map.lock().expect("expected to lock the map");
     let now = Instant::now();
     let entry = map.entry(user_id).or_insert((0, now));
 
