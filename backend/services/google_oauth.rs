@@ -5,6 +5,10 @@ use crate::{
 use std::env::var;
 use urlencoding::encode;
 
+/// It builds the actual, complete web address that sends someone to Google's real sign-in page.
+///
+/// It reads your app's registered Google identity, reads where Google should send someone back to,
+/// builds the actual, complete Google web address and returns the finished URL
 pub fn build_google_authorize_url(state: &str) -> Result<String, GoogleOauthConfigError> {
     let client_id = var("GOOGLE_CLIENT_ID").map_err(|_| GoogleOauthConfigError::GoogleClientId)?;
     let redirect_uri =
@@ -22,8 +26,14 @@ pub fn build_google_authorize_url(state: &str) -> Result<String, GoogleOauthConf
     Ok(url)
 }
 
-/// Exchanges an authorization code for an access token, then fetches the
-/// user's profile. Two plain HTTP calls — no OAuth crate needed for this.
+/// It takes the one-time authorization code Google gave you, trades it with Google
+/// for a real access token, then uses that token to actually ask Google "who is this person?",
+/// getting back their real email, name, and Google ID.
+///
+/// It gathers the settings needed to talk to Google, sends Google the sign-in code to trade
+/// for a real access pass, checks that Google actually gave it back correctly, then uses
+/// that access pass to ask Google directly "who is this person," checks that answer came back
+/// correctly too, and finally hands back their real name, email, and Google ID.
 pub async fn exchange_code_for_user(
     code: &str,
 ) -> Result<GoogleUserInfoEndpoint, GoogleOauthConfigError> {

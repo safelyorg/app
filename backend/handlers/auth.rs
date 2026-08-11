@@ -102,76 +102,6 @@ pub async fn verify_magic_link(
     )))
 }
 
-/// It runs when someone who's already logged into Safely finishes
-/// connecting their Google account and it makes sure Google gets
-/// attached to their specific account.
-///
-/// It cleans up two temporary cookies that were no longer needed,
-/// reads which account this connection request belongs to, confirms
-/// that the account genuinly exists.
-///
-/// First checks that the emails actually match and the secondly
-/// checks if the Google account already claimed by someone else.
-pub async fn handle_google_connect(
-    pool: &Pool<Postgres>,
-    jar: CookieJar,
-    link_cookie: Cookie<'static>,
-    google_user: &GoogleUserInfoEndpoint,
-) -> Result<(CookieJar, Redirect), AuthError> {
-    let mut removed_state = Cookie::from(OAUTH_STATE_COOKIE);
-    let mut removed_link = Cookie::from(OAUTH_LINK_USER_COOKIE);
-    removed_state.set_path("/");
-    removed_link.set_path("/");
-    let jar = jar.remove(removed_state).remove(removed_link);
-
-    let linking_user_id = Uuid::parse_str(link_cookie.value())
-        .map_err(|_| AuthError::DashboardPathWithJar(jar.clone(), "server_error".to_string()))?;
-
-    let linking_user = find_user_by_id(pool, linking_user_id)
-        .await
-        .map_err(|e| {
-            eprintln!("find_user_by_id error: {}", e);
-            AuthError::DashboardPath("server_error".to_string())
-        })?
-        .ok_or_else(|| AuthError::DashboardPath("server_error".to_string()))?;
-
-    if linking_user.email.trim().to_lowercase() != google_user.email.trim().to_lowercase() {
-        return Err(AuthError::DashboardPathWithJar(
-            jar,
-            "google_email_mismatch".to_string(),
-        ));
-    }
-
-    let existing_user = find_user_by_google_id(pool, &google_user.id)
-        .await
-        .map_err(|e| {
-            eprintln!("find_user_by_google_id error: {}", e);
-            AuthError::DashboardPathWithJar(jar.clone(), "server_error".to_string())
-        })?;
-
-    if let Some(existing) = existing_user {
-        if existing.id != linking_user_id {
-            return Err(AuthError::DashboardPathWithJar(
-                jar,
-                "google_already_linked".to_string(),
-            ));
-        }
-    }
-
-    if let Err(e) = link_google_account(pool, linking_user_id, &google_user.id).await {
-        eprintln!("link_google_account error: {}", e);
-        return Err(AuthError::DashboardPathWithJar(
-            jar,
-            "server_error".to_string(),
-        ));
-    }
-
-    Ok((
-        jar,
-        Redirect::to(&format!("{}?google_connected=1", DASHBOARD_PATH)),
-    ))
-}
-
 /// GET /api/v1/auth/google
 ///
 /// The moment someone clicks "Sign in with Google",
@@ -284,38 +214,10 @@ pub async fn logout(State(pool): State<Pool<Postgres>>, headers: HeaderMap) -> J
     Json(json!({ "success": true }))
 }
 
-/// It runs at the final, shared step of both sign-in methods (magic link and Google).
-/// It handles the welcome email if they're brand new, updates some login bookkeeping,
-/// and creates their real session.
-///
-/// It sends a welcome email — but only for genuinely new people, updates
-/// "last login" bookkeeping, records how they logged in this time,
-/// creates the real session — the one part that genuinely matters otherwise
-/// the whole sign-in fails
-pub async fn finish_sign_in(
-    pool: &Pool<Postgres>,
-    user_id: Uuid,
-    is_new: bool,
-    email_for_welcome: &str,
-    login_method: &str,
-) -> Result<String, AuthError> {
-    if is_new {
-        if let Err(e) = send_welcome_email(email_for_welcome).await {
-            eprintln!("Failed to send welcome email: {:?}", e);
-        }
-    }
-    let _ = check_last_login(pool, user_id).await;
-    let _ = set_login_method(pool, user_id, login_method).await;
-    create_session(pool, user_id).await.map_err(|e| {
-        eprintln!("create_session error: {}", e);
-        AuthError::DashboardPath("server_error".to_string())
-    })
-}
-
 /// GET /api/v1/auth/google/callback
 ///
 /// The moment Google sends someone back to your site, after they've signed in on
-/// Google's own page it carefully verifies everything is legitimate, then decides
+/// Google's own page. It carefully verifies everything is legitimate, then decides
 /// whether this is a brand-new sign-in or connecting Google to an already-logged-in account.
 ///
 /// It checks that did Google itself report an error or Google actually
@@ -361,10 +263,111 @@ pub async fn google_callback(
         eprintln!("find_or_create_user_by_google error: {}", e);
         AuthError::DashboardPath("server_error".to_string())
     })?;
+
     let session_token =
         finish_sign_in(&pool, user.id, is_new, &google_user.email, "google").await?;
+
     Ok((
         jar,
         Redirect::to(&format!("{}#session={}", DASHBOARD_PATH, session_token)),
     ))
+}
+
+/// It runs when someone who's already logged into Safely finishes
+/// connecting their Google account and it makes sure Google gets
+/// attached to their specific account.
+///
+/// It cleans up two temporary cookies that were no longer needed,
+/// reads which account this connection request belongs to, confirms
+/// that the account genuinly exists.
+///
+/// First checks that the emails actually match and the secondly
+/// checks if the Google account already claimed by someone else.
+pub async fn handle_google_connect(
+    pool: &Pool<Postgres>,
+    jar: CookieJar,
+    link_cookie: Cookie<'static>,
+    google_user: &GoogleUserInfoEndpoint,
+) -> Result<(CookieJar, Redirect), AuthError> {
+    let mut removed_state = Cookie::from(OAUTH_STATE_COOKIE);
+    let mut removed_link = Cookie::from(OAUTH_LINK_USER_COOKIE);
+    removed_state.set_path("/");
+    removed_link.set_path("/");
+    let jar = jar.remove(removed_state).remove(removed_link);
+
+    let linking_user_id = Uuid::parse_str(link_cookie.value())
+        .map_err(|_| AuthError::DashboardPathWithJar(jar.clone(), "server_error".to_string()))?;
+
+    let linking_user = find_user_by_id(pool, linking_user_id)
+        .await
+        .map_err(|e| {
+            eprintln!("find_user_by_id error: {}", e);
+            AuthError::DashboardPath("server_error".to_string())
+        })?
+        .ok_or_else(|| AuthError::DashboardPath("server_error".to_string()))?;
+
+    if linking_user.email.trim().to_lowercase() != google_user.email.trim().to_lowercase() {
+        return Err(AuthError::DashboardPathWithJar(
+            jar,
+            "google_email_mismatch".to_string(),
+        ));
+    }
+
+    let existing_user = find_user_by_google_id(pool, &google_user.id)
+        .await
+        .map_err(|e| {
+            eprintln!("find_user_by_google_id error: {}", e);
+            AuthError::DashboardPathWithJar(jar.clone(), "server_error".to_string())
+        })?;
+
+    if let Some(existing) = existing_user {
+        if existing.id != linking_user_id {
+            return Err(AuthError::DashboardPathWithJar(
+                jar,
+                "google_already_linked".to_string(),
+            ));
+        }
+    }
+
+    if let Err(e) = link_google_account(pool, linking_user_id, &google_user.id).await {
+        eprintln!("link_google_account error: {}", e);
+        return Err(AuthError::DashboardPathWithJar(
+            jar,
+            "server_error".to_string(),
+        ));
+    }
+
+    Ok((
+        jar,
+        Redirect::to(&format!("{}?google_connected=1", DASHBOARD_PATH)),
+    ))
+}
+
+/// It runs at the final, shared step of both sign-in methods (magic link and Google).
+/// It handles the welcome email if they're brand new, updates some login bookkeeping,
+/// and creates their real session.
+///
+/// It sends a welcome email — but only for genuinely new people, updates
+/// "last login" bookkeeping, records how they logged in this time,
+/// creates the real session — the one part that genuinely matters otherwise
+/// the whole sign-in fails.
+pub async fn finish_sign_in(
+    pool: &Pool<Postgres>,
+    user_id: Uuid,
+    is_new: bool,
+    email_for_welcome: &str,
+    login_method: &str,
+) -> Result<String, AuthError> {
+    if is_new {
+        if let Err(e) = send_welcome_email(email_for_welcome).await {
+            eprintln!("Failed to send welcome email: {:?}", e);
+        }
+    }
+    let _ = check_last_login(pool, user_id).await;
+    let _ = set_login_method(pool, user_id, login_method).await;
+
+    create_session(pool, user_id).await.map_err(|e| {
+        eprintln!("create_session error: {}", e);
+        AuthError::DashboardPath("server_error".to_string())
+    })
 }

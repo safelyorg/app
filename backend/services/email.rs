@@ -14,6 +14,14 @@ const SUBSCRIPTION_CANCELED_TEMPLATE: &str =
 const SUBSCRIPTION_ENDED_TEMPLATE: &str =
     include_str!("../templates/subscription_ended_email.html");
 
+/// It builds one shared "template engine" containing all the email templates, and hands them back
+///
+/// TERA is a special kind of variable (OnceLock) that can only ever be set up once, globally,
+/// for your entire running program. get_or_init means: "if this has already been built before,
+/// just hand back that same one. If it hasn't been built yet, run this code block right now to build it.
+/// It creates a brand-new, empty template engine — nothing loaded into it yet.
+/// Each raw template loads one specific email template into the engine, giving it a name
+/// tera as return statement, this is the whole block produces, once all five templates are loaded.
 pub fn get_tera() -> &'static Tera {
     TERA.get_or_init(|| {
         let mut tera = Tera::default();
@@ -35,6 +43,13 @@ pub fn get_tera() -> &'static Tera {
     })
 }
 
+/// It sends the "click here to sign in" magic-link email to whoever's trying to log in,
+/// and hands back the real status code from Resend once it's done.
+///
+/// Reads three settings from .env, validates both email addresses, sender and recipient,
+/// builds the actual email content, packages everything into the request Resend expects,
+/// actually sends it to Resend, checks if Resend actually accepted it. At the end,
+/// it hands back the real status code.
 pub async fn send_magic_link_email(
     to_email: &str,
     verify_url: &str,
@@ -93,11 +108,12 @@ pub async fn send_magic_link_email(
     Ok(response.status())
 }
 
-/// Sent exactly once per account - only when find_or_create_user_by_email
-/// or find_or_create_user_by_google reports a genuine, brand-new signup,
-/// never on an ordinary returning login. A failure here is deliberately
-/// non-fatal to the caller (logged, not propagated) - a missing welcome
-/// email should never block someone's actual sign-in from completing.
+/// It sends someone a welcome email, exactly once, the very first time they genuinely sign up.
+///
+/// Reads the required settings, builds several image and link addresses needed for the email,
+/// fills in the welcome email template with all four values, packages the email,
+/// sends it to Resend, checks if Resend actually accepted it and report success or
+/// Resend's exact rejection reason.
 pub async fn send_welcome_email(to_email: &str) -> Result<(), AuthError> {
     let api_key = var("RESEND_API_KEY").map_err(|_| {
         AuthError::InternalServerError("RESEND_API_KEY needs to be setup".to_string())
@@ -149,8 +165,10 @@ pub async fn send_welcome_email(to_email: &str) -> Result<(), AuthError> {
             status, text
         )));
     }
+
     Ok(())
 }
+
 /// Sent exactly once, the moment a subscription payment first fails
 /// (subscription.past_due). Access stays active during this window -
 /// Creem is still silently retrying the same card in the background -
