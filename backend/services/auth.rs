@@ -4,7 +4,7 @@ use crate::{
 };
 use axum::http::HeaderMap;
 use chrono::{DateTime, Duration, Utc};
-use sqlx::{Error, Pool, Postgres, Row, query, query_as, query_scalar};
+use sqlx::{Error, Pool, Postgres, Row, query, query_as};
 use uuid::Uuid;
 
 /// It cleans up an email address and checks it at least looks like a real one.
@@ -114,7 +114,45 @@ pub async fn extract_user_id(headers: &HeaderMap, pool: &Pool<Postgres>) -> Opti
     let auth_header = headers.get("authorization")?.to_str().ok()?;
     let token = auth_header.strip_prefix("Bearer ")?;
     let user = get_user_from_token(pool, token).await.ok()??;
+
     Some(user.id)
+}
+
+/// It looks up who a session token belongs to, and quietly extends that session's
+/// expiration if it's getting close to running out — so an actively-used account
+/// never gets logged out just from the passage of time.
+///
+/// It looks up the session, but only if it hasn't already expired. If nothing
+/// was found, quietly return "no one" — not an error. Pulls the two real values
+/// out of the found row and finally deciding whether to extend the session.
+pub async fn get_user_from_token(
+    pool: &Pool<Postgres>,
+    token: &str,
+) -> Result<Option<User>, Error> {
+    let row = query(
+        "SELECT user_id, expires_at FROM sessions WHERE token = $1 AND expires_at > NOW() LIMIT 1",
+    )
+    .bind(token)
+    .fetch_optional(pool)
+    .await?;
+
+    let Some(row) = row else {
+        return Ok(None);
+    };
+
+    let user_id: Uuid = row.get("user_id");
+    let expires_at: DateTime<Utc> = row.get("expires_at");
+
+    let refresh_threshold = Utc::now() + Duration::days(25);
+    if expires_at < refresh_threshold {
+        let _ =
+            query("UPDATE sessions SET expires_at = NOW() + INTERVAL '30 days' WHERE token = $1")
+                .bind(token)
+                .execute(pool)
+                .await;
+    }
+
+    find_user_by_id(pool, user_id).await
 }
 
 /// It deletes a specific session from the database, using its token to find it.
@@ -267,158 +305,4 @@ pub async fn create_session(pool: &Pool<Postgres>, user_id: Uuid) -> Result<Stri
         .await?;
 
     Ok(token)
-}
-
-/// Resolves a bearer token from the Authorization header into a User, if
-/// the session exists and hasn't expired. Returns None (not an error) for
-/// any invalid/missing/expired token so callers can treat the request as
-/// anonymous rather than failing it outright.
-pub async fn get_user_from_token(
-    pool: &Pool<Postgres>,
-    token: &str,
-) -> Result<Option<User>, Error> {
-    let row = query(
-        "SELECT user_id, expires_at FROM sessions WHERE token = $1 AND expires_at > NOW() LIMIT 1",
-    )
-    .bind(token)
-    .fetch_optional(pool)
-    .await?;
-
-    let Some(row) = row else {
-        return Ok(None);
-    };
-
-    let user_id: Uuid = row.get("user_id");
-    let expires_at: DateTime<Utc> = row.get("expires_at");
-
-    // Sliding expiration: an actively-used session keeps pushing its own
-    // expiry forward, so someone who checks the dashboard every few days
-    // effectively never gets logged out - only genuine inactivity for
-    // the full window causes a real expiry, matching how most everyday
-    // consumer apps behave rather than a hard wall from the moment of
-    // login. To avoid writing to the database on every single request
-    // (a page load can easily fire five or six authenticated calls at
-    // once), this only re-extends once the session has already burned
-    // through at least 5 of its 30 days - a regular user still triggers
-    // this roughly once every few days of real use, not on every click.
-    let refresh_threshold = Utc::now() + Duration::days(25);
-    if expires_at < refresh_threshold {
-        let _ =
-            query("UPDATE sessions SET expires_at = NOW() + INTERVAL '30 days' WHERE token = $1")
-                .bind(token)
-                .execute(pool)
-                .await;
-    }
-
-    find_user_by_id(pool, user_id).await
-}
-
-// ============================================================
-// Per-user rate limiting for expensive endpoints (currently just
-// /analyze, since that's the one that costs real Claude API money per
-// call). Requiring login already stops anonymous abuse; this stops a
-// single signed-in account - by accident (a stuck script, a retry
-// loop) or on purpose - from calling it far more often than any real
-// person actually would.
-//
-// Kept in plain memory rather than the database or Redis: this is a
-// single-server deployment, so an in-process map is both simpler and
-// faster than a network round-trip for something checked on every
-// request. If this ever runs across multiple server instances, this
-// would need to move to something shared (Redis is the usual choice)
-// since each instance would otherwise track its own separate counts.
-// ============================================================
-static RATE_LIMITS: std::sync::OnceLock<
-    std::sync::Mutex<std::collections::HashMap<Uuid, (u32, std::time::Instant)>>,
-> = std::sync::OnceLock::new();
-
-const RATE_LIMIT_WINDOW: std::time::Duration = std::time::Duration::from_secs(300);
-const RATE_LIMIT_MAX_REQUESTS: u32 = 10;
-
-/// Ok(()) if this user is still within their allowed request count for
-/// the current window - this also counts the call toward it. Err(secs)
-/// if they've already hit the limit, where secs is exactly how much
-/// longer they need to wait - calculated here, once, from the real
-/// window start time, rather than the caller (or the browser) having
-/// to guess at it separately.
-pub fn check_rate_limit(user_id: Uuid) -> Result<(), u64> {
-    let map = RATE_LIMITS.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()));
-    let mut map = map.lock().unwrap();
-    let now = std::time::Instant::now();
-
-    let entry = map.entry(user_id).or_insert((0, now));
-
-    if now.duration_since(entry.1) > RATE_LIMIT_WINDOW {
-        entry.0 = 0;
-        entry.1 = now;
-    }
-
-    entry.0 += 1;
-
-    if entry.0 <= RATE_LIMIT_MAX_REQUESTS {
-        Ok(())
-    } else {
-        let elapsed = now.duration_since(entry.1);
-        let remaining = RATE_LIMIT_WINDOW.saturating_sub(elapsed);
-        Err(remaining.as_secs())
-    }
-}
-
-pub async fn unlink_google_account(pool: &Pool<Postgres>, user_id: Uuid) -> Result<(), Error> {
-    query("UPDATE users SET google_id = NULL WHERE id = $1")
-        .bind(user_id)
-        .execute(pool)
-        .await?;
-    Ok(())
-}
-
-/// Permanently deletes an account and everything that belongs solely to
-/// it - sessions, magic links, the account row itself. Data that
-/// represents shared community value (fraud reports, listing analyses -
-/// other users still benefit from knowing "this seller has N fraud
-/// reports" regardless of who filed them) is anonymized rather than
-/// deleted: user_id is set to NULL so the record survives, disconnected
-/// from this person's identity, instead of quietly weakening fraud
-/// protection for everyone else the moment one person closes their
-/// account. Everything happens in one transaction - either all of it
-/// succeeds, or none of it does, so an account can never end up
-/// half-deleted.
-pub async fn delete_user_account(pool: &Pool<Postgres>, user_id: Uuid) -> Result<(), Error> {
-    let mut tx = pool.begin().await?;
-
-    let email: String = query_scalar("SELECT email FROM users WHERE id = $1")
-        .bind(user_id)
-        .fetch_one(&mut *tx)
-        .await?;
-
-    query("UPDATE analysis SET user_id = NULL WHERE user_id = $1")
-        .bind(user_id)
-        .execute(&mut *tx)
-        .await?;
-
-    query("UPDATE fraud_reports SET user_id = NULL WHERE user_id = $1")
-        .bind(user_id)
-        .execute(&mut *tx)
-        .await?;
-
-    query("DELETE FROM sessions WHERE user_id = $1")
-        .bind(user_id)
-        .execute(&mut *tx)
-        .await?;
-
-    // magic_links has no user_id column at all (it only ever existed as
-    // an email + token pair before any account was necessarily created)
-    // so cleanup here matches by email instead.
-    query("DELETE FROM magic_links WHERE email = $1")
-        .bind(&email)
-        .execute(&mut *tx)
-        .await?;
-
-    query("DELETE FROM users WHERE id = $1")
-        .bind(user_id)
-        .execute(&mut *tx)
-        .await?;
-
-    tx.commit().await?;
-    Ok(())
 }

@@ -7,7 +7,7 @@ use crate::{
     },
     services::{
         analysis::create_analysis,
-        auth::{check_rate_limit, extract_user_id},
+        auth::extract_user_id,
         claude::call_claude,
         fraud_reports::{build_network_summary, count_fraud_reports},
         listings::{create_listing, get_monthly_visit_activity},
@@ -22,6 +22,51 @@ use axum::{
     http::{HeaderMap, StatusCode},
 };
 use sqlx::{Pool, Postgres};
+use uuid::Uuid;
+
+// This stops any one person from calling the /analyze endpoint more than 10 times
+// within any 5-minute stretch.
+//
+// It sets up a way to track how many times each logged-in user has called the expensive
+// /analyze endpoint recently.
+static RATE_LIMITS: std::sync::OnceLock<
+    std::sync::Mutex<std::collections::HashMap<Uuid, (u32, std::time::Instant)>>,
+> = std::sync::OnceLock::new();
+
+const RATE_LIMIT_WINDOW: std::time::Duration = std::time::Duration::from_secs(300);
+const RATE_LIMIT_MAX_REQUESTS: u32 = 10;
+
+/// Every time someone tries to use /analyze, this checks their notebook entry
+/// lets them through and counts it, unless they've already hit 10 within the last 5 minutes,
+/// in which case it tells them exactly how many seconds left until they can try again.
+///
+/// Gets the notebook (creating it, if this is the very first time), finds this person's
+/// page in the notebook — or creates one, if they've never called before, checks
+/// if their 5-minute window has already run out and counts the current request,
+/// checks if they're still under the limit. If they've gone over and calculate
+/// exactly how long they need to wait.
+pub fn check_rate_limit(user_id: Uuid) -> Result<(), u64> {
+    let map = RATE_LIMITS.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()));
+    let mut map = map.lock().unwrap();
+    let now = std::time::Instant::now();
+
+    let entry = map.entry(user_id).or_insert((0, now));
+
+    if now.duration_since(entry.1) > RATE_LIMIT_WINDOW {
+        entry.0 = 0;
+        entry.1 = now;
+    }
+
+    entry.0 += 1;
+
+    if entry.0 <= RATE_LIMIT_MAX_REQUESTS {
+        Ok(())
+    } else {
+        let elapsed = now.duration_since(entry.1);
+        let remaining = RATE_LIMIT_WINDOW.saturating_sub(elapsed);
+        Err(remaining.as_secs())
+    }
+}
 
 pub async fn analyze(
     State(pool): State<Pool<Postgres>>,
