@@ -76,6 +76,7 @@ async fn authorize_request(
 ) -> Result<Uuid, AnalyzeError> {
     let user_id = extract_user_id(headers, pool)
         .await
+        .expect("expected the user id to be extracted")
         .ok_or(AnalyzeError::Unauthorized)?;
 
     check_rate_limit(user_id)?;

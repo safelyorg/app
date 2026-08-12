@@ -103,19 +103,28 @@ pub async fn find_user_by_email(pool: &Pool<Postgres>, email: &str) -> Result<Op
         .await
 }
 
-/// It checks if a request includes a genuine, valid login token, and if so,
-/// hands back the real user's ID — but if anything at all is missing or invalid,
-/// it just quietly says "no one," rather than rejecting the request.
+/// It checks if a request includes a genuine, valid login token,
+/// and hands back the real user's ID if so — quietly returning "no one"
+/// for a missing or malformed token, but now genuinely reporting a real
+/// error if something actually breaks, like the database.
 ///
-/// It looks for the Authorization header, pulls the actual token out of the header,
-/// looks up the real user this token belongs to and if everything succeeded,
-/// return the real user's ID.
-pub async fn extract_user_id(headers: &HeaderMap, pool: &Pool<Postgres>) -> Option<Uuid> {
-    let auth_header = headers.get("authorization")?.to_str().ok()?;
-    let token = auth_header.strip_prefix("Bearer ")?;
-    let user = get_user_from_token(pool, token).await.ok()??;
+/// It checks if the Authorization header exists and is readable,
+/// checks if it's correctly formatted as a Bearer token, looks up the real
+/// user this token belongs to — and this is where it's genuinely different
+/// from before and converts the found user (if any) into just their ID.
+pub async fn extract_user_id(
+    headers: &HeaderMap,
+    pool: &Pool<Postgres>,
+) -> Result<Option<Uuid>, Error> {
+    let Some(auth_header) = headers.get("authorization").and_then(|v| v.to_str().ok()) else {
+        return Ok(None);
+    };
+    let Some(token) = auth_header.strip_prefix("Bearer ") else {
+        return Ok(None);
+    };
+    let user = get_user_from_token(pool, token).await?;
 
-    Some(user.id)
+    Ok(user.map(|u| u.id))
 }
 
 /// It looks up who a session token belongs to, and quietly extends that session's
@@ -184,6 +193,7 @@ pub async fn find_or_create_user_by_google(
     if let Some(user) = find_user_by_google_id(pool, google_id).await? {
         return Ok((user, false));
     }
+
     if let Some(existing) = find_user_by_email(pool, email).await? {
         let user = query_as::<_, User>(
             "UPDATE users SET google_id = $1, name = COALESCE(name, $2) WHERE id = $3 RETURNING *",
@@ -195,6 +205,7 @@ pub async fn find_or_create_user_by_google(
         .await?;
         return Ok((user, false));
     }
+
     let id = Uuid::now_v7();
     let user = query_as::<_, User>(
         "INSERT INTO users (id, email, google_id, name) VALUES ($1, $2, $3, $4) RETURNING *",

@@ -20,6 +20,7 @@ pub async fn create_fraud_report(
     // person rather than an anonymous, unaccountable submission.
     let user_id = extract_user_id(&headers, &pool)
         .await
+        .expect("expected to extract the user id")
         .ok_or((StatusCode::UNAUTHORIZED, "Sign in required".to_string()))?;
 
     let seller = sqlx::query(

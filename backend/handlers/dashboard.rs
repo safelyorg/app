@@ -78,6 +78,7 @@ pub async fn get_history(
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
     let user_id = extract_user_id(&headers, &pool)
         .await
+        .expect("expected to extract the user id")
         .ok_or((StatusCode::UNAUTHORIZED, "Sign in required".to_string()))?;
 
     let items = get_user_history(&pool, user_id)
@@ -94,6 +95,7 @@ pub async fn get_reports(
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
     let user_id = extract_user_id(&headers, &pool)
         .await
+        .expect("expected to extract the user id")
         .ok_or((StatusCode::UNAUTHORIZED, "Sign in required".to_string()))?;
 
     let items = get_user_reports(&pool, user_id)
@@ -111,6 +113,7 @@ pub async fn get_history_item(
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
     let user_id = extract_user_id(&headers, &pool)
         .await
+        .expect("expected to extract the user id")
         .ok_or((StatusCode::UNAUTHORIZED, "Sign in required".to_string()))?;
 
     let detail = get_history_detail(&pool, id, user_id)
@@ -144,6 +147,7 @@ pub async fn update_me(
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
     let user_id = extract_user_id(&headers, &pool)
         .await
+        .expect("expected to extract the user id")
         .ok_or((StatusCode::UNAUTHORIZED, "Sign in required".to_string()))?;
 
     let trimmed = req.name.trim();
@@ -180,6 +184,7 @@ pub async fn get_me(
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
     let user_id = extract_user_id(&headers, &pool)
         .await
+        .expect("expected to extract the user id")
         .ok_or((StatusCode::UNAUTHORIZED, "Sign in required".to_string()))?;
 
     let user = find_user_by_id(&pool, user_id)
@@ -238,6 +243,7 @@ pub async fn delete_account(
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
     let user_id = extract_user_id(&headers, &pool)
         .await
+        .expect("expected to extract the user id")
         .ok_or((StatusCode::UNAUTHORIZED, "Sign in required".to_string()))?;
 
     delete_user_account(&pool, user_id)
@@ -253,6 +259,7 @@ pub async fn disconnect_google(
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
     let user_id = extract_user_id(&headers, &pool)
         .await
+        .expect("expected to extract the user id")
         .ok_or((StatusCode::UNAUTHORIZED, "Sign in required".to_string()))?;
 
     unlink_google_account(&pool, user_id)
@@ -283,6 +290,7 @@ pub async fn upload_avatar(
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
     let user_id = extract_user_id(&headers, &pool)
         .await
+        .expect("expected to extract the user id")
         .ok_or((StatusCode::UNAUTHORIZED, "Sign in required".to_string()))?;
 
     let mut file_bytes: Option<Vec<u8>> = None;
@@ -348,6 +356,7 @@ pub async fn get_avatar(
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     let user_id = extract_user_id(&headers, &pool)
         .await
+        .expect("expected to extract the user id")
         .ok_or((StatusCode::UNAUTHORIZED, "Sign in required".to_string()))?;
 
     let row = sqlx::query("SELECT avatar_data, avatar_content_type FROM users WHERE id = $1")

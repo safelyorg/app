@@ -27,6 +27,7 @@ pub async fn create_checkout_handler(
 ) -> Result<Json<serde_json::Value>, StatusCode> {
     let user_id = extract_user_id(&headers, &pool)
         .await
+        .expect("expected to extract the user id")
         .ok_or(StatusCode::UNAUTHORIZED)?;
 
     let checkout = create_checkout(&body.product_id, user_id)
@@ -228,6 +229,7 @@ pub async fn cancel_subscription_handler(
 ) -> Result<Json<serde_json::Value>, StatusCode> {
     let user_id = extract_user_id(&headers, &pool)
         .await
+        .expect("expected to extract the user id")
         .ok_or(StatusCode::UNAUTHORIZED)?;
 
     let sub_id: Option<String> = sqlx::query_scalar(
@@ -300,6 +302,7 @@ pub async fn get_subscription_status(
 ) -> Result<Json<serde_json::Value>, StatusCode> {
     let user_id = extract_user_id(&headers, &pool)
         .await
+        .expect("expected to extract the user id")
         .ok_or(StatusCode::UNAUTHORIZED)?;
 
     let row: Option<(
@@ -407,6 +410,7 @@ pub async fn change_plan_handler(
 ) -> Result<Json<serde_json::Value>, StatusCode> {
     let user_id = extract_user_id(&headers, &pool)
         .await
+        .expect("expected to extract the user id")
         .ok_or(StatusCode::UNAUTHORIZED)?;
 
     let current: Option<(String, String, String)> = sqlx::query_as(

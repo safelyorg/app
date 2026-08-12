@@ -161,6 +161,7 @@ pub async fn google_connect_redirect(
 
     let user_id = extract_user_id(&synthetic_headers, &pool)
         .await
+        .expect("expected to extract the user id")
         .ok_or_else(|| AuthError::DashboardPath("session_expired".to_string()))?;
 
     let state = Uuid::new_v4().to_string();
