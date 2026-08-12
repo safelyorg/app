@@ -1,5 +1,11 @@
 use crate::services::claude::ClaudeAnalysis;
 
+/// It adds up points for every warning sign found, then caps the total at 100,
+/// producing the final risk score shown on the dashboard.
+///
+/// It starts at zero, adds points for each Claude finding, if it was detected,
+/// adds points for the two "verdict-based" checks, adds points based on
+/// real fraud report history, and caps the final total at 100.
 pub fn calculate_risk_score(analysis: &ClaudeAnalysis, fraud_count: i64) -> i16 {
     let mut score: i16 = 0;
 

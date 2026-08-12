@@ -88,7 +88,7 @@ async fn authorize_request(
 /// the listing's information.
 ///
 /// It builds the seller-specific piece, builds the listing-specific piece
-/// and returns both pieces together, as a pair
+/// and returns both pieces together, as a pair.
 fn build_requests(request: &AnalyzeRequest) -> (SellersRequest, ListingsRequest) {
     let seller_req = SellersRequest {
         platform: request.platform.clone(),
@@ -125,7 +125,8 @@ fn build_requests(request: &AnalyzeRequest) -> (SellersRequest, ListingsRequest)
 /// It checks if this seller already exists in the database. If they already exist,
 /// checks how many fraud reports they have — before doing anything else, decides their
 /// verification status, based on that count, creates (or updates) the seller row,
-/// using that correctly-determined verification, counts their fraud reports again, this time for the real, final result
+/// using that correctly-determined verification, counts their fraud reports again,
+/// this time for the real, final result.
 async fn resolve_seller(
     pool: &Pool<Postgres>,
     seller_req: &SellersRequest,

@@ -1,14 +1,20 @@
 use crate::models::sellers::{SellerVerification, Sellers, SellersRequest};
 use chrono::NaiveDate;
-use sqlx::{Error, Pool, Postgres};
+use sqlx::{Error, Pool, Postgres, query_as};
 use uuid::Uuid;
 
+/// It looks up a seller by which marketplace they're on, and their specific ID
+/// on that marketplace returning them if found, or nothing if they've
+/// never been seen before.
+///
+/// It runs the lookup query, returns whatever was found and
+/// returns whatever was found.
 pub async fn find_seller(
     pool: &Pool<Postgres>,
     platform: &str,
     platform_id: &str,
 ) -> Result<Option<Sellers>, Error> {
-    let seller = sqlx::query_as::<_, Sellers>(
+    let seller = query_as::<_, Sellers>(
         "SELECT * FROM sellers
          WHERE platform = $1 AND platform_id = $2
          LIMIT 1",
@@ -17,9 +23,18 @@ pub async fn find_seller(
     .bind(platform_id)
     .fetch_optional(pool)
     .await?;
+
     Ok(seller)
 }
 
+/// It either creates a brand-new seller, or if one already exists for this exact platform and ID,
+/// updates their existing record with any new, better information, without ever overwriting
+/// good data with blanks.
+///
+/// It generates an ID, ready in case a new seller is created, extracts just the
+/// year from the seller's "join date" text, do the The actual database operation
+/// genuinely both an insert AND a possible update, in one statement, binds all the
+/// real values into the query and returns the real, final row.
 pub async fn create_seller(
     pool: &Pool<Postgres>,
     request: &SellersRequest,
@@ -31,7 +46,8 @@ pub async fn create_seller(
         let year: i32 = year_str.parse().ok()?;
         NaiveDate::from_ymd_opt(year, 1, 1)
     });
-    let seller = sqlx::query_as::<_, Sellers>(
+
+    let seller = query_as::<_, Sellers>(
         "
         INSERT INTO sellers (
             id,
@@ -77,5 +93,6 @@ pub async fn create_seller(
     .bind(&request.last_active)
     .fetch_one(pool)
     .await?;
+
     Ok(seller)
 }

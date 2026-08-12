@@ -1,8 +1,12 @@
-use sqlx::{Error, Pool, Postgres, Row};
+use crate::models::listings::{Listings, ListingsRequest};
+use sqlx::{Error, Pool, Postgres, Row, query, query_as};
 use uuid::Uuid;
 
-use crate::models::listings::{Listings, ListingsRequest};
-
+/// It either creates a brand-new listing, or — if this exact URL has already been seen,
+/// updates the existing one with fresh information, without wiping out good data with blanks.
+///
+/// It generates an ID, ready for a potential new listing, do the actual database operation,
+/// binds all eleven real values and returns the real, final row.
 pub async fn create_listing(
     pool: &Pool<Postgres>,
     request: &ListingsRequest,
@@ -10,7 +14,7 @@ pub async fn create_listing(
 ) -> Result<Listings, Error> {
     let id = Uuid::now_v7();
 
-    let listing = sqlx::query_as::<_, Listings>(
+    let listing = query_as::<_, Listings>(
         "
         INSERT INTO listings (
             id,
@@ -61,11 +65,17 @@ pub async fn create_listing(
     Ok(listing)
 }
 
+/// It counts how many times a seller's listings were analyzed, month by month,
+/// over the last year, and returns exactly 12 numbers — one for each month.
+///
+/// It runs the real database query, sets up a list of 12 zeros, as the starting point,
+/// fills in the real numbers, for whichever months actually had activity and
+/// returns the completed list.
 pub async fn get_monthly_visit_activity(
     pool: &Pool<Postgres>,
     seller_id: Uuid,
 ) -> Result<Vec<i32>, Error> {
-    let rows = sqlx::query(
+    let rows = query(
         "
         SELECT
             EXTRACT(MONTH FROM a.created_at)::int as month,
