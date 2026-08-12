@@ -67,6 +67,9 @@ pub fn check_rate_limit(user_id: Uuid) -> Result<(), AnalyzeError> {
 /// exceeded their request rate limit. Real analysis costs real Claude
 /// API money per request, so this endpoint must actually reject an
 /// anonymous or over-limit caller, not just proceed anyway.
+///
+/// It checks if this is a genuinely signed-in person, checks if they've
+/// already hit their rate limit and if both checks passed, hand back their real user ID.
 async fn authorize_request(
     headers: &HeaderMap,
     pool: &Pool<Postgres>,
@@ -80,8 +83,12 @@ async fn authorize_request(
     Ok(user_id)
 }
 
-/// Converts the incoming request into the two separate shapes the
-/// seller and listing creation functions each expect.
+/// It takes the one big request that arrives from your extension, and splits it into two separate,
+/// smaller pieces. One containing just the seller's information, and one containing just
+/// the listing's information.
+///
+/// It builds the seller-specific piece, builds the listing-specific piece
+/// and returns both pieces together, as a pair
 fn build_requests(request: &AnalyzeRequest) -> (SellersRequest, ListingsRequest) {
     let seller_req = SellersRequest {
         platform: request.platform.clone(),
@@ -111,10 +118,14 @@ fn build_requests(request: &AnalyzeRequest) -> (SellersRequest, ListingsRequest)
     (seller_req, listing_req)
 }
 
-/// Finds or creates this seller, checking their fraud history BEFORE
-/// creation so the initial verification status reflects whether
-/// they've already been reported - then returns the real seller row
-/// alongside the final fraud count and a summary built from it.
+/// Before writing anything to the database, first check if this seller already has fraud
+/// reports against them so their very first database record is already correct, never briefly,
+/// incorrectly saying 'Unknown' about someone who's already known to be a problem.
+///
+/// It checks if this seller already exists in the database. If they already exist,
+/// checks how many fraud reports they have — before doing anything else, decides their
+/// verification status, based on that count, creates (or updates) the seller row,
+/// using that correctly-determined verification, counts their fraud reports again, this time for the real, final result
 async fn resolve_seller(
     pool: &Pool<Postgres>,
     seller_req: &SellersRequest,
@@ -152,9 +163,15 @@ async fn resolve_seller(
     Ok((seller, fraud_count, network_summary))
 }
 
-/// Runs the actual Claude analysis on this listing - computes the
-/// seller's account age first, since that's one of the inputs Claude
-/// needs alongside the listing's own details.
+/// It sends the listing's real details to Claude, asking it to analyze
+/// whether this looks like a genuine or fraudulent listing by filling in
+/// sensible defaults for anything that's missing, so Claude always gets
+/// something usable, even if the original listing had gaps.
+///
+/// It calculates the seller's account age, from their real join date, gets
+/// the listing's images, or an empty list if there are none, actually calls
+/// Claude, with everything it needs and it waits for Claude's response,
+/// and handles failure clearly
 async fn run_claude_analysis(
     listing: &Listings,
     seller: &Sellers,
@@ -179,10 +196,12 @@ async fn run_claude_analysis(
     .map_err(|e| AnalyzeError::ClaudeAnalysisFailed(e.to_string()))
 }
 
-/// Builds the full signal list Claude's analysis produces, then adds
-/// the domain-mismatch check as one more signal, placed first since
-/// it's the most fundamental thing to know before trusting anything
-/// else shown.
+/// It builds the complete list of warning signals shown on the dashboard
+/// starting with everything Claude's analysis found, then adding a domain-mismatch
+/// check at the very top, if one was detected.
+///
+/// It builds the main signal list from Claude's analysis, checks if a domain
+/// mismatch was detected and returns the complete list.
 fn build_all_signals(
     claude_analysis: &ClaudeAnalysis,
     seller: &Sellers,
@@ -204,8 +223,14 @@ fn build_all_signals(
     signals
 }
 
-/// Saves the completed analysis, fetches the seller's visit history for
-/// the chart, and assembles the final response the caller actually sees.
+/// It saves the complete analysis result to the database, fetches the seller's
+/// real visit-history chart, and packages everything together into the final
+/// response the extension actually receives.
+///
+/// It converts the signals list into a format the database can store, actually
+/// saves the analysis to the database, fetches the seller's real visit history,
+/// for the chart, builds the seller portion of the response, assembles and returns
+/// the complete, final response.
 async fn save_and_build_response(
     pool: &Pool<Postgres>,
     listing_id: Uuid,
@@ -253,6 +278,17 @@ async fn save_and_build_response(
 }
 
 /// POST /api/v1/analyze
+///
+/// It's the actual, real endpoint your extension calls, it runs the entire
+/// fraud-analysis process, step by step, from checking who's asking, all the way
+/// to sending back a complete, saved risk report.
+///
+/// It confirms who's calling, and that they're allowed to right now, splits the
+/// incoming request into its two separate pieces, finds or creates the seller,
+/// with correctly-set verification, creates the listing itself, runs the actual
+/// Claude analysis, builds the complete signal list, domain check included,
+/// calculates the actual risk score, and converts it into a risk level and
+/// saves everything, and builds the final response.
 pub async fn analyze(
     State(pool): State<Pool<Postgres>>,
     headers: HeaderMap,
