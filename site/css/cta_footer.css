@@ -2,6 +2,11 @@
    FINAL CTA + FOOTER (dark)
    ============================================================ */
 
+.finalcta {
+    background: #ffffff;
+    position: relative; /* needed so the .wv absolute-positions correctly */
+}
+
 /* ---------- final CTA ---------- */
 .finalcta .box {
     position: relative;

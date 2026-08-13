@@ -316,3 +316,39 @@ pub async fn send_subscription_canceled_email(to_email: &str) -> Result<(), Auth
     }
     Ok(())
 }
+
+/// Subscribes an email address to your Kit newsletter form. Kit's
+/// subscribe endpoint is deliberately permissive - it succeeds even for
+/// most malformed input, so the real validation happens on our own
+/// side first, matching the same pattern already used for magic links.
+pub async fn subscribe_to_newsletter(email: &str) -> Result<(), AuthError> {
+    let api_key = var("KIT_API_KEY")
+        .map_err(|_| AuthError::InternalServerError("KIT_API_KEY needs to be setup".to_string()))?;
+
+    let client = Client::new();
+    let body = json!({
+        "api_key": api_key,
+        "email": email,
+    });
+
+    let response = client
+        .post("https://api.convertkit.com/v3/forms/9638009/subscribe")
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| AuthError::InternalServerError(e.to_string()))?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let text = response
+            .text()
+            .await
+            .unwrap_or_else(|_| "could not read the response text".to_string());
+        return Err(AuthError::InternalServerError(format!(
+            "Kit error ({}): {}",
+            status, text
+        )));
+    }
+
+    Ok(())
+}

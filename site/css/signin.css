@@ -10,8 +10,8 @@
 }
 .brand .mk img,
 .si-brand .mk img {
-    width: 28px;
-    height: 28px;
+    width: 100%;
+    height: 100%;
     object-fit: contain;
     display: block;
 }

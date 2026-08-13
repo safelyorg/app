@@ -1,0 +1,738 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Safely Newsletter — Scam awareness, delivered</title>
+        <meta
+            name="description"
+            content="Real scam breakdowns, fraud prevention tips, and Safely updates — straight to your inbox."
+        />
+        <link rel="preload" as="font" type="font/woff2" href="/fonts/ClashDisplay-Bold.woff2" crossorigin>
+        <link rel="icon" type="image/x-icon" href="images/favicon.ico" />
+        <link rel="icon" type="image/png" sizes="32x32" href="images/favicon-32x32.png" />
+        <link rel="icon" type="image/png" sizes="16x16" href="images/favicon-16x16.png" />
+        <link rel="apple-touch-icon" sizes="180x180" href="images/apple-touch-icon.png" />
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+        <link
+            href="https://fonts.googleapis.com/css2?family=Archivo:ital,wght@0,600;0,700;0,800;0,900;1,700;1,800;1,900&family=Archivo+Black&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500&display=swap"
+            rel="stylesheet"
+        />
+        <link rel="stylesheet" href="css/base.css" />
+        <link rel="stylesheet" href="css/nav.css" />
+        <link rel="stylesheet" href="css/cta_footer.css" />
+        <link rel="stylesheet" href="css/newsletter.css" />
+        <link rel="stylesheet" href="css/modals.css" />
+        <link rel="stylesheet" href="css/responsive.css" />
+    </head>
+    <body>
+        <input
+            type="checkbox"
+            id="nav-toggle"
+            class="sr-toggle"
+            aria-label="Toggle navigation menu"
+        />
+        <!-- ============ NAV ============ -->
+        <div class="navwrap">
+            <div class="wrap">
+                <nav class="nav">
+                    <a href="https://safely.sh" class="brand" aria-label="Safely home">
+                        <span class="mk" aria-hidden="true">
+                            <img src="images/black_logo.png" alt="" />
+                        </span>
+                        Safely
+                    </a>
+                    <div class="nav-links">
+                        <a href="/#how">How it works</a>
+                        <a href="/#pricing">Pricing</a>
+                        <a href="/#faq">FAQ</a>
+                    </div>
+                    <div class="nav-right">
+                        <a href="#subscribe" class="btn btn-sun"
+                            >Subscribe
+                            <svg viewBox="0 0 24 24" fill="none">
+                                <path
+                                    d="M5 12h14M13 5l7 7-7 7"
+                                    stroke="currentColor"
+                                    stroke-width="2.6"
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                />
+                            </svg>
+                        </a>
+                        <label
+                            class="hamb"
+                            for="nav-toggle"
+                            aria-label="Open menu"
+                            ><span></span
+                        ></label>
+                    </div>
+                </nav>
+            </div>
+        </div>
+        <div class="drawer" id="drawer">
+            <a href="/#how">How it works</a><a href="/#pricing">Pricing</a
+            ><a href="/#faq">FAQ</a>
+            <a href="#subscribe" class="btn btn-sun"
+                >Subscribe
+                <svg viewBox="0 0 24 24" fill="none">
+                    <path
+                        d="M5 12h14M13 5l7 7-7 7"
+                        stroke="currentColor"
+                        stroke-width="2.6"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                    />
+                </svg>
+            </a>
+        </div>
+        <label
+            class="drawer-backdrop"
+            for="nav-toggle"
+            aria-hidden="true"
+        ></label>
+
+        <!-- ============ NEWSLETTER HERO ============ -->
+        <section class="sec nl-hero" id="subscribe">
+            <div class="wrap">
+                <svg
+                    class="nl-eyes"
+                    viewBox="0 0 130 96"
+                    fill="none"
+                    aria-hidden="true"
+                >
+                    <path
+                        d="M12 22 Q24 4 44 14"
+                        stroke="#161616"
+                        stroke-width="8"
+                        fill="none"
+                        stroke-linecap="round"
+                    />
+                    <path
+                        d="M70 16 Q84 2 104 12"
+                        stroke="#161616"
+                        stroke-width="8"
+                        fill="none"
+                        stroke-linecap="round"
+                    />
+                    <circle cx="36" cy="56" r="28" fill="#fff" stroke="#161616" stroke-width="7" />
+                    <circle cx="92" cy="56" r="28" fill="#fff" stroke="#161616" stroke-width="7" />
+                    <circle cx="44" cy="46" r="12" fill="#161616" />
+                    <circle cx="100" cy="46" r="12" fill="#161616" />
+                </svg>
+                <div class="head">
+                    <span class="badge p"
+                        ><span class="bd"></span>Safely Newsletter</span
+                    >
+                    <h2 class="disp">
+                        Scam awareness,<br />delivered.
+                    </h2>
+                    <p>
+                        Real scam case studies and practical prevention
+                        tips — for anyone who buys or sells online, not
+                        just Safely users.
+                    </p>
+                </div>
+
+                <form class="nl-form" id="nl-form">
+                    <input
+                        type="email"
+                        id="nl-email"
+                        placeholder="you@example.com"
+                        required
+                        autocomplete="email"
+                    />
+                    <button type="submit" class="btn btn-dark" id="nl-submit">
+                        Subscribe
+                    </button>
+                </form>
+                <div id="nl-message" class="nl-message" role="status" aria-live="polite"></div>
+                <p class="nl-note">
+                    Be the first to know when we launch — no spam,
+                    unsubscribe any time.
+                </p>
+            </div>
+            <div class="wv down" aria-hidden="true">
+                <svg viewBox="0 0 1440 80" preserveAspectRatio="none">
+                    <path
+                        d="M0,40 C 240,75 480,5 720,28 C 960,50 1200,80 1440,38 L1440,80 L0,80 Z"
+                        fill="#f1ebda"
+                    />
+                </svg>
+            </div>
+        </section>
+
+        <!-- ============ WHAT TO EXPECT ============ -->
+        <section class="sec nl-expect" style="background: var(--cream-2)">
+            <div class="wrap">
+                <div class="head">
+                    <span class="badge o"><span class="bd"></span>What to expect</span>
+                    <h2 class="disp">What you'll actually get.</h2>
+                </div>
+                <div class="nl-cards">
+                    <div class="nl-card">
+                        <span class="nl-card-ic" aria-hidden="true">
+                            <svg viewBox="0 0 24 24" fill="none">
+                                <path
+                                    d="M12 8v5m0 4h.01M10.3 3.9l-8 14A2 2 0 004 21h16a2 2 0 001.7-3.1l-8-14a2 2 0 00-3.4 0z"
+                                    stroke="#161616"
+                                    stroke-width="2.2"
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                />
+                            </svg>
+                        </span>
+                        <h3>Real scam breakdowns</h3>
+                        <p>
+                            How specific scams actually worked, what the
+                            warning signs were, and what the buyer could have
+                            caught earlier.
+                        </p>
+                    </div>
+                    <div class="nl-card">
+                        <span class="nl-card-ic" aria-hidden="true">
+                            <svg viewBox="0 0 24 24" fill="none">
+                                <path
+                                    d="M12 3l8 3v6c0 5-3.4 8-8 9-4.6-1-8-4-8-9V6l8-3z"
+                                    stroke="#161616"
+                                    stroke-width="2.2"
+                                    stroke-linejoin="round"
+                                />
+                                <path
+                                    d="M9 12l2 2 4-4"
+                                    stroke="#161616"
+                                    stroke-width="2.4"
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                />
+                            </svg>
+                        </span>
+                        <h3>Practical prevention tips</h3>
+                        <p>
+                            Genuinely useful things to check before you pay —
+                            not vague "be careful online" advice.
+                        </p>
+                    </div>
+                    <div class="nl-card">
+                        <span class="nl-card-ic" aria-hidden="true">
+                            <svg viewBox="0 0 24 24" fill="none">
+                                <circle cx="12" cy="12" r="9" stroke="#161616" stroke-width="2" />
+                                <path
+                                    d="M3 12h18M12 3c2.5 2.4 4 5.6 4 9s-1.5 6.6-4 9c-2.5-2.4-4-5.6-4-9s1.5-6.6 4-9z"
+                                    stroke="#161616"
+                                    stroke-width="2"
+                                />
+                            </svg>
+                        </span>
+                        <h3>Product updates</h3>
+                        <p>
+                            New marketplaces, new detection features, and what
+                            we're building next — without it being the whole
+                            newsletter.
+                        </p>
+                    </div>
+                </div>
+            </div>
+            <div class="wv down" aria-hidden="true">
+                <svg viewBox="0 0 1440 80" preserveAspectRatio="none">
+                    <path
+                        d="M0,40 C 240,75 480,5 720,28 C 960,50 1200,80 1440,38 L1440,80 L0,80 Z"
+                        fill="#181b22"
+                    />
+                </svg>
+            </div>
+        </section>
+
+        <!-- ============ FOOTER (dark) ============ -->
+        <footer>
+            <div class="wrap">
+                <div class="fgrid">
+                    <div class="fbrand">
+                        <a href="https://safely.sh" class="brand" aria-label="Safely home">
+                            <span class="mk" aria-hidden="true">
+                                <img src="images/white_logo.png" alt="" />
+                            </span>
+                            Safely
+                        </a>
+                        <p>
+                            Fraud detection for any online marketplace. Powered
+                            by AI, protected by community. Works anywhere you
+                            buy and sell online.
+                        </p>
+                        <div class="socials">
+                            <a
+                                href="https://x.com/ibilalkayyy"
+                                target="_blank"
+                                aria-label="X"
+                                ><svg viewBox="0 0 24 24" fill="none">
+                                    <path
+                                        d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"
+                                        fill="currentColor"
+                                    /></svg
+                            ></a>
+                            <a
+                                href="https://github.com/safelyorg"
+                                target="_blank"
+                                aria-label="GitHub"
+                                ><svg viewBox="0 0 24 24" fill="currentColor">
+                                    <path
+                                        d="M12 2a10 10 0 00-3.16 19.49c.5.09.68-.22.68-.48v-1.7c-2.78.6-3.37-1.34-3.37-1.34-.45-1.16-1.1-1.47-1.1-1.47-.9-.62.07-.6.07-.6 1 .07 1.53 1.03 1.53 1.03.89 1.52 2.34 1.08 2.91.83.09-.65.35-1.09.63-1.34-2.22-.25-4.55-1.11-4.55-4.94 0-1.09.39-1.98 1.03-2.68-.1-.25-.45-1.27.1-2.65 0 0 .84-.27 2.75 1.02a9.5 9.5 0 015 0c1.91-1.29 2.75-1.02 2.75-1.02.55 1.38.2 2.4.1 2.65.64.7 1.03 1.59 1.03 2.68 0 3.84-2.34 4.69-4.57 4.93.36.31.68.92.68 1.85v2.74c0 .27.18.58.69.48A10 10 0 0012 2z"
+                                    /></svg
+                            ></a>
+                            <a href="https://instagram.com/trysafely" aria-label="Instagram" target="_blank"
+                                ><svg viewBox="0 0 24 24" fill="currentColor">
+                                <path
+                                    d="M12 2c-2.72 0-3.06.01-4.12.06-1.06.05-1.79.22-2.43.47a4.9 4.9 0 00-1.77 1.15A4.9 4.9 0 002.53 5.45c-.25.64-.42 1.37-.47 2.43C2.01 8.94 2 9.28 2 12s.01 3.06.06 4.12c.05 1.06.22 1.79.47 2.43a4.9 4.9 0 001.15 1.77 4.9 4.9 0 001.77 1.15c.64.25 1.37.42 2.43.47C8.94 21.99 9.28 22 12 22s3.06-.01 4.12-.06c1.06-.05 1.79-.22 2.43-.47a4.9 4.9 0 001.77-1.15 4.9 4.9 0 001.15-1.77c.25-.64.42-1.37.47-2.43.05-1.06.06-1.4.06-4.12s-.01-3.06-.06-4.12c-.05-1.06-.22-1.79-.47-2.43a4.9 4.9 0 00-1.15-1.77 4.9 4.9 0 00-1.77-1.15c-.64-.25-1.37-.42-2.43-.47C15.06 2.01 14.72 2 12 2zm0 1.8c2.67 0 2.99.01 4.04.06.98.04 1.5.2 1.86.34.47.18.8.4 1.15.75.35.35.57.68.75 1.15.14.36.3.88.34 1.86.05 1.05.06 1.37.06 4.04s-.01 2.99-.06 4.04c-.04.98-.2 1.5-.34 1.86-.18.47-.4.8-.75 1.15-.35.35-.68.57-1.15.75-.36.14-.88.3-1.86.34-1.05.05-1.37.06-4.04.06s-2.99-.01-4.04-.06c-.98-.04-1.5-.2-1.86-.34a3.1 3.1 0 01-1.15-.75 3.1 3.1 0 01-.75-1.15c-.14-.36-.3-.88-.34-1.86C3.81 14.99 3.8 14.67 3.8 12s.01-2.99.06-4.04c.04-.98.2-1.5.34-1.86.18-.47.4-.8.75-1.15.35-.35.68-.57 1.15-.75.36-.14.88-.3 1.86-.34C9.01 3.81 9.33 3.8 12 3.8zm0 3.05a5.15 5.15 0 100 10.3 5.15 5.15 0 000-10.3zm0 8.5a3.35 3.35 0 110-6.7 3.35 3.35 0 010 6.7zm5.35-8.7a1.2 1.2 0 11-2.4 0 1.2 1.2 0 012.4 0z"
+                                /></svg
+                            ></a>
+                            <a
+                                href="https://www.linkedin.com/company/safelypage"
+                                target="_blank"
+                                aria-label="LinkedIn"
+                                ><svg viewBox="0 0 24 24" fill="currentColor">
+                                    <path
+                                        d="M6.94 5a2 2 0 11-4 0 2 2 0 014 0zM3 8.5h3.9V21H3V8.5zM9.5 8.5h3.7v1.7h.05c.52-.95 1.8-1.95 3.7-1.95 3.95 0 4.68 2.5 4.68 5.75V21H17.7v-5.5c0-1.3-.02-3-1.84-3-1.84 0-2.12 1.43-2.12 2.9V21H9.5V8.5z"
+                                    /></svg
+                            ></a>
+                        </div>
+                    </div>
+                    <div class="fcol">
+                        <h5>Product</h5>
+                        <a href="/#how">How it works</a
+                        ><a href="/#features">Features</a
+                        ><a href="/#pricing">Pricing</a
+                        ><a href="#m-chrome">Chrome Extension</a
+                        ><a href="#m-api">API</a>
+                    </div>
+                    <div class="fcol">
+                        <h5>Company</h5>
+                        <a href="#m-about">About</a><a href="#m-blog">Blog</a
+                        ><a href="#m-careers">Careers</a
+                        ><a href="#m-contact">Contact</a
+                        ><a href="/newsletter">Newsletter</a>
+                    </div>
+                    <div class="fcol">
+                        <h5>Legal</h5>
+                        <a href="#m-privacy">Privacy Policy</a
+                        ><a href="#m-terms">Terms of Service</a
+                        ><a href="#m-cookie">Cookie Policy</a
+                        ><a href="#m-report">Report Abuse</a>
+                    </div>
+                    <div class="fcol">
+                        <h5>Compare</h5>
+                        <a href="#m-vs-norton">vs Norton</a
+                        ><a href="#m-vs-manual">vs Manual Research</a
+                        ><a href="#m-vs-reviews">vs Basic Reviews</a
+                        ><a href="#m-vs-extensions">vs Other Extensions</a>
+                    </div>
+                </div>
+                <div class="fbottom">
+                    <div class="cp">© 2026 Safely. All rights reserved.</div>
+                    <div class="links">
+                        <a href="#m-privacy">Privacy</a
+                        ><a href="#m-terms">Terms</a
+                        ><a href="#m-contact">Contact</a>
+                    </div>
+                </div>
+            </div>
+        </footer>
+
+        <!-- ============ MODALS (pure-CSS :target) ============ -->
+        <div class="modal-ov" id="m-about">
+            <a class="m-backdrop" href="#_" aria-label="Close dialog"></a>
+            <div class="modal" role="dialog" aria-modal="true" aria-labelledby="t-about">
+                <div class="mtop">
+                    <span class="mic" aria-hidden="true"
+                        ><svg viewBox="0 0 24 24" fill="none">
+                            <path d="M12 3l8 3v6c0 5-3.4 8-8 9-4.6-1-8-4-8-9V6l8-3z" stroke="#161616" stroke-width="2.2" stroke-linejoin="round" />
+                            <path d="M9 12l2 2 4-4" stroke="#161616" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" /></svg
+                    ></span>
+                    <h3 id="t-about">About Safely</h3>
+                    <a class="mclose" href="#_" aria-label="Close dialog"
+                        ><svg viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="#161616" stroke-width="2.4" stroke-linecap="round" /></svg
+                    ></a>
+                </div>
+                <div class="mbody">
+                    <p>
+                        Safely started after one too many friends lost money
+                        buying second-hand online. We build AI-powered fraud
+                        detection that runs quietly in your browser and warns
+                        you before money ever leaves your hands.
+                    </p>
+                    <p>Our mission is simple: make every online marketplace safe to buy from.</p>
+                </div>
+                <div class="mfoot"><a class="btn btn-sun" href="#_">Got it</a></div>
+            </div>
+        </div>
+        <div class="modal-ov" id="m-blog">
+            <a class="m-backdrop" href="#_" aria-label="Close dialog"></a>
+            <div class="modal" role="dialog" aria-modal="true" aria-labelledby="t-blog">
+                <div class="mtop">
+                    <span class="mic" aria-hidden="true"
+                        ><svg viewBox="0 0 24 24" fill="none">
+                            <path d="M12 3l8 3v6c0 5-3.4 8-8 9-4.6-1-8-4-8-9V6l8-3z" stroke="#161616" stroke-width="2.2" stroke-linejoin="round" />
+                            <path d="M9 12l2 2 4-4" stroke="#161616" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" /></svg
+                    ></span>
+                    <h3 id="t-blog">Blog</h3>
+                    <a class="mclose" href="#_" aria-label="Close dialog"
+                        ><svg viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="#161616" stroke-width="2.4" stroke-linecap="round" /></svg
+                    ></a>
+                </div>
+                <div class="mbody">
+                    <p>
+                        We write about online marketplace fraud, the scam
+                        patterns we see most often, and how Safely's detection
+                        works under the hood.
+                    </p>
+                    <p>The full blog is coming soon — check back shortly.</p>
+                </div>
+                <div class="mfoot"><a class="btn btn-sun" href="#_">Got it</a></div>
+            </div>
+        </div>
+        <div class="modal-ov" id="m-careers">
+            <a class="m-backdrop" href="#_" aria-label="Close dialog"></a>
+            <div class="modal" role="dialog" aria-modal="true" aria-labelledby="t-careers">
+                <div class="mtop">
+                    <span class="mic" aria-hidden="true"
+                        ><svg viewBox="0 0 24 24" fill="none">
+                            <path d="M12 3l8 3v6c0 5-3.4 8-8 9-4.6-1-8-4-8-9V6l8-3z" stroke="#161616" stroke-width="2.2" stroke-linejoin="round" />
+                            <path d="M9 12l2 2 4-4" stroke="#161616" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" /></svg
+                    ></span>
+                    <h3 id="t-careers">Careers</h3>
+                    <a class="mclose" href="#_" aria-label="Close dialog"
+                        ><svg viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="#161616" stroke-width="2.4" stroke-linecap="round" /></svg
+                    ></a>
+                </div>
+                <div class="mbody">
+                    <p>
+                        We're a small, fully-remote team building trust
+                        infrastructure for online commerce, and we care a lot
+                        about protecting buyers.
+                    </p>
+                    <p>
+                        There are no open roles listed right now, but we're
+                        always happy to hear from thoughtful people — reach out
+                        at <b>help@safely.sh</b>.
+                    </p>
+                </div>
+                <div class="mfoot"><a class="btn btn-sun" href="#_">Got it</a></div>
+            </div>
+        </div>
+        <div class="modal-ov" id="m-contact">
+            <a class="m-backdrop" href="#_" aria-label="Close dialog"></a>
+            <div class="modal" role="dialog" aria-modal="true" aria-labelledby="t-contact">
+                <div class="mtop">
+                    <span class="mic" aria-hidden="true"
+                        ><svg viewBox="0 0 24 24" fill="none">
+                            <path d="M12 3l8 3v6c0 5-3.4 8-8 9-4.6-1-8-4-8-9V6l8-3z" stroke="#161616" stroke-width="2.2" stroke-linejoin="round" />
+                            <path d="M9 12l2 2 4-4" stroke="#161616" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" /></svg
+                    ></span>
+                    <h3 id="t-contact">Contact</h3>
+                    <a class="mclose" href="#_" aria-label="Close dialog"
+                        ><svg viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="#161616" stroke-width="2.4" stroke-linecap="round" /></svg
+                    ></a>
+                </div>
+                <div class="mbody">
+                    <p>
+                        Questions, partnership ideas, or a scam you'd like us to
+                        look into? Email the team at <b>help@safely.sh</b> and
+                        we'll get back to you within one business day.
+                    </p>
+                    <p>Pro and Business customers receive priority support.</p>
+                </div>
+                <div class="mfoot"><a class="btn btn-sun" href="#_">Got it</a></div>
+            </div>
+        </div>
+        <div class="modal-ov" id="m-privacy">
+            <a class="m-backdrop" href="#_" aria-label="Close dialog"></a>
+            <div class="modal" role="dialog" aria-modal="true" aria-labelledby="t-privacy">
+                <div class="mtop">
+                    <span class="mic" aria-hidden="true"
+                        ><svg viewBox="0 0 24 24" fill="none">
+                            <path d="M12 3l8 3v6c0 5-3.4 8-8 9-4.6-1-8-4-8-9V6l8-3z" stroke="#161616" stroke-width="2.2" stroke-linejoin="round" />
+                            <path d="M9 12l2 2 4-4" stroke="#161616" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" /></svg
+                    ></span>
+                    <h3 id="t-privacy">Privacy Policy</h3>
+                    <a class="mclose" href="#_" aria-label="Close dialog"
+                        ><svg viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="#161616" stroke-width="2.4" stroke-linecap="round" /></svg
+                    ></a>
+                </div>
+                <div class="mbody">
+                    <p>
+                        We only read listing and seller data from pages you
+                        actively open on supported marketplaces. We never track
+                        your general browsing history and never sell your data
+                        to third parties.
+                    </p>
+                    <p>
+                        You can export or delete your account and all associated
+                        data at any time. This is a plain-language summary of
+                        our full policy.
+                    </p>
+                </div>
+                <div class="mfoot"><a class="btn btn-sun" href="#_">Got it</a></div>
+            </div>
+        </div>
+        <div class="modal-ov" id="m-terms">
+            <a class="m-backdrop" href="#_" aria-label="Close dialog"></a>
+            <div class="modal" role="dialog" aria-modal="true" aria-labelledby="t-terms">
+                <div class="mtop">
+                    <span class="mic" aria-hidden="true"
+                        ><svg viewBox="0 0 24 24" fill="none">
+                            <path d="M12 3l8 3v6c0 5-3.4 8-8 9-4.6-1-8-4-8-9V6l8-3z" stroke="#161616" stroke-width="2.2" stroke-linejoin="round" />
+                            <path d="M9 12l2 2 4-4" stroke="#161616" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" /></svg
+                    ></span>
+                    <h3 id="t-terms">Terms of Service</h3>
+                    <a class="mclose" href="#_" aria-label="Close dialog"
+                        ><svg viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="#161616" stroke-width="2.4" stroke-linecap="round" /></svg
+                    ></a>
+                </div>
+                <div class="mbody">
+                    <p>
+                        By using Safely you agree to use it for lawful buying
+                        and selling only. Risk scores are guidance to help you
+                        decide — not a guarantee — so always use your own
+                        judgement before paying.
+                    </p>
+                    <p>The service is provided as-is. This is an overview of the full terms.</p>
+                </div>
+                <div class="mfoot"><a class="btn btn-sun" href="#_">Got it</a></div>
+            </div>
+        </div>
+        <div class="modal-ov" id="m-cookie">
+            <a class="m-backdrop" href="#_" aria-label="Close dialog"></a>
+            <div class="modal" role="dialog" aria-modal="true" aria-labelledby="t-cookie">
+                <div class="mtop">
+                    <span class="mic" aria-hidden="true"
+                        ><svg viewBox="0 0 24 24" fill="none">
+                            <path d="M12 3l8 3v6c0 5-3.4 8-8 9-4.6-1-8-4-8-9V6l8-3z" stroke="#161616" stroke-width="2.2" stroke-linejoin="round" />
+                            <path d="M9 12l2 2 4-4" stroke="#161616" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" /></svg
+                    ></span>
+                    <h3 id="t-cookie">Cookie Policy</h3>
+                    <a class="mclose" href="#_" aria-label="Close dialog"
+                        ><svg viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="#161616" stroke-width="2.4" stroke-linecap="round" /></svg
+                    ></a>
+                </div>
+                <div class="mbody">
+                    <p>
+                        We use a small number of essential cookies to keep you
+                        signed in and remember your settings. We do not use
+                        advertising or cross-site tracking cookies.
+                    </p>
+                    <p>You can clear cookies any time from your browser settings.</p>
+                </div>
+                <div class="mfoot"><a class="btn btn-sun" href="#_">Got it</a></div>
+            </div>
+        </div>
+        <div class="modal-ov" id="m-report">
+            <a class="m-backdrop" href="#_" aria-label="Close dialog"></a>
+            <div class="modal" role="dialog" aria-modal="true" aria-labelledby="t-report">
+                <div class="mtop">
+                    <span class="mic" aria-hidden="true"
+                        ><svg viewBox="0 0 24 24" fill="none">
+                            <path d="M12 3l8 3v6c0 5-3.4 8-8 9-4.6-1-8-4-8-9V6l8-3z" stroke="#161616" stroke-width="2.2" stroke-linejoin="round" />
+                            <path d="M9 12l2 2 4-4" stroke="#161616" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" /></svg
+                    ></span>
+                    <h3 id="t-report">Report Abuse</h3>
+                    <a class="mclose" href="#_" aria-label="Close dialog"
+                        ><svg viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="#161616" stroke-width="2.4" stroke-linecap="round" /></svg
+                    ></a>
+                </div>
+                <div class="mbody">
+                    <p>
+                        Spotted a scammer, an abusive seller, or misuse of
+                        Safely? Report it directly from the extension on the
+                        seller's page, or email <b>help@safely.sh</b>.
+                    </p>
+                    <p>Reports are reviewed quickly and help protect the whole community.</p>
+                </div>
+                <div class="mfoot"><a class="btn btn-sun" href="#_">Got it</a></div>
+            </div>
+        </div>
+        <div class="modal-ov" id="m-chrome">
+            <a class="m-backdrop" href="#_" aria-label="Close dialog"></a>
+            <div class="modal" role="dialog" aria-modal="true" aria-labelledby="t-chrome">
+                <div class="mtop">
+                    <span class="mic" aria-hidden="true"
+                        ><svg viewBox="0 0 24 24" fill="none">
+                            <path d="M12 3l8 3v6c0 5-3.4 8-8 9-4.6-1-8-4-8-9V6l8-3z" stroke="#161616" stroke-width="2.2" stroke-linejoin="round" />
+                            <path d="M9 12l2 2 4-4" stroke="#161616" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" /></svg
+                    ></span>
+                    <h3 id="t-chrome">Chrome Extension</h3>
+                    <a class="mclose" href="#_" aria-label="Close dialog"
+                        ><svg viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="#161616" stroke-width="2.4" stroke-linecap="round" /></svg
+                    ></a>
+                </div>
+                <div class="mbody">
+                    <p>
+                        Safely is a lightweight Chrome extension. Install it in
+                        one click and it activates automatically on any
+                        supported marketplace — no account needed to start.
+                    </p>
+                    <p>Support for Edge and Firefox is on the way.</p>
+                </div>
+                <div class="mfoot"><a class="btn btn-sun" href="#_">Got it</a></div>
+            </div>
+        </div>
+        <div class="modal-ov" id="m-api">
+            <a class="m-backdrop" href="#_" aria-label="Close dialog"></a>
+            <div class="modal" role="dialog" aria-modal="true" aria-labelledby="t-api">
+                <div class="mtop">
+                    <span class="mic" aria-hidden="true"
+                        ><svg viewBox="0 0 24 24" fill="none">
+                            <path d="M12 3l8 3v6c0 5-3.4 8-8 9-4.6-1-8-4-8-9V6l8-3z" stroke="#161616" stroke-width="2.2" stroke-linejoin="round" />
+                            <path d="M9 12l2 2 4-4" stroke="#161616" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" /></svg
+                    ></span>
+                    <h3 id="t-api">API</h3>
+                    <a class="mclose" href="#_" aria-label="Close dialog"
+                        ><svg viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="#161616" stroke-width="2.4" stroke-linecap="round" /></svg
+                    ></a>
+                </div>
+                <div class="mbody">
+                    <p>
+                        The Safely API lets Business and Enterprise customers
+                        score listings and sellers programmatically, run bulk
+                        analyses, and pull fraud reports into their own tools.
+                    </p>
+                    <p>API access is included on the Business plan and above.</p>
+                </div>
+                <div class="mfoot"><a class="btn btn-sun" href="#_">Got it</a></div>
+            </div>
+        </div>
+        <div class="modal-ov" id="m-vs-norton">
+            <a class="m-backdrop" href="#_" aria-label="Close dialog"></a>
+            <div class="modal" role="dialog" aria-modal="true" aria-labelledby="t-vs-norton">
+                <div class="mtop">
+                    <span class="mic" aria-hidden="true"
+                        ><svg viewBox="0 0 24 24" fill="none">
+                            <path d="M12 3l8 3v6c0 5-3.4 8-8 9-4.6-1-8-4-8-9V6l8-3z" stroke="#161616" stroke-width="2.2" stroke-linejoin="round" />
+                            <path d="M9 12l2 2 4-4" stroke="#161616" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" /></svg
+                    ></span>
+                    <h3 id="t-vs-norton">Safely vs Norton</h3>
+                    <a class="mclose" href="#_" aria-label="Close dialog"
+                        ><svg viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="#161616" stroke-width="2.4" stroke-linecap="round" /></svg
+                    ></a>
+                </div>
+                <div class="mbody">
+                    <p>
+                        Norton and similar antivirus tools protect your computer
+                        — they catch malware, viruses, and malicious files
+                        trying to attack your device.
+                    </p>
+                    <p>
+                        Safely protects you from a different kind of attack
+                        entirely: a real person on the other end of a listing,
+                        manipulating your judgement into sending money for
+                        something that doesn't exist. No file is downloaded, no
+                        malware is involved — which is exactly why antivirus
+                        software has nothing to detect. Safely and antivirus
+                        solve two different problems, and most people benefit
+                        from both.
+                    </p>
+                </div>
+                <div class="mfoot"><a class="btn btn-sun" href="#_">Got it</a></div>
+            </div>
+        </div>
+        <div class="modal-ov" id="m-vs-manual">
+            <a class="m-backdrop" href="#_" aria-label="Close dialog"></a>
+            <div class="modal" role="dialog" aria-modal="true" aria-labelledby="t-vs-manual">
+                <div class="mtop">
+                    <span class="mic" aria-hidden="true"
+                        ><svg viewBox="0 0 24 24" fill="none">
+                            <path d="M12 3l8 3v6c0 5-3.4 8-8 9-4.6-1-8-4-8-9V6l8-3z" stroke="#161616" stroke-width="2.2" stroke-linejoin="round" />
+                            <path d="M9 12l2 2 4-4" stroke="#161616" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" /></svg
+                    ></span>
+                    <h3 id="t-vs-manual">Safely vs manual research</h3>
+                    <a class="mclose" href="#_" aria-label="Close dialog"
+                        ><svg viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="#161616" stroke-width="2.4" stroke-linecap="round" /></svg
+                    ></a>
+                </div>
+                <div class="mbody">
+                    <p>
+                        Most buyers today check a listing by reading it
+                        carefully, searching the seller's name, and going with
+                        their gut. That works reasonably well for obvious scams,
+                        but takes several minutes per listing and still misses
+                        those signals — recycled images, slightly-off pricing,
+                        or urgency language designed specifically to bypass
+                        exactly that kind of gut check.
+                    </p>
+                    <p>
+                        Safely runs the same checks a careful buyer would want
+                        to do, automatically, in about 2 seconds, every time you
+                        open a listing.
+                    </p>
+                </div>
+                <div class="mfoot"><a class="btn btn-sun" href="#_">Got it</a></div>
+            </div>
+        </div>
+        <div class="modal-ov" id="m-vs-reviews">
+            <a class="m-backdrop" href="#_" aria-label="Close dialog"></a>
+            <div class="modal" role="dialog" aria-modal="true" aria-labelledby="t-vs-reviews">
+                <div class="mtop">
+                    <span class="mic" aria-hidden="true"
+                        ><svg viewBox="0 0 24 24" fill="none">
+                            <path d="M12 3l8 3v6c0 5-3.4 8-8 9-4.6-1-8-4-8-9V6l8-3z" stroke="#161616" stroke-width="2.2" stroke-linejoin="round" />
+                            <path d="M9 12l2 2 4-4" stroke="#161616" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" /></svg
+                    ></span>
+                    <h3 id="t-vs-reviews">Safely vs basic seller reviews</h3>
+                    <a class="mclose" href="#_" aria-label="Close dialog"
+                        ><svg viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="#161616" stroke-width="2.4" stroke-linecap="round" /></svg
+                    ></a>
+                </div>
+                <div class="mbody">
+                    <p>
+                        Star ratings and reviews built into marketplaces are
+                        useful, but a brand-new seller account naturally has
+                        none yet — which tells you nothing either way, and is
+                        exactly the situation most scam listings are posted
+                        from.
+                    </p>
+                    <p>
+                        Safely doesn't rely on a review history existing at all.
+                        It analyzes the listing itself — the language used, the
+                        images, the price, the seller's account age — so it can
+                        flag risk even on a seller's very first post.
+                    </p>
+                </div>
+                <div class="mfoot"><a class="btn btn-sun" href="#_">Got it</a></div>
+            </div>
+        </div>
+        <div class="modal-ov" id="m-vs-extensions">
+            <a class="m-backdrop" href="#_" aria-label="Close dialog"></a>
+            <div class="modal" role="dialog" aria-modal="true" aria-labelledby="t-vs-extensions">
+                <div class="mtop">
+                    <span class="mic" aria-hidden="true"
+                        ><svg viewBox="0 0 24 24" fill="none">
+                            <path d="M12 3l8 3v6c0 5-3.4 8-8 9-4.6-1-8-4-8-9V6l8-3z" stroke="#161616" stroke-width="2.2" stroke-linejoin="round" />
+                            <path d="M9 12l2 2 4-4" stroke="#161616" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" /></svg
+                    ></span>
+                    <h3 id="t-vs-extensions">Safely vs generic browser extensions</h3>
+                    <a class="mclose" href="#_" aria-label="Close dialog"
+                        ><svg viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="#161616" stroke-width="2.4" stroke-linecap="round" /></svg
+                    ></a>
+                </div>
+                <div class="mbody">
+                    <p>
+                        Ad blockers, price trackers, and coupon extensions are
+                        built to change or add something to a page — they were
+                        never designed to evaluate whether the person selling to
+                        you is trustworthy.
+                    </p>
+                    <p>
+                        Safely is purpose-built around one question: is this
+                        specific listing and seller safe to send money to.
+                        That's the only thing it does, which is why it can go
+                        deep on it — 8 distinct fraud signals, seller history,
+                        and a community fraud report network, all in one
+                        focused tool.
+                    </p>
+                </div>
+                <div class="mfoot"><a class="btn btn-sun" href="#_">Got it</a></div>
+            </div>
+        </div>
+
+        <script src="js/newsletter.js"></script>
+    </body>
+</html>
