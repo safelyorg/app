@@ -70,13 +70,13 @@ pub fn check_rate_limit(user_id: Uuid) -> Result<(), AnalyzeError> {
 ///
 /// It checks if this is a genuinely signed-in person, checks if they've
 /// already hit their rate limit and if both checks passed, hand back their real user ID.
-async fn authorize_request(
+pub async fn authorize_request(
     headers: &HeaderMap,
     pool: &Pool<Postgres>,
 ) -> Result<Uuid, AnalyzeError> {
     let user_id = extract_user_id(headers, pool)
         .await
-        .expect("expected the user id to be extracted")
+        .map_err(|_| AnalyzeError::Unauthorized)?
         .ok_or(AnalyzeError::Unauthorized)?;
 
     check_rate_limit(user_id)?;
