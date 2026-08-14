@@ -2,7 +2,8 @@ mod common;
 
 use axum::http::{HeaderMap, HeaderValue};
 use backend::{
-    handlers::analyze::{RATE_LIMITS, authorize_request, check_rate_limit},
+    handlers::analyze::{RATE_LIMITS, authorize_request, build_requests, check_rate_limit},
+    models::analysis::AnalyzeRequest,
     services::auth::{create_session, find_or_create_user_by_email},
 };
 use common::test_pool;
@@ -163,4 +164,53 @@ async fn authorize_request_rate_limit_passed() {
     );
 
     cleanup_test_user(&pool, email).await;
+}
+
+#[test]
+fn build_requests_correctly_splits_seller_and_listing_data() {
+    let fake_request = AnalyzeRequest {
+        platform: "olx".to_string(),
+        seller_id: None,
+        listing_url: "https://olx.com.pk/item/test-listing".to_string(),
+        listing_id: Some("12345".to_string()),
+        title: Some("Test Listing".to_string()),
+        price: Some(50000),
+        description: Some("A test listing description".to_string()),
+        category: None,
+        image_urls: Some(vec!["https://example.com/image1.jpg".to_string()]),
+        posted_date: None,
+        platform_id: Some("platform_id_123".to_string()),
+        seller_name: Some("Test Seller".to_string()),
+        seller_handle: Some("test_seller_handle".to_string()),
+        seller_phone: Some("03001234567".to_string()),
+        seller_profile_url: Some("https://olx.com.pk/profile/test-seller".to_string()),
+        seller_join_date: Some("2021".to_string()),
+        seller_location: Some("Lahore".to_string()),
+        seller_last_active: Some("Today".to_string()),
+        domain_check_status: None,
+        domain_check_real_name: None,
+        domain_check_real_domain: None,
+        domain_check_current_domain: None,
+        domain_check_current_html: None,
+        domain_check_real_html: None,
+    };
+
+    let (seller_req, listing_req) = build_requests(&fake_request);
+
+    // Confirm the seller piece got the right seller-specific fields.
+    assert_eq!(seller_req.name, Some("Test Seller".to_string()));
+    assert_eq!(seller_req.handle, Some("test_seller_handle".to_string()));
+    assert_eq!(seller_req.location, Some("Lahore".to_string()));
+
+    // Confirm the listing piece got the right listing-specific fields.
+    assert_eq!(listing_req.title, Some("Test Listing".to_string()));
+    assert_eq!(listing_req.price, Some(50000));
+    assert_eq!(
+        listing_req.listing_url,
+        "https://olx.com.pk/item/test-listing"
+    );
+
+    // Confirm the one shared field (platform) correctly landed in BOTH pieces.
+    assert_eq!(seller_req.platform, "olx");
+    assert_eq!(listing_req.platform, "olx");
 }

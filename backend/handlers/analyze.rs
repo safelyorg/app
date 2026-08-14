@@ -90,33 +90,33 @@ pub async fn authorize_request(
 ///
 /// It builds the seller-specific piece, builds the listing-specific piece
 /// and returns both pieces together, as a pair.
-fn build_requests(request: &AnalyzeRequest) -> (SellersRequest, ListingsRequest) {
-    let seller_req = SellersRequest {
-        platform: request.platform.clone(),
-        platform_id: request.platform_id.clone(),
-        name: request.seller_name.clone(),
-        handle: request.seller_handle.clone(),
-        phone: request.seller_phone.clone(),
-        profile_url: request.seller_profile_url.clone(),
-        join_date: request.seller_join_date.clone(),
-        location: request.seller_location.clone(),
-        last_active: request.seller_last_active.clone(),
+pub fn build_requests(r: &AnalyzeRequest) -> (SellersRequest, ListingsRequest) {
+    let seller_request = SellersRequest {
+        platform: r.platform.clone(),
+        platform_id: r.platform_id.clone(),
+        name: r.seller_name.clone(),
+        handle: r.seller_handle.clone(),
+        phone: r.seller_phone.clone(),
+        profile_url: r.seller_profile_url.clone(),
+        join_date: r.seller_join_date.clone(),
+        location: r.seller_location.clone(),
+        last_active: r.seller_last_active.clone(),
     };
 
-    let listing_req = ListingsRequest {
-        seller_id: request.seller_id,
-        platform: request.platform.clone(),
-        listing_url: request.listing_url.clone(),
-        listing_id: request.listing_id.clone(),
-        title: request.title.clone(),
-        price: request.price,
-        description: request.description.clone(),
-        category: request.category.clone(),
-        image_urls: request.image_urls.clone(),
-        posted_date: request.posted_date.clone(),
+    let listing_request = ListingsRequest {
+        seller_id: r.seller_id,
+        platform: r.platform.clone(),
+        listing_url: r.listing_url.clone(),
+        listing_id: r.listing_id.clone(),
+        title: r.title.clone(),
+        price: r.price,
+        description: r.description.clone(),
+        category: r.category.clone(),
+        image_urls: r.image_urls.clone(),
+        posted_date: r.posted_date.clone(),
     };
 
-    (seller_req, listing_req)
+    (seller_request, listing_request)
 }
 
 /// Before writing anything to the database, first check if this seller already has fraud
