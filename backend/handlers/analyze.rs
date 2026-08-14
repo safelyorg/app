@@ -26,6 +26,12 @@ use std::{
 };
 use uuid::Uuid;
 
+pub struct ResolvedSeller {
+    pub seller: Sellers,
+    pub fraud_count: i64,
+    pub network_summary: String,
+}
+
 // This stops any one person from calling the /analyze endpoint more than 10 times within any 5-minute stretch.
 // It sets up a way to track how many times each logged-in user has called the expensive /analyze endpoint recently.
 pub static RATE_LIMITS: OnceLock<Mutex<HashMap<Uuid, (u32, Instant)>>> = OnceLock::new();
@@ -128,12 +134,12 @@ pub fn build_requests(r: &AnalyzeRequest) -> (SellersRequest, ListingsRequest) {
 /// verification status, based on that count, creates (or updates) the seller row,
 /// using that correctly-determined verification, counts their fraud reports again,
 /// this time for the real, final result.
-async fn resolve_seller(
+pub async fn resolve_seller(
     pool: &Pool<Postgres>,
     seller_req: &SellersRequest,
     platform: &str,
     platform_id: &str,
-) -> Result<(Sellers, i64, String), AnalyzeError> {
+) -> Result<ResolvedSeller, AnalyzeError> {
     let existing_seller = find_seller(pool, platform, platform_id)
         .await
         .map_err(|e| AnalyzeError::Database(e.to_string()))?;
@@ -162,7 +168,11 @@ async fn resolve_seller(
 
     let network_summary = build_network_summary(fraud_count);
 
-    Ok((seller, fraud_count, network_summary))
+    Ok(ResolvedSeller {
+        seller,
+        fraud_count,
+        network_summary,
+    })
 }
 
 /// It sends the listing's real details to Claude, asking it to analyze
@@ -301,18 +311,17 @@ pub async fn analyze(
     let (seller_req, listing_req) = build_requests(&request);
 
     let platform_id = request.platform_id.as_deref().unwrap_or("");
-    let (seller, fraud_count, network_summary) =
-        resolve_seller(&pool, &seller_req, &request.platform, platform_id).await?;
+    let resolved = resolve_seller(&pool, &seller_req, &request.platform, platform_id).await?;
 
-    let listing = create_listing(&pool, &listing_req, seller.id)
+    let listing = create_listing(&pool, &listing_req, resolved.seller.id)
         .await
         .map_err(|e| AnalyzeError::Database(e.to_string()))?;
 
-    let claude_analysis = run_claude_analysis(&listing, &seller).await?;
+    let claude_analysis = run_claude_analysis(&listing, &resolved.seller).await?;
 
-    let signals = build_all_signals(&claude_analysis, &seller, &request);
+    let signals = build_all_signals(&claude_analysis, &resolved.seller, &request);
 
-    let risk_score = calculate_risk_score(&claude_analysis, fraud_count);
+    let risk_score = calculate_risk_score(&claude_analysis, resolved.fraud_count);
     let risk_level = match risk_score {
         0..=33 => RiskLevel::Low,
         34..=66 => RiskLevel::Caution,
@@ -327,9 +336,9 @@ pub async fn analyze(
         signals,
         claude_analysis,
         user_id,
-        seller,
-        fraud_count,
-        network_summary,
+        resolved.seller,
+        resolved.fraud_count,
+        resolved.network_summary,
     )
     .await
 }

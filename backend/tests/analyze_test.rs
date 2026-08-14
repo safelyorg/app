@@ -2,11 +2,17 @@ mod common;
 
 use axum::http::{HeaderMap, HeaderValue};
 use backend::{
-    handlers::analyze::{RATE_LIMITS, authorize_request, build_requests, check_rate_limit},
-    models::analysis::AnalyzeRequest,
+    handlers::analyze::{
+        RATE_LIMITS, authorize_request, build_requests, check_rate_limit, resolve_seller,
+    },
+    models::{
+        analysis::AnalyzeRequest,
+        sellers::{SellerVerification, SellersRequest},
+    },
     services::auth::{create_session, find_or_create_user_by_email},
 };
 use common::test_pool;
+use sqlx::query;
 use std::{collections::HashMap, sync::Mutex, time::Duration, time::Instant};
 use uuid::Uuid;
 
@@ -213,4 +219,44 @@ fn build_requests_correctly_splits_seller_and_listing_data() {
     // Confirm the one shared field (platform) correctly landed in BOTH pieces.
     assert_eq!(seller_req.platform, "olx");
     assert_eq!(listing_req.platform, "olx");
+}
+
+#[tokio::test]
+async fn resolve_new_seller() {
+    let pool = test_pool().await;
+    let platform = "olx".to_string();
+    let platform_id = "new_seller_test_001".to_string();
+
+    query("DELETE FROM sellers WHERE platform = $1 AND platform_id = $2")
+        .bind(&platform)
+        .bind(&platform_id)
+        .execute(&pool)
+        .await
+        .expect("expected cleanup to succeed");
+
+    let seller_request = SellersRequest {
+        platform: platform.clone(),
+        platform_id: Some(platform_id.clone()),
+        name: Some("Test name".to_string()),
+        handle: Some("test_handle".to_string()),
+        phone: Some("123456789".to_string()),
+        profile_url: Some("https://olx.com.pk/profile/test-seller".to_string()),
+        join_date: Some("2021".to_string()),
+        location: Some("Lahore".to_string()),
+        last_active: Some("Today".to_string()),
+    };
+
+    let result = resolve_seller(&pool, &seller_request, &platform, &platform_id)
+        .await
+        .expect("expected to resolve the seller");
+
+    assert_eq!(result.seller.verification, SellerVerification::Unknown);
+    assert_eq!(result.fraud_count, 0);
+
+    query("DELETE FROM sellers WHERE platform = $1 AND platform_id = $2")
+        .bind(&platform)
+        .bind(&platform_id)
+        .execute(&pool)
+        .await
+        .expect("expected final cleanup to succeed");
 }

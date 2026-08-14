@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::{Type, prelude::FromRow};
 use uuid::Uuid;
 
-#[derive(Debug, Serialize, Deserialize, Type)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
 #[sqlx(type_name = "seller_verification", rename_all = "snake_case")]
 #[serde(rename_all = "snake_case")]
 pub enum SellerVerification {
