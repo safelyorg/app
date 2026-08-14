@@ -1,7 +1,7 @@
 use axum::http::{HeaderValue, Method, header};
 use axum::{Router, response::Redirect, routing::get};
 use backend::db::{bootstrap::run_grants, connection::load_pool};
-use backend::routes::{analyze, auth, billing, dashboard, fraud_reports, newsletter};
+use backend::routes::{analyze, auth, billing, dashboard, fraud_reports, subscribe};
 use tower_http::{
     cors::{Any, CorsLayer},
     services::{ServeDir, ServeFile},
@@ -24,7 +24,7 @@ async fn main() {
         .merge(auth::auth_routes())
         .merge(dashboard::dashboard_routes())
         .merge(billing::billing_routes())
-        .merge(newsletter::newsletter_routes())
+        .merge(subscribe::subscribe_routes())
         .route(
             "/dashboard",
             get(|| async { Redirect::permanent("/dashboard/") }),
@@ -53,10 +53,10 @@ async fn main() {
             )),
         )
         .route_service(
-            "/newsletter",
+            "/subscribe",
             ServeFile::new(concat!(
                 env!("CARGO_MANIFEST_DIR"),
-                "/../site/templates/newsletter.html"
+                "/../site/templates/subscribe.html"
             )),
         )
         .fallback_service(
