@@ -85,7 +85,7 @@ async fn authorize_request_success() {
 
     let (user, _) = find_or_create_user_by_email(&pool, email)
         .await
-        .expect("expected to create the user");
+        .expect("expected to create or find a user");
 
     let real_session_token = create_session(&pool, user.id)
         .await
@@ -100,9 +100,68 @@ async fn authorize_request_success() {
 
     let result = authorize_request(&headers, &pool)
         .await
-        .expect("expected to run teh authorize request");
+        .expect("expected to run the authorize request");
 
     assert_eq!(result, user.id);
+
+    cleanup_test_user(&pool, email).await;
+}
+
+#[tokio::test]
+async fn authorize_request_failure() {
+    let pool = test_pool().await;
+    let email = "authorize_failure@example.com";
+    cleanup_test_user(&pool, email).await;
+
+    let (_user, _) = find_or_create_user_by_email(&pool, &email)
+        .await
+        .expect("expected to find or create a user");
+
+    let headers = HeaderMap::new();
+    let result = authorize_request(&headers, &pool).await;
+
+    assert!(result.is_err(), "expected an empty header to be rejected");
+
+    cleanup_test_user(&pool, email).await;
+}
+
+#[tokio::test]
+async fn authorize_request_rate_limit_passed() {
+    let pool = test_pool().await;
+    let email = "authorize_rate_limit@example.com";
+    cleanup_test_user(&pool, email).await;
+
+    let (user, _) = find_or_create_user_by_email(&pool, email)
+        .await
+        .expect("expected to create or find a user");
+
+    let real_session_token = create_session(&pool, user.id)
+        .await
+        .expect("expected to create a real session");
+
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        "authorization",
+        HeaderValue::from_str(&format!("Bearer {}", real_session_token))
+            .expect("expected to insert the header values"),
+    );
+
+    for call_number in 1..=10 {
+        let result = check_rate_limit(user.id);
+        assert!(
+            result.is_ok(),
+            "expected call number {} to succeed, got: {:?}",
+            call_number,
+            result
+        );
+    }
+
+    let result = authorize_request(&headers, &pool).await;
+
+    assert!(
+        result.is_err(),
+        "expected authorize_request to reject a rate-limited user"
+    );
 
     cleanup_test_user(&pool, email).await;
 }
