@@ -879,7 +879,87 @@ async fn extract_user_id_malformed_authorization() {
         .await
         .expect("expected the user id to be extracted");
 
-    assert!(result.is_none(), "expected");
+    assert!(
+        result.is_none(),
+        "expected no user to be found for a malformed header"
+    );
+}
+
+#[tokio::test]
+async fn extract_user_id_token_mismatch() {
+    let pool = test_pool().await;
+    let fake_token = Uuid::new_v4().to_string();
+
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        "authorization",
+        HeaderValue::from_str(&format!("Bearer {}", fake_token))
+            .expect("expected to insert the header value"),
+    );
+
+    let result = extract_user_id(&headers, &pool)
+        .await
+        .expect("expected the user id to be extracted");
+
+    assert!(
+        result.is_none(),
+        "expected no user to be found for a token that doesn't match any real session"
+    );
+}
+
+#[tokio::test]
+async fn extract_user_id_token_match() {
+    let pool = test_pool().await;
+    let email = "token_match@example.com";
+    cleanup_test_user(&pool, email).await;
+
+    let (user, _) = find_or_create_user_by_email(&pool, email)
+        .await
+        .expect("expected to create the user");
+
+    let real_session_token = create_session(&pool, user.id)
+        .await
+        .expect("expected to get the real session token");
+
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        "authorization",
+        HeaderValue::from_str(&format!("Bearer {}", real_session_token))
+            .expect("expected to insert the header value"),
+    );
+
+    let result = extract_user_id(&headers, &pool)
+        .await
+        .expect("expected the user id to be extracted");
+
+    assert_eq!(
+        result,
+        Some(user.id),
+        "expected the correct user's ID to be found for a genuinely valid token"
+    );
+
+    cleanup_test_user(&pool, email).await;
+}
+
+#[tokio::test]
+async fn extract_user_db_error() {
+    let pool = test_pool().await;
+    pool.close().await;
+
+    let fake_token = Uuid::new_v4().to_string();
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        "authorization",
+        HeaderValue::from_str(&format!("Bearer {}", fake_token))
+            .expect("expected to insert the header value"),
+    );
+
+    let result = extract_user_id(&headers, &pool).await;
+
+    assert!(
+        result.is_err(),
+        "expected a genuine database error when the connection pool is closed"
+    );
 }
 
 #[tokio::test]
@@ -901,7 +981,8 @@ async fn logout_with_session_present() {
     let mut headers = HeaderMap::new();
     headers.insert(
         "authorization",
-        HeaderValue::from_str(&format!("Bearer {}", real_session_token)).unwrap(),
+        HeaderValue::from_str(&format!("Bearer {}", real_session_token))
+            .expect("expected to enter the header value"),
     );
 
     let response = logout(State(pool.clone()), headers).await;
