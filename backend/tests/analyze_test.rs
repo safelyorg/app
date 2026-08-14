@@ -157,7 +157,6 @@ async fn authorize_request_rate_limit_passed() {
     }
 
     let result = authorize_request(&headers, &pool).await;
-
     assert!(
         result.is_err(),
         "expected authorize_request to reject a rate-limited user"

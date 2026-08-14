@@ -24,9 +24,9 @@ use backend::{
     routes::auth::auth_routes,
     services::{
         auth::{
-            create_session, find_or_create_user_by_email, find_or_create_user_by_google,
-            find_user_by_email, find_user_by_google_id, insert_magic_link, link_google_account,
-            validate_email_format, validate_magic_link,
+            create_session, extract_user_id, find_or_create_user_by_email,
+            find_or_create_user_by_google, find_user_by_email, find_user_by_google_id,
+            insert_magic_link, link_google_account, validate_email_format, validate_magic_link,
         },
         email::{get_tera, send_magic_link_email},
         google_oauth::build_google_authorize_url,
@@ -849,6 +849,37 @@ async fn google_connect_redirect_fails_with_an_invalid_session() {
         result.is_err(),
         "expected an invalid session to be rejected"
     );
+}
+
+#[tokio::test]
+async fn extract_user_id_missing_authorization() {
+    let pool = test_pool().await;
+    let headers = HeaderMap::new();
+    let result = extract_user_id(&headers, &pool)
+        .await
+        .expect("expected the query itself to succeed");
+
+    assert!(
+        result.is_none(),
+        "expected no user to be found for a missing header"
+    );
+}
+
+#[tokio::test]
+async fn extract_user_id_malformed_authorization() {
+    let pool = test_pool().await;
+
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        "authorization",
+        HeaderValue::from_str("not-a-bearer-token").expect("expected to insert the header values"),
+    );
+
+    let result = extract_user_id(&headers, &pool)
+        .await
+        .expect("expected the user id to be extracted");
+
+    assert!(result.is_none(), "expected");
 }
 
 #[tokio::test]
