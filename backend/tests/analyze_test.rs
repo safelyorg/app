@@ -4,10 +4,12 @@ use axum::http::{HeaderMap, HeaderValue};
 use backend::{
     handlers::analyze::{
         RATE_LIMITS, authorize_request, build_requests, check_rate_limit, resolve_seller,
+        run_claude_analysis,
     },
     models::{
         analysis::AnalyzeRequest,
-        sellers::{SellerVerification, SellersRequest},
+        listings::{ListingCategory, Listings},
+        sellers::{SellerVerification, Sellers, SellersRequest},
     },
     services::{
         auth::{create_session, find_or_create_user_by_email},
@@ -15,10 +17,13 @@ use backend::{
         sellers::{create_seller, find_seller},
     },
 };
+use chrono::{NaiveDate, Utc};
 use common::test_pool;
+use serial_test::serial;
 use sqlx::query;
 use std::{
     collections::HashMap,
+    env::{remove_var, set_var, var},
     sync::Mutex,
     time::{Duration, Instant},
 };
@@ -486,4 +491,161 @@ fn build_network_third_summary() {
         result,
         "2 fraud reports found on Safely network. High risk seller."
     );
+}
+
+#[tokio::test]
+#[serial]
+async fn claude_analysis_pass() {
+    dotenvy::dotenv().ok();
+
+    let listing = Listings {
+        id: Uuid::now_v7(),
+        seller_id: None,
+        platform: "olx".to_string(),
+        listing_url: "https://olx.com.pk/item/test-listing".to_string(),
+        listing_id: Some("12345".to_string()),
+        title: Some("iPhone 13 Pro Max - Excellent Condition".to_string()),
+        price: Some(150000),
+        description: Some("Selling my iPhone 13 Pro Max, barely used, no scratches.".to_string()),
+        category: Some(ListingCategory::MobilePhones),
+        image_urls: Some(vec![
+            "https://example.com/image1.jpg".to_string(),
+            "https://example.com/image2.jpg".to_string(),
+        ]),
+        posted_date: Some(NaiveDate::from_ymd_opt(2026, 1, 10).unwrap()),
+        first_seen_at: Utc::now(),
+        last_analyzed_at: None,
+        updated_at: Utc::now(),
+    };
+
+    let seller = Sellers {
+        id: Uuid::now_v7(),
+        platform: "olx".to_string(),
+        platform_id: "seller_test_001".to_string(),
+        name: Some("Ahmed Khan".to_string()),
+        handle: Some("ahmed_khan_deals".to_string()),
+        phone: Some("03001234567".to_string()),
+        profile_url: Some("https://olx.com.pk/profile/ahmed-khan".to_string()),
+        join_date: Some(NaiveDate::from_ymd_opt(2021, 1, 1).unwrap()),
+        verification: SellerVerification::Unknown,
+        location: Some("Lahore".to_string()),
+        last_active_text: Some("Today".to_string()),
+        created_at: Utc::now(),
+        updated_at: Utc::now(),
+    };
+
+    let result = run_claude_analysis(&listing, &seller)
+        .await
+        .expect("expected to run the claude analysis");
+
+    assert!(
+        !result.overall_risk_notes.is_empty(),
+        "expected Claude to return real risk notes, not an empty response"
+    );
+}
+
+#[tokio::test]
+#[serial]
+async fn claude_analysis_with_missing_fields_uses_defaults() {
+    dotenvy::dotenv().ok();
+
+    let listing = Listings {
+        id: Uuid::now_v7(),
+        seller_id: None,
+        platform: "olx".to_string(),
+        listing_url: "https://olx.com.pk/item/test-listing".to_string(),
+        listing_id: Some("12345".to_string()),
+        title: None,
+        price: None,
+        description: Some("Selling my iPhone 13 Pro Max, barely used, no scratches.".to_string()),
+        category: Some(ListingCategory::MobilePhones),
+        image_urls: None,
+        posted_date: Some(NaiveDate::from_ymd_opt(2026, 1, 10).unwrap()),
+        first_seen_at: Utc::now(),
+        last_analyzed_at: None,
+        updated_at: Utc::now(),
+    };
+    let seller = Sellers {
+        id: Uuid::now_v7(),
+        platform: "olx".to_string(),
+        platform_id: "seller_test_001".to_string(),
+        name: Some("Ahmed Khan".to_string()),
+        handle: Some("ahmed_khan_deals".to_string()),
+        phone: Some("03001234567".to_string()),
+        profile_url: Some("https://olx.com.pk/profile/ahmed-khan".to_string()),
+        join_date: None,
+        verification: SellerVerification::Unknown,
+        location: Some("Lahore".to_string()),
+        last_active_text: Some("Today".to_string()),
+        created_at: Utc::now(),
+        updated_at: Utc::now(),
+    };
+
+    let result = run_claude_analysis(&listing, &seller)
+        .await
+        .expect("expected the analysis to succeed even with missing fields");
+
+    assert!(
+        !result.overall_risk_notes.is_empty(),
+        "expected Claude to still return real risk notes despite the missing fields"
+    );
+}
+
+#[tokio::test]
+#[serial]
+async fn claude_analysis_failure() {
+    dotenvy::dotenv().ok();
+
+    let original_key = var("ANTHROPIC_API_KEY").ok();
+    unsafe {
+        remove_var("ANTHROPIC_API_KEY");
+    }
+
+    let listing = Listings {
+        id: Uuid::now_v7(),
+        seller_id: None,
+        platform: "olx".to_string(),
+        listing_url: "https://olx.com.pk/item/test-listing".to_string(),
+        listing_id: Some("12345".to_string()),
+        title: Some("iPhone 13 Pro Max - Excellent Condition".to_string()),
+        price: Some(150000),
+        description: Some("Selling my iPhone 13 Pro Max, barely used, no scratches.".to_string()),
+        category: Some(ListingCategory::MobilePhones),
+        image_urls: Some(vec![
+            "https://example.com/image1.jpg".to_string(),
+            "https://example.com/image2.jpg".to_string(),
+        ]),
+        posted_date: Some(NaiveDate::from_ymd_opt(2026, 1, 10).unwrap()),
+        first_seen_at: Utc::now(),
+        last_analyzed_at: None,
+        updated_at: Utc::now(),
+    };
+    let seller = Sellers {
+        id: Uuid::now_v7(),
+        platform: "olx".to_string(),
+        platform_id: "seller_test_001".to_string(),
+        name: Some("Ahmed Khan".to_string()),
+        handle: Some("ahmed_khan_deals".to_string()),
+        phone: Some("03001234567".to_string()),
+        profile_url: Some("https://olx.com.pk/profile/ahmed-khan".to_string()),
+        join_date: Some(NaiveDate::from_ymd_opt(2021, 1, 1).unwrap()),
+        verification: SellerVerification::Unknown,
+        location: Some("Lahore".to_string()),
+        last_active_text: Some("Today".to_string()),
+        created_at: Utc::now(),
+        updated_at: Utc::now(),
+    };
+
+    let result = run_claude_analysis(&listing, &seller).await;
+
+    assert!(
+        result.is_err(),
+        "expected the analysis to fail when the API key is genuinely missing"
+    );
+
+    unsafe {
+        if let Some(key) = original_key {
+            set_var("ANTHROPIC_API_KEY", key);
+        }
+    }
 }

@@ -184,7 +184,7 @@ pub async fn resolve_seller(
 /// the listing's images, or an empty list if there are none, actually calls
 /// Claude, with everything it needs and it waits for Claude's response,
 /// and handles failure clearly
-async fn run_claude_analysis(
+pub async fn run_claude_analysis(
     listing: &Listings,
     seller: &Sellers,
 ) -> Result<ClaudeAnalysis, AnalyzeError> {

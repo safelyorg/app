@@ -1,6 +1,8 @@
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 
+use crate::errors::claude::ClaudeError;
+
 // 1. Packaging the question for Claude's API
 #[derive(Serialize)]
 pub struct ClaudeRequest {
@@ -140,10 +142,9 @@ pub async fn call_claude(
     price: i64,
     description: &str,
     _image_urls: &[String],
-) -> Result<ClaudeAnalysis, reqwest::Error> {
+) -> Result<ClaudeAnalysis, ClaudeError> {
     let client = Client::new();
-    let api_key = std::env::var("ANTHROPIC_API_KEY")
-        .expect("ANTHROPIC_API_KEY needs to be present in the .env file");
+    let api_key = std::env::var("ANTHROPIC_API_KEY").map_err(|_| ClaudeError::MissingApiKey)?;
 
     let prompt = content(
         platform,
@@ -153,18 +154,7 @@ pub async fn call_claude(
         price,
         description,
     );
-
-    // Commenting to prevent image detection because it takes a lot of tokens
-    let mut content_blocks: Vec<ContentItem> = vec![ContentItem::Text { text: prompt }];
-
-    // for url in image_urls.iter().take(3) {
-    //     content_blocks.push(ContentItem::Image {
-    //         source: ImageSource {
-    //             source_type: "url".to_string(),
-    //             url: url.clone(),
-    //         },
-    //     });
-    // }
+    let content_blocks: Vec<ContentItem> = vec![ContentItem::Text { text: prompt }];
 
     let payload = ClaudeRequest {
         model: String::from("claude-sonnet-4-6"),
@@ -181,12 +171,16 @@ pub async fn call_claude(
         .header("anthropic-version", "2023-06-01")
         .json(&payload)
         .send()
-        .await?;
+        .await
+        .map_err(|e| ClaudeError::RequestFailed(e.to_string()))?;
 
-    let body_text = response.text().await?;
+    let body_text = response
+        .text()
+        .await
+        .map_err(|e| ClaudeError::RequestFailed(e.to_string()))?;
 
     let envelope: ClaudeEnvelope =
-        serde_json::from_str(&body_text).expect("failed to parse Claude's response envelope");
+        serde_json::from_str(&body_text).map_err(|e| ClaudeError::ParseFailed(e.to_string()))?;
 
     let inner_json = &envelope.content[0].text;
     let cleaned = inner_json
@@ -196,8 +190,5 @@ pub async fn call_claude(
         .trim_end_matches("```")
         .trim();
 
-    let analysis: ClaudeAnalysis =
-        serde_json::from_str(cleaned).expect("failed to parse Claude's analysis JSON");
-
-    Ok(analysis)
+    serde_json::from_str(cleaned).map_err(|e| ClaudeError::ParseFailed(e.to_string()))
 }
