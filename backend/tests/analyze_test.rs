@@ -565,6 +565,7 @@ async fn claude_analysis_with_missing_fields_uses_defaults() {
         last_analyzed_at: None,
         updated_at: Utc::now(),
     };
+
     let seller = Sellers {
         id: Uuid::now_v7(),
         platform: "olx".to_string(),

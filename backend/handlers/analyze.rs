@@ -201,7 +201,7 @@ pub async fn run_claude_analysis(
         &account_age,
         listing.title.as_deref().unwrap_or("Untitled"),
         listing.price.unwrap_or(0),
-        listing.description.as_deref().unwrap_or(""),
+        listing.description.as_deref().unwrap_or("No Description"),
         image_urls,
     )
     .await

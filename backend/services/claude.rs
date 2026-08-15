@@ -1,7 +1,7 @@
+use crate::errors::claude::ClaudeError;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-
-use crate::errors::claude::ClaudeError;
+use serde_json::from_str;
 
 // 1. Packaging the question for Claude's API
 #[derive(Serialize)]
@@ -41,7 +41,6 @@ struct ClaudeEnvelope {
 struct ContentBlock {
     text: String,
 }
-// ----------
 
 // 3. The raw data of analysis is inserted in this struct for better structure.
 #[derive(Debug, Deserialize)]
@@ -74,15 +73,18 @@ pub struct ImageAssessment {
     pub reasoning: String,
 }
 
-pub fn content(
-    platform: &str,
-    seller_name: &str,
-    seller_account_age: &str,
-    title: &str,
-    price: i64,
-    description: &str,
-) -> String {
-    let claude_content = format!(
+#[derive(Debug)]
+pub struct ContentArguments<'a> {
+    pub platform: &'a str,
+    pub seller_name: &'a str,
+    pub seller_account_age: &'a str,
+    pub title: &'a str,
+    pub price: i64,
+    pub description: &'a str,
+}
+
+pub fn content(arg: ContentArguments) -> String {
+    format!(
         r#"
         You are a fraud detection assistant for an online marketplace.
         Analyze this listing and seller, then return ONLY a raw JSON object with no markdown, no code fences, no backticks, no explanation. Start your response with {{ and end with }}.
@@ -130,10 +132,14 @@ pub fn content(
         "overall_risk_notes": ""
         }}
         "#,
-    );
-    claude_content
+        platform = arg.platform,
+        seller_name = arg.seller_name,
+        seller_account_age = arg.seller_account_age,
+        title = arg.title,
+        price = arg.price,
+        description = arg.description,
+    )
 }
-
 pub async fn call_claude(
     platform: &str,
     seller_name: &str,
@@ -145,16 +151,25 @@ pub async fn call_claude(
 ) -> Result<ClaudeAnalysis, ClaudeError> {
     let client = Client::new();
     let api_key = std::env::var("ANTHROPIC_API_KEY").map_err(|_| ClaudeError::MissingApiKey)?;
-
-    let prompt = content(
+    let args = ContentArguments {
         platform,
         seller_name,
         seller_account_age,
         title,
         price,
         description,
-    );
-    let content_blocks: Vec<ContentItem> = vec![ContentItem::Text { text: prompt }];
+    };
+    let prompt = content(args);
+    // Commenting to prevent image detection because it takes a lot of tokens
+    let mut content_blocks: Vec<ContentItem> = vec![ContentItem::Text { text: prompt }];
+    // for url in image_urls.iter().take(3) {
+    //     content_blocks.push(ContentItem::Image {
+    //         source: ImageSource {
+    //             source_type: "url".to_string(),
+    //             url: url.clone(),
+    //         },
+    //     });
+    // }
 
     let payload = ClaudeRequest {
         model: String::from("claude-sonnet-4-6"),
@@ -190,5 +205,5 @@ pub async fn call_claude(
         .trim_end_matches("```")
         .trim();
 
-    serde_json::from_str(cleaned).map_err(|e| ClaudeError::ParseFailed(e.to_string()))
+    from_str(cleaned).map_err(|e| ClaudeError::ParseFailed(e.to_string()))
 }
