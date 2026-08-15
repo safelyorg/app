@@ -11,7 +11,8 @@ use backend::{
     },
     services::{
         auth::{create_session, find_or_create_user_by_email},
-        sellers::create_seller,
+        fraud_reports::{build_network_summary, count_fraud_reports},
+        sellers::{create_seller, find_seller},
     },
 };
 use common::test_pool;
@@ -364,4 +365,125 @@ async fn resolve_existing_seller_with_real_fraud_report() {
         .execute(&pool)
         .await
         .expect("expected final cleanup to succeed");
+}
+
+#[tokio::test]
+async fn find_seller_not_exists() {
+    let pool = test_pool().await;
+    let platform = "olx".to_string();
+    let platform_id = "find_seller_not_exists".to_string();
+
+    query("DELETE FROM sellers WHERE platform = $1 AND platform_id = $2")
+        .bind(&platform)
+        .bind(&platform_id)
+        .execute(&pool)
+        .await
+        .expect("expected cleanup to succeed");
+
+    let result = find_seller(&pool, &platform, &platform_id)
+        .await
+        .expect("expected the query itself to succeed");
+
+    assert!(result.is_none(), "expected no seller to be found");
+}
+
+#[tokio::test]
+async fn zero_fraud_reports() {
+    let pool = test_pool().await;
+    let seller_id = Uuid::new_v4();
+
+    let count = count_fraud_reports(&pool, seller_id)
+        .await
+        .expect("expected to count the fraud reports");
+
+    assert_eq!(count, 0);
+}
+
+#[tokio::test]
+async fn having_fraud_reports() {
+    let pool = test_pool().await;
+    let platform = "olx".to_string();
+    let platform_id = "sellers_have_reports_test_001".to_string();
+
+    query("DELETE FROM sellers WHERE platform = $1 AND platform_id = $2")
+        .bind(&platform)
+        .bind(&platform_id)
+        .execute(&pool)
+        .await
+        .expect("expected cleanup to succeed");
+
+    let seller_request = SellersRequest {
+        platform: platform.clone(),
+        platform_id: Some(platform_id.clone()),
+        name: Some("Test name".to_string()),
+        handle: Some("test_handle".to_string()),
+        phone: Some("123456789".to_string()),
+        profile_url: Some("https://olx.com.pk/profile/test-seller".to_string()),
+        join_date: Some("2021".to_string()),
+        location: Some("Lahore".to_string()),
+        last_active: Some("Today".to_string()),
+    };
+
+    let seller = create_seller(&pool, &seller_request, SellerVerification::Unknown)
+        .await
+        .expect("expected to create the seller");
+
+    for _ in 0..2 {
+        query("INSERT INTO fraud_reports (seller_id, platform, platform_id, report_type, description) VALUES ($1, $2, $3, $4::report_types, $5)")
+            .bind(seller.id)
+            .bind(&platform)
+            .bind(&platform_id)
+            .bind("scam")
+            .bind("Test fraud report")
+            .execute(&pool)
+            .await
+            .expect("expected to create a real fraud report");
+    }
+
+    let count = count_fraud_reports(&pool, seller.id)
+        .await
+        .expect("expected to count the fraud reports");
+
+    assert_eq!(count, 2);
+
+    query("DELETE FROM sellers WHERE platform = $1 AND platform_id = $2")
+        .bind(&platform)
+        .bind(&platform_id)
+        .execute(&pool)
+        .await
+        .expect("expected cleanup to succeed");
+}
+
+#[test]
+fn build_network_first_summary() {
+    let fraud_count = 0;
+
+    let result = build_network_summary(fraud_count);
+
+    assert_eq!(
+        result,
+        "Clean record on Safely network. No fraud reports found.".to_string()
+    );
+}
+
+#[test]
+fn build_network_second_summary() {
+    let fraud_count = 1;
+
+    let result = build_network_summary(fraud_count);
+
+    assert_eq!(
+        result,
+        "1 fraud report found on Safely network. Proceed with caution.".to_string(),
+    );
+}
+
+#[test]
+fn build_network_third_summary() {
+    let fraud_count = 2;
+    let result = build_network_summary(fraud_count);
+    assert_eq!(
+        result,
+        "2 fraud reports found on Safely network. High risk seller."
+    );
 }

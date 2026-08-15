@@ -4,11 +4,10 @@ use sqlx::{Error, Pool, Postgres, query_as};
 use uuid::Uuid;
 
 /// It looks up a seller by which marketplace they're on, and their specific ID
-/// on that marketplace returning them if found, or nothing if they've
+/// on that marketplace, returning them if found, or nothing if they've
 /// never been seen before.
 ///
-/// It runs the lookup query, returns whatever was found and
-/// returns whatever was found.
+/// It runs the lookup query and returns whatever was found.
 pub async fn find_seller(
     pool: &Pool<Postgres>,
     platform: &str,
