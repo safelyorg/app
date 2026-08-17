@@ -16,7 +16,7 @@ use backend::{
         claude::{ClaudeAnalysis, Finding, ImageAssessment, PriceAssessment},
         fraud_reports::{build_network_summary, count_fraud_reports},
         sellers::{create_seller, find_seller},
-        signals::build_signals,
+        signals::{build_domain_signal, build_signals},
     },
 };
 use chrono::{NaiveDate, Utc};
@@ -808,4 +808,118 @@ fn build_all_signals_with_domain_check() {
 
     assert_eq!(all_signals.len(), signals_without_domain.len() + 1);
     assert_eq!(all_signals[0].label, "Domain check");
+}
+
+#[test]
+fn build_domain_signal_with_legitimate_status() {
+    let status = Some("legitimate");
+    let real_name = None;
+    let real_domain = None;
+    let current_domain = None;
+    let current_domain_html = None;
+    let real_domain_html = None;
+
+    let result = build_domain_signal(
+        status,
+        real_name,
+        real_domain,
+        current_domain,
+        current_domain_html,
+        real_domain_html,
+    );
+
+    let signal = result.expect("expected a signal for a legitimate domain");
+
+    assert_eq!(signal.label, "Domain check");
+    assert_eq!(signal.value, "Verified");
+    assert_eq!(signal.signal_type, "good");
+    assert_eq!(
+        signal.sub,
+        "This matches the marketplace's real, verified domain."
+    );
+}
+
+#[test]
+fn build_domain_signal_with_suspicious_status() {
+    let status = Some("suspicious");
+    let real_name = None;
+    let real_domain = None;
+    let current_domain = None;
+    let current_domain_html = None;
+    let real_domain_html = None;
+
+    let result = build_domain_signal(
+        status,
+        real_name,
+        real_domain,
+        current_domain,
+        current_domain_html,
+        real_domain_html,
+    );
+
+    let signal = result.expect("expected a signal for a suspicious domain");
+
+    assert_eq!(signal.label, "Domain check");
+    assert_eq!(signal.value, "Suspicious");
+    assert_eq!(signal.signal_type, "bad");
+    assert_eq!(
+        signal.sub,
+        "This does not match the marketplace's real domain (unknown). You're currently on an unrecognized domain instead."
+    );
+}
+
+#[test]
+fn build_domain_signal_with_something_else_status() {
+    let status = Some("something_else");
+    let real_name = None;
+    let real_domain = None;
+    let current_domain = None;
+    let current_domain_html = None;
+    let real_domain_html = None;
+
+    let result = build_domain_signal(
+        status,
+        real_name,
+        real_domain,
+        current_domain,
+        current_domain_html,
+        real_domain_html,
+    );
+
+    assert!(
+        result.is_none(),
+        "expected no signal for an unrecognized status"
+    );
+}
+
+#[test]
+fn build_domain_signal_prefers_highlighted_html_over_plain_text() {
+    let status = Some("suspicious");
+    let real_name = Some("OLX");
+    let real_domain = Some("olx.com.pk");
+    let real_domain_html = Some("olx.com.pk");
+    let current_domain = Some("0lx.com.pk");
+    let current_domain_html = Some("<b>0</b>lx.com.pk");
+
+    let result = build_domain_signal(
+        status,
+        real_name,
+        real_domain,
+        current_domain,
+        current_domain_html,
+        real_domain_html,
+    );
+
+    let signal = result.expect("expected a signal for a suspicious domain");
+
+    assert!(
+        signal.sub.contains("<b>0</b>lx.com.pk"),
+        "expected the highlighted version to be used, got: {}",
+        signal.sub
+    );
+
+    assert!(
+        !signal.sub.contains("0lx.com.pk\""),
+        "expected the plain version NOT to be used when the highlighted one was available"
+    );
 }
