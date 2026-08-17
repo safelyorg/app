@@ -5,7 +5,7 @@ use serde_json::Value;
 use sqlx::{Type, prelude::FromRow};
 use uuid::Uuid;
 
-#[derive(Debug, Serialize, Deserialize, Type)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Type)]
 #[sqlx(type_name = "risk_level_type", rename_all = "snake_case")]
 #[serde(rename_all = "snake_case")]
 pub enum RiskLevel {
@@ -74,7 +74,7 @@ pub struct AnalyzeResponse {
     pub fraud_report_count: i64,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct Signal {
     pub label: String,
     pub sub: String,

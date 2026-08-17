@@ -3,18 +3,19 @@ mod common;
 use axum::http::{HeaderMap, HeaderValue};
 use backend::{
     handlers::analyze::{
-        RATE_LIMITS, authorize_request, build_all_signals, build_requests, check_rate_limit,
-        resolve_seller, run_claude_analysis,
+        BuildResponseData, RATE_LIMITS, authorize_request, build_all_signals, build_requests,
+        check_rate_limit, resolve_seller, run_claude_analysis, save_and_build_response,
     },
     models::{
-        analysis::AnalyzeRequest,
-        listings::{ListingCategory, Listings},
+        analysis::{AnalyzeRequest, RiskLevel, Signal},
+        listings::{ListingCategory, Listings, ListingsRequest},
         sellers::{SellerVerification, Sellers, SellersRequest},
     },
     services::{
         auth::{create_session, find_or_create_user_by_email},
         claude::{ClaudeAnalysis, Finding, ImageAssessment, PriceAssessment},
         fraud_reports::{build_network_summary, count_fraud_reports},
+        listings::{create_listing, get_monthly_visit_activity},
         sellers::{create_seller, find_seller},
         signals::{build_domain_signal, build_signals},
     },
@@ -921,5 +922,209 @@ fn build_domain_signal_prefers_highlighted_html_over_plain_text() {
     assert!(
         !signal.sub.contains("0lx.com.pk\""),
         "expected the plain version NOT to be used when the highlighted one was available"
+    );
+}
+
+#[tokio::test]
+async fn save_and_build_response_success() {
+    let pool = test_pool().await;
+
+    let email = "save_response_test@example.com";
+    cleanup_test_user(&pool, email).await;
+    let (user, _) = find_or_create_user_by_email(&pool, email)
+        .await
+        .expect("expected to create the user");
+
+    let seller_request = SellersRequest {
+        platform: "olx".to_string(),
+        platform_id: Some("save_response_seller_001".to_string()),
+        name: Some("Test Seller".to_string()),
+        handle: Some("test_handle".to_string()),
+        phone: Some("123456789".to_string()),
+        profile_url: Some("https://olx.com.pk/profile/test".to_string()),
+        join_date: Some("2021".to_string()),
+        location: Some("Lahore".to_string()),
+        last_active: Some("Today".to_string()),
+    };
+    let seller = create_seller(&pool, &seller_request, SellerVerification::Unknown)
+        .await
+        .expect("expected to create the seller");
+
+    let listing_request = ListingsRequest {
+        seller_id: Some(seller.id),
+        platform: "olx".to_string(),
+        listing_url: "https://olx.com.pk/item/save-response-test".to_string(),
+        listing_id: Some("save_response_listing_001".to_string()),
+        title: Some("Test Listing".to_string()),
+        price: Some(50000),
+        description: Some("Test description".to_string()),
+        category: None,
+        image_urls: None,
+        posted_date: None,
+    };
+    let listing = create_listing(&pool, &listing_request, seller.id)
+        .await
+        .expect("expected to create the listing");
+
+    let claude_analysis = ClaudeAnalysis {
+        urgency_language: Finding {
+            found: false,
+            evidence: "".to_string(),
+        },
+        advance_payment_request: Finding {
+            found: false,
+            evidence: "".to_string(),
+        },
+        duplicate_listing: Finding {
+            found: false,
+            evidence: "".to_string(),
+        },
+        image_authenticity: ImageAssessment {
+            verdict: "original".to_string(),
+            reasoning: "".to_string(),
+        },
+        fraud_pattern_match: Finding {
+            found: false,
+            evidence: "".to_string(),
+        },
+        contact_info_in_listing: Finding {
+            found: false,
+            evidence: "".to_string(),
+        },
+        price_assessment: PriceAssessment {
+            verdict: "normal".to_string(),
+            reasoning: "".to_string(),
+        },
+        overall_risk_notes: "No significant risk detected.".to_string(),
+    };
+
+    let signals = vec![Signal {
+        label: "Price analysis".to_string(),
+        sub: "Price looks normal for this category.".to_string(),
+        value: "Normal".to_string(),
+        signal_type: "good".to_string(),
+    }];
+
+    let data = BuildResponseData {
+        pool: &pool,
+        listing_id: listing.id,
+        risk_score: 10,
+        risk_level: RiskLevel::Low,
+        signals: signals.clone(),
+        claude_analysis,
+        user_id: user.id,
+        seller,
+        fraud_count: 0,
+        network_summary: "Clean record on Safely network. No fraud reports found.".to_string(),
+    };
+
+    let result = save_and_build_response(data)
+        .await
+        .expect("expected the response to be built successfully");
+
+    assert_eq!(result.risk_score, 10);
+    assert_eq!(result.risk_level, RiskLevel::Low);
+    assert_eq!(result.fraud_report_count, 0);
+    assert_eq!(result.signals.len(), 1);
+
+    cleanup_test_user(&pool, email).await;
+}
+
+#[tokio::test]
+async fn save_and_build_response_database_failure() {
+    let pool = test_pool().await;
+
+    let fake_listing_id = Uuid::new_v4();
+    let fake_user_id = Uuid::new_v4();
+
+    let seller = Sellers {
+        id: Uuid::now_v7(),
+        platform: "olx".to_string(),
+        platform_id: "fake_seller_for_failure_test".to_string(),
+        name: Some("Test Seller".to_string()),
+        handle: Some("test_handle".to_string()),
+        phone: Some("123456789".to_string()),
+        profile_url: Some("https://olx.com.pk/profile/test".to_string()),
+        join_date: Some(NaiveDate::from_ymd_opt(2021, 1, 1).unwrap()),
+        verification: SellerVerification::Unknown,
+        location: Some("Lahore".to_string()),
+        last_active_text: Some("Today".to_string()),
+        created_at: Utc::now(),
+        updated_at: Utc::now(),
+    };
+
+    let claude_analysis = ClaudeAnalysis {
+        urgency_language: Finding {
+            found: false,
+            evidence: "".to_string(),
+        },
+        advance_payment_request: Finding {
+            found: false,
+            evidence: "".to_string(),
+        },
+        duplicate_listing: Finding {
+            found: false,
+            evidence: "".to_string(),
+        },
+        image_authenticity: ImageAssessment {
+            verdict: "original".to_string(),
+            reasoning: "".to_string(),
+        },
+        fraud_pattern_match: Finding {
+            found: false,
+            evidence: "".to_string(),
+        },
+        contact_info_in_listing: Finding {
+            found: false,
+            evidence: "".to_string(),
+        },
+        price_assessment: PriceAssessment {
+            verdict: "normal".to_string(),
+            reasoning: "".to_string(),
+        },
+        overall_risk_notes: "No significant risk detected.".to_string(),
+    };
+
+    let signals = vec![Signal {
+        label: "Price analysis".to_string(),
+        sub: "Price looks normal for this category.".to_string(),
+        value: "Normal".to_string(),
+        signal_type: "good".to_string(),
+    }];
+
+    let data = BuildResponseData {
+        pool: &pool,
+        listing_id: fake_listing_id,
+        risk_score: 10,
+        risk_level: RiskLevel::Low,
+        signals,
+        claude_analysis,
+        user_id: fake_user_id,
+        seller,
+        fraud_count: 0,
+        network_summary: "Clean record on Safely network. No fraud reports found.".to_string(),
+    };
+
+    let result = save_and_build_response(data).await;
+
+    assert!(
+        result.is_err(),
+        "expected save_and_build_response to fail when listing_id and user_id don't genuinely exist"
+    );
+}
+
+#[tokio::test]
+#[serial]
+async fn get_monthly_visit_activity_database_error() {
+    let pool = test_pool().await;
+
+    pool.close().await;
+
+    let fake_seller_id = Uuid::new_v4();
+    let result = get_monthly_visit_activity(&pool, fake_seller_id).await;
+
+    assert!(
+        result.is_err(),
+        "expected a genuine database error when the connection pool is closed"
     );
 }

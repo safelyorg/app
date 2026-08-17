@@ -235,6 +235,19 @@ pub fn build_all_signals(
     signals
 }
 
+pub struct BuildResponseData<'a> {
+    pub pool: &'a Pool<Postgres>,
+    pub listing_id: Uuid,
+    pub risk_score: i16,
+    pub risk_level: RiskLevel,
+    pub signals: Vec<Signal>,
+    pub claude_analysis: ClaudeAnalysis,
+    pub user_id: Uuid,
+    pub seller: Sellers,
+    pub fraud_count: i64,
+    pub network_summary: String,
+}
+
 /// It saves the complete analysis result to the database, fetches the seller's
 /// real visit-history chart, and packages everything together into the final
 /// response the extension actually receives.
@@ -243,49 +256,40 @@ pub fn build_all_signals(
 /// saves the analysis to the database, fetches the seller's real visit history,
 /// for the chart, builds the seller portion of the response, assembles and returns
 /// the complete, final response.
-async fn save_and_build_response(
-    pool: &Pool<Postgres>,
-    listing_id: Uuid,
-    risk_score: i16,
-    risk_level: RiskLevel,
-    signals: Vec<Signal>,
-    claude_analysis: ClaudeAnalysis,
-    user_id: Uuid,
-    seller: Sellers,
-    fraud_count: i64,
-    network_summary: String,
+pub async fn save_and_build_response(
+    data: BuildResponseData<'_>,
 ) -> Result<Json<AnalyzeResponse>, AnalyzeError> {
-    let signals_json = serde_json::to_value(&signals)
+    let signals_json = serde_json::to_value(&data.signals)
         .map_err(|e| AnalyzeError::SerializationFailed(e.to_string()))?;
 
     let saved_analysis = create_analysis(
-        pool,
-        listing_id,
-        risk_score,
-        risk_level,
+        data.pool,
+        data.listing_id,
+        data.risk_score,
+        data.risk_level,
         signals_json,
-        claude_analysis.overall_risk_notes.clone(),
+        data.claude_analysis.overall_risk_notes.clone(),
         String::new(),
-        user_id,
+        data.user_id,
     )
     .await
     .map_err(|e| AnalyzeError::Database(e.to_string()))?;
 
-    let monthly_activity = get_monthly_visit_activity(pool, seller.id)
+    let monthly_activity = get_monthly_visit_activity(data.pool, data.seller.id)
         .await
         .unwrap_or_else(|_| vec![0i32; 12]);
 
-    let mut seller_response = SellersResponse::from(seller);
-    seller_response.network_summary = network_summary;
+    let mut seller_response = SellersResponse::from(data.seller);
+    seller_response.network_summary = data.network_summary;
     seller_response.monthly_activity = monthly_activity;
 
     Ok(Json(AnalyzeResponse {
         risk_score: saved_analysis.risk_score,
         risk_level: saved_analysis.risk_level,
         seller: seller_response,
-        signals,
-        network_summary: claude_analysis.overall_risk_notes,
-        fraud_report_count: fraud_count,
+        signals: data.signals,
+        network_summary: data.claude_analysis.overall_risk_notes,
+        fraud_report_count: data.fraud_count,
     }))
 }
 
@@ -328,17 +332,18 @@ pub async fn analyze(
         _ => RiskLevel::High,
     };
 
-    save_and_build_response(
-        &pool,
-        listing.id,
+    let data = BuildResponseData {
+        pool: &pool,
+        listing_id: listing.id,
         risk_score,
         risk_level,
         signals,
         claude_analysis,
         user_id,
-        resolved.seller,
-        resolved.fraud_count,
-        resolved.network_summary,
-    )
-    .await
+        seller: resolved.seller,
+        fraud_count: resolved.fraud_count,
+        network_summary: resolved.network_summary,
+    };
+
+    save_and_build_response(data).await
 }
