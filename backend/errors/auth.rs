@@ -3,6 +3,7 @@ use axum::{
     response::{IntoResponse, Redirect, Response},
 };
 use axum_extra::extract::CookieJar;
+use sqlx::Error;
 
 const DASHBOARD_PATH: &str = "/dashboard/";
 
@@ -12,6 +13,12 @@ pub enum AuthError {
     InternalServerError(String),
     DashboardPath(String),
     DashboardPathWithJar(CookieJar, String),
+}
+
+#[derive(Debug)]
+pub enum AuthServiceError {
+    InvalidEmail,
+    Database(Error),
 }
 
 impl IntoResponse for AuthError {
@@ -34,5 +41,11 @@ impl IntoResponse for AuthError {
             )
                 .into_response(),
         }
+    }
+}
+
+impl From<Error> for AuthServiceError {
+    fn from(e: Error) -> Self {
+        AuthServiceError::Database(e)
     }
 }

@@ -1,5 +1,5 @@
 use crate::{
-    errors::auth::AuthError,
+    errors::auth::{AuthError, AuthServiceError},
     models::users::{MagicLink, User},
 };
 use axum::http::HeaderMap;
@@ -22,11 +22,15 @@ pub fn validate_email_format(email: &str) -> Result<String, AuthError> {
 ///
 /// I generates the pieces needed for a new row, validates the email to see if there's a real bug,
 /// inserts the row into the database and returns the token.
-pub async fn insert_magic_link(pool: &Pool<Postgres>, email: &str) -> Result<String, Error> {
+pub async fn insert_magic_link(
+    pool: &Pool<Postgres>,
+    email: &str,
+) -> Result<String, AuthServiceError> {
     let id = Uuid::now_v7();
     let token = Uuid::new_v4().to_string();
     let expires_at = Utc::now() + Duration::minutes(15);
-    let validated_email = validate_email_format(email).map_err(|_| Error::RowNotFound)?;
+    let validated_email =
+        validate_email_format(email).map_err(|_| AuthServiceError::InvalidEmail)?;
 
     query("INSERT INTO magic_links (id, email, token, expires_at) VALUES ($1, $2, $3, $4)")
         .bind(id)
@@ -74,7 +78,7 @@ pub async fn validate_magic_link(
 pub async fn find_or_create_user_by_email(
     pool: &Pool<Postgres>,
     email: &str,
-) -> Result<(User, bool), Error> {
+) -> Result<(User, bool), AuthServiceError> {
     let id = Uuid::now_v7();
 
     if let Some(user) = find_user_by_email(pool, email).await? {
@@ -94,13 +98,19 @@ pub async fn find_or_create_user_by_email(
 ///
 /// Validates and cleans the email — now correctly handling failure, looks up the user,
 /// and returns the result directly
-pub async fn find_user_by_email(pool: &Pool<Postgres>, email: &str) -> Result<Option<User>, Error> {
-    let formatted_email = validate_email_format(email).map_err(|_| Error::RowNotFound)?;
+pub async fn find_user_by_email(
+    pool: &Pool<Postgres>,
+    email: &str,
+) -> Result<Option<User>, AuthServiceError> {
+    let formatted_email =
+        validate_email_format(email).map_err(|_| AuthServiceError::InvalidEmail)?;
 
-    query_as::<_, User>("SELECT * FROM users WHERE email = $1 LIMIT 1")
+    let result = query_as::<_, User>("SELECT * FROM users WHERE email = $1 LIMIT 1")
         .bind(formatted_email)
         .fetch_optional(pool)
-        .await
+        .await?;
+
+    Ok(result)
 }
 
 /// It checks if a request includes a genuine, valid login token,
@@ -189,7 +199,7 @@ pub async fn find_or_create_user_by_google(
     google_id: &str,
     email: &str,
     name: Option<&str>,
-) -> Result<(User, bool), Error> {
+) -> Result<(User, bool), AuthServiceError> {
     if let Some(user) = find_user_by_google_id(pool, google_id).await? {
         return Ok((user, false));
     }
@@ -216,6 +226,7 @@ pub async fn find_or_create_user_by_google(
     .bind(name)
     .fetch_one(pool)
     .await?;
+
     Ok((user, true))
 }
 

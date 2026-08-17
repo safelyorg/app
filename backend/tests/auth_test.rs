@@ -1208,8 +1208,6 @@ async fn google_signin_links_onto_an_existing_email_match() {
     let google_id = "google_id_linking_to_existing_001";
     cleanup_test_user(&pool, email).await;
 
-    // Set up an existing account, created the "magic link" way -
-    // no Google ID attached yet.
     let (existing_user, _) = find_or_create_user_by_email(&pool, email)
         .await
         .expect("expected to create the existing user");

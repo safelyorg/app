@@ -10,8 +10,8 @@ use sqlx::{Pool, Postgres};
 
 pub fn billing_routes() -> Router<Pool<Postgres>> {
     Router::new()
-        .route("/api/v1/webhooks/creem", post(creem_webhook))
         .route("/api/v1/billing/checkout", post(create_checkout_handler))
+        .route("/api/v1/webhooks/creem", post(creem_webhook))
         .route(
             "/api/v1/billing/cancel-subscription",
             post(cancel_subscription_handler),

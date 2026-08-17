@@ -1,5 +1,5 @@
 use crate::models::analysis::{Analysis, RiskLevel};
-use sqlx::{Error, Pool, Postgres};
+use sqlx::{Error, Pool, Postgres, query_as};
 use uuid::Uuid;
 
 pub async fn create_analysis(
@@ -13,7 +13,7 @@ pub async fn create_analysis(
     user_id: Uuid,
 ) -> Result<Analysis, Error> {
     let id = Uuid::now_v7();
-    let analysis = sqlx::query_as::<_, Analysis>(
+    let analysis = query_as::<_, Analysis>(
         "
         INSERT INTO analysis (
             id,

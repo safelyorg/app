@@ -85,7 +85,7 @@ pub async fn verify_magic_link(
     let (user, is_new) = find_or_create_user_by_email(&pool, &validate.email)
         .await
         .map_err(|e| {
-            eprintln!("find_or_create_user_by_email error: {}", e);
+            eprintln!("find_or_create_user_by_email error: {:?}", e);
             AuthError::DashboardPath("server_error".to_string())
         })?;
     let session_token = finish_sign_in(&pool, user.id, is_new, &validate.email, "email").await?;
@@ -256,7 +256,7 @@ pub async fn google_callback(
     )
     .await
     .map_err(|e| {
-        eprintln!("find_or_create_user_by_google error: {}", e);
+        eprintln!("find_or_create_user_by_google error: {:?}", e);
         AuthError::DashboardPath("server_error".to_string())
     })?;
 

@@ -10,6 +10,7 @@ use axum::{
     extract::State,
     http::{HeaderMap, StatusCode},
 };
+use serde_json::Value;
 use sqlx::{Pool, Postgres};
 use std::env::var;
 use uuid::Uuid;
@@ -24,7 +25,7 @@ pub async fn create_checkout_handler(
     State(pool): State<Pool<Postgres>>,
     headers: HeaderMap,
     Json(body): Json<CreateCheckoutBody>,
-) -> Result<Json<serde_json::Value>, StatusCode> {
+) -> Result<Json<Value>, StatusCode> {
     let user_id = extract_user_id(&headers, &pool)
         .await
         .expect("expected to extract the user id")
