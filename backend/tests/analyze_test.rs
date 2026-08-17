@@ -1,10 +1,15 @@
 mod common;
 
-use axum::http::{HeaderMap, HeaderValue};
+use axum::{
+    Json,
+    extract::State,
+    http::{HeaderMap, HeaderValue},
+};
 use backend::{
     handlers::analyze::{
-        BuildResponseData, RATE_LIMITS, authorize_request, build_all_signals, build_requests,
-        check_rate_limit, resolve_seller, run_claude_analysis, save_and_build_response,
+        BuildResponseData, RATE_LIMITS, analyze, authorize_request, build_all_signals,
+        build_requests, check_rate_limit, resolve_seller, run_claude_analysis,
+        save_and_build_response,
     },
     models::{
         analysis::{AnalyzeRequest, RiskLevel, Signal},
@@ -1127,4 +1132,149 @@ async fn get_monthly_visit_activity_database_error() {
         result.is_err(),
         "expected a genuine database error when the connection pool is closed"
     );
+}
+
+#[tokio::test]
+async fn analyze_unauthorized_request() {
+    let pool = test_pool().await;
+
+    let headers = HeaderMap::new();
+
+    let request = AnalyzeRequest {
+        platform: "olx".to_string(),
+        seller_id: None,
+        listing_url: "https://olx.com.pk/item/test-listing".to_string(),
+        listing_id: Some("12345".to_string()),
+        title: Some("Test Listing".to_string()),
+        price: Some(50000),
+        description: Some("A test listing description".to_string()),
+        category: None,
+        image_urls: Some(vec!["https://example.com/image1.jpg".to_string()]),
+        posted_date: None,
+        platform_id: Some("unauthorized_test_platform_id".to_string()),
+        seller_name: Some("Test Seller".to_string()),
+        seller_handle: Some("test_seller_handle".to_string()),
+        seller_phone: Some("03001234567".to_string()),
+        seller_profile_url: Some("https://olx.com.pk/profile/test-seller".to_string()),
+        seller_join_date: Some("2021".to_string()),
+        seller_location: Some("Lahore".to_string()),
+        seller_last_active: Some("Today".to_string()),
+        domain_check_status: None,
+        domain_check_real_name: None,
+        domain_check_real_domain: None,
+        domain_check_current_domain: None,
+        domain_check_current_html: None,
+        domain_check_real_html: None,
+    };
+
+    let result = analyze(State(pool.clone()), headers, Json(request)).await;
+
+    assert!(
+        result.is_err(),
+        "expected an unauthenticated request to be rejected"
+    );
+
+    let leftover_seller = find_seller(&pool, "olx", "unauthorized_test_platform_id")
+        .await
+        .expect("expected the query itself to succeed");
+
+    assert!(
+        leftover_seller.is_none(),
+        "expected NO seller to be created, since authorization should have stopped everything first"
+    );
+}
+
+#[tokio::test]
+async fn analyze_success() {
+    let pool = test_pool().await;
+
+    let email = "analyze_success_test@example.com";
+    cleanup_test_user(&pool, email).await;
+    let (user, _) = find_or_create_user_by_email(&pool, email)
+        .await
+        .expect("expected to create the user");
+    let real_session_token = create_session(&pool, user.id)
+        .await
+        .expect("expected to create a real session");
+
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        "authorization",
+        HeaderValue::from_str(&format!("Bearer {}", real_session_token))
+            .expect("expected to insert the header value"),
+    );
+
+    let platform = "olx".to_string();
+    let platform_id = "analyze_success_platform_id".to_string();
+
+    query("DELETE FROM sellers WHERE platform = $1 AND platform_id = $2")
+        .bind(&platform)
+        .bind(&platform_id)
+        .execute(&pool)
+        .await
+        .expect("expected cleanup to succeed");
+
+    let request = AnalyzeRequest {
+        platform: platform.clone(),
+        seller_id: None,
+        listing_url: "https://olx.com.pk/item/analyze-success-test".to_string(),
+        listing_id: Some("analyze_success_listing".to_string()),
+        title: Some("iPhone 13 Pro Max - Excellent Condition".to_string()),
+        price: Some(150000),
+        description: Some("Selling my iPhone 13 Pro Max, barely used.".to_string()),
+        category: None,
+        image_urls: None,
+        posted_date: None,
+        platform_id: Some(platform_id.clone()),
+        seller_name: Some("Ahmed Khan".to_string()),
+        seller_handle: Some("ahmed_khan_deals".to_string()),
+        seller_phone: Some("03001234567".to_string()),
+        seller_profile_url: Some("https://olx.com.pk/profile/ahmed-khan".to_string()),
+        seller_join_date: Some("2021".to_string()),
+        seller_location: Some("Lahore".to_string()),
+        seller_last_active: Some("Today".to_string()),
+        domain_check_status: None,
+        domain_check_real_name: None,
+        domain_check_real_domain: None,
+        domain_check_current_domain: None,
+        domain_check_current_html: None,
+        domain_check_real_html: None,
+    };
+
+    let result = analyze(State(pool.clone()), headers, Json(request))
+        .await
+        .expect("expected the full analyze flow to succeed");
+
+    assert!(
+        result.risk_score >= 0 && result.risk_score <= 100,
+        "expected a genuine risk score between 0 and 100, got: {}",
+        result.risk_score
+    );
+    assert!(
+        !result.signals.is_empty(),
+        "expected at least one real signal to be present"
+    );
+    assert_eq!(result.fraud_report_count, 0);
+
+    query("DELETE FROM analysis WHERE user_id = $1")
+        .bind(user.id)
+        .execute(&pool)
+        .await
+        .expect("expected analysis cleanup to succeed");
+
+    query("DELETE FROM listings WHERE platform = $1 AND listing_id = $2")
+        .bind(&platform)
+        .bind("analyze_success_listing")
+        .execute(&pool)
+        .await
+        .expect("expected listing cleanup to succeed");
+
+    query("DELETE FROM sellers WHERE platform = $1 AND platform_id = $2")
+        .bind(&platform)
+        .bind(&platform_id)
+        .execute(&pool)
+        .await
+        .expect("expected seller cleanup to succeed");
+
+    cleanup_test_user(&pool, email).await;
 }
