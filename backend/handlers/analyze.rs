@@ -214,7 +214,7 @@ pub async fn run_claude_analysis(
 ///
 /// It builds the main signal list from Claude's analysis, checks if a domain
 /// mismatch was detected and returns the complete list.
-fn build_all_signals(
+pub fn build_all_signals(
     claude_analysis: &ClaudeAnalysis,
     seller: &Sellers,
     request: &AnalyzeRequest,

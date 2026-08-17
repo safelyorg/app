@@ -55,20 +55,20 @@ pub struct ClaudeAnalysis {
     pub overall_risk_notes: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 pub struct Finding {
     pub found: bool,
     pub evidence: String,
 }
 
-#[derive(Debug, Deserialize)]
-pub struct PriceAssessment {
+#[derive(Clone, Debug, Deserialize)]
+pub struct ImageAssessment {
     pub verdict: String,
     pub reasoning: String,
 }
 
-#[derive(Debug, Deserialize)]
-pub struct ImageAssessment {
+#[derive(Clone, Debug, Deserialize)]
+pub struct PriceAssessment {
     pub verdict: String,
     pub reasoning: String,
 }

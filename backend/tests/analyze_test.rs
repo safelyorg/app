@@ -3,8 +3,8 @@ mod common;
 use axum::http::{HeaderMap, HeaderValue};
 use backend::{
     handlers::analyze::{
-        RATE_LIMITS, authorize_request, build_requests, check_rate_limit, resolve_seller,
-        run_claude_analysis,
+        RATE_LIMITS, authorize_request, build_all_signals, build_requests, check_rate_limit,
+        resolve_seller, run_claude_analysis,
     },
     models::{
         analysis::AnalyzeRequest,
@@ -13,8 +13,10 @@ use backend::{
     },
     services::{
         auth::{create_session, find_or_create_user_by_email},
+        claude::{ClaudeAnalysis, Finding, ImageAssessment, PriceAssessment},
         fraud_reports::{build_network_summary, count_fraud_reports},
         sellers::{create_seller, find_seller},
+        signals::build_signals,
     },
 };
 use chrono::{NaiveDate, Utc};
@@ -495,7 +497,7 @@ fn build_network_third_summary() {
 
 #[tokio::test]
 #[serial]
-async fn claude_analysis_pass() {
+async fn claude_analysis_success() {
     dotenvy::dotenv().ok();
 
     let listing = Listings {
@@ -649,4 +651,161 @@ async fn claude_analysis_failure() {
             set_var("ANTHROPIC_API_KEY", key);
         }
     }
+}
+
+#[test]
+fn build_all_signals_without_domain_check() {
+    let finding = Finding {
+        found: true,
+        evidence: "evidence".to_string(),
+    };
+
+    let image_assessment = ImageAssessment {
+        verdict: "original".to_string(),
+        reasoning: "reasoning".to_string(),
+    };
+
+    let price_assessment = PriceAssessment {
+        verdict: "normal".to_string(),
+        reasoning: "reasoning".to_string(),
+    };
+
+    let claude_analysis = ClaudeAnalysis {
+        urgency_language: finding.clone(),
+        advance_payment_request: finding.clone(),
+        duplicate_listing: finding.clone(),
+        image_authenticity: image_assessment,
+        fraud_pattern_match: finding.clone(),
+        contact_info_in_listing: finding.clone(),
+        price_assessment: price_assessment,
+        overall_risk_notes: "risk notes".to_string(),
+    };
+
+    let seller = Sellers {
+        id: Uuid::now_v7(),
+        platform: "olx".to_string(),
+        platform_id: "seller_test_001".to_string(),
+        name: Some("Ahmed Khan".to_string()),
+        handle: Some("ahmed_khan_deals".to_string()),
+        phone: Some("03001234567".to_string()),
+        profile_url: Some("https://olx.com.pk/profile/ahmed-khan".to_string()),
+        join_date: Some(NaiveDate::from_ymd_opt(2021, 1, 1).unwrap()),
+        verification: SellerVerification::Unknown,
+        location: Some("Lahore".to_string()),
+        last_active_text: Some("Today".to_string()),
+        created_at: Utc::now(),
+        updated_at: Utc::now(),
+    };
+
+    let analyze_request = AnalyzeRequest {
+        platform: "olx".to_string(),
+        seller_id: None,
+        listing_url: "https://olx.com.pk/item/test-listing".to_string(),
+        listing_id: Some("12345".to_string()),
+        title: Some("Test Listing".to_string()),
+        price: Some(50000),
+        description: Some("Test description".to_string()),
+        category: None,
+        image_urls: None,
+        posted_date: None,
+        platform_id: Some("platform_id_123".to_string()),
+        seller_name: Some("Test Seller".to_string()),
+        seller_handle: Some("test_handle".to_string()),
+        seller_phone: Some("123456789".to_string()),
+        seller_profile_url: Some("https://olx.com.pk/profile/test".to_string()),
+        seller_join_date: Some("2021".to_string()),
+        seller_location: Some("Lahore".to_string()),
+        seller_last_active: Some("Today".to_string()),
+        // The 6 fields that actually matter for this test - genuinely
+        // empty, meaning "no domain check happened at all".
+        domain_check_status: None,
+        domain_check_real_name: None,
+        domain_check_real_domain: None,
+        domain_check_current_domain: None,
+        domain_check_current_html: None,
+        domain_check_real_html: None,
+    };
+
+    let signals_without_domain = build_signals(&claude_analysis, &seller);
+    let all_signals = build_all_signals(&claude_analysis, &seller, &analyze_request);
+
+    assert_eq!(all_signals.len(), signals_without_domain.len());
+}
+
+#[test]
+fn build_all_signals_with_domain_check() {
+    let finding = Finding {
+        found: true,
+        evidence: "evidence".to_string(),
+    };
+
+    let image_assessment = ImageAssessment {
+        verdict: "original".to_string(),
+        reasoning: "reasoning".to_string(),
+    };
+
+    let price_assessment = PriceAssessment {
+        verdict: "normal".to_string(),
+        reasoning: "reasoning".to_string(),
+    };
+
+    let claude_analysis = ClaudeAnalysis {
+        urgency_language: finding.clone(),
+        advance_payment_request: finding.clone(),
+        duplicate_listing: finding.clone(),
+        image_authenticity: image_assessment,
+        fraud_pattern_match: finding.clone(),
+        contact_info_in_listing: finding.clone(),
+        price_assessment: price_assessment,
+        overall_risk_notes: "risk notes".to_string(),
+    };
+
+    let seller = Sellers {
+        id: Uuid::now_v7(),
+        platform: "olx".to_string(),
+        platform_id: "seller_test_001".to_string(),
+        name: Some("Ahmed Khan".to_string()),
+        handle: Some("ahmed_khan_deals".to_string()),
+        phone: Some("03001234567".to_string()),
+        profile_url: Some("https://olx.com.pk/profile/ahmed-khan".to_string()),
+        join_date: Some(NaiveDate::from_ymd_opt(2021, 1, 1).unwrap()),
+        verification: SellerVerification::Unknown,
+        location: Some("Lahore".to_string()),
+        last_active_text: Some("Today".to_string()),
+        created_at: Utc::now(),
+        updated_at: Utc::now(),
+    };
+
+    let analyze_request = AnalyzeRequest {
+        platform: "olx".to_string(),
+        seller_id: None,
+        listing_url: "https://olx.com.pk/item/test-listing".to_string(),
+        listing_id: Some("12345".to_string()),
+        title: Some("Test Listing".to_string()),
+        price: Some(50000),
+        description: Some("Test description".to_string()),
+        category: None,
+        image_urls: None,
+        posted_date: None,
+        platform_id: Some("platform_id_123".to_string()),
+        seller_name: Some("Test Seller".to_string()),
+        seller_handle: Some("test_handle".to_string()),
+        seller_phone: Some("123456789".to_string()),
+        seller_profile_url: Some("https://olx.com.pk/profile/test".to_string()),
+        seller_join_date: Some("2021".to_string()),
+        seller_location: Some("Lahore".to_string()),
+        seller_last_active: Some("Today".to_string()),
+        domain_check_status: Some("suspicious".to_string()),
+        domain_check_real_name: None,
+        domain_check_real_domain: None,
+        domain_check_current_domain: None,
+        domain_check_current_html: None,
+        domain_check_real_html: None,
+    };
+
+    let signals_without_domain = build_signals(&claude_analysis, &seller);
+    let all_signals = build_all_signals(&claude_analysis, &seller, &analyze_request);
+
+    assert_eq!(all_signals.len(), signals_without_domain.len() + 1);
+    assert_eq!(all_signals[0].label, "Domain check");
 }
