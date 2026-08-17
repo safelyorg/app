@@ -7,7 +7,7 @@ use crate::{
         sellers::{SellerVerification, Sellers, SellersRequest, SellersResponse},
     },
     services::{
-        analysis::create_analysis,
+        analysis::{CreateAnalysisData, create_analysis},
         auth::extract_user_id,
         claude::{ClaudeAnalysis, call_claude},
         fraud_reports::{build_network_summary, count_fraud_reports},
@@ -262,16 +262,16 @@ pub async fn save_and_build_response(
     let signals_json = serde_json::to_value(&data.signals)
         .map_err(|e| AnalyzeError::SerializationFailed(e.to_string()))?;
 
-    let saved_analysis = create_analysis(
-        data.pool,
-        data.listing_id,
-        data.risk_score,
-        data.risk_level,
-        signals_json,
-        data.claude_analysis.overall_risk_notes.clone(),
-        String::new(),
-        data.user_id,
-    )
+    let saved_analysis = create_analysis(CreateAnalysisData {
+        pool: data.pool,
+        listing_id: data.listing_id,
+        risk_score: data.risk_score,
+        risk_level: data.risk_level,
+        signals: signals_json,
+        network_summary: data.claude_analysis.overall_risk_notes.clone(),
+        claude_raw: String::new(),
+        user_id: data.user_id,
+    })
     .await
     .map_err(|e| AnalyzeError::Database(e.to_string()))?;
 

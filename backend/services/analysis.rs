@@ -1,17 +1,20 @@
 use crate::models::analysis::{Analysis, RiskLevel};
+use serde_json::Value;
 use sqlx::{Error, Pool, Postgres, query_as};
 use uuid::Uuid;
 
-pub async fn create_analysis(
-    pool: &Pool<Postgres>,
-    listing_id: Uuid,
-    risk_score: i16,
-    risk_level: RiskLevel,
-    signals: serde_json::Value,
-    network_summary: String,
-    claude_raw: String,
-    user_id: Uuid,
-) -> Result<Analysis, Error> {
+pub struct CreateAnalysisData<'a> {
+    pub pool: &'a Pool<Postgres>,
+    pub listing_id: Uuid,
+    pub risk_score: i16,
+    pub risk_level: RiskLevel,
+    pub signals: Value,
+    pub network_summary: String,
+    pub claude_raw: String,
+    pub user_id: Uuid,
+}
+
+pub async fn create_analysis(data: CreateAnalysisData<'_>) -> Result<Analysis, Error> {
     let id = Uuid::now_v7();
     let analysis = query_as::<_, Analysis>(
         "
@@ -34,14 +37,15 @@ pub async fn create_analysis(
         ",
     )
     .bind(id)
-    .bind(&listing_id)
-    .bind(&risk_score)
-    .bind(&risk_level)
-    .bind(&signals)
-    .bind(&network_summary)
-    .bind(&claude_raw)
-    .bind(&user_id)
-    .fetch_one(pool)
+    .bind(&data.listing_id)
+    .bind(&data.risk_score)
+    .bind(&data.risk_level)
+    .bind(&data.signals)
+    .bind(&data.network_summary)
+    .bind(&data.claude_raw)
+    .bind(&data.user_id)
+    .fetch_one(data.pool)
     .await?;
+
     Ok(analysis)
 }

@@ -17,6 +17,7 @@ use backend::{
         sellers::{SellerVerification, Sellers, SellersRequest},
     },
     services::{
+        analysis::{CreateAnalysisData, create_analysis},
         auth::{create_session, find_or_create_user_by_email},
         claude::{ClaudeAnalysis, Finding, ImageAssessment, PriceAssessment},
         fraud_reports::{build_network_summary, count_fraud_reports},
@@ -26,7 +27,7 @@ use backend::{
     },
 };
 use chrono::{NaiveDate, Utc};
-use common::test_pool;
+use common::{cleanup_test_seller, cleanup_test_user, test_pool};
 use serial_test::serial;
 use sqlx::query;
 use std::{
@@ -36,8 +37,6 @@ use std::{
     time::{Duration, Instant},
 };
 use uuid::Uuid;
-
-use crate::common::cleanup_test_user;
 
 #[test]
 fn checking_rate_limit_one_time() {
@@ -248,12 +247,7 @@ async fn resolve_new_seller() {
     let platform = "olx".to_string();
     let platform_id = "new_seller_test_001".to_string();
 
-    query("DELETE FROM sellers WHERE platform = $1 AND platform_id = $2")
-        .bind(&platform)
-        .bind(&platform_id)
-        .execute(&pool)
-        .await
-        .expect("expected cleanup to succeed");
+    cleanup_test_seller(&pool, &platform, &platform_id).await;
 
     let seller_request = SellersRequest {
         platform: platform.clone(),
@@ -274,12 +268,7 @@ async fn resolve_new_seller() {
     assert_eq!(result.seller.verification, SellerVerification::Unknown);
     assert_eq!(result.fraud_count, 0);
 
-    query("DELETE FROM sellers WHERE platform = $1 AND platform_id = $2")
-        .bind(&platform)
-        .bind(&platform_id)
-        .execute(&pool)
-        .await
-        .expect("expected final cleanup to succeed");
+    cleanup_test_seller(&pool, &platform, &platform_id).await;
 }
 
 #[tokio::test]
@@ -288,12 +277,7 @@ async fn resolve_existing_seller_have_no_reports() {
     let platform = "olx".to_string();
     let platform_id = "sellers_have_no_report_test_001".to_string();
 
-    query("DELETE FROM sellers WHERE platform = $1 AND platform_id = $2")
-        .bind(&platform)
-        .bind(&platform_id)
-        .execute(&pool)
-        .await
-        .expect("expected cleanup to succeed");
+    cleanup_test_seller(&pool, &platform, &platform_id).await;
 
     let seller_request = SellersRequest {
         platform: platform.clone(),
@@ -318,12 +302,7 @@ async fn resolve_existing_seller_have_no_reports() {
     assert_eq!(result.seller.verification, SellerVerification::Unknown);
     assert_eq!(result.fraud_count, 0);
 
-    query("DELETE FROM sellers WHERE platform = $1 AND platform_id = $2")
-        .bind(&platform)
-        .bind(&platform_id)
-        .execute(&pool)
-        .await
-        .expect("expected final cleanup to succeed");
+    cleanup_test_seller(&pool, &platform, &platform_id).await;
 }
 
 #[tokio::test]
@@ -332,12 +311,7 @@ async fn resolve_existing_seller_with_real_fraud_report() {
     let platform = "olx".to_string();
     let platform_id = "seller_have_reports_test_001".to_string();
 
-    query("DELETE FROM sellers WHERE platform = $1 AND platform_id = $2")
-        .bind(&platform)
-        .bind(&platform_id)
-        .execute(&pool)
-        .await
-        .expect("expected cleanup to succeed");
+    cleanup_test_seller(&pool, &platform, &platform_id).await;
 
     let seller_request = SellersRequest {
         platform: platform.clone(),
@@ -372,12 +346,7 @@ async fn resolve_existing_seller_with_real_fraud_report() {
     assert_eq!(result.seller.verification, SellerVerification::Reported);
     assert_eq!(result.fraud_count, 1);
 
-    query("DELETE FROM sellers WHERE platform = $1 AND platform_id = $2")
-        .bind(&platform)
-        .bind(&platform_id)
-        .execute(&pool)
-        .await
-        .expect("expected final cleanup to succeed");
+    cleanup_test_seller(&pool, &platform, &platform_id).await;
 }
 
 #[tokio::test]
@@ -386,12 +355,7 @@ async fn find_seller_not_exists() {
     let platform = "olx".to_string();
     let platform_id = "find_seller_not_exists".to_string();
 
-    query("DELETE FROM sellers WHERE platform = $1 AND platform_id = $2")
-        .bind(&platform)
-        .bind(&platform_id)
-        .execute(&pool)
-        .await
-        .expect("expected cleanup to succeed");
+    cleanup_test_seller(&pool, &platform, &platform_id).await;
 
     let result = find_seller(&pool, &platform, &platform_id)
         .await
@@ -418,12 +382,7 @@ async fn having_fraud_reports() {
     let platform = "olx".to_string();
     let platform_id = "sellers_have_reports_test_001".to_string();
 
-    query("DELETE FROM sellers WHERE platform = $1 AND platform_id = $2")
-        .bind(&platform)
-        .bind(&platform_id)
-        .execute(&pool)
-        .await
-        .expect("expected cleanup to succeed");
+    cleanup_test_seller(&pool, &platform, &platform_id).await;
 
     let seller_request = SellersRequest {
         platform: platform.clone(),
@@ -459,12 +418,7 @@ async fn having_fraud_reports() {
 
     assert_eq!(count, 2);
 
-    query("DELETE FROM sellers WHERE platform = $1 AND platform_id = $2")
-        .bind(&platform)
-        .bind(&platform_id)
-        .execute(&pool)
-        .await
-        .expect("expected cleanup to succeed");
+    cleanup_test_seller(&pool, &platform, &platform_id).await;
 }
 
 #[test]
@@ -1119,6 +1073,128 @@ async fn save_and_build_response_database_failure() {
 }
 
 #[tokio::test]
+async fn create_analysis_success() {
+    let pool = test_pool().await;
+
+    let email = "create_analysis_test@example.com";
+    cleanup_test_user(&pool, email).await;
+    let (user, _) = find_or_create_user_by_email(&pool, email)
+        .await
+        .expect("expected to create the user");
+
+    let platform = "olx".to_string();
+    let platform_id = "create_analysis_seller_001".to_string();
+
+    cleanup_test_seller(&pool, &platform, &platform_id).await;
+
+    let seller_request = SellersRequest {
+        platform: platform.clone(),
+        platform_id: Some(platform_id.clone()),
+        name: Some("Test Seller".to_string()),
+        handle: Some("test_handle".to_string()),
+        phone: Some("123456789".to_string()),
+        profile_url: Some("https://olx.com.pk/profile/test".to_string()),
+        join_date: Some("2021".to_string()),
+        location: Some("Lahore".to_string()),
+        last_active: Some("Today".to_string()),
+    };
+    let seller = create_seller(&pool, &seller_request, SellerVerification::Unknown)
+        .await
+        .expect("expected to create the seller");
+
+    let listing_request = ListingsRequest {
+        seller_id: Some(seller.id),
+        platform: platform.clone(),
+        listing_url: "https://olx.com.pk/item/create-analysis-test".to_string(),
+        listing_id: Some("create_analysis_listing_001".to_string()),
+        title: Some("Test Listing".to_string()),
+        price: Some(50000),
+        description: Some("Test description".to_string()),
+        category: None,
+        image_urls: None,
+        posted_date: None,
+    };
+    let listing = create_listing(&pool, &listing_request, seller.id)
+        .await
+        .expect("expected to create the listing");
+
+    let signals_json = serde_json::json!([
+        { "label": "Price analysis", "sub": "Normal", "value": "Normal", "signal_type": "good" }
+    ]);
+
+    let data = CreateAnalysisData {
+        pool: &pool,
+        listing_id: listing.id,
+        risk_score: 15,
+        risk_level: RiskLevel::Low,
+        signals: signals_json.clone(),
+        network_summary: "Clean record on Safely network. No fraud reports found.".to_string(),
+        claude_raw: String::new(),
+        user_id: user.id,
+    };
+
+    let analysis = create_analysis(data)
+        .await
+        .expect("expected the analysis to be created successfully");
+
+    assert_eq!(analysis.listing_id, listing.id);
+    assert_eq!(analysis.user_id, user.id);
+    assert_eq!(analysis.risk_score, 15);
+    assert_eq!(analysis.risk_level, RiskLevel::Low);
+    assert_eq!(
+        analysis.network_summary,
+        Some("Clean record on Safely network. No fraud reports found.".to_string())
+    );
+    assert_eq!(analysis.signals, signals_json);
+
+    query("DELETE FROM analysis WHERE id = $1")
+        .bind(analysis.id)
+        .execute(&pool)
+        .await
+        .expect("expected analysis cleanup to succeed");
+
+    query("DELETE FROM listings WHERE id = $1")
+        .bind(listing.id)
+        .execute(&pool)
+        .await
+        .expect("expected listing cleanup to succeed");
+
+    cleanup_test_seller(&pool, &platform, &platform_id).await;
+
+    cleanup_test_user(&pool, email).await;
+}
+
+#[tokio::test]
+async fn create_analysis_database_failure() {
+    let pool = test_pool().await;
+
+    let fake_listing_id = Uuid::new_v4();
+    let fake_user_id = Uuid::new_v4();
+
+    let signals_json = serde_json::json!([
+        { "label": "Price analysis", "sub": "Normal", "value": "Normal", "signal_type": "good" }
+    ]);
+
+    let data = CreateAnalysisData {
+        pool: &pool,
+        listing_id: fake_listing_id,
+        risk_score: 15,
+        risk_level: RiskLevel::Low,
+        signals: signals_json,
+        network_summary: "Clean record on Safely network. No fraud reports found.".to_string(),
+        claude_raw: String::new(),
+        user_id: fake_user_id,
+    };
+
+    let result = create_analysis(data).await;
+
+    assert!(
+        result.is_err(),
+        "expected create_analysis to fail when listing_id and user_id don't genuinely exist"
+    );
+}
+
+#[tokio::test]
 #[serial]
 async fn get_monthly_visit_activity_database_error() {
     let pool = test_pool().await;
@@ -1207,12 +1283,7 @@ async fn analyze_success() {
     let platform = "olx".to_string();
     let platform_id = "analyze_success_platform_id".to_string();
 
-    query("DELETE FROM sellers WHERE platform = $1 AND platform_id = $2")
-        .bind(&platform)
-        .bind(&platform_id)
-        .execute(&pool)
-        .await
-        .expect("expected cleanup to succeed");
+    cleanup_test_seller(&pool, &platform, &platform_id).await;
 
     let request = AnalyzeRequest {
         platform: platform.clone(),
@@ -1269,12 +1340,7 @@ async fn analyze_success() {
         .await
         .expect("expected listing cleanup to succeed");
 
-    query("DELETE FROM sellers WHERE platform = $1 AND platform_id = $2")
-        .bind(&platform)
-        .bind(&platform_id)
-        .execute(&pool)
-        .await
-        .expect("expected seller cleanup to succeed");
+    cleanup_test_seller(&pool, &platform, &platform_id).await;
 
     cleanup_test_user(&pool, email).await;
 }

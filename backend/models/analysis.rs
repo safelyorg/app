@@ -23,6 +23,7 @@ pub struct Analysis {
     pub signals: Value,
     pub network_summary: Option<String>,
     pub claude_raw: Option<String>,
+    pub user_id: Uuid,
     pub created_at: DateTime<Utc>,
 }
 
