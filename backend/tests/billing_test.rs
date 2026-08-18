@@ -3,20 +3,25 @@ mod common;
 use crate::common::{cleanup_test_user, test_pool};
 use axum::{
     Json,
+    body::Bytes,
     extract::State,
     http::{HeaderMap, HeaderValue},
 };
 use backend::{
-    errors::billing::BillingError,
-    handlers::billing::{CreateCheckoutBody, create_checkout_handler},
+    errors::billing::{BillingError, WebhookError},
+    handlers::billing::{CreateCheckoutBody, create_checkout_handler, verify_and_parse_webhook},
     services::{
         auth::{create_session, find_or_create_user_by_email},
         billing::{CreateCheckoutError, create_checkout},
     },
 };
+use hmac::{Hmac, KeyInit, Mac};
 use serial_test::serial;
+use sha2::Sha256;
 use std::env::{remove_var, set_var, var};
 use uuid::Uuid;
+
+type HmacSha256 = Hmac<Sha256>;
 
 #[tokio::test]
 #[serial]
@@ -217,5 +222,141 @@ async fn create_checkout_request_failed() {
             Some(url) => set_var("CREEM_API_BASE_URL", url),
             None => remove_var("CREEM_API_BASE_URL"),
         }
+    }
+}
+
+#[tokio::test]
+#[serial]
+async fn creem_webhook_secret_missing() {
+    dotenvy::dotenv().ok();
+
+    let original_secret = var("CREEM_WEBHOOK_SECRET").ok();
+    unsafe {
+        remove_var("CREEM_WEBHOOK_SECRET");
+    }
+
+    let headers = HeaderMap::new();
+    let body = Bytes::from("{}");
+
+    let result = verify_and_parse_webhook(&headers, &body).await;
+
+    match result {
+        Err(WebhookError::Misconfigured(_)) => {}
+        Err(other) => panic!("expected Misconfigured, got a different error: {:?}", other),
+        Ok(_) => panic!("expected verification to fail without a real secret, but it succeeded"),
+    }
+
+    unsafe {
+        if let Some(secret) = original_secret {
+            set_var("CREEM_WEBHOOK_SECRET", secret);
+        }
+    }
+}
+
+#[tokio::test]
+#[serial]
+async fn creem_webhook_missing_signature() {
+    dotenvy::dotenv().ok();
+
+    let headers = HeaderMap::new();
+    let body = Bytes::from("{}");
+
+    let result = verify_and_parse_webhook(&headers, &body).await;
+
+    match result {
+        Err(WebhookError::MissingSignature) => {}
+        Err(other) => panic!(
+            "expected MissingSignature, got a different error: {:?}",
+            other
+        ),
+        Ok(_) => {
+            panic!("expected verification to fail without a signature header, but it succeeded")
+        }
+    }
+}
+
+#[tokio::test]
+#[serial]
+async fn creem_webhook_invalid_body() {
+    dotenvy::dotenv().ok();
+
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        "creem-signature",
+        HeaderValue::from_str("some-signature-value").expect("expected to insert the header value"),
+    );
+
+    // invalid UTF-8
+    let body = Bytes::from(vec![0xFF, 0xFE, 0xFD]);
+
+    let result = verify_and_parse_webhook(&headers, &body).await;
+
+    match result {
+        Err(WebhookError::InvalidBody) => {}
+        Err(other) => panic!("expected InvalidBody, got a different error: {:?}", other),
+        Ok(_) => panic!("expected verification to fail on invalid UTF-8, but it succeeded"),
+    }
+}
+
+#[tokio::test]
+#[serial]
+async fn creem_webhook_invalid_signature() {
+    dotenvy::dotenv().ok();
+
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        "creem-signature",
+        HeaderValue::from_str("clearly-wrong-signature-that-cannot-match")
+            .expect("expected to insert the header value"),
+    );
+
+    // Valid UTF-8, valid-looking JSON
+    let body = Bytes::from(r#"{"id":"evt_test","event_type":"test.event","object":{}}"#);
+
+    let result = verify_and_parse_webhook(&headers, &body).await;
+    match result {
+        Err(WebhookError::InvalidSignature) => {}
+        Err(other) => panic!(
+            "expected InvalidSignature, got a different error: {:?}",
+            other
+        ),
+        Ok(_) => {
+            panic!("expected verification to fail on a mismatched signature, but it succeeded")
+        }
+    }
+}
+
+#[tokio::test]
+#[serial]
+async fn creem_webhook_invalid_payload() {
+    dotenvy::dotenv().ok();
+
+    let secret = var("CREEM_WEBHOOK_SECRET")
+        .expect("expected CREEM_WEBHOOK_SECRET to be genuinely set for this test");
+
+    let raw_body = "not valid json{{{";
+
+    let mut mac = HmacSha256::new_from_slice(secret.as_bytes())
+        .expect("expected to build a real HMAC instance");
+    mac.update(raw_body.as_bytes());
+
+    let real_signature = hex::encode(mac.finalize().into_bytes());
+
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        "creem-signature",
+        HeaderValue::from_str(&real_signature).expect("expected to insert the header value"),
+    );
+
+    let body = Bytes::from(raw_body);
+
+    let result = verify_and_parse_webhook(&headers, &body).await;
+    match result {
+        Err(WebhookError::InvalidPayload(_)) => {}
+        Err(other) => panic!(
+            "expected InvalidPayload, got a different error: {:?}",
+            other
+        ),
+        Ok(_) => panic!("expected parsing to fail on malformed JSON, but it succeeded"),
     }
 }

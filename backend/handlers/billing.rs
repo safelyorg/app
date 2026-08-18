@@ -1,5 +1,5 @@
 use crate::errors::billing::{BillingError, WebhookError};
-use crate::models::billing::{CreemWebhookEvent, extract_subscription};
+use crate::models::billing::{CreemWebhookEvent, ParsedSubscription, extract_subscription};
 use crate::services::billing::change_creem_subscription_product;
 use crate::services::email::send_subscription_canceled_email;
 use crate::services::{
@@ -16,9 +16,9 @@ use axum::{
 use chrono::{DateTime, Utc};
 use reqwest::Client;
 use serde::Deserialize;
-use serde_json::{Value, json};
+use serde_json::{Value, from_str, json};
 use sqlx::{Pool, Postgres, query, query_scalar};
-use std::env::var;
+use std::{env::var, str::from_utf8};
 use uuid::Uuid;
 
 #[derive(Debug, Deserialize)]
@@ -74,26 +74,17 @@ pub async fn create_checkout_handler(
     Ok(Json(json!({ "checkout_url": checkout.checkout_url })))
 }
 
-/// POST /api/v1/webhooks/creem
+/// Confirms a webhook request is genuinely, verifiably from Creem, and
+/// hands back the real, parsed event if so.
 ///
-/// It's the real, external endpoint Creem calls whenever something happens
-/// to a subscription like trials starting, payments succeeding or failing,
-/// cancellations and it's what keeps your own database of who's
-/// paying, trialing, or lost access genuinely in sync with what's real on
-/// Creem's side.
-///
-/// It first confirms the webhook is genuinely, verifiably from Creem itself,
-/// via a real signature check and then processes whichever event actually
-/// occurred. Once the verification passes, nothing below it can fail the whole
-/// request; a real problem handling one specific event gets logged, not
-/// thrown back at Creem, since a failed response would just cause endless
-/// retries of the same event, even if the real cause were a bug on our own
-/// side.
-pub async fn creem_webhook(
-    State(pool): State<Pool<Postgres>>,
-    headers: HeaderMap,
-    body: Bytes,
-) -> Result<StatusCode, WebhookError> {
+/// It checks the secret is configured, the signature header exists, the
+/// body is readable, the signature genuinely matches, and finally that
+/// the body parses into a real event - failing at whichever specific
+/// step actually went wrong.
+pub async fn verify_and_parse_webhook(
+    headers: &HeaderMap,
+    body: &Bytes,
+) -> Result<CreemWebhookEvent, WebhookError> {
     let secret = var("CREEM_WEBHOOK_SECRET")
         .map_err(|_| WebhookError::Misconfigured("CREEM_WEBHOOK_SECRET not set".to_string()))?;
 
@@ -102,15 +93,122 @@ pub async fn creem_webhook(
         .and_then(|v| v.to_str().ok())
         .ok_or(WebhookError::MissingSignature)?;
 
-    let raw_body = std::str::from_utf8(&body).map_err(|_| WebhookError::InvalidBody)?;
+    let raw_body = from_utf8(body).map_err(|_| WebhookError::InvalidBody)?;
 
     if !verify_creem_signature(raw_body, signature, &secret) {
         eprintln!("Creem webhook: signature verification FAILED");
         return Err(WebhookError::InvalidSignature);
     }
 
-    let event: CreemWebhookEvent = serde_json::from_str(raw_body)
-        .map_err(|e| WebhookError::InvalidPayload(format!("Invalid webhook payload: {}", e)))?;
+    from_str(raw_body)
+        .map_err(|e| WebhookError::InvalidPayload(format!("Invalid webhook payload: {}", e)))
+}
+
+/// Pulls the real Safely user ID out of a subscription's metadata, if
+/// it's genuinely present and valid.
+pub fn extract_metadata_user_id(parsed: &ParsedSubscription) -> Option<Uuid> {
+    parsed
+        .metadata
+        .as_ref()
+        .and_then(|m| m.safely_user_id.as_ref())
+        .and_then(|s| Uuid::parse_str(s).ok())
+}
+
+pub async fn handle_subscription_granted(pool: &Pool<Postgres>, parsed: &ParsedSubscription) {
+    match extract_metadata_user_id(parsed) {
+        Some(user_id) => {
+            if let Err(e) = upsert_subscription(pool, user_id, parsed, &parsed.status).await {
+                eprintln!("Failed to upsert subscription: {}", e);
+            }
+        }
+        None => eprintln!(
+            "subscription event missing safely_user_id in metadata - cannot link to an account"
+        ),
+    }
+}
+
+pub async fn handle_subscription_past_due(pool: &Pool<Postgres>, parsed: &ParsedSubscription) {
+    let portal_url = format!(
+        "{}/dashboard/?manage_billing=1",
+        var("PUBLIC_BASE_URL").unwrap_or_else(|_| "http://localhost:3000".to_string())
+    );
+
+    if let Err(e) = send_payment_failed_email(&parsed.customer.email, &portal_url).await {
+        eprintln!("Failed to send payment-failed email: {:?}", e);
+    }
+
+    if let Some(user_id) = extract_metadata_user_id(parsed) {
+        if let Err(e) = upsert_subscription(pool, user_id, parsed, "past_due").await {
+            eprintln!("Failed to upsert subscription: {}", e);
+        }
+    }
+}
+
+pub async fn handle_subscription_lost(
+    pool: &Pool<Postgres>,
+    parsed: &ParsedSubscription,
+    event_type: &str,
+) {
+    let status = match event_type {
+        "subscription.paused" => "paused",
+        "subscription.expired" => "expired",
+        _ => "canceled",
+    };
+
+    // If they already canceled through our own site, don't send another
+    // email - Creem's just confirming what we already know. Only email
+    // them if THIS is the moment Creem gave up trying to charge them.
+    let previous_status: Option<String> =
+        query_scalar("SELECT status::text FROM subscriptions WHERE creem_subscription_id = $1")
+            .bind(&parsed.id)
+            .fetch_optional(pool)
+            .await
+            .unwrap_or(None);
+
+    if let Some(user_id) = extract_metadata_user_id(parsed) {
+        if let Err(e) = upsert_subscription(pool, user_id, parsed, status).await {
+            eprintln!("Failed to upsert subscription: {}", e);
+        }
+    }
+
+    if event_type == "subscription.canceled" && previous_status.as_deref() != Some("canceled") {
+        if let Err(e) = send_subscription_ended_email(&parsed.customer.email).await {
+            eprintln!("Failed to send subscription-ended email: {:?}", e);
+        }
+    }
+}
+
+// In case someone changes a subscription directly in Creem's
+// dashboard instead of through our site - this keeps our database
+// matching what's actually true.
+pub async fn handle_subscription_update(pool: &Pool<Postgres>, parsed: &ParsedSubscription) {
+    if let Some(user_id) = extract_metadata_user_id(parsed) {
+        if let Err(e) = upsert_subscription(pool, user_id, parsed, &parsed.status).await {
+            eprintln!("Failed to sync subscription.update: {}", e);
+        }
+    }
+}
+
+/// POST /api/v1/webhooks/creem
+///
+/// It's the real, external endpoint Creem calls whenever something happens
+/// to a subscription - trials starting, payments succeeding or failing,
+/// cancellations - and it's what keeps your own database's picture of
+/// who's paying, trialing, or lost access genuinely in sync with what's
+/// real on Creem's side.
+///
+/// It first confirms the webhook is genuinely, verifiably from Creem
+/// itself, then routes whichever event actually occurred to its own
+/// specific handler. Once verification passes, nothing below it can fail
+/// the whole request - a real problem handling one specific event gets
+/// logged, not thrown back at Creem, since a failed response would just
+/// cause endless retries of the same event.
+pub async fn creem_webhook(
+    State(pool): State<Pool<Postgres>>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Result<StatusCode, WebhookError> {
+    let event = verify_and_parse_webhook(&headers, &body).await?;
 
     match event.event_type.as_str() {
         "checkout.completed" => {
@@ -119,118 +217,29 @@ pub async fn creem_webhook(
                 event.id
             );
         }
-
         "subscription.active" | "subscription.trialing" | "subscription.paid" => {
             if let Some(parsed) = extract_subscription(&event.event_type, &event.object) {
-                if let Some(user_id) = parsed
-                    .metadata
-                    .as_ref()
-                    .and_then(|m| m.safely_user_id.as_ref())
-                    .and_then(|s| Uuid::parse_str(s).ok())
-                {
-                    // Use Creem's own real status field directly, rather than
-                    // guessing from which event name fired.
-                    if let Err(e) =
-                        upsert_subscription(&pool, user_id, &parsed, &parsed.status).await
-                    {
-                        eprintln!("Failed to upsert subscription: {}", e);
-                    }
-                } else {
-                    eprintln!(
-                        "subscription event missing safely_user_id in metadata - cannot link to an account"
-                    );
-                }
+                handle_subscription_granted(&pool, &parsed).await;
             }
         }
-
         "subscription.past_due" => {
             if let Some(parsed) = extract_subscription(&event.event_type, &event.object) {
-                let portal_url = format!(
-                    "{}/dashboard/?manage_billing=1",
-                    var("PUBLIC_BASE_URL").unwrap_or_else(|_| "http://localhost:3000".to_string())
-                );
-                if let Err(e) = send_payment_failed_email(&parsed.customer.email, &portal_url).await
-                {
-                    eprintln!("Failed to send payment-failed email: {:?}", e);
-                }
-                if let Some(user_id) = parsed
-                    .metadata
-                    .as_ref()
-                    .and_then(|m| m.safely_user_id.as_ref())
-                    .and_then(|s| Uuid::parse_str(s).ok())
-                {
-                    if let Err(e) = upsert_subscription(&pool, user_id, &parsed, "past_due").await {
-                        eprintln!("Failed to upsert subscription: {}", e);
-                    }
-                }
+                handle_subscription_past_due(&pool, &parsed).await;
             }
         }
-
         "subscription.paused" | "subscription.expired" | "subscription.canceled" => {
             if let Some(parsed) = extract_subscription(&event.event_type, &event.object) {
-                let status = match event.event_type.as_str() {
-                    "subscription.paused" => "paused",
-                    "subscription.expired" => "expired",
-                    _ => "canceled",
-                };
-
-                // If they already canceled through our the site, don't
-                // send another email. Instead Creem's just confirming what we
-                // already know. Only email them if this is the moment
-                // Creem gave up trying to charge them.
-                let previous_status: Option<String> = sqlx::query_scalar(
-                    "SELECT status::text FROM subscriptions WHERE creem_subscription_id = $1",
-                )
-                .bind(&parsed.id)
-                .fetch_optional(&pool)
-                .await
-                .unwrap_or(None);
-
-                if let Some(user_id) = parsed
-                    .metadata
-                    .as_ref()
-                    .and_then(|m| m.safely_user_id.as_ref())
-                    .and_then(|s| Uuid::parse_str(s).ok())
-                {
-                    if let Err(e) = upsert_subscription(&pool, user_id, &parsed, status).await {
-                        eprintln!("Failed to upsert subscription: {}", e);
-                    }
-                }
-
-                if event.event_type == "subscription.canceled"
-                    && previous_status.as_deref() != Some("canceled")
-                {
-                    if let Err(e) = send_subscription_ended_email(&parsed.customer.email).await {
-                        eprintln!("Failed to send subscription-ended email: {:?}", e);
-                    }
-                }
+                handle_subscription_lost(&pool, &parsed, &event.event_type).await;
             }
         }
-
         "subscription.update" => {
-            // In case someone changes a subscription directly in Creem's
-            // dashboard instead of through our site - this keeps our
-            // database matching what's actually true.
             if let Some(parsed) = extract_subscription(&event.event_type, &event.object) {
-                if let Some(user_id) = parsed
-                    .metadata
-                    .as_ref()
-                    .and_then(|m| m.safely_user_id.as_ref())
-                    .and_then(|s| Uuid::parse_str(s).ok())
-                {
-                    if let Err(e) =
-                        upsert_subscription(&pool, user_id, &parsed, &parsed.status).await
-                    {
-                        eprintln!("Failed to sync subscription.update: {}", e);
-                    }
-                }
+                handle_subscription_update(&pool, &parsed).await;
             }
         }
-
         "refund.created" => {
             eprintln!("refund.created received for event {}", event.id);
         }
-
         other => {
             eprintln!("Unhandled Creem event type: {}", other);
         }
