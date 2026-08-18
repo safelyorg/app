@@ -1266,6 +1266,7 @@ async fn analyze_success() {
 
     let email = "analyze_success_test@example.com";
     cleanup_test_user(&pool, email).await;
+
     let (user, _) = find_or_create_user_by_email(&pool, email)
         .await
         .expect("expected to create the user");

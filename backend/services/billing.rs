@@ -1,46 +1,32 @@
-use crate::models::billing::ParsedSubscription;
+use crate::models::billing::{CreateCheckoutRequest, CreateCheckoutResponse, ParsedSubscription};
 use hmac::{Hmac, KeyInit, Mac};
+use reqwest::Client;
 use sha2::Sha256;
 use sqlx::{Pool, Postgres};
-
-type HmacSha256 = Hmac<Sha256>;
-
-/// Verifies that a webhook request genuinely came from Creem, and
-/// wasn't forged by someone who simply knows your webhook URL.
-///
-/// Creem signs every webhook using HMAC-SHA256, with your webhook
-/// secret as the key and the raw request body as the message - this
-/// recomputes that same signature independently and compares it
-/// against what Creem actually sent in the `creem-signature` header.
-/// If they don't match exactly, the request is rejected outright,
-/// before any real event-handling logic ever runs.
-pub fn verify_creem_signature(raw_body: &str, received_signature: &str, secret: &str) -> bool {
-    let mut mac = match HmacSha256::new_from_slice(secret.as_bytes()) {
-        Ok(m) => m,
-        Err(_) => return false,
-    };
-    mac.update(raw_body.as_bytes());
-    let computed = hex::encode(mac.finalize().into_bytes());
-    computed == received_signature
-}
-
-use crate::models::billing::{CreateCheckoutRequest, CreateCheckoutResponse};
-use reqwest::Client;
 use std::env::var;
 use uuid::Uuid;
 
+type HmacSha256 = Hmac<Sha256>;
+
+#[derive(Debug)]
 pub enum CreateCheckoutError {
     MissingApiKey,
     RequestFailed(String),
     CreemRejected(String),
 }
 
-/// Creates a real Creem checkout session for the given product,
-/// attaching the person's actual Safely user ID via metadata - this is
-/// what lets every future webhook event tied to this subscription
-/// (checkout.completed, subscription.paid, subscription.canceled, ...)
-/// reliably identify which account to update, rather than guessing by
-/// email.
+/// It's the one real step that actually talks to Creem — building a real,
+/// working checkout session for a specific plan, tied to a specific
+/// person, so Creem knows exactly who to bill and where to send them once
+/// they've paid.
+///
+/// It builds the real request, attaching the person's actual Safely user
+/// ID via metadata — this is what lets every future webhook event tied to
+/// this subscription (checkout.completed, subscription.paid,
+/// subscription.canceled, ...) reliably identify which account to update,
+/// rather than guessing by email. It then sends this to Creem's real
+/// checkout endpoint, and checks that Creem genuinely accepted it, rather
+/// than assuming the request going out means it worked.
 pub async fn create_checkout(
     product_id: &str,
     user_id: Uuid,
@@ -74,6 +60,25 @@ pub async fn create_checkout(
         .json::<CreateCheckoutResponse>()
         .await
         .map_err(|e| CreateCheckoutError::RequestFailed(e.to_string()))
+}
+
+/// Verifies that a webhook request genuinely came from Creem, and
+/// wasn't forged by someone who simply knows your webhook URL.
+///
+/// Creem signs every webhook using HMAC-SHA256, with your webhook
+/// secret as the key and the raw request body as the message - this
+/// recomputes that same signature independently and compares it
+/// against what Creem actually sent in the `creem-signature` header.
+/// If they don't match exactly, the request is rejected outright,
+/// before any real event-handling logic ever runs.
+pub fn verify_creem_signature(raw_body: &str, received_signature: &str, secret: &str) -> bool {
+    let mut mac = match HmacSha256::new_from_slice(secret.as_bytes()) {
+        Ok(m) => m,
+        Err(_) => return false,
+    };
+    mac.update(raw_body.as_bytes());
+    let computed = hex::encode(mac.finalize().into_bytes());
+    computed == received_signature
 }
 
 /// Creates or updates a subscription row for a given user, keyed by
