@@ -1,91 +1,109 @@
+use crate::errors::billing::{BillingError, WebhookError};
 use crate::models::billing::{CreemWebhookEvent, extract_subscription};
-use crate::services::auth::extract_user_id;
-use crate::services::billing::{
-    CreateCheckoutError, create_checkout, upsert_subscription, verify_creem_signature,
+use crate::services::email::send_subscription_canceled_email;
+use crate::services::{
+    auth::extract_user_id,
+    billing::{CreateCheckoutError, create_checkout, upsert_subscription, verify_creem_signature},
+    email::{send_payment_failed_email, send_subscription_ended_email},
 };
-use crate::services::email::{send_payment_failed_email, send_subscription_ended_email};
 use axum::{
     Json,
     body::Bytes,
     extract::State,
     http::{HeaderMap, StatusCode},
 };
-use serde_json::Value;
-use sqlx::{Pool, Postgres};
+use chrono::{DateTime, Utc};
+use reqwest::Client;
+use serde::Deserialize;
+use serde_json::{Value, json};
+use sqlx::{Pool, Postgres, query, query_scalar};
 use std::env::var;
 use uuid::Uuid;
 
-#[derive(Debug, serde::Deserialize)]
+#[derive(Debug, Deserialize)]
 pub struct CreateCheckoutBody {
     pub product_id: String,
 }
 
 /// POST /api/v1/billing/checkout
+///
+/// It's the real endpoint your frontend calls when someone wants to start a
+/// subscription. It confirms who's asking, then hands off to Creem to
+/// actually build a real, ready-to-pay checkout link for that specific plan.
+///
+/// It confirms who's genuinely signed in, right now, sends the chosen plan
+/// and the real user's ID to Creem, to build the checkout, and if anything
+/// went wrong along the way like an unrecognized user, a broken connection to
+/// Creem, or Creem itself refusing the request, it reports back specifically
+/// which of those actually happened, instead of a single, generic failure.
+/// Otherwise, it hands back the real, working checkout link.
 pub async fn create_checkout_handler(
     State(pool): State<Pool<Postgres>>,
     headers: HeaderMap,
     Json(body): Json<CreateCheckoutBody>,
-) -> Result<Json<Value>, StatusCode> {
+) -> Result<Json<Value>, BillingError> {
     let user_id = extract_user_id(&headers, &pool)
         .await
-        .expect("expected to extract the user id")
-        .ok_or(StatusCode::UNAUTHORIZED)?;
+        .map_err(|_| BillingError::InternalError("Failed to verify session".to_string()))?
+        .ok_or(BillingError::Unauthorized)?;
 
     let checkout = create_checkout(&body.product_id, user_id)
         .await
-        .map_err(|e| {
-            match e {
-                CreateCheckoutError::MissingApiKey => eprintln!("CREEM_API_KEY not set"),
-                CreateCheckoutError::RequestFailed(msg) => {
-                    eprintln!("Creem checkout request failed: {}", msg)
-                }
-                CreateCheckoutError::CreemRejected(msg) => {
-                    eprintln!("Creem rejected checkout: {}", msg)
-                }
+        .map_err(|e| match e {
+            CreateCheckoutError::MissingApiKey => {
+                eprintln!("CREEM_API_KEY not set");
+                BillingError::InternalError("Checkout is temporarily unavailable".to_string())
             }
-            StatusCode::INTERNAL_SERVER_ERROR
+            CreateCheckoutError::RequestFailed(msg) => {
+                eprintln!("Creem checkout request failed: {}", msg);
+                BillingError::ServiceUnavailable("Checkout provider is unreachable".to_string())
+            }
+            CreateCheckoutError::CreemRejected(msg) => {
+                eprintln!("Creem rejected checkout: {}", msg);
+                BillingError::InvalidRequest(format!("Checkout request rejected: {}", msg))
+            }
         })?;
 
-    Ok(Json(
-        serde_json::json!({ "checkout_url": checkout.checkout_url }),
-    ))
+    Ok(Json(json!({ "checkout_url": checkout.checkout_url })))
 }
 
 /// POST /api/v1/webhooks/creem
 ///
-/// Real event handling, per the design we worked through together:
-/// - checkout.completed: logged only, never acted on (fires once per
-///   initial signup; every real lifecycle change comes through the
-///   subscription.* events instead)
-/// - subscription.active / .trialing / .paid: grant/maintain access
-/// - subscription.past_due: send ONE warning email, access unchanged
-///   (Creem is still silently retrying in the background)
-/// - subscription.paused / .expired / .canceled: revoke access. Only
-///   .canceled also sends the final "subscription ended" email, since
-///   that's the one genuinely final state - paused/expired can still
-///   potentially recover.
+/// It's the real, external endpoint Creem calls whenever something happens
+/// to a subscription like trials starting, payments succeeding or failing,
+/// cancellations and it's what keeps your own database of who's
+/// paying, trialing, or lost access genuinely in sync with what's real on
+/// Creem's side.
+///
+/// It first confirms the webhook is genuinely, verifiably from Creem itself,
+/// via a real signature check and then processes whichever event actually
+/// occurred. Once the verification passes, nothing below it can fail the whole
+/// request; a real problem handling one specific event gets logged, not
+/// thrown back at Creem, since a failed response would just cause endless
+/// retries of the same event, even if the real cause were a bug on our own
+/// side.
 pub async fn creem_webhook(
     State(pool): State<Pool<Postgres>>,
     headers: HeaderMap,
     body: Bytes,
-) -> Result<StatusCode, StatusCode> {
-    let secret = var("CREEM_WEBHOOK_SECRET").map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+) -> Result<StatusCode, WebhookError> {
+    let secret = var("CREEM_WEBHOOK_SECRET")
+        .map_err(|_| WebhookError::Misconfigured("CREEM_WEBHOOK_SECRET not set".to_string()))?;
 
     let signature = headers
         .get("creem-signature")
         .and_then(|v| v.to_str().ok())
-        .ok_or(StatusCode::BAD_REQUEST)?;
+        .ok_or(WebhookError::MissingSignature)?;
 
-    let raw_body = std::str::from_utf8(&body).map_err(|_| StatusCode::BAD_REQUEST)?;
+    let raw_body = std::str::from_utf8(&body).map_err(|_| WebhookError::InvalidBody)?;
 
     if !verify_creem_signature(raw_body, signature, &secret) {
         eprintln!("Creem webhook: signature verification FAILED");
-        return Err(StatusCode::UNAUTHORIZED);
+        return Err(WebhookError::InvalidSignature);
     }
 
-    let event: CreemWebhookEvent =
-        serde_json::from_str(raw_body).map_err(|_| StatusCode::BAD_REQUEST)?;
-    eprintln!("Creem webhook: {} received", event.event_type);
+    let event: CreemWebhookEvent = serde_json::from_str(raw_body)
+        .map_err(|e| WebhookError::InvalidPayload(format!("Invalid webhook payload: {}", e)))?;
 
     match event.event_type.as_str() {
         "checkout.completed" => {
@@ -104,8 +122,7 @@ pub async fn creem_webhook(
                     .and_then(|s| Uuid::parse_str(s).ok())
                 {
                     // Use Creem's own real status field directly, rather than
-                    // guessing from which event name fired - the event type
-                    // alone doesn't reliably distinguish trialing from active.
+                    // guessing from which event name fired.
                     if let Err(e) =
                         upsert_subscription(&pool, user_id, &parsed, &parsed.status).await
                     {
@@ -150,14 +167,10 @@ pub async fn creem_webhook(
                     _ => "canceled",
                 };
 
-                // Check what status this row already had BEFORE this webhook -
-                // if it's already "canceled", our own cancel_subscription_handler
-                // already handled this and sent the correct email itself; this
-                // webhook is just Creem's normal, redundant confirmation of
-                // something we already know. Only a genuine, first-time
-                // transition into "canceled" - one we didn't already cause
-                // ourselves - means Creem's own automatic retries were
-                // exhausted, and THAT'S when the payment-failure email applies.
+                // If they already canceled through our the site, don't
+                // send another email. Instead Creem's just confirming what we
+                // already know. Only email them if this is the moment
+                // Creem gave up trying to charge them.
                 let previous_status: Option<String> = sqlx::query_scalar(
                     "SELECT status::text FROM subscriptions WHERE creem_subscription_id = $1",
                 )
@@ -188,10 +201,9 @@ pub async fn creem_webhook(
         }
 
         "subscription.update" => {
-            // Keeps our own database in sync if a subscription was ever
-            // modified directly from Creem's dashboard, outside our own
-            // endpoints - a genuine gap our own change-plan/cancel logic
-            // can't cover, since those changes wouldn't come through here.
+            // In case someone changes a subscription directly in Creem's
+            // dashboard instead of through our site - this keeps our
+            // database matching what's actually true.
             if let Some(parsed) = extract_subscription(&event.event_type, &event.object) {
                 if let Some(user_id) = parsed
                     .metadata
@@ -209,10 +221,6 @@ pub async fn creem_webhook(
         }
 
         "refund.created" => {
-            // Doesn't revoke access on its own - a refund during a normal
-            // downgrade is expected and already handled elsewhere. This
-            // just gives real visibility into refunds happening at all,
-            // rather than silently disappearing as "unhandled."
             eprintln!("refund.created received for event {}", event.id);
         }
 
@@ -224,16 +232,28 @@ pub async fn creem_webhook(
     Ok(StatusCode::OK)
 }
 
+/// POST /api/v1/billing/cancel
+///
+/// It cancels the person's active subscription by telling Creem to actually
+/// stop billing them, then immediately updating our own database to match,
+/// rather than waiting for Creem's webhook to confirm something we already
+/// know for certain, since we're the ones who just caused it.
+///
+/// It confirms who's genuinely signed in, finds their real, currently
+/// active subscription, tells Creem to cancel it, updates our own database
+/// right away to reflect that, and tries to send a real confirmation email
+/// although a failed email doesn't undo the cancellation itself, since
+/// that part has already genuinely succeeded by then.
 pub async fn cancel_subscription_handler(
     State(pool): State<Pool<Postgres>>,
     headers: HeaderMap,
-) -> Result<Json<serde_json::Value>, StatusCode> {
+) -> Result<Json<Value>, BillingError> {
     let user_id = extract_user_id(&headers, &pool)
         .await
-        .expect("expected to extract the user id")
-        .ok_or(StatusCode::UNAUTHORIZED)?;
+        .map_err(|_| BillingError::InternalError("Failed to verify session".to_string()))?
+        .ok_or(BillingError::Unauthorized)?;
 
-    let sub_id: Option<String> = sqlx::query_scalar(
+    let sub_id: Option<String> = query_scalar(
         "SELECT creem_subscription_id FROM subscriptions
          WHERE user_id = $1 AND status IN ('active', 'trialing', 'past_due')
          ORDER BY created_at DESC LIMIT 1",
@@ -241,15 +261,44 @@ pub async fn cancel_subscription_handler(
     .bind(user_id)
     .fetch_optional(&pool)
     .await
-    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    .map_err(|_| BillingError::InternalError("Failed to look up subscription".to_string()))?;
 
-    let sub_id = sub_id.ok_or(StatusCode::NOT_FOUND)?;
+    let sub_id =
+        sub_id.ok_or_else(|| BillingError::NotFound("No active subscription found".to_string()))?;
 
-    let api_key = std::env::var("CREEM_API_KEY").map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    let client = reqwest::Client::new();
-    let creem_base_url = std::env::var("CREEM_API_BASE_URL")
-        .unwrap_or_else(|_| "https://test-api.creem.io".to_string());
-    let response = client
+    cancel_with_creem(&sub_id).await?;
+
+    query(
+        "UPDATE subscriptions SET status = 'canceled'::subscription_status, canceled_at = NOW(), updated_at = NOW()
+         WHERE creem_subscription_id = $1",
+    )
+    .bind(&sub_id)
+    .execute(&pool)
+    .await
+    .map_err(|_| BillingError::InternalError("Failed to update subscription".to_string()))?;
+
+    if let Some(email) = fetch_subscriber_email(&pool, &sub_id).await {
+        if let Err(e) = send_subscription_canceled_email(&email).await {
+            eprintln!("Failed to send cancellation confirmation email: {:?}", e);
+        }
+    }
+
+    Ok(Json(json!({ "success": true })))
+}
+
+/// It's the one real step that actually talks to Creem — telling them,
+/// for real, to stop billing this specific subscription.
+///
+/// It builds the real request with the correct API key, sends it to Creem's
+/// real cancellation endpoint, and checks that Creem genuinely accepted it,
+/// rather than just assuming the request going out means it worked.
+async fn cancel_with_creem(sub_id: &str) -> Result<(), BillingError> {
+    let api_key = var("CREEM_API_KEY")
+        .map_err(|_| BillingError::InternalError("CREEM_API_KEY not set".to_string()))?;
+    let creem_base_url =
+        var("CREEM_API_BASE_URL").unwrap_or_else(|_| "https://test-api.creem.io".to_string());
+
+    let response = Client::new()
         .post(format!(
             "{}/v1/subscriptions/{}/cancel",
             creem_base_url, sub_id
@@ -257,44 +306,34 @@ pub async fn cancel_subscription_handler(
         .header("x-api-key", api_key)
         .send()
         .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .map_err(|_| BillingError::ServiceUnavailable("Could not reach Creem".to_string()))?;
 
     if !response.status().is_success() {
-        return Err(StatusCode::INTERNAL_SERVER_ERROR);
+        return Err(BillingError::ServiceUnavailable(
+            "Creem rejected the cancellation".to_string(),
+        ));
     }
 
-    // Update our own database directly, right now, in this same request -
-    // we don't need to wait for the async webhook to tell us something we
-    // already know for certain, since we're the ones who just caused it.
-    sqlx::query(
-        "UPDATE subscriptions SET status = 'canceled'::subscription_status, canceled_at = NOW(), updated_at = NOW()
-         WHERE creem_subscription_id = $1",
-    )
-    .bind(&sub_id)
-    .execute(&pool)
-    .await
-    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    Ok(())
+}
 
-    // Fetch the real email to send the correct, voluntary-cancellation
-    // message - genuinely different wording from the automatic,
-    // payment-failure version the webhook sends.
-    let email: Option<String> = sqlx::query_scalar(
+/// It finds the real email address of whoever owns this subscription, so
+/// the cancellation confirmation actually reaches the right person.
+///
+/// It joins the subscription back to its real user and returns their
+/// email if found — quietly returning nothing if it wasn't, since a
+/// missing email should only mean the confirmation gets skipped, not that
+/// anything about the cancellation itself failed.
+async fn fetch_subscriber_email(pool: &Pool<Postgres>, sub_id: &str) -> Option<String> {
+    sqlx::query_scalar(
         "SELECT u.email FROM users u
          JOIN subscriptions s ON s.user_id = u.id
          WHERE s.creem_subscription_id = $1",
     )
-    .bind(&sub_id)
-    .fetch_optional(&pool)
+    .bind(sub_id)
+    .fetch_optional(pool)
     .await
-    .unwrap_or(None);
-
-    if let Some(email) = email {
-        if let Err(e) = crate::services::email::send_subscription_canceled_email(&email).await {
-            eprintln!("Failed to send cancellation confirmation email: {:?}", e);
-        }
-    }
-
-    Ok(Json(serde_json::json!({ "success": true })))
+    .unwrap_or(None)
 }
 
 pub async fn get_subscription_status(
@@ -310,7 +349,7 @@ pub async fn get_subscription_status(
         String,
         String,
         String,
-        Option<chrono::DateTime<chrono::Utc>>,
+        Option<DateTime<Utc>>,
         Option<String>,
         Option<String>,
     )> = sqlx::query_as(
@@ -346,7 +385,7 @@ pub async fn get_subscription_status(
         &scheduled_plan_name,
         current_period_end,
     ) {
-        if chrono::Utc::now() >= period_end {
+        if Utc::now() >= period_end {
             if let Err(e) = crate::services::billing::change_creem_subscription_product(
                 &sub_id,
                 sched_product_id,
