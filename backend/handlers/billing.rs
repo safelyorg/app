@@ -1,5 +1,6 @@
 use crate::errors::billing::{BillingError, WebhookError};
 use crate::models::billing::{CreemWebhookEvent, extract_subscription};
+use crate::services::billing::change_creem_subscription_product;
 use crate::services::email::send_subscription_canceled_email;
 use crate::services::{
     auth::extract_user_id,
@@ -23,6 +24,12 @@ use uuid::Uuid;
 #[derive(Debug, Deserialize)]
 pub struct CreateCheckoutBody {
     pub product_id: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ChangePlanBody {
+    pub product_id: String,
+    pub plan_name: String,
 }
 
 /// POST /api/v1/billing/checkout
@@ -336,14 +343,24 @@ async fn fetch_subscriber_email(pool: &Pool<Postgres>, sub_id: &str) -> Option<S
     .unwrap_or(None)
 }
 
+/// GET /api/v1/billing/status
+///
+/// It reports back the person's real, current subscription state — which
+/// plan they're on, what status it's in, and when it renews so the
+/// frontend can show accurate billing info without guessing.
+///
+/// It confirms who's genuinely signed in, looks up their most recent real
+/// subscription, and if a scheduled downgrade's deferred period has
+/// genuinely ended by now, actually applies it at this exact moment,
+/// before reporting back the final, up-to-date picture.
 pub async fn get_subscription_status(
     State(pool): State<Pool<Postgres>>,
     headers: HeaderMap,
-) -> Result<Json<serde_json::Value>, StatusCode> {
+) -> Result<Json<Value>, BillingError> {
     let user_id = extract_user_id(&headers, &pool)
         .await
-        .expect("expected to extract the user id")
-        .ok_or(StatusCode::UNAUTHORIZED)?;
+        .map_err(|_| BillingError::InternalError("Failed to verify session".to_string()))?
+        .ok_or(BillingError::Unauthorized)?;
 
     let row: Option<(
         String,
@@ -360,7 +377,7 @@ pub async fn get_subscription_status(
     .bind(user_id)
     .fetch_optional(&pool)
     .await
-    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    .map_err(|_| BillingError::InternalError("Failed to look up subscription".to_string()))?;
 
     let Some((
         sub_id,
@@ -371,47 +388,26 @@ pub async fn get_subscription_status(
         scheduled_plan_name,
     )) = row
     else {
-        return Ok(Json(serde_json::json!({
+        return Ok(Json(json!({
             "plan_name": null, "status": null, "current_period_end": null, "scheduled_plan_name": null,
         })));
     };
 
-    // A scheduled downgrade whose period has genuinely ended gets
-    // actually applied right now, at Creem, and in our own database -
-    // this is the moment the deferred change finally takes effect.
-    let mut scheduled_plan_name_response: Option<String> = scheduled_plan_name.clone();
-    if let (Some(sched_product_id), Some(sched_plan_name), Some(period_end)) = (
-        &scheduled_product_id,
-        &scheduled_plan_name,
+    let mut scheduled_plan_name_response = scheduled_plan_name.clone();
+    if let Some(new_plan_name) = apply_scheduled_downgrade_if_due(
+        &pool,
+        &sub_id,
+        scheduled_product_id.as_deref(),
+        scheduled_plan_name.as_deref(),
         current_period_end,
-    ) {
-        if Utc::now() >= period_end {
-            if let Err(e) = crate::services::billing::change_creem_subscription_product(
-                &sub_id,
-                sched_product_id,
-                "proration-charge-immediately",
-            )
-            .await
-            {
-                eprintln!("Failed to apply scheduled downgrade: {}", e);
-            } else {
-                let _ = sqlx::query(
-                    "UPDATE subscriptions SET plan_name = $1, creem_product_id = $2,
-                     scheduled_product_id = NULL, scheduled_plan_name = NULL, updated_at = NOW()
-                     WHERE creem_subscription_id = $3",
-                )
-                .bind(sched_plan_name)
-                .bind(sched_product_id)
-                .bind(&sub_id)
-                .execute(&pool)
-                .await;
-                plan_name = sched_plan_name.clone();
-                scheduled_plan_name_response = None;
-            }
-        }
+    )
+    .await
+    {
+        plan_name = new_plan_name;
+        scheduled_plan_name_response = None;
     }
 
-    Ok(Json(serde_json::json!({
+    Ok(Json(json!({
         "plan_name": plan_name,
         "status": status,
         "current_period_end": current_period_end,
@@ -419,10 +415,52 @@ pub async fn get_subscription_status(
     })))
 }
 
-#[derive(Debug, serde::Deserialize)]
-pub struct ChangePlanBody {
-    pub product_id: String,
-    pub plan_name: String,
+/// If a scheduled downgrade's deferred period has genuinely ended by now,
+/// this actually applies it - telling Creem, then updating our own
+/// database - and hands back the new plan name if it did.
+///
+/// It checks all three pieces are genuinely present, and that the
+/// deferred period has actually passed. If so, tells Creem to make the
+/// change real, then updates our own row to match by quietly logging,
+/// not failing, if either step goes wrong, since a delayed downgrade
+/// isn't worth breaking someone's whole status check over.
+async fn apply_scheduled_downgrade_if_due(
+    pool: &Pool<Postgres>,
+    sub_id: &str,
+    scheduled_product_id: Option<&str>,
+    scheduled_plan_name: Option<&str>,
+    current_period_end: Option<DateTime<Utc>>,
+) -> Option<String> {
+    let (sched_product_id, sched_plan_name, period_end) = (
+        scheduled_product_id?,
+        scheduled_plan_name?,
+        current_period_end?,
+    );
+
+    if Utc::now() < period_end {
+        return None;
+    }
+
+    if let Err(e) =
+        change_creem_subscription_product(sub_id, sched_product_id, "proration-charge-immediately")
+            .await
+    {
+        eprintln!("Failed to apply scheduled downgrade: {}", e);
+        return None;
+    }
+
+    let _ = query(
+        "UPDATE subscriptions SET plan_name = $1, creem_product_id = $2,
+         scheduled_product_id = NULL, scheduled_plan_name = NULL, updated_at = NOW()
+         WHERE creem_subscription_id = $3",
+    )
+    .bind(sched_plan_name)
+    .bind(sched_product_id)
+    .bind(sub_id)
+    .execute(pool)
+    .await;
+
+    Some(sched_plan_name.to_string())
 }
 
 /// POST /api/v1/billing/change-plan
