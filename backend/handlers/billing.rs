@@ -465,31 +465,19 @@ async fn apply_scheduled_downgrade_if_due(
 
 /// POST /api/v1/billing/change-plan
 ///
-/// Handles switching an EXISTING active subscription to a different
-/// plan - genuinely different from create_checkout_handler, which is
-/// only for a brand-new signup with no subscription at all yet.
-///
-/// Upgrade (moving to a more expensive plan): applied immediately,
-/// charged immediately via Creem's real upgrade endpoint - matches
-/// standard SaaS practice of never blocking someone who wants to pay
-/// you more for more value.
-///
-/// Downgrade (moving to a cheaper plan): NOT applied immediately.
-/// Creem has no native "schedule for later" primitive, so this is
-/// recorded in our own database instead, and only actually applied
-/// once get_subscription_status later notices the current period has
-/// genuinely ended - the person keeps their already-paid-for plan's
-/// full features until then, exactly like Netflix/Spotify-style
-/// downgrades work.
+/// Switches an existing subscription to a different plan. It upgrades, apply
+/// and charge immediately; downgrades are scheduled for when the current
+/// paid period actually ends, matching standard Netflix/Spotify-style
+/// downgrade behavior.
 pub async fn change_plan_handler(
     State(pool): State<Pool<Postgres>>,
     headers: HeaderMap,
     Json(body): Json<ChangePlanBody>,
-) -> Result<Json<serde_json::Value>, StatusCode> {
+) -> Result<Json<Value>, BillingError> {
     let user_id = extract_user_id(&headers, &pool)
         .await
-        .expect("expected to extract the user id")
-        .ok_or(StatusCode::UNAUTHORIZED)?;
+        .map_err(|_| BillingError::InternalError("Failed to verify session".to_string()))?
+        .ok_or(BillingError::Unauthorized)?;
 
     let current: Option<(String, String, String)> = sqlx::query_as(
         "SELECT creem_subscription_id, plan_name, status::text FROM subscriptions
@@ -499,61 +487,31 @@ pub async fn change_plan_handler(
     .bind(user_id)
     .fetch_optional(&pool)
     .await
-    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    .map_err(|_| BillingError::InternalError("Failed to look up subscription".to_string()))?;
 
-    let (sub_id, current_plan, current_status) = current.ok_or(StatusCode::NOT_FOUND)?;
-    let is_trialing = current_status == "trialing";
+    let (sub_id, current_plan, current_status) = current
+        .ok_or_else(|| BillingError::NotFound("No active subscription found".to_string()))?;
 
-    // Only two tiers exist right now, so this simple check correctly
-    // identifies which direction the change is - revisit this if a
-    // third tier is ever added, since it would need real price-based
-    // ranking instead of a plain name comparison.
     let is_upgrade = current_plan == "Team" && body.plan_name == "Enterprise";
     let is_downgrade = current_plan == "Enterprise" && body.plan_name == "Team";
 
-    if is_trialing {
-        // Creem's own /upgrade endpoint explicitly requires "active"
-        // status before allowing any modification - confirmed directly
-        // via a real rejected request. Rather than fight this, we're
-        // honest about the limitation: switching plans isn't available
-        // until the trial genuinely converts to a paid subscription.
-        return Err(StatusCode::CONFLICT);
+    if current_status == "trialing" {
+        return Err(BillingError::Conflict(
+            "Plan changes aren't available during your trial".to_string(),
+        ));
     }
 
     if !is_upgrade && !is_downgrade {
-        return Err(StatusCode::BAD_REQUEST);
+        return Err(BillingError::InvalidRequest(
+            "Not a valid plan change".to_string(),
+        ));
     }
 
     if is_upgrade {
-        crate::services::billing::change_creem_subscription_product(
-            &sub_id,
-            &body.product_id,
-            "proration-charge-immediately",
-        )
-        .await
-        .map_err(|e| {
-            eprintln!("Failed to upgrade subscription: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
-
-        sqlx::query(
-            "UPDATE subscriptions SET plan_name = $1, creem_product_id = $2,
-             scheduled_product_id = NULL, scheduled_plan_name = NULL, updated_at = NOW()
-             WHERE creem_subscription_id = $3",
-        )
-        .bind(&body.plan_name)
-        .bind(&body.product_id)
-        .bind(&sub_id)
-        .execute(&pool)
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-
-        return Ok(Json(serde_json::json!({ "applied": "immediately" })));
+        return apply_upgrade(&pool, &sub_id, &body).await;
     }
 
-    // Downgrade - just record the intent, don't touch Creem or the
-    // real plan yet.
-    sqlx::query(
+    query(
         "UPDATE subscriptions SET scheduled_product_id = $1, scheduled_plan_name = $2, updated_at = NOW()
          WHERE creem_subscription_id = $3",
     )
@@ -562,16 +520,53 @@ pub async fn change_plan_handler(
     .bind(&sub_id)
     .execute(&pool)
     .await
-    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    .map_err(|_| BillingError::InternalError("Failed to schedule downgrade".to_string()))?;
 
-    Ok(Json(serde_json::json!({ "applied": "scheduled" })))
+    Ok(Json(json!({ "applied": "scheduled" })))
 }
 
-pub async fn get_product_ids() -> Json<serde_json::Value> {
-    let team_id = std::env::var("CREEM_TEAM_PRODUCT_ID").unwrap_or_default();
-    let enterprise_id = std::env::var("CREEM_ENTERPRISE_PRODUCT_ID").unwrap_or_default();
-    Json(serde_json::json!({
+/// Applies an upgrade immediately, both at Creem, and in the database.
+async fn apply_upgrade(
+    pool: &Pool<Postgres>,
+    sub_id: &str,
+    body: &ChangePlanBody,
+) -> Result<Json<Value>, BillingError> {
+    change_creem_subscription_product(sub_id, &body.product_id, "proration-charge-immediately")
+        .await
+        .map_err(|e| {
+            eprintln!("Failed to upgrade subscription: {}", e);
+            BillingError::ServiceUnavailable("Creem rejected the upgrade".to_string())
+        })?;
+
+    query(
+        "UPDATE subscriptions SET plan_name = $1, creem_product_id = $2,
+         scheduled_product_id = NULL, scheduled_plan_name = NULL, updated_at = NOW()
+         WHERE creem_subscription_id = $3",
+    )
+    .bind(&body.plan_name)
+    .bind(&body.product_id)
+    .bind(sub_id)
+    .execute(pool)
+    .await
+    .map_err(|_| BillingError::InternalError("Failed to update subscription".to_string()))?;
+
+    Ok(Json(json!({ "applied": "immediately" })))
+}
+
+/// GET /api/v1/billing/product-ids
+///
+/// It hands the frontend the real Creem product IDs for each plan, so
+/// checkout requests always use the actual, correct ID - rather than the
+/// frontend needing to hardcode them itself.
+pub async fn get_product_ids() -> Result<Json<Value>, BillingError> {
+    let team_id = std::env::var("CREEM_TEAM_PRODUCT_ID")
+        .map_err(|_| BillingError::InternalError("CREEM_TEAM_PRODUCT_ID not set".to_string()))?;
+    let enterprise_id = std::env::var("CREEM_ENTERPRISE_PRODUCT_ID").map_err(|_| {
+        BillingError::InternalError("CREEM_ENTERPRISE_PRODUCT_ID not set".to_string())
+    })?;
+
+    Ok(Json(json!({
         "Team": team_id,
         "Enterprise": enterprise_id,
-    }))
+    })))
 }

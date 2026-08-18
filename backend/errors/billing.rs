@@ -10,6 +10,7 @@ pub enum BillingError {
     Unauthorized,
     NotFound(String),
     InvalidRequest(String),
+    Conflict(String),
     ServiceUnavailable(String),
     InternalError(String),
 }
@@ -31,6 +32,7 @@ impl IntoResponse for BillingError {
             }
             BillingError::NotFound(msg) => (StatusCode::NOT_FOUND, msg),
             BillingError::InvalidRequest(msg) => (StatusCode::BAD_REQUEST, msg),
+            BillingError::Conflict(msg) => (StatusCode::CONFLICT, msg),
             BillingError::ServiceUnavailable(msg) => (StatusCode::SERVICE_UNAVAILABLE, msg),
             BillingError::InternalError(msg) => (StatusCode::INTERNAL_SERVER_ERROR, msg),
         };
