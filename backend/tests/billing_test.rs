@@ -10,9 +10,9 @@ use axum::{
 use backend::{
     errors::billing::{BillingError, WebhookError},
     handlers::billing::{
-        CreateCheckoutBody, create_checkout_handler, creem_webhook, extract_metadata_user_id,
-        handle_subscription_granted, handle_subscription_lost, handle_subscription_past_due,
-        handle_subscription_update, verify_and_parse_webhook,
+        CreateCheckoutBody, cancel_subscription_handler, create_checkout_handler, creem_webhook,
+        extract_metadata_user_id, handle_subscription_granted, handle_subscription_lost,
+        handle_subscription_past_due, handle_subscription_update, verify_and_parse_webhook,
     },
     models::billing::{ParsedCustomer, ParsedMetadata, ParsedProduct, ParsedSubscription},
     services::{
@@ -1500,4 +1500,128 @@ async fn creem_webhook_inner_handler_failure_still_returns_ok() {
         saved_row.is_none(),
         "expected NO subscription row to exist, confirming the inner failure was genuine"
     );
+}
+
+#[tokio::test]
+async fn cancel_subscription_unauthorized() {
+    let pool = test_pool().await;
+
+    let headers = HeaderMap::new();
+
+    let result = cancel_subscription_handler(State(pool), headers).await;
+
+    match result {
+        Err(BillingError::Unauthorized) => {}
+        Err(other) => panic!("expected Unauthorized, got a different error: {:?}", other),
+        Ok(_) => panic!("expected an unauthenticated request to be rejected, but it succeeded"),
+    }
+}
+
+#[tokio::test]
+async fn cancel_subscription_not_found() {
+    let pool = test_pool().await;
+    let email = "cancel_not_found_test@example.com";
+    cleanup_test_user(&pool, email).await;
+
+    let (user, _) = find_or_create_user_by_email(&pool, email)
+        .await
+        .expect("expected to create the user");
+
+    let real_session_token = create_session(&pool, user.id)
+        .await
+        .expect("expected to create a real session");
+
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        "authorization",
+        HeaderValue::from_str(&format!("Bearer {}", real_session_token))
+            .expect("expected to insert the header value"),
+    );
+
+    let result = cancel_subscription_handler(State(pool.clone()), headers).await;
+
+    match result {
+        Err(BillingError::NotFound(_)) => {}
+        Err(other) => panic!("expected NotFound, got a different error: {:?}", other),
+        Ok(_) => {
+            panic!("expected cancellation to fail with no subscription to cancel, but it succeeded")
+        }
+    }
+
+    cleanup_test_user(&pool, email).await;
+}
+
+#[tokio::test]
+async fn cancel_subscription_creem_rejects() {
+    let pool = test_pool().await;
+    let email = "cancel_creem_rejects_test@example.com";
+    cleanup_test_user(&pool, email).await;
+
+    let (user, _) = find_or_create_user_by_email(&pool, email)
+        .await
+        .expect("expected to create the user");
+
+    let real_session_token = create_session(&pool, user.id)
+        .await
+        .expect("expected to create a real session");
+
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        "authorization",
+        HeaderValue::from_str(&format!("Bearer {}", real_session_token))
+            .expect("expected to insert the header value"),
+    );
+
+    let sub_id = "sub_creem_rejects_fake_001";
+    query("DELETE FROM subscriptions WHERE creem_subscription_id = $1")
+        .bind(sub_id)
+        .execute(&pool)
+        .await
+        .expect("expected cleanup to succeed");
+
+    query(
+        "INSERT INTO subscriptions (id, user_id, creem_subscription_id, creem_customer_id, creem_product_id, plan_name, status, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6, 'active'::subscription_status, NOW(), NOW())",
+    )
+    .bind(Uuid::now_v7())
+    .bind(user.id)
+    .bind(sub_id)
+    .bind("cust_fake_test_001")
+    .bind("prod_fake_test_001")
+    .bind("Team")
+    .execute(&pool)
+    .await
+    .expect("expected to pre-seed the fake-but-local subscription");
+
+    let result = cancel_subscription_handler(State(pool.clone()), headers).await;
+
+    match result {
+        Err(BillingError::ServiceUnavailable(_)) => {}
+        Err(other) => panic!(
+            "expected ServiceUnavailable, got a different error: {:?}",
+            other
+        ),
+        Ok(_) => panic!("expected Creem to reject the cancellation, but it succeeded"),
+    }
+
+    let saved_status: Option<String> =
+        query_scalar("SELECT status::text FROM subscriptions WHERE creem_subscription_id = $1")
+            .bind(sub_id)
+            .fetch_optional(&pool)
+            .await
+            .expect("expected the query itself to succeed");
+
+    assert_eq!(
+        saved_status,
+        Some("active".to_string()),
+        "expected the status to remain 'active', unchanged, since the cancellation genuinely failed"
+    );
+
+    query("DELETE FROM subscriptions WHERE creem_subscription_id = $1")
+        .bind(sub_id)
+        .execute(&pool)
+        .await
+        .expect("expected final cleanup to succeed");
+
+    cleanup_test_user(&pool, email).await;
 }
