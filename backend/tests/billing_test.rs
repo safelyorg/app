@@ -9,7 +9,11 @@ use axum::{
 };
 use backend::{
     errors::billing::{BillingError, WebhookError},
-    handlers::billing::{CreateCheckoutBody, create_checkout_handler, verify_and_parse_webhook},
+    handlers::billing::{
+        CreateCheckoutBody, create_checkout_handler, extract_metadata_user_id,
+        verify_and_parse_webhook,
+    },
+    models::billing::{ParsedCustomer, ParsedMetadata, ParsedProduct, ParsedSubscription},
     services::{
         auth::{create_session, find_or_create_user_by_email},
         billing::{CreateCheckoutError, create_checkout},
@@ -359,4 +363,144 @@ async fn creem_webhook_invalid_payload() {
         ),
         Ok(_) => panic!("expected parsing to fail on malformed JSON, but it succeeded"),
     }
+}
+
+#[tokio::test]
+#[serial]
+async fn creem_webhook_success() {
+    dotenvy::dotenv().ok();
+
+    let secret = var("CREEM_WEBHOOK_SECRET")
+        .expect("expected CREEM_WEBHOOK_SECRET to be genuinely set for this test");
+
+    let raw_body = r#"{"id":"evt_test_success_001","eventType":"checkout.completed","created_at":1700000000,"object":{}}"#;
+
+    let mut mac = HmacSha256::new_from_slice(secret.as_bytes())
+        .expect("expected to build a real HMAC instance");
+    mac.update(raw_body.as_bytes());
+    let real_signature = hex::encode(mac.finalize().into_bytes());
+
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        "creem-signature",
+        HeaderValue::from_str(&real_signature).expect("expected to insert the header value"),
+    );
+
+    let body = Bytes::from(raw_body);
+
+    let event = verify_and_parse_webhook(&headers, &body)
+        .await
+        .expect("expected verification and parsing to genuinely succeed");
+
+    assert_eq!(event.id, "evt_test_success_001");
+    assert_eq!(event.event_type, "checkout.completed");
+}
+
+#[test]
+fn extract_metadata_user_id_missing_metadata() {
+    let parsed = ParsedSubscription {
+        id: "sub_test_001".to_string(),
+        status: "active".to_string(),
+        current_period_end_date: None,
+        canceled_at: None,
+        product: ParsedProduct {
+            id: "prod_test".to_string(),
+            name: "Team".to_string(),
+        },
+        customer: ParsedCustomer {
+            id: "cust_test".to_string(),
+            email: "test@example.com".to_string(),
+        },
+        metadata: None, // <-- genuinely absent
+    };
+
+    let result = extract_metadata_user_id(&parsed);
+
+    assert!(
+        result.is_none(),
+        "expected None when metadata itself is missing"
+    );
+}
+
+#[test]
+fn extract_metadata_user_id_missing_safely_user_id() {
+    let parsed = ParsedSubscription {
+        id: "sub_test_001".to_string(),
+        status: "active".to_string(),
+        current_period_end_date: None,
+        canceled_at: None,
+        product: ParsedProduct {
+            id: "prod_test".to_string(),
+            name: "Team".to_string(),
+        },
+        customer: ParsedCustomer {
+            id: "cust_test".to_string(),
+            email: "test@example.com".to_string(),
+        },
+        metadata: Some(ParsedMetadata {
+            safely_user_id: None, // <-- present, but empty
+        }),
+    };
+
+    let result = extract_metadata_user_id(&parsed);
+
+    assert!(
+        result.is_none(),
+        "expected None when safely_user_id itself is missing"
+    );
+}
+
+#[test]
+fn extract_metadata_user_id_invalid_uuid() {
+    let parsed = ParsedSubscription {
+        id: "sub_test_001".to_string(),
+        status: "active".to_string(),
+        current_period_end_date: None,
+        canceled_at: None,
+        product: ParsedProduct {
+            id: "prod_test".to_string(),
+            name: "Team".to_string(),
+        },
+        customer: ParsedCustomer {
+            id: "cust_test".to_string(),
+            email: "test@example.com".to_string(),
+        },
+        metadata: Some(ParsedMetadata {
+            safely_user_id: Some("this-is-genuinely-not-a-uuid".to_string()), // <-- malformed
+        }),
+    };
+
+    let result = extract_metadata_user_id(&parsed);
+
+    assert!(
+        result.is_none(),
+        "expected None when the string isn't a genuinely valid UUID"
+    );
+}
+
+#[test]
+fn extract_metadata_user_id_success() {
+    let real_uuid = Uuid::new_v4();
+
+    let parsed = ParsedSubscription {
+        id: "sub_test_001".to_string(),
+        status: "active".to_string(),
+        current_period_end_date: None,
+        canceled_at: None,
+        product: ParsedProduct {
+            id: "prod_test".to_string(),
+            name: "Team".to_string(),
+        },
+        customer: ParsedCustomer {
+            id: "cust_test".to_string(),
+            email: "test@example.com".to_string(),
+        },
+        metadata: Some(ParsedMetadata {
+            safely_user_id: Some(real_uuid.to_string()),
+        }),
+    };
+
+    let result = extract_metadata_user_id(&parsed);
+
+    assert_eq!(result, Some(real_uuid), "expected the exact same UUID back");
 }
