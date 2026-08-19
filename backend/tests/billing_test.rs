@@ -10,7 +10,7 @@ use axum::{
 use backend::{
     errors::billing::{BillingError, WebhookError},
     handlers::billing::{
-        CreateCheckoutBody, create_checkout_handler, extract_metadata_user_id,
+        CreateCheckoutBody, create_checkout_handler, creem_webhook, extract_metadata_user_id,
         handle_subscription_granted, handle_subscription_lost, handle_subscription_past_due,
         handle_subscription_update, verify_and_parse_webhook,
     },
@@ -21,6 +21,7 @@ use backend::{
     },
 };
 use hmac::{Hmac, KeyInit, Mac};
+use reqwest::StatusCode;
 use serial_test::serial;
 use sha2::Sha256;
 use sqlx::{query, query_scalar};
@@ -1346,5 +1347,157 @@ async fn subscription_update_upsert_fails() {
     assert!(
         saved_row.is_none(),
         "expected NO subscription row to exist, since the foreign key genuinely failed"
+    );
+}
+
+#[tokio::test]
+#[serial]
+async fn creem_webhook_verification_failure_propagates() {
+    dotenvy::dotenv().ok();
+
+    let pool = test_pool().await;
+
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        "creem-signature",
+        HeaderValue::from_str("clearly-wrong-signature-that-cannot-match")
+            .expect("expected to insert the header value"),
+    );
+
+    let body = Bytes::from(
+        r#"{"id":"evt_test","eventType":"refund.created","created_at":1700000000,"object":{}}"#,
+    );
+
+    let result = creem_webhook(State(pool), headers, body).await;
+
+    match result {
+        Err(WebhookError::InvalidSignature) => {}
+        Err(other) => panic!(
+            "expected InvalidSignature, got a different error: {:?}",
+            other
+        ),
+        Ok(_) => {
+            panic!("expected the whole webhook to be rejected on a bad signature, but it succeeded")
+        }
+    }
+}
+
+#[tokio::test]
+#[serial]
+async fn creem_webhook_success_refund_created() {
+    dotenvy::dotenv().ok();
+
+    let pool = test_pool().await;
+
+    let secret = var("CREEM_WEBHOOK_SECRET")
+        .expect("expected CREEM_WEBHOOK_SECRET to be genuinely set for this test");
+
+    let raw_body = r#"{"id":"evt_refund_test_001","eventType":"refund.created","created_at":1700000000,"object":{}}"#;
+
+    let mut mac = HmacSha256::new_from_slice(secret.as_bytes())
+        .expect("expected to build a real HMAC instance");
+    mac.update(raw_body.as_bytes());
+    let real_signature = hex::encode(mac.finalize().into_bytes());
+
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        "creem-signature",
+        HeaderValue::from_str(&real_signature).expect("expected to insert the header value"),
+    );
+
+    let body = Bytes::from(raw_body);
+
+    let result = creem_webhook(State(pool), headers, body)
+        .await
+        .expect("expected the whole webhook to succeed end-to-end");
+
+    assert_eq!(result, StatusCode::OK);
+}
+
+#[tokio::test]
+#[serial]
+async fn creem_webhook_unrecognized_event_type_still_ok() {
+    dotenvy::dotenv().ok();
+
+    let pool = test_pool().await;
+
+    let secret = var("CREEM_WEBHOOK_SECRET")
+        .expect("expected CREEM_WEBHOOK_SECRET to be genuinely set for this test");
+
+    let raw_body = r#"{"id":"evt_unknown_test_001","eventType":"some.future.event","created_at":1700000000,"object":{}}"#;
+
+    let mut mac = HmacSha256::new_from_slice(secret.as_bytes())
+        .expect("expected to build a real HMAC instance");
+    mac.update(raw_body.as_bytes());
+    let real_signature = hex::encode(mac.finalize().into_bytes());
+
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        "creem-signature",
+        HeaderValue::from_str(&real_signature).expect("expected to insert the header value"),
+    );
+
+    let body = Bytes::from(raw_body);
+
+    let result = creem_webhook(State(pool), headers, body)
+        .await
+        .expect("expected an unrecognized event type to still succeed, not fail");
+
+    assert_eq!(result, StatusCode::OK);
+}
+
+#[tokio::test]
+#[serial]
+async fn creem_webhook_inner_handler_failure_still_returns_ok() {
+    dotenvy::dotenv().ok();
+
+    let pool = test_pool().await;
+
+    let secret = var("CREEM_WEBHOOK_SECRET")
+        .expect("expected CREEM_WEBHOOK_SECRET to be genuinely set for this test");
+
+    let sub_id = "sub_webhook_inner_failure_001";
+    query("DELETE FROM subscriptions WHERE creem_subscription_id = $1")
+        .bind(sub_id)
+        .execute(&pool)
+        .await
+        .expect("expected cleanup to succeed");
+
+    let fake_user_id = Uuid::new_v4();
+
+    let raw_body = format!(
+        r#"{{"id":"evt_inner_failure_001","eventType":"subscription.paid","created_at":1700000000,"object":{{"id":"{}","status":"active","current_period_end_date":null,"canceled_at":null,"product":{{"id":"prod_test","name":"Team"}},"customer":{{"id":"cust_test","email":"test@example.com"}},"metadata":{{"safely_user_id":"{}"}}}}}}"#,
+        sub_id, fake_user_id
+    );
+
+    let mut mac = HmacSha256::new_from_slice(secret.as_bytes())
+        .expect("expected to build a real HMAC instance");
+    mac.update(raw_body.as_bytes());
+    let real_signature = hex::encode(mac.finalize().into_bytes());
+
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        "creem-signature",
+        HeaderValue::from_str(&real_signature).expect("expected to insert the header value"),
+    );
+
+    let body = Bytes::from(raw_body);
+
+    let result = creem_webhook(State(pool.clone()), headers, body)
+        .await
+        .expect("expected the whole webhook to still return Ok, despite the inner failure");
+
+    assert_eq!(result, StatusCode::OK);
+
+    let saved_row: Option<String> =
+        query_scalar("SELECT status::text FROM subscriptions WHERE creem_subscription_id = $1")
+            .bind(sub_id)
+            .fetch_optional(&pool)
+            .await
+            .expect("expected the query itself to succeed");
+
+    assert!(
+        saved_row.is_none(),
+        "expected NO subscription row to exist, confirming the inner failure was genuine"
     );
 }
