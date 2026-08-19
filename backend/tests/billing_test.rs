@@ -12,7 +12,7 @@ use backend::{
     handlers::billing::{
         CreateCheckoutBody, create_checkout_handler, extract_metadata_user_id,
         handle_subscription_granted, handle_subscription_lost, handle_subscription_past_due,
-        verify_and_parse_webhook,
+        handle_subscription_update, verify_and_parse_webhook,
     },
     models::billing::{ParsedCustomer, ParsedMetadata, ParsedProduct, ParsedSubscription},
     services::{
@@ -1186,6 +1186,155 @@ async fn subscription_lost_upsert_fails() {
     let event_type = "subscription.expired";
 
     handle_subscription_lost(&pool, &parsed, event_type).await;
+
+    let saved_row: Option<String> =
+        query_scalar("SELECT status::text FROM subscriptions WHERE creem_subscription_id = $1")
+            .bind(sub_id)
+            .fetch_optional(&pool)
+            .await
+            .expect("expected the query itself to succeed");
+
+    assert!(
+        saved_row.is_none(),
+        "expected NO subscription row to exist, since the foreign key genuinely failed"
+    );
+}
+
+#[tokio::test]
+async fn subscription_update_success() {
+    let pool = test_pool().await;
+    let email = "subscription_update_test@example.com";
+    cleanup_test_user(&pool, email).await;
+
+    let (user, _) = find_or_create_user_by_email(&pool, email)
+        .await
+        .expect("expected to create the user");
+
+    let sub_id = "sub_update_test_001";
+    query("DELETE FROM subscriptions WHERE creem_subscription_id = $1")
+        .bind(sub_id)
+        .execute(&pool)
+        .await
+        .expect("expected cleanup to succeed");
+
+    let parsed = ParsedSubscription {
+        id: sub_id.to_string(),
+        status: "trialing".to_string(),
+        current_period_end_date: None,
+        canceled_at: None,
+        product: ParsedProduct {
+            id: "prod_test".to_string(),
+            name: "Team".to_string(),
+        },
+        customer: ParsedCustomer {
+            id: "cust_test".to_string(),
+            email: email.to_string(),
+        },
+        metadata: Some(ParsedMetadata {
+            safely_user_id: Some(user.id.to_string()),
+        }),
+    };
+
+    handle_subscription_update(&pool, &parsed).await;
+
+    let saved_status: Option<String> =
+        query_scalar("SELECT status::text FROM subscriptions WHERE creem_subscription_id = $1")
+            .bind(sub_id)
+            .fetch_optional(&pool)
+            .await
+            .expect("expected the query itself to succeed");
+
+    assert_eq!(
+        saved_status,
+        Some("trialing".to_string()),
+        "expected the exact status from parsed.status to be saved, unchanged"
+    );
+
+    query("DELETE FROM subscriptions WHERE creem_subscription_id = $1")
+        .bind(sub_id)
+        .execute(&pool)
+        .await
+        .expect("expected final cleanup to succeed");
+
+    cleanup_test_user(&pool, email).await;
+}
+
+#[tokio::test]
+async fn subscription_update_missing_user_id() {
+    let pool = test_pool().await;
+
+    let sub_id = "sub_update_missing_user_001";
+    query("DELETE FROM subscriptions WHERE creem_subscription_id = $1")
+        .bind(sub_id)
+        .execute(&pool)
+        .await
+        .expect("expected cleanup to succeed");
+
+    let parsed = ParsedSubscription {
+        id: sub_id.to_string(),
+        status: "trialing".to_string(),
+        current_period_end_date: None,
+        canceled_at: None,
+        product: ParsedProduct {
+            id: "prod_test".to_string(),
+            name: "Team".to_string(),
+        },
+        customer: ParsedCustomer {
+            id: "cust_test".to_string(),
+            email: "test@example.com".to_string(),
+        },
+        metadata: Some(ParsedMetadata {
+            safely_user_id: None,
+        }),
+    };
+
+    handle_subscription_update(&pool, &parsed).await;
+
+    let saved_row: Option<String> =
+        query_scalar("SELECT status::text FROM subscriptions WHERE creem_subscription_id = $1")
+            .bind(sub_id)
+            .fetch_optional(&pool)
+            .await
+            .expect("expected the query itself to succeed");
+
+    assert!(
+        saved_row.is_none(),
+        "expected NO subscription row to be created when safely_user_id is missing"
+    );
+}
+
+#[tokio::test]
+async fn subscription_update_upsert_fails() {
+    let pool = test_pool().await;
+
+    let sub_id = "sub_update_upsert_fails_001";
+    query("DELETE FROM subscriptions WHERE creem_subscription_id = $1")
+        .bind(sub_id)
+        .execute(&pool)
+        .await
+        .expect("expected cleanup to succeed");
+
+    let fake_user_id = Uuid::new_v4();
+
+    let parsed = ParsedSubscription {
+        id: sub_id.to_string(),
+        status: "trialing".to_string(),
+        current_period_end_date: None,
+        canceled_at: None,
+        product: ParsedProduct {
+            id: "prod_test".to_string(),
+            name: "Team".to_string(),
+        },
+        customer: ParsedCustomer {
+            id: "cust_test".to_string(),
+            email: "test@example.com".to_string(),
+        },
+        metadata: Some(ParsedMetadata {
+            safely_user_id: Some(fake_user_id.to_string()),
+        }),
+    };
+
+    handle_subscription_update(&pool, &parsed).await;
 
     let saved_row: Option<String> =
         query_scalar("SELECT status::text FROM subscriptions WHERE creem_subscription_id = $1")
