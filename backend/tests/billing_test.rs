@@ -11,7 +11,7 @@ use backend::{
     errors::billing::{BillingError, WebhookError},
     handlers::billing::{
         CreateCheckoutBody, create_checkout_handler, extract_metadata_user_id,
-        handle_subscription_granted, verify_and_parse_webhook,
+        handle_subscription_granted, handle_subscription_past_due, verify_and_parse_webhook,
     },
     models::billing::{ParsedCustomer, ParsedMetadata, ParsedProduct, ParsedSubscription},
     services::{
@@ -653,4 +653,212 @@ async fn subscription_granted_upsert_fails() {
         saved_row.is_none(),
         "expected NO subscription row to exist, since the foreign key genuinely failed"
     );
+}
+
+#[tokio::test]
+async fn subscription_past_due_success() {
+    let pool = test_pool().await;
+    let email = "past_due_test_user@example.com";
+    cleanup_test_user(&pool, email).await;
+
+    let (user, _) = find_or_create_user_by_email(&pool, email)
+        .await
+        .expect("expected to create the user");
+
+    let sub_id = "sub_past_due_test_001";
+    query("DELETE FROM subscriptions WHERE creem_subscription_id = $1")
+        .bind(sub_id)
+        .execute(&pool)
+        .await
+        .expect("expected cleanup to succeed");
+
+    let parsed = ParsedSubscription {
+        id: sub_id.to_string(),
+        status: "past_due".to_string(),
+        current_period_end_date: None,
+        canceled_at: None,
+        product: ParsedProduct {
+            id: "prod_test".to_string(),
+            name: "Team".to_string(),
+        },
+        customer: ParsedCustomer {
+            id: "cust_test".to_string(),
+            email: "delivered@resend.dev".to_string(),
+        },
+        metadata: Some(ParsedMetadata {
+            safely_user_id: Some(user.id.to_string()),
+        }),
+    };
+
+    handle_subscription_past_due(&pool, &parsed).await;
+
+    let saved_status: Option<String> =
+        query_scalar("SELECT status::text FROM subscriptions WHERE creem_subscription_id = $1")
+            .bind(sub_id)
+            .fetch_optional(&pool)
+            .await
+            .expect("expected the query itself to succeed");
+
+    assert_eq!(
+        saved_status,
+        Some("past_due".to_string()),
+        "expected a real subscription row to exist with status 'past_due'"
+    );
+
+    query("DELETE FROM subscriptions WHERE creem_subscription_id = $1")
+        .bind(sub_id)
+        .execute(&pool)
+        .await
+        .expect("expected final cleanup to succeed");
+
+    cleanup_test_user(&pool, email).await;
+}
+
+#[tokio::test]
+async fn subscription_past_due_missing_user_id() {
+    let pool = test_pool().await;
+
+    let sub_id = "sub_past_due_missing_user_001";
+    query("DELETE FROM subscriptions WHERE creem_subscription_id = $1")
+        .bind(sub_id)
+        .execute(&pool)
+        .await
+        .expect("expected cleanup to succeed");
+
+    let parsed = ParsedSubscription {
+        id: sub_id.to_string(),
+        status: "past_due".to_string(),
+        current_period_end_date: None,
+        canceled_at: None,
+        product: ParsedProduct {
+            id: "prod_test".to_string(),
+            name: "Team".to_string(),
+        },
+        customer: ParsedCustomer {
+            id: "cust_test".to_string(),
+            email: "delivered@resend.dev".to_string(),
+        },
+        metadata: Some(ParsedMetadata {
+            safely_user_id: None,
+        }),
+    };
+
+    handle_subscription_past_due(&pool, &parsed).await;
+
+    let saved_row: Option<String> =
+        query_scalar("SELECT status::text FROM subscriptions WHERE creem_subscription_id = $1")
+            .bind(sub_id)
+            .fetch_optional(&pool)
+            .await
+            .expect("expected the query itself to succeed");
+
+    assert!(
+        saved_row.is_none(),
+        "expected NO subscription row to be created when safely_user_id is missing"
+    );
+}
+
+#[tokio::test]
+async fn subscription_past_due_upsert_fails() {
+    let pool = test_pool().await;
+
+    let sub_id = "sub_past_due_upsert_fails_001";
+    query("DELETE FROM subscriptions WHERE creem_subscription_id = $1")
+        .bind(sub_id)
+        .execute(&pool)
+        .await
+        .expect("expected cleanup to succeed");
+
+    let fake_user_id = Uuid::new_v4();
+
+    let parsed = ParsedSubscription {
+        id: sub_id.to_string(),
+        status: "past_due".to_string(),
+        current_period_end_date: None,
+        canceled_at: None,
+        product: ParsedProduct {
+            id: "prod_test".to_string(),
+            name: "Team".to_string(),
+        },
+        customer: ParsedCustomer {
+            id: "cust_test".to_string(),
+            email: "delivered@resend.dev".to_string(),
+        },
+        metadata: Some(ParsedMetadata {
+            safely_user_id: Some(fake_user_id.to_string()),
+        }),
+    };
+
+    handle_subscription_past_due(&pool, &parsed).await;
+
+    let saved_row: Option<String> =
+        query_scalar("SELECT status::text FROM subscriptions WHERE creem_subscription_id = $1")
+            .bind(sub_id)
+            .fetch_optional(&pool)
+            .await
+            .expect("expected the query itself to succeed");
+
+    assert!(
+        saved_row.is_none(),
+        "expected NO subscription row to exist, since the foreign key genuinely failed"
+    );
+}
+
+#[tokio::test]
+async fn subscription_past_due_email_fails_but_upsert_still_succeeds() {
+    let pool = test_pool().await;
+    let email = "past_due_email_fails_test@example.com";
+    cleanup_test_user(&pool, email).await;
+
+    let (user, _) = find_or_create_user_by_email(&pool, email)
+        .await
+        .expect("expected to create the user");
+
+    let sub_id = "sub_past_due_email_fails_001";
+    query("DELETE FROM subscriptions WHERE creem_subscription_id = $1")
+        .bind(sub_id)
+        .execute(&pool)
+        .await
+        .expect("expected cleanup to succeed");
+
+    let parsed = ParsedSubscription {
+        id: sub_id.to_string(),
+        status: "past_due".to_string(),
+        current_period_end_date: None,
+        canceled_at: None,
+        product: ParsedProduct {
+            id: "prod_test".to_string(),
+            name: "Team".to_string(),
+        },
+        customer: ParsedCustomer {
+            id: "cust_test".to_string(),
+            email: "genuinely_blocked@example.com".to_string(),
+        },
+        metadata: Some(ParsedMetadata {
+            safely_user_id: Some(user.id.to_string()),
+        }),
+    };
+
+    handle_subscription_past_due(&pool, &parsed).await;
+
+    let saved_status: Option<String> =
+        query_scalar("SELECT status::text FROM subscriptions WHERE creem_subscription_id = $1")
+            .bind(sub_id)
+            .fetch_optional(&pool)
+            .await
+            .expect("expected the query itself to succeed");
+
+    assert_eq!(
+        saved_status,
+        Some("past_due".to_string()),
+        "expected the subscription to still be upserted, even though the email genuinely failed"
+    );
+
+    query("DELETE FROM subscriptions WHERE creem_subscription_id = $1")
+        .bind(sub_id)
+        .execute(&pool)
+        .await
+        .expect("expected final cleanup to succeed");
+
+    cleanup_test_user(&pool, email).await;
 }
