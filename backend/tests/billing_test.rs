@@ -11,7 +11,7 @@ use backend::{
     errors::billing::{BillingError, WebhookError},
     handlers::billing::{
         CreateCheckoutBody, cancel_subscription_handler, cancel_with_creem,
-        create_checkout_handler, creem_webhook, extract_metadata_user_id,
+        create_checkout_handler, creem_webhook, extract_metadata_user_id, fetch_subscriber_email,
         handle_subscription_granted, handle_subscription_lost, handle_subscription_past_due,
         handle_subscription_update, verify_and_parse_webhook,
     },
@@ -1712,4 +1712,71 @@ async fn cancel_with_creem_rejected() {
             panic!("expected Creem to genuinely reject a fake subscription ID, but it succeeded")
         }
     }
+}
+
+#[tokio::test]
+async fn fetch_subscriber_email_found() {
+    let pool = test_pool().await;
+    let email = "fetch_subscriber_email_test@example.com";
+    cleanup_test_user(&pool, email).await;
+
+    let (user, _) = find_or_create_user_by_email(&pool, email)
+        .await
+        .expect("expected to create the user");
+
+    let sub_id = "sub_fetch_email_found_001";
+    query("DELETE FROM subscriptions WHERE creem_subscription_id = $1")
+        .bind(sub_id)
+        .execute(&pool)
+        .await
+        .expect("expected cleanup to succeed");
+
+    query(
+        "INSERT INTO subscriptions (id, user_id, creem_subscription_id, creem_customer_id, creem_product_id, plan_name, status, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, 'active'::subscription_status, NOW(), NOW())",
+    )
+    .bind(Uuid::now_v7())
+    .bind(user.id)
+    .bind(sub_id)
+    .bind("cust_fake_test_001")
+    .bind("prod_fake_test_001")
+    .bind("Team")
+    .execute(&pool)
+    .await
+    .expect("expected to pre-seed the subscription");
+
+    let result = fetch_subscriber_email(&pool, sub_id).await;
+
+    assert_eq!(
+        result,
+        Some(email.to_string()),
+        "expected the real subscriber's email to be found"
+    );
+
+    query("DELETE FROM subscriptions WHERE creem_subscription_id = $1")
+        .bind(sub_id)
+        .execute(&pool)
+        .await
+        .expect("expected final cleanup to succeed");
+
+    cleanup_test_user(&pool, email).await;
+}
+
+#[tokio::test]
+async fn fetch_subscriber_email_not_found() {
+    let pool = test_pool().await;
+
+    let sub_id = "sub_fetch_email_not_found_001";
+    query("DELETE FROM subscriptions WHERE creem_subscription_id = $1")
+        .bind(sub_id)
+        .execute(&pool)
+        .await
+        .expect("expected cleanup to succeed");
+
+    let result = fetch_subscriber_email(&pool, sub_id).await;
+
+    assert!(
+        result.is_none(),
+        "expected None when no subscription matches this sub_id"
+    );
 }

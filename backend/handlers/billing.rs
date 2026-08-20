@@ -340,7 +340,7 @@ pub async fn cancel_with_creem(sub_id: &str) -> Result<(), BillingError> {
 /// email if found — quietly returning nothing if it wasn't, since a
 /// missing email should only mean the confirmation gets skipped, not that
 /// anything about the cancellation itself failed.
-async fn fetch_subscriber_email(pool: &Pool<Postgres>, sub_id: &str) -> Option<String> {
+pub async fn fetch_subscriber_email(pool: &Pool<Postgres>, sub_id: &str) -> Option<String> {
     sqlx::query_scalar(
         "SELECT u.email FROM users u
          JOIN subscriptions s ON s.user_id = u.id
