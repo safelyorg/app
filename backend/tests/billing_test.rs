@@ -15,8 +15,9 @@ use backend::{
         ChangePlanBody, CreateCheckoutBody, apply_scheduled_downgrade_if_due, apply_upgrade,
         cancel_subscription_handler, cancel_with_creem, change_plan_handler,
         create_checkout_handler, creem_webhook, extract_metadata_user_id, fetch_subscriber_email,
-        get_subscription_status, handle_subscription_granted, handle_subscription_lost,
-        handle_subscription_past_due, handle_subscription_update, verify_and_parse_webhook,
+        get_product_ids, get_subscription_status, handle_subscription_granted,
+        handle_subscription_lost, handle_subscription_past_due, handle_subscription_update,
+        verify_and_parse_webhook,
     },
     models::billing::{ParsedCustomer, ParsedMetadata, ParsedProduct, ParsedSubscription},
     services::{
@@ -2558,7 +2559,7 @@ async fn change_plan_upgrade_creem_rejects() {
 async fn apply_upgrade_creem_rejects() {
     let pool = test_pool().await;
     let email = "apply_upgrade_rejects_test@example.com";
-    cleanup_test_user(&pool, email).await;\
+    cleanup_test_user(&pool, email).await;
 
     let (user, _) = find_or_create_user_by_email(&pool, email)
         .await
@@ -2592,4 +2593,83 @@ async fn apply_upgrade_creem_rejects() {
 
     cleanup_test_subscription(&pool, sub_id).await;
     cleanup_test_user(&pool, email).await;
+}
+
+#[tokio::test]
+#[serial]
+async fn get_product_ids_success() {
+    dotenvy::dotenv().ok();
+
+    let expected_team_id = var("CREEM_TEAM_PRODUCT_ID")
+        .expect("expected CREEM_TEAM_PRODUCT_ID to be genuinely set for this test");
+    let expected_enterprise_id = var("CREEM_ENTERPRISE_PRODUCT_ID")
+        .expect("expected CREEM_ENTERPRISE_PRODUCT_ID to be genuinely set for this test");
+
+    let result = get_product_ids()
+        .await
+        .expect("expected the request to succeed with both real IDs present")
+        .0;
+
+    assert_eq!(
+        result,
+        json!({
+            "Team": expected_team_id,
+            "Enterprise": expected_enterprise_id,
+        }),
+        "expected the real, actual product IDs to be returned"
+    );
+}
+
+#[tokio::test]
+#[serial]
+async fn get_product_ids_missing_team_id() {
+    dotenvy::dotenv().ok();
+
+    let original_team_id = var("CREEM_TEAM_PRODUCT_ID").ok();
+    unsafe {
+        remove_var("CREEM_TEAM_PRODUCT_ID");
+    }
+
+    let result = get_product_ids().await;
+
+    match result {
+        Err(BillingError::InternalError(_)) => {}
+        Err(other) => panic!("expected InternalError, got a different error: {:?}", other),
+        Ok(_) => {
+            panic!("expected the request to fail without CREEM_TEAM_PRODUCT_ID, but it succeeded")
+        }
+    }
+
+    unsafe {
+        if let Some(id) = original_team_id {
+            set_var("CREEM_TEAM_PRODUCT_ID", id);
+        }
+    }
+}
+
+#[tokio::test]
+#[serial]
+async fn get_product_ids_missing_enterprise_id() {
+    dotenvy::dotenv().ok();
+
+    let original_enterprise_id = var("CREEM_ENTERPRISE_PRODUCT_ID").ok();
+    unsafe {
+        remove_var("CREEM_ENTERPRISE_PRODUCT_ID");
+    }
+
+    let result = get_product_ids().await;
+
+    match result {
+        Err(BillingError::InternalError(_)) => {}
+        Err(other) => panic!("expected InternalError, got a different error: {:?}", other),
+        Ok(_) => panic!(
+            "expected the request to fail without CREEM_ENTERPRISE_PRODUCT_ID, but it succeeded"
+        ),
+    }
+
+    unsafe {
+        if let Some(id) = original_enterprise_id {
+            set_var("CREEM_ENTERPRISE_PRODUCT_ID", id);
+        }
+    }
 }
