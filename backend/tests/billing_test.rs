@@ -10,11 +10,11 @@ use axum::{
 use backend::{
     errors::billing::{BillingError, WebhookError},
     handlers::billing::{
-        CreateCheckoutBody, apply_scheduled_downgrade_if_due, cancel_subscription_handler,
-        cancel_with_creem, create_checkout_handler, creem_webhook, extract_metadata_user_id,
-        fetch_subscriber_email, get_subscription_status, handle_subscription_granted,
-        handle_subscription_lost, handle_subscription_past_due, handle_subscription_update,
-        verify_and_parse_webhook,
+        ChangePlanBody, CreateCheckoutBody, apply_scheduled_downgrade_if_due,
+        cancel_subscription_handler, cancel_with_creem, change_plan_handler,
+        create_checkout_handler, creem_webhook, extract_metadata_user_id, fetch_subscriber_email,
+        get_subscription_status, handle_subscription_granted, handle_subscription_lost,
+        handle_subscription_past_due, handle_subscription_update, verify_and_parse_webhook,
     },
     models::billing::{ParsedCustomer, ParsedMetadata, ParsedProduct, ParsedSubscription},
     services::{
@@ -2191,6 +2191,356 @@ async fn apply_scheduled_downgrade_creem_rejects() {
         scheduled_plan_name,
         Some("Team".to_string()),
         "expected the schedule to remain, since it was never successfully cleared"
+    );
+
+    query("DELETE FROM subscriptions WHERE creem_subscription_id = $1")
+        .bind(sub_id)
+        .execute(&pool)
+        .await
+        .expect("expected final cleanup to succeed");
+
+    cleanup_test_user(&pool, email).await;
+}
+
+#[tokio::test]
+async fn change_plan_unauthorized() {
+    let pool = test_pool().await;
+
+    let headers = HeaderMap::new();
+
+    let body = ChangePlanBody {
+        product_id: "prod_does_not_matter".to_string(),
+        plan_name: "Enterprise".to_string(),
+    };
+
+    let result = change_plan_handler(State(pool), headers, Json(body)).await;
+
+    match result {
+        Err(BillingError::Unauthorized) => {}
+        Err(other) => panic!("expected Unauthorized, got a different error: {:?}", other),
+        Ok(_) => panic!("expected an unauthenticated request to be rejected, but it succeeded"),
+    }
+}
+
+#[tokio::test]
+async fn change_plan_not_found() {
+    let pool = test_pool().await;
+    let email = "change_plan_not_found_test@example.com";
+    cleanup_test_user(&pool, email).await;
+
+    let (user, _) = find_or_create_user_by_email(&pool, email)
+        .await
+        .expect("expected to create the user");
+
+    let real_session_token = create_session(&pool, user.id)
+        .await
+        .expect("expected to create a real session");
+
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        "authorization",
+        HeaderValue::from_str(&format!("Bearer {}", real_session_token))
+            .expect("expected to insert the header value"),
+    );
+
+    let body = ChangePlanBody {
+        product_id: "prod_does_not_matter".to_string(),
+        plan_name: "Enterprise".to_string(),
+    };
+
+    let result = change_plan_handler(State(pool.clone()), headers, Json(body)).await;
+
+    match result {
+        Err(BillingError::NotFound(_)) => {}
+        Err(other) => panic!("expected NotFound, got a different error: {:?}", other),
+        Ok(_) => {
+            panic!("expected the change to fail with no subscription to modify, but it succeeded")
+        }
+    }
+
+    cleanup_test_user(&pool, email).await;
+}
+
+#[tokio::test]
+async fn change_plan_conflict_while_trialing() {
+    let pool = test_pool().await;
+    let email = "change_plan_trialing_test@example.com";
+    cleanup_test_user(&pool, email).await;
+
+    let (user, _) = find_or_create_user_by_email(&pool, email)
+        .await
+        .expect("expected to create the user");
+
+    let real_session_token = create_session(&pool, user.id)
+        .await
+        .expect("expected to create a real session");
+
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        "authorization",
+        HeaderValue::from_str(&format!("Bearer {}", real_session_token))
+            .expect("expected to insert the header value"),
+    );
+
+    let sub_id = "sub_change_plan_trialing_001";
+    query("DELETE FROM subscriptions WHERE creem_subscription_id = $1")
+        .bind(sub_id)
+        .execute(&pool)
+        .await
+        .expect("expected cleanup to succeed");
+
+    query(
+        "INSERT INTO subscriptions (id, user_id, creem_subscription_id, creem_customer_id, creem_product_id, plan_name, status, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, 'trialing'::subscription_status, NOW(), NOW())",
+    )
+    .bind(Uuid::now_v7())
+    .bind(user.id)
+    .bind(sub_id)
+    .bind("cust_fake_test_001")
+    .bind("prod_team_current")
+    .bind("Team")
+    .execute(&pool)
+    .await
+    .expect("expected to pre-seed the trialing subscription");
+
+    let body = ChangePlanBody {
+        product_id: "prod_enterprise_target".to_string(),
+        plan_name: "Enterprise".to_string(),
+    };
+
+    let result = change_plan_handler(State(pool.clone()), headers, Json(body)).await;
+
+    match result {
+        Err(BillingError::Conflict(_)) => {}
+        Err(other) => panic!("expected Conflict, got a different error: {:?}", other),
+        Ok(_) => panic!("expected trialing status to block the change, but it succeeded"),
+    }
+
+    query("DELETE FROM subscriptions WHERE creem_subscription_id = $1")
+        .bind(sub_id)
+        .execute(&pool)
+        .await
+        .expect("expected final cleanup to succeed");
+
+    cleanup_test_user(&pool, email).await;
+}
+
+#[tokio::test]
+async fn change_plan_invalid_request() {
+    let pool = test_pool().await;
+    let email = "change_plan_invalid_test@example.com";
+    cleanup_test_user(&pool, email).await;
+
+    let (user, _) = find_or_create_user_by_email(&pool, email)
+        .await
+        .expect("expected to create the user");
+
+    let real_session_token = create_session(&pool, user.id)
+        .await
+        .expect("expected to create a real session");
+
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        "authorization",
+        HeaderValue::from_str(&format!("Bearer {}", real_session_token))
+            .expect("expected to insert the header value"),
+    );
+
+    let sub_id = "sub_change_plan_invalid_001";
+    query("DELETE FROM subscriptions WHERE creem_subscription_id = $1")
+        .bind(sub_id)
+        .execute(&pool)
+        .await
+        .expect("expected cleanup to succeed");
+
+    query(
+        "INSERT INTO subscriptions (id, user_id, creem_subscription_id, creem_customer_id, creem_product_id, plan_name, status, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, 'active'::subscription_status, NOW(), NOW())",
+    )
+    .bind(Uuid::now_v7())
+    .bind(user.id)
+    .bind(sub_id)
+    .bind("cust_fake_test_001")
+    .bind("prod_team_current")
+    .bind("Team")
+    .execute(&pool)
+    .await
+    .expect("expected to pre-seed the active subscription");
+
+    let body = ChangePlanBody {
+        product_id: "prod_team_current".to_string(),
+        plan_name: "Team".to_string(),
+    };
+
+    let result = change_plan_handler(State(pool.clone()), headers, Json(body)).await;
+
+    match result {
+        Err(BillingError::InvalidRequest(_)) => {}
+        Err(other) => panic!(
+            "expected InvalidRequest, got a different error: {:?}",
+            other
+        ),
+        Ok(_) => panic!("expected a nonsensical plan change to be rejected, but it succeeded"),
+    }
+
+    query("DELETE FROM subscriptions WHERE creem_subscription_id = $1")
+        .bind(sub_id)
+        .execute(&pool)
+        .await
+        .expect("expected final cleanup to succeed");
+    cleanup_test_user(&pool, email).await;
+}
+
+#[tokio::test]
+async fn change_plan_downgrade_success() {
+    let pool = test_pool().await;
+    let email = "change_plan_downgrade_test@example.com";
+    cleanup_test_user(&pool, email).await;
+
+    let (user, _) = find_or_create_user_by_email(&pool, email)
+        .await
+        .expect("expected to create the user");
+
+    let real_session_token = create_session(&pool, user.id)
+        .await
+        .expect("expected to create a real session");
+
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        "authorization",
+        HeaderValue::from_str(&format!("Bearer {}", real_session_token))
+            .expect("expected to insert the header value"),
+    );
+
+    let sub_id = "sub_change_plan_downgrade_001";
+    query("DELETE FROM subscriptions WHERE creem_subscription_id = $1")
+        .bind(sub_id)
+        .execute(&pool)
+        .await
+        .expect("expected cleanup to succeed");
+
+    query(
+        "INSERT INTO subscriptions (id, user_id, creem_subscription_id, creem_customer_id, creem_product_id, plan_name, status, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, 'active'::subscription_status, NOW(), NOW())",
+    )
+    .bind(Uuid::now_v7())
+    .bind(user.id)
+    .bind(sub_id)
+    .bind("cust_fake_test_001")
+    .bind("prod_enterprise_current")
+    .bind("Enterprise")
+    .execute(&pool)
+    .await
+    .expect("expected to pre-seed the active subscription");
+
+    let body = ChangePlanBody {
+        product_id: "prod_team_target".to_string(),
+        plan_name: "Team".to_string(),
+    };
+
+    let result = change_plan_handler(State(pool.clone()), headers, Json(body))
+        .await
+        .expect("expected the downgrade to be scheduled successfully");
+
+    assert_eq!(result.0, json!({ "applied": "scheduled" }));
+
+    let (plan_name, scheduled_product_id, scheduled_plan_name): (
+        String,
+        Option<String>,
+        Option<String>,
+    ) = query_as(
+        "SELECT plan_name, scheduled_product_id, scheduled_plan_name
+         FROM subscriptions WHERE creem_subscription_id = $1",
+    )
+    .bind(sub_id)
+    .fetch_one(&pool)
+    .await
+    .expect("expected the query itself to succeed");
+
+    assert_eq!(
+        plan_name, "Enterprise",
+        "expected the CURRENT plan to remain Enterprise - the downgrade is only scheduled"
+    );
+    assert_eq!(scheduled_product_id, Some("prod_team_target".to_string()));
+    assert_eq!(scheduled_plan_name, Some("Team".to_string()));
+
+    query("DELETE FROM subscriptions WHERE creem_subscription_id = $1")
+        .bind(sub_id)
+        .execute(&pool)
+        .await
+        .expect("expected final cleanup to succeed");
+
+    cleanup_test_user(&pool, email).await;
+}
+
+#[tokio::test]
+async fn change_plan_upgrade_creem_rejects() {
+    let pool = test_pool().await;
+    let email = "change_plan_upgrade_test@example.com";
+    cleanup_test_user(&pool, email).await;
+
+    let (user, _) = find_or_create_user_by_email(&pool, email)
+        .await
+        .expect("expected to create the user");
+
+    let real_session_token = create_session(&pool, user.id)
+        .await
+        .expect("expected to create a real session");
+
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        "authorization",
+        HeaderValue::from_str(&format!("Bearer {}", real_session_token))
+            .expect("expected to insert the header value"),
+    );
+
+    let sub_id = "sub_change_plan_upgrade_fake_001";
+    query("DELETE FROM subscriptions WHERE creem_subscription_id = $1")
+        .bind(sub_id)
+        .execute(&pool)
+        .await
+        .expect("expected cleanup to succeed");
+
+    query(
+        "INSERT INTO subscriptions (id, user_id, creem_subscription_id, creem_customer_id, creem_product_id, plan_name, status, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, 'active'::subscription_status, NOW(), NOW())",
+    )
+    .bind(Uuid::now_v7())
+    .bind(user.id)
+    .bind(sub_id)
+    .bind("cust_fake_test_001")
+    .bind("prod_team_current")
+    .bind("Team")
+    .execute(&pool)
+    .await
+    .expect("expected to pre-seed the active subscription");
+
+    let body = ChangePlanBody {
+        product_id: "prod_enterprise_target".to_string(),
+        plan_name: "Enterprise".to_string(),
+    };
+
+    let result = change_plan_handler(State(pool.clone()), headers, Json(body)).await;
+
+    match result {
+        Err(BillingError::ServiceUnavailable(_)) => {}
+        Err(other) => panic!(
+            "expected ServiceUnavailable, got a different error: {:?}",
+            other
+        ),
+        Ok(_) => panic!("expected Creem to reject the upgrade, but it succeeded"),
+    }
+
+    let plan_name: String =
+        query_scalar("SELECT plan_name FROM subscriptions WHERE creem_subscription_id = $1")
+            .bind(sub_id)
+            .fetch_one(&pool)
+            .await
+            .expect("expected the query itself to succeed");
+
+    assert_eq!(
+        plan_name, "Team",
+        "expected the plan to remain 'Team', unchanged, since the upgrade genuinely failed"
     );
 
     query("DELETE FROM subscriptions WHERE creem_subscription_id = $1")
