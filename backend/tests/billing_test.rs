@@ -10,9 +10,10 @@ use axum::{
 use backend::{
     errors::billing::{BillingError, WebhookError},
     handlers::billing::{
-        CreateCheckoutBody, cancel_subscription_handler, create_checkout_handler, creem_webhook,
-        extract_metadata_user_id, handle_subscription_granted, handle_subscription_lost,
-        handle_subscription_past_due, handle_subscription_update, verify_and_parse_webhook,
+        CreateCheckoutBody, cancel_subscription_handler, cancel_with_creem,
+        create_checkout_handler, creem_webhook, extract_metadata_user_id,
+        handle_subscription_granted, handle_subscription_lost, handle_subscription_past_due,
+        handle_subscription_update, verify_and_parse_webhook,
     },
     models::billing::{ParsedCustomer, ParsedMetadata, ParsedProduct, ParsedSubscription},
     services::{
@@ -1624,4 +1625,91 @@ async fn cancel_subscription_creem_rejects() {
         .expect("expected final cleanup to succeed");
 
     cleanup_test_user(&pool, email).await;
+}
+
+#[tokio::test]
+#[serial]
+async fn cancel_with_creem_missing_api_key() {
+    dotenvy::dotenv().ok();
+
+    let original_key = var("CREEM_API_KEY").ok();
+    unsafe {
+        remove_var("CREEM_API_KEY");
+    }
+
+    let result = cancel_with_creem("sub_does_not_matter_here").await;
+
+    match result {
+        Err(BillingError::InternalError(_)) => {}
+        Err(other) => panic!("expected InternalError, got a different error: {:?}", other),
+        Ok(_) => panic!("expected cancellation to fail without a real API key, but it succeeded"),
+    }
+
+    unsafe {
+        if let Some(key) = original_key {
+            set_var("CREEM_API_KEY", key);
+        }
+    }
+}
+
+#[tokio::test]
+#[serial]
+async fn cancel_with_creem_request_failed() {
+    dotenvy::dotenv().ok();
+
+    let original_base_url = var("CREEM_API_BASE_URL").ok();
+
+    unsafe {
+        set_var(
+            "CREEM_API_BASE_URL",
+            "http://this-domain-genuinely-does-not-exist-12345.invalid",
+        );
+    }
+
+    let result = cancel_with_creem("sub_does_not_matter_here").await;
+
+    match result {
+        Err(BillingError::ServiceUnavailable(msg)) => {
+            assert_eq!(
+                msg, "Could not reach Creem",
+                "expected the 'could not reach' message specifically, got: {}",
+                msg
+            );
+        }
+        Err(other) => panic!(
+            "expected ServiceUnavailable, got a different error: {:?}",
+            other
+        ),
+        Ok(_) => panic!("expected the request to genuinely fail, but it succeeded"),
+    }
+
+    unsafe {
+        match original_base_url {
+            Some(url) => set_var("CREEM_API_BASE_URL", url),
+            None => remove_var("CREEM_API_BASE_URL"),
+        }
+    }
+}
+
+#[tokio::test]
+#[serial]
+async fn cancel_with_creem_rejected() {
+    let result = cancel_with_creem("sub_definitely_does_not_exist_on_creem").await;
+
+    match result {
+        Err(BillingError::ServiceUnavailable(msg)) => {
+            assert_eq!(
+                msg, "Creem rejected the cancellation",
+                "expected the 'rejected' message specifically, got: {}",
+                msg
+            );
+        }
+        Err(other) => panic!(
+            "expected ServiceUnavailable, got a different error: {:?}",
+            other
+        ),
+        Ok(_) => {
+            panic!("expected Creem to genuinely reject a fake subscription ID, but it succeeded")
+        }
+    }
 }

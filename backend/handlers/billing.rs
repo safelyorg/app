@@ -308,7 +308,7 @@ pub async fn cancel_subscription_handler(
 /// It builds the real request with the correct API key, sends it to Creem's
 /// real cancellation endpoint, and checks that Creem genuinely accepted it,
 /// rather than just assuming the request going out means it worked.
-async fn cancel_with_creem(sub_id: &str) -> Result<(), BillingError> {
+pub async fn cancel_with_creem(sub_id: &str) -> Result<(), BillingError> {
     let api_key = var("CREEM_API_KEY")
         .map_err(|_| BillingError::InternalError("CREEM_API_KEY not set".to_string()))?;
     let creem_base_url =
