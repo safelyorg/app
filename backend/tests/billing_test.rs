@@ -1,6 +1,8 @@
 mod common;
 
-use crate::common::{cleanup_test_user, test_pool};
+use crate::common::{
+    cleanup_test_subscription, cleanup_test_user, insert_test_subscription, test_pool,
+};
 use axum::{
     Json,
     body::Bytes,
@@ -10,7 +12,7 @@ use axum::{
 use backend::{
     errors::billing::{BillingError, WebhookError},
     handlers::billing::{
-        ChangePlanBody, CreateCheckoutBody, apply_scheduled_downgrade_if_due,
+        ChangePlanBody, CreateCheckoutBody, apply_scheduled_downgrade_if_due, apply_upgrade,
         cancel_subscription_handler, cancel_with_creem, change_plan_handler,
         create_checkout_handler, creem_webhook, extract_metadata_user_id, fetch_subscriber_email,
         get_subscription_status, handle_subscription_granted, handle_subscription_lost,
@@ -2549,5 +2551,45 @@ async fn change_plan_upgrade_creem_rejects() {
         .await
         .expect("expected final cleanup to succeed");
 
+    cleanup_test_user(&pool, email).await;
+}
+
+#[tokio::test]
+async fn apply_upgrade_creem_rejects() {
+    let pool = test_pool().await;
+    let email = "apply_upgrade_rejects_test@example.com";
+    cleanup_test_user(&pool, email).await;\
+
+    let (user, _) = find_or_create_user_by_email(&pool, email)
+        .await
+        .expect("expected to create the user");
+
+    let sub_id = "sub_apply_upgrade_fake_001";
+    cleanup_test_subscription(&pool, sub_id).await;
+    insert_test_subscription(&pool, user.id, sub_id, "Team", "active").await;
+
+    let body = ChangePlanBody {
+        product_id: "prod_enterprise_target".to_string(),
+        plan_name: "Enterprise".to_string(),
+    };
+
+    let result = apply_upgrade(&pool, sub_id, &body).await;
+
+    match result {
+        Err(BillingError::ServiceUnavailable(_)) => {}
+        Err(other) => panic!("expected ServiceUnavailable, got: {:?}", other),
+        Ok(_) => panic!("expected Creem to reject the upgrade, but it succeeded"),
+    }
+
+    let plan_name: String =
+        query_scalar("SELECT plan_name FROM subscriptions WHERE creem_subscription_id = $1")
+            .bind(sub_id)
+            .fetch_one(&pool)
+            .await
+            .expect("expected the query itself to succeed");
+
+    assert_eq!(plan_name, "Team", "expected the plan to remain unchanged");
+
+    cleanup_test_subscription(&pool, sub_id).await;
     cleanup_test_user(&pool, email).await;
 }

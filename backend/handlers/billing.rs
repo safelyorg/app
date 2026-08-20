@@ -534,7 +534,7 @@ pub async fn change_plan_handler(
 }
 
 /// Applies an upgrade immediately, both at Creem, and in the database.
-async fn apply_upgrade(
+pub async fn apply_upgrade(
     pool: &Pool<Postgres>,
     sub_id: &str,
     body: &ChangePlanBody,
