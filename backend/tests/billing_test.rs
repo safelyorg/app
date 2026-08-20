@@ -12,8 +12,8 @@ use backend::{
     handlers::billing::{
         CreateCheckoutBody, cancel_subscription_handler, cancel_with_creem,
         create_checkout_handler, creem_webhook, extract_metadata_user_id, fetch_subscriber_email,
-        handle_subscription_granted, handle_subscription_lost, handle_subscription_past_due,
-        handle_subscription_update, verify_and_parse_webhook,
+        get_subscription_status, handle_subscription_granted, handle_subscription_lost,
+        handle_subscription_past_due, handle_subscription_update, verify_and_parse_webhook,
     },
     models::billing::{ParsedCustomer, ParsedMetadata, ParsedProduct, ParsedSubscription},
     services::{
@@ -21,8 +21,10 @@ use backend::{
         billing::{CreateCheckoutError, create_checkout, upsert_subscription},
     },
 };
+use chrono::{Duration, Utc};
 use hmac::{Hmac, KeyInit, Mac};
 use reqwest::StatusCode;
+use serde_json::json;
 use serial_test::serial;
 use sha2::Sha256;
 use sqlx::{query, query_scalar};
@@ -1779,4 +1781,266 @@ async fn fetch_subscriber_email_not_found() {
         result.is_none(),
         "expected None when no subscription matches this sub_id"
     );
+}
+
+#[tokio::test]
+async fn get_subscription_status_unauthorized() {
+    let pool = test_pool().await;
+
+    let headers = HeaderMap::new();
+
+    let result = get_subscription_status(State(pool), headers).await;
+
+    match result {
+        Err(BillingError::Unauthorized) => {}
+        Err(other) => panic!("expected Unauthorized, got a different error: {:?}", other),
+        Ok(_) => panic!("expected an unauthenticated request to be rejected, but it succeeded"),
+    }
+}
+
+#[tokio::test]
+async fn get_subscription_status_no_subscription() {
+    let pool = test_pool().await;
+    let email = "get_status_no_sub_test@example.com";
+    cleanup_test_user(&pool, email).await;
+
+    let (user, _) = find_or_create_user_by_email(&pool, email)
+        .await
+        .expect("expected to create the user");
+
+    let real_session_token = create_session(&pool, user.id)
+        .await
+        .expect("expected to create a real session");
+
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        "authorization",
+        HeaderValue::from_str(&format!("Bearer {}", real_session_token))
+            .expect("expected to insert the header value"),
+    );
+
+    let result = get_subscription_status(State(pool.clone()), headers)
+        .await
+        .expect("expected the request itself to succeed, even with no subscription")
+        .0;
+
+    assert_eq!(
+        result,
+        json!({
+            "plan_name": null,
+            "status": null,
+            "current_period_end": null,
+            "scheduled_plan_name": null,
+        }),
+        "expected the exact, hardcoded all-null response"
+    );
+
+    cleanup_test_user(&pool, email).await;
+}
+
+#[tokio::test]
+async fn get_subscription_status_no_scheduled_downgrade() {
+    let pool = test_pool().await;
+    let email = "get_status_no_downgrade_test@example.com";
+
+    cleanup_test_user(&pool, email).await;
+
+    let (user, _) = find_or_create_user_by_email(&pool, email)
+        .await
+        .expect("expected to create the user");
+
+    let real_session_token = create_session(&pool, user.id)
+        .await
+        .expect("expected to create a real session");
+
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        "authorization",
+        HeaderValue::from_str(&format!("Bearer {}", real_session_token))
+            .expect("expected to insert the header value"),
+    );
+
+    let sub_id = "sub_status_no_downgrade_001";
+    query("DELETE FROM subscriptions WHERE creem_subscription_id = $1")
+        .bind(sub_id)
+        .execute(&pool)
+        .await
+        .expect("expected cleanup to succeed");
+
+    let period_end = Utc::now() + Duration::days(20);
+
+    query(
+        "INSERT INTO subscriptions (id, user_id, creem_subscription_id, creem_customer_id, creem_product_id, plan_name, status, current_period_end, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, 'active'::subscription_status, $7, NOW(), NOW())",
+    )
+    .bind(Uuid::now_v7())
+    .bind(user.id)
+    .bind(sub_id)
+    .bind("cust_fake_test_001")
+    .bind("prod_fake_test_001")
+    .bind("Team")
+    .bind(period_end)
+    .execute(&pool)
+    .await
+    .expect("expected to pre-seed the subscription");
+
+    let result = get_subscription_status(State(pool.clone()), headers)
+        .await
+        .expect("expected the request to succeed");
+
+    assert_eq!(result["plan_name"], json!("Team"));
+    assert_eq!(result["status"], json!("active"));
+    assert_eq!(result["scheduled_plan_name"], json!(null));
+
+    query("DELETE FROM subscriptions WHERE creem_subscription_id = $1")
+        .bind(sub_id)
+        .execute(&pool)
+        .await
+        .expect("expected final cleanup to succeed");
+
+    cleanup_test_user(&pool, email).await;
+}
+
+#[tokio::test]
+async fn get_subscription_status_downgrade_not_yet_due() {
+    let pool = test_pool().await;
+    let email = "get_status_downgrade_not_due_test@example.com";
+    cleanup_test_user(&pool, email).await;
+
+    let (user, _) = find_or_create_user_by_email(&pool, email)
+        .await
+        .expect("expected to create the user");
+
+    let real_session_token = create_session(&pool, user.id)
+        .await
+        .expect("expected to create a real session");
+
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        "authorization",
+        HeaderValue::from_str(&format!("Bearer {}", real_session_token))
+            .expect("expected to insert the header value"),
+    );
+
+    let sub_id = "sub_status_downgrade_not_due_001";
+    query("DELETE FROM subscriptions WHERE creem_subscription_id = $1")
+        .bind(sub_id)
+        .execute(&pool)
+        .await
+        .expect("expected cleanup to succeed");
+
+    let period_end = Utc::now() + Duration::days(20);
+
+    query(
+        "INSERT INTO subscriptions (
+            id, user_id, creem_subscription_id, creem_customer_id, creem_product_id,
+            plan_name, status, current_period_end, scheduled_product_id, scheduled_plan_name,
+            created_at, updated_at
+        )
+         VALUES ($1, $2, $3, $4, $5, $6, 'active'::subscription_status, $7, $8, $9, NOW(), NOW())",
+    )
+    .bind(Uuid::now_v7())
+    .bind(user.id)
+    .bind(sub_id)
+    .bind("cust_fake_test_001")
+    .bind("prod_enterprise_current")
+    .bind("Enterprise")
+    .bind(period_end)
+    .bind("prod_team_scheduled")
+    .bind("Team")
+    .execute(&pool)
+    .await
+    .expect("expected to pre-seed the subscription");
+
+    let result = get_subscription_status(State(pool.clone()), headers)
+        .await
+        .expect("expected the request to succeed");
+
+    assert_eq!(result["plan_name"], json!("Enterprise"));
+    assert_eq!(result["status"], json!("active"));
+    assert_eq!(result["scheduled_plan_name"], json!("Team"));
+
+    query("DELETE FROM subscriptions WHERE creem_subscription_id = $1")
+        .bind(sub_id)
+        .execute(&pool)
+        .await
+        .expect("expected final cleanup to succeed");
+
+    cleanup_test_user(&pool, email).await;
+}
+
+#[tokio::test]
+async fn get_subscription_status_downgrade_due_but_creem_rejects() {
+    let pool = test_pool().await;
+    let email = "get_status_downgrade_due_test@example.com";
+    cleanup_test_user(&pool, email).await;
+
+    let (user, _) = find_or_create_user_by_email(&pool, email)
+        .await
+        .expect("expected to create the user");
+
+    let real_session_token = create_session(&pool, user.id)
+        .await
+        .expect("expected to create a real session");
+
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        "authorization",
+        HeaderValue::from_str(&format!("Bearer {}", real_session_token))
+            .expect("expected to insert the header value"),
+    );
+
+    let sub_id = "sub_status_downgrade_due_fake_001";
+    query("DELETE FROM subscriptions WHERE creem_subscription_id = $1")
+        .bind(sub_id)
+        .execute(&pool)
+        .await
+        .expect("expected cleanup to succeed");
+
+    let period_end = Utc::now() - Duration::days(1);
+
+    query(
+        "INSERT INTO subscriptions (
+            id, user_id, creem_subscription_id, creem_customer_id, creem_product_id,
+            plan_name, status, current_period_end, scheduled_product_id, scheduled_plan_name,
+            created_at, updated_at
+        )
+         VALUES ($1, $2, $3, $4, $5, $6, 'active'::subscription_status, $7, $8, $9, NOW(), NOW())",
+    )
+    .bind(Uuid::now_v7())
+    .bind(user.id)
+    .bind(sub_id)
+    .bind("cust_fake_test_001")
+    .bind("prod_enterprise_current")
+    .bind("Enterprise")
+    .bind(period_end)
+    .bind("prod_team_scheduled")
+    .bind("Team")
+    .execute(&pool)
+    .await
+    .expect("expected to pre-seed the subscription");
+
+    let result = get_subscription_status(State(pool.clone()), headers)
+        .await
+        .expect("expected the request to still succeed, even though Creem rejected the downgrade");
+
+    assert_eq!(
+        result["plan_name"],
+        json!("Enterprise"),
+        "expected the ORIGINAL plan to still be reported, since the downgrade genuinely failed"
+    );
+    assert_eq!(result["status"], json!("active"));
+    assert_eq!(
+        result["scheduled_plan_name"],
+        json!("Team"),
+        "expected the schedule to remain, since it was never successfully applied"
+    );
+
+    query("DELETE FROM subscriptions WHERE creem_subscription_id = $1")
+        .bind(sub_id)
+        .execute(&pool)
+        .await
+        .expect("expected final cleanup to succeed");
+
+    cleanup_test_user(&pool, email).await;
 }
