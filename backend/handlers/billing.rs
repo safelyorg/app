@@ -17,7 +17,7 @@ use chrono::{DateTime, Utc};
 use reqwest::Client;
 use serde::Deserialize;
 use serde_json::{Value, from_str, json};
-use sqlx::{Pool, Postgres, query, query_scalar};
+use sqlx::{Pool, Postgres, query, query_as, query_scalar};
 use std::{env::var, str::from_utf8};
 use uuid::Uuid;
 
@@ -378,9 +378,8 @@ pub async fn get_subscription_status(
         Option<DateTime<Utc>>,
         Option<String>,
         Option<String>,
-    )> = sqlx::query_as(
-        "SELECT creem_subscription_id, plan_name, status::text, current_period_end,
-                scheduled_product_id, scheduled_plan_name
+    )> = query_as(
+        "SELECT creem_subscription_id, plan_name, status::text, current_period_end, scheduled_product_id, scheduled_plan_name
          FROM subscriptions WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1",
     )
     .bind(user_id)
@@ -433,7 +432,7 @@ pub async fn get_subscription_status(
 /// change real, then updates our own row to match by quietly logging,
 /// not failing, if either step goes wrong, since a delayed downgrade
 /// isn't worth breaking someone's whole status check over.
-async fn apply_scheduled_downgrade_if_due(
+pub async fn apply_scheduled_downgrade_if_due(
     pool: &Pool<Postgres>,
     sub_id: &str,
     scheduled_product_id: Option<&str>,

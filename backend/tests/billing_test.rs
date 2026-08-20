@@ -10,10 +10,11 @@ use axum::{
 use backend::{
     errors::billing::{BillingError, WebhookError},
     handlers::billing::{
-        CreateCheckoutBody, cancel_subscription_handler, cancel_with_creem,
-        create_checkout_handler, creem_webhook, extract_metadata_user_id, fetch_subscriber_email,
-        get_subscription_status, handle_subscription_granted, handle_subscription_lost,
-        handle_subscription_past_due, handle_subscription_update, verify_and_parse_webhook,
+        CreateCheckoutBody, apply_scheduled_downgrade_if_due, cancel_subscription_handler,
+        cancel_with_creem, create_checkout_handler, creem_webhook, extract_metadata_user_id,
+        fetch_subscriber_email, get_subscription_status, handle_subscription_granted,
+        handle_subscription_lost, handle_subscription_past_due, handle_subscription_update,
+        verify_and_parse_webhook,
     },
     models::billing::{ParsedCustomer, ParsedMetadata, ParsedProduct, ParsedSubscription},
     services::{
@@ -27,7 +28,7 @@ use reqwest::StatusCode;
 use serde_json::json;
 use serial_test::serial;
 use sha2::Sha256;
-use sqlx::{query, query_scalar};
+use sqlx::{query, query_as, query_scalar};
 use std::env::{remove_var, set_var, var};
 use uuid::Uuid;
 
@@ -1696,6 +1697,7 @@ async fn cancel_with_creem_request_failed() {
 #[tokio::test]
 #[serial]
 async fn cancel_with_creem_rejected() {
+    dotenvy::dotenv().ok();
     let result = cancel_with_creem("sub_definitely_does_not_exist_on_creem").await;
 
     match result {
@@ -2034,6 +2036,161 @@ async fn get_subscription_status_downgrade_due_but_creem_rejects() {
         result["scheduled_plan_name"],
         json!("Team"),
         "expected the schedule to remain, since it was never successfully applied"
+    );
+
+    query("DELETE FROM subscriptions WHERE creem_subscription_id = $1")
+        .bind(sub_id)
+        .execute(&pool)
+        .await
+        .expect("expected final cleanup to succeed");
+
+    cleanup_test_user(&pool, email).await;
+}
+
+#[tokio::test]
+async fn apply_scheduled_downgrade_missing_product_id() {
+    let pool = test_pool().await;
+
+    let result = apply_scheduled_downgrade_if_due(
+        &pool,
+        "sub_does_not_matter",
+        None,
+        Some("Team"),
+        Some(Utc::now() - Duration::days(1)),
+    )
+    .await;
+
+    assert!(
+        result.is_none(),
+        "expected None when scheduled_product_id is missing"
+    );
+}
+
+#[tokio::test]
+async fn apply_scheduled_downgrade_missing_plan_name() {
+    let pool = test_pool().await;
+
+    let result = apply_scheduled_downgrade_if_due(
+        &pool,
+        "sub_does_not_matter",
+        Some("prod_team"),
+        None,
+        Some(Utc::now() - Duration::days(1)),
+    )
+    .await;
+
+    assert!(
+        result.is_none(),
+        "expected None when scheduled_plan_name is missing"
+    );
+}
+
+#[tokio::test]
+async fn apply_scheduled_downgrade_missing_period_end() {
+    let pool = test_pool().await;
+
+    let result = apply_scheduled_downgrade_if_due(
+        &pool,
+        "sub_does_not_matter",
+        Some("prod_team"),
+        Some("Team"),
+        None,
+    )
+    .await;
+
+    assert!(
+        result.is_none(),
+        "expected None when current_period_end is missing"
+    );
+}
+
+#[tokio::test]
+async fn apply_scheduled_downgrade_not_yet_due() {
+    let pool = test_pool().await;
+
+    let result = apply_scheduled_downgrade_if_due(
+        &pool,
+        "sub_does_not_matter",
+        Some("prod_team"),
+        Some("Team"),
+        Some(Utc::now() + Duration::days(20)),
+    )
+    .await;
+
+    assert!(
+        result.is_none(),
+        "expected None when the deferred period hasn't ended yet"
+    );
+}
+
+#[tokio::test]
+async fn apply_scheduled_downgrade_creem_rejects() {
+    let pool = test_pool().await;
+    let email = "apply_downgrade_creem_rejects_test@example.com";
+    cleanup_test_user(&pool, email).await;
+
+    let (user, _) = find_or_create_user_by_email(&pool, email)
+        .await
+        .expect("expected to create the user");
+
+    let sub_id = "sub_apply_downgrade_fake_001";
+    query("DELETE FROM subscriptions WHERE creem_subscription_id = $1")
+        .bind(sub_id)
+        .execute(&pool)
+        .await
+        .expect("expected cleanup to succeed");
+
+    query(
+        "INSERT INTO subscriptions (
+            id, user_id, creem_subscription_id, creem_customer_id, creem_product_id,
+            plan_name, status, current_period_end, scheduled_product_id, scheduled_plan_name,
+            created_at, updated_at
+        )
+         VALUES ($1, $2, $3, $4, $5, $6, 'active'::subscription_status, $7, $8, $9, NOW(), NOW())",
+    )
+    .bind(Uuid::now_v7())
+    .bind(user.id)
+    .bind(sub_id)
+    .bind("cust_fake_test_001")
+    .bind("prod_enterprise_current")
+    .bind("Enterprise")
+    .bind(Utc::now() - Duration::days(1))
+    .bind("prod_team_scheduled")
+    .bind("Team")
+    .execute(&pool)
+    .await
+    .expect("expected to pre-seed the subscription");
+
+    let result = apply_scheduled_downgrade_if_due(
+        &pool,
+        sub_id,
+        Some("prod_team_scheduled"),
+        Some("Team"),
+        Some(Utc::now() - Duration::days(1)),
+    )
+    .await;
+
+    assert!(
+        result.is_none(),
+        "expected None when Creem genuinely rejects the downgrade"
+    );
+
+    let (plan_name, scheduled_plan_name): (String, Option<String>) = query_as(
+        "SELECT plan_name, scheduled_plan_name FROM subscriptions WHERE creem_subscription_id = $1",
+    )
+    .bind(sub_id)
+    .fetch_one(&pool)
+    .await
+    .expect("expected the query itself to succeed");
+
+    assert_eq!(
+        plan_name, "Enterprise",
+        "expected the plan_name to remain unchanged, since the update never ran"
+    );
+    assert_eq!(
+        scheduled_plan_name,
+        Some("Team".to_string()),
+        "expected the schedule to remain, since it was never successfully cleared"
     );
 
     query("DELETE FROM subscriptions WHERE creem_subscription_id = $1")
