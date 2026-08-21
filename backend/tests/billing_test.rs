@@ -1464,18 +1464,7 @@ async fn cancel_subscription_not_found() {
     let pool = test_pool().await;
     let email = "cancel_not_found_test@example.com";
     let user = create_test_user(&pool, email).await;
-
-    let real_session_token = create_session(&pool, user.id)
-        .await
-        .expect("expected to create a real session");
-
-    let mut headers = HeaderMap::new();
-    headers.insert(
-        "authorization",
-        HeaderValue::from_str(&format!("Bearer {}", real_session_token))
-            .expect("expected to insert the header value"),
-    );
-
+    let headers = auth_headers_for(&pool, user.id).await;
     let result = cancel_subscription_handler(State(pool.clone()), headers).await;
 
     match result {
@@ -1494,17 +1483,7 @@ async fn cancel_subscription_creem_rejects() {
     let pool = test_pool().await;
     let email = "cancel_creem_rejects_test@example.com";
     let user = create_test_user(&pool, email).await;
-
-    let real_session_token = create_session(&pool, user.id)
-        .await
-        .expect("expected to create a real session");
-
-    let mut headers = HeaderMap::new();
-    headers.insert(
-        "authorization",
-        HeaderValue::from_str(&format!("Bearer {}", real_session_token))
-            .expect("expected to insert the header value"),
-    );
+    let headers = auth_headers_for(&pool, user.id).await;
 
     let sub_id = "sub_creem_rejects_fake_001";
     query("DELETE FROM subscriptions WHERE creem_subscription_id = $1")
@@ -1731,18 +1710,7 @@ async fn get_subscription_status_no_subscription() {
     let pool = test_pool().await;
     let email = "get_status_no_sub_test@example.com";
     let user = create_test_user(&pool, email).await;
-
-    let real_session_token = create_session(&pool, user.id)
-        .await
-        .expect("expected to create a real session");
-
-    let mut headers = HeaderMap::new();
-    headers.insert(
-        "authorization",
-        HeaderValue::from_str(&format!("Bearer {}", real_session_token))
-            .expect("expected to insert the header value"),
-    );
-
+    let headers = auth_headers_for(&pool, user.id).await;
     let result = get_subscription_status(State(pool.clone()), headers)
         .await
         .expect("expected the request itself to succeed, even with no subscription")
@@ -1767,17 +1735,7 @@ async fn get_subscription_status_no_scheduled_downgrade() {
     let pool = test_pool().await;
     let email = "get_status_no_downgrade_test@example.com";
     let user = create_test_user(&pool, email).await;
-
-    let real_session_token = create_session(&pool, user.id)
-        .await
-        .expect("expected to create a real session");
-
-    let mut headers = HeaderMap::new();
-    headers.insert(
-        "authorization",
-        HeaderValue::from_str(&format!("Bearer {}", real_session_token))
-            .expect("expected to insert the header value"),
-    );
+    let headers = auth_headers_for(&pool, user.id).await;
 
     let sub_id = "sub_status_no_downgrade_001";
     query("DELETE FROM subscriptions WHERE creem_subscription_id = $1")
@@ -1825,17 +1783,7 @@ async fn get_subscription_status_downgrade_not_yet_due() {
     let pool = test_pool().await;
     let email = "get_status_downgrade_not_due_test@example.com";
     let user = create_test_user(&pool, email).await;
-
-    let real_session_token = create_session(&pool, user.id)
-        .await
-        .expect("expected to create a real session");
-
-    let mut headers = HeaderMap::new();
-    headers.insert(
-        "authorization",
-        HeaderValue::from_str(&format!("Bearer {}", real_session_token))
-            .expect("expected to insert the header value"),
-    );
+    let headers = auth_headers_for(&pool, user.id).await;
 
     let sub_id = "sub_status_downgrade_not_due_001";
     query("DELETE FROM subscriptions WHERE creem_subscription_id = $1")
@@ -1889,17 +1837,7 @@ async fn get_subscription_status_downgrade_due_but_creem_rejects() {
     let pool = test_pool().await;
     let email = "get_status_downgrade_due_test@example.com";
     let user = create_test_user(&pool, email).await;
-
-    let real_session_token = create_session(&pool, user.id)
-        .await
-        .expect("expected to create a real session");
-
-    let mut headers = HeaderMap::new();
-    headers.insert(
-        "authorization",
-        HeaderValue::from_str(&format!("Bearer {}", real_session_token))
-            .expect("expected to insert the header value"),
-    );
+    let headers = auth_headers_for(&pool, user.id).await;
 
     let sub_id = "sub_status_downgrade_due_fake_001";
     query("DELETE FROM subscriptions WHERE creem_subscription_id = $1")
@@ -2132,17 +2070,7 @@ async fn change_plan_not_found() {
     let pool = test_pool().await;
     let email = "change_plan_not_found_test@example.com";
     let user = create_test_user(&pool, email).await;
-
-    let real_session_token = create_session(&pool, user.id)
-        .await
-        .expect("expected to create a real session");
-
-    let mut headers = HeaderMap::new();
-    headers.insert(
-        "authorization",
-        HeaderValue::from_str(&format!("Bearer {}", real_session_token))
-            .expect("expected to insert the header value"),
-    );
+    let headers = auth_headers_for(&pool, user.id).await;
 
     let body = ChangePlanBody {
         product_id: "prod_does_not_matter".to_string(),
@@ -2167,17 +2095,7 @@ async fn change_plan_conflict_while_trialing() {
     let pool = test_pool().await;
     let email = "change_plan_trialing_test@example.com";
     let user = create_test_user(&pool, email).await;
-
-    let real_session_token = create_session(&pool, user.id)
-        .await
-        .expect("expected to create a real session");
-
-    let mut headers = HeaderMap::new();
-    headers.insert(
-        "authorization",
-        HeaderValue::from_str(&format!("Bearer {}", real_session_token))
-            .expect("expected to insert the header value"),
-    );
+    let headers = auth_headers_for(&pool, user.id).await;
 
     let sub_id = "sub_change_plan_trialing_001";
     query("DELETE FROM subscriptions WHERE creem_subscription_id = $1")
@@ -2227,17 +2145,7 @@ async fn change_plan_invalid_request() {
     let pool = test_pool().await;
     let email = "change_plan_invalid_test@example.com";
     let user = create_test_user(&pool, email).await;
-
-    let real_session_token = create_session(&pool, user.id)
-        .await
-        .expect("expected to create a real session");
-
-    let mut headers = HeaderMap::new();
-    headers.insert(
-        "authorization",
-        HeaderValue::from_str(&format!("Bearer {}", real_session_token))
-            .expect("expected to insert the header value"),
-    );
+    let headers = auth_headers_for(&pool, user.id).await;
 
     let sub_id = "sub_change_plan_invalid_001";
     query("DELETE FROM subscriptions WHERE creem_subscription_id = $1")
@@ -2290,17 +2198,7 @@ async fn change_plan_downgrade_success() {
     let pool = test_pool().await;
     let email = "change_plan_downgrade_test@example.com";
     let user = create_test_user(&pool, email).await;
-
-    let real_session_token = create_session(&pool, user.id)
-        .await
-        .expect("expected to create a real session");
-
-    let mut headers = HeaderMap::new();
-    headers.insert(
-        "authorization",
-        HeaderValue::from_str(&format!("Bearer {}", real_session_token))
-            .expect("expected to insert the header value"),
-    );
+    let headers = auth_headers_for(&pool, user.id).await;
 
     let sub_id = "sub_change_plan_downgrade_001";
     query("DELETE FROM subscriptions WHERE creem_subscription_id = $1")
@@ -2368,17 +2266,7 @@ async fn change_plan_upgrade_creem_rejects() {
     let pool = test_pool().await;
     let email = "change_plan_upgrade_test@example.com";
     let user = create_test_user(&pool, email).await;
-
-    let real_session_token = create_session(&pool, user.id)
-        .await
-        .expect("expected to create a real session");
-
-    let mut headers = HeaderMap::new();
-    headers.insert(
-        "authorization",
-        HeaderValue::from_str(&format!("Bearer {}", real_session_token))
-            .expect("expected to insert the header value"),
-    );
+    let headers = auth_headers_for(&pool, user.id).await;
 
     let sub_id = "sub_change_plan_upgrade_fake_001";
     query("DELETE FROM subscriptions WHERE creem_subscription_id = $1")
