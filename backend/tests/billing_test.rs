@@ -1,8 +1,8 @@
 mod common;
 
 use crate::common::{
-    auth_headers_for, cleanup_test_subscription, cleanup_test_user, create_test_user,
-    get_subscription_status_text, insert_test_subscription, test_pool,
+    auth_headers_for, cleanup_test_subscription, cleanup_test_user, compute_creem_signature,
+    create_test_user, get_subscription_status_text, insert_test_subscription, test_pool,
 };
 use axum::{
     Json,
@@ -21,22 +21,15 @@ use backend::{
         verify_and_parse_webhook,
     },
     models::billing::{ParsedCustomer, ParsedMetadata, ParsedProduct, ParsedSubscription},
-    services::{
-        auth::create_session,
-        billing::{CreateCheckoutError, create_checkout, upsert_subscription},
-    },
+    services::billing::{CreateCheckoutError, create_checkout, upsert_subscription},
 };
 use chrono::{Duration, Utc};
-use hmac::{Hmac, KeyInit, Mac};
 use reqwest::StatusCode;
 use serde_json::json;
 use serial_test::serial;
-use sha2::Sha256;
 use sqlx::{query, query_as, query_scalar};
 use std::env::{remove_var, set_var, var};
 use uuid::Uuid;
-
-type HmacSha256 = Hmac<Sha256>;
 
 #[tokio::test]
 #[serial]
@@ -315,11 +308,7 @@ async fn creem_webhook_invalid_payload() {
 
     let raw_body = "not valid json{{{";
 
-    let mut mac = HmacSha256::new_from_slice(secret.as_bytes())
-        .expect("expected to build a real HMAC instance");
-    mac.update(raw_body.as_bytes());
-
-    let real_signature = hex::encode(mac.finalize().into_bytes());
+    let real_signature = compute_creem_signature(&secret, raw_body);
 
     let mut headers = HeaderMap::new();
     headers.insert(
@@ -350,10 +339,7 @@ async fn creem_webhook_success() {
 
     let raw_body = r#"{"id":"evt_test_success_001","eventType":"checkout.completed","created_at":1700000000,"object":{}}"#;
 
-    let mut mac = HmacSha256::new_from_slice(secret.as_bytes())
-        .expect("expected to build a real HMAC instance");
-    mac.update(raw_body.as_bytes());
-    let real_signature = hex::encode(mac.finalize().into_bytes());
+    let real_signature = compute_creem_signature(&secret, raw_body);
 
     let mut headers = HeaderMap::new();
     headers.insert(
@@ -1288,10 +1274,7 @@ async fn creem_webhook_success_refund_created() {
 
     let raw_body = r#"{"id":"evt_refund_test_001","eventType":"refund.created","created_at":1700000000,"object":{}}"#;
 
-    let mut mac = HmacSha256::new_from_slice(secret.as_bytes())
-        .expect("expected to build a real HMAC instance");
-    mac.update(raw_body.as_bytes());
-    let real_signature = hex::encode(mac.finalize().into_bytes());
+    let real_signature = compute_creem_signature(&secret, raw_body);
 
     let mut headers = HeaderMap::new();
     headers.insert(
@@ -1320,10 +1303,7 @@ async fn creem_webhook_unrecognized_event_type_still_ok() {
 
     let raw_body = r#"{"id":"evt_unknown_test_001","eventType":"some.future.event","created_at":1700000000,"object":{}}"#;
 
-    let mut mac = HmacSha256::new_from_slice(secret.as_bytes())
-        .expect("expected to build a real HMAC instance");
-    mac.update(raw_body.as_bytes());
-    let real_signature = hex::encode(mac.finalize().into_bytes());
+    let real_signature = compute_creem_signature(&secret, raw_body);
 
     let mut headers = HeaderMap::new();
     headers.insert(
@@ -1364,10 +1344,7 @@ async fn creem_webhook_inner_handler_failure_still_returns_ok() {
         sub_id, fake_user_id
     );
 
-    let mut mac = HmacSha256::new_from_slice(secret.as_bytes())
-        .expect("expected to build a real HMAC instance");
-    mac.update(raw_body.as_bytes());
-    let real_signature = hex::encode(mac.finalize().into_bytes());
+    let real_signature = compute_creem_signature(&secret, &raw_body);
 
     let mut headers = HeaderMap::new();
     headers.insert(
