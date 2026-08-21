@@ -87,37 +87,6 @@ pub fn compute_creem_signature(secret: &str, raw_body: &str) -> String {
     encode(mac.finalize().into_bytes())
 }
 
-#[allow(dead_code)]
-pub async fn insert_test_subscription_full(
-    pool: &Pool<Postgres>,
-    user_id: Uuid,
-    sub_id: &str,
-    plan_name: &str,
-    status: &str,
-    options: TestSubscriptionOptions,
-) {
-    let _ = query(
-        "INSERT INTO subscriptions (
-            id, user_id, creem_subscription_id, creem_customer_id, creem_product_id,
-            plan_name, status, current_period_end, scheduled_product_id, scheduled_plan_name,
-            created_at, updated_at
-        )
-         VALUES ($1, $2, $3, $4, $5, $6, $7::subscription_status, $8, $9, $10, NOW(), NOW())",
-    )
-    .bind(Uuid::now_v7())
-    .bind(user_id)
-    .bind(sub_id)
-    .bind("cust_fake_test_001")
-    .bind(format!("prod_{}_test", plan_name.to_lowercase()))
-    .bind(plan_name)
-    .bind(status)
-    .bind(options.current_period_end)
-    .bind(options.scheduled_product_id)
-    .bind(options.scheduled_plan_name)
-    .execute(pool)
-    .await;
-}
-
 /// Deletes any subscription row matching this creem_subscription_id, if
 /// one exists. Used both before a test (guarding against leftover data
 /// from a previous run) and after (cleaning up what the test itself
@@ -157,6 +126,37 @@ pub async fn insert_test_subscription(
     .bind(format!("prod_{}_test", plan_name.to_lowercase()))
     .bind(plan_name)
     .bind(status)
+    .execute(pool)
+    .await;
+}
+
+#[allow(dead_code)]
+pub async fn insert_test_subscription_full(
+    pool: &Pool<Postgres>,
+    user_id: Uuid,
+    sub_id: &str,
+    plan_name: &str,
+    status: &str,
+    options: TestSubscriptionOptions,
+) {
+    let _ = query(
+        "INSERT INTO subscriptions (
+            id, user_id, creem_subscription_id, creem_customer_id, creem_product_id,
+            plan_name, status, current_period_end, scheduled_product_id, scheduled_plan_name,
+            created_at, updated_at
+        )
+         VALUES ($1, $2, $3, $4, $5, $6, $7::subscription_status, $8, $9, $10, NOW(), NOW())",
+    )
+    .bind(Uuid::now_v7())
+    .bind(user_id)
+    .bind(sub_id)
+    .bind("cust_fake_test_001")
+    .bind(format!("prod_{}_test", plan_name.to_lowercase()))
+    .bind(plan_name)
+    .bind(status)
+    .bind(options.current_period_end)
+    .bind(options.scheduled_product_id)
+    .bind(options.scheduled_plan_name)
     .execute(pool)
     .await;
 }
