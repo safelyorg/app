@@ -8,11 +8,11 @@ use crate::{
 use axum::{
     Json,
     extract::{Multipart, Path, State},
-    http::{HeaderMap, header},
+    http::{HeaderMap, header::CONTENT_TYPE},
     response::IntoResponse,
 };
 use serde::Deserialize;
-use serde_json::{Value, json};
+use serde_json::{Value, json, to_value};
 use sqlx::{Error, Pool, Postgres, Row, query, query_scalar};
 use uuid::Uuid;
 
@@ -124,6 +124,7 @@ pub async fn get_reports(
         .await
         .map_err(|_| DashboardError::InternalError("Failed to verify session".to_string()))?
         .ok_or(DashboardError::Unauthorized)?;
+
     let items = get_user_reports(&pool, user_id)
         .await
         .map_err(|e| DashboardError::InternalError(e.to_string()))?;
@@ -147,7 +148,7 @@ pub async fn get_history_item(
     State(pool): State<Pool<Postgres>>,
     headers: HeaderMap,
     Path(id): Path<Uuid>,
-) -> Result<Json<serde_json::Value>, DashboardError> {
+) -> Result<Json<Value>, DashboardError> {
     let user_id = extract_user_id(&headers, &pool)
         .await
         .map_err(|_| DashboardError::InternalError("Failed to verify session".to_string()))?
@@ -159,8 +160,7 @@ pub async fn get_history_item(
 
     match detail {
         Some(d) => {
-            let value = serde_json::to_value(d)
-                .map_err(|e| DashboardError::InternalError(e.to_string()))?;
+            let value = to_value(d).map_err(|e| DashboardError::InternalError(e.to_string()))?;
             Ok(Json(value))
         }
         None => Err(DashboardError::NotFound("Not found".to_string())),
@@ -182,7 +182,7 @@ pub async fn update_me(
     State(pool): State<Pool<Postgres>>,
     headers: HeaderMap,
     Json(req): Json<UpdateMeRequest>,
-) -> Result<Json<serde_json::Value>, DashboardError> {
+) -> Result<Json<Value>, DashboardError> {
     let user_id = extract_user_id(&headers, &pool)
         .await
         .map_err(|_| DashboardError::InternalError("Failed to verify session".to_string()))?
@@ -201,7 +201,7 @@ pub async fn update_me(
         ));
     }
 
-    sqlx::query("UPDATE users SET name = $1 WHERE id = $2")
+    query("UPDATE users SET name = $1 WHERE id = $2")
         .bind(trimmed)
         .bind(user_id)
         .execute(&pool)
@@ -226,7 +226,7 @@ pub async fn update_me(
 pub async fn get_me(
     State(pool): State<Pool<Postgres>>,
     headers: HeaderMap,
-) -> Result<Json<serde_json::Value>, DashboardError> {
+) -> Result<Json<Value>, DashboardError> {
     let user_id = extract_user_id(&headers, &pool)
         .await
         .map_err(|_| DashboardError::InternalError("Failed to verify session".to_string()))?
@@ -237,10 +237,6 @@ pub async fn get_me(
         .map_err(|e| DashboardError::InternalError(e.to_string()))?
         .ok_or(DashboardError::NotFound("User not found".to_string()))?;
 
-    // Reads last_login_method directly rather than going through the User
-    // struct, so this doesn't depend on that struct having been updated to
-    // include the new column - a raw query here is a small, self-contained
-    // way to add this without needing to touch models/users.rs at all.
     let method_row = query(
         "SELECT last_login_method, (avatar_data IS NOT NULL) AS has_avatar
          FROM users WHERE id = $1",
@@ -314,7 +310,7 @@ pub async fn delete_account(
 pub async fn disconnect_google(
     State(pool): State<Pool<Postgres>>,
     headers: HeaderMap,
-) -> Result<Json<serde_json::Value>, DashboardError> {
+) -> Result<Json<Value>, DashboardError> {
     let user_id = extract_user_id(&headers, &pool)
         .await
         .map_err(|_| DashboardError::InternalError("Failed to verify session".to_string()))?
@@ -346,7 +342,7 @@ pub async fn upload_avatar(
     State(pool): State<Pool<Postgres>>,
     headers: HeaderMap,
     mut multipart: Multipart,
-) -> Result<Json<serde_json::Value>, DashboardError> {
+) -> Result<Json<Value>, DashboardError> {
     let user_id = extract_user_id(&headers, &pool)
         .await
         .map_err(|_| DashboardError::InternalError("Failed to verify session".to_string()))?
@@ -389,7 +385,7 @@ pub async fn upload_avatar(
         }
     };
 
-    sqlx::query("UPDATE users SET avatar_data = $1, avatar_content_type = $2 WHERE id = $3")
+    query("UPDATE users SET avatar_data = $1, avatar_content_type = $2 WHERE id = $3")
         .bind(&bytes)
         .bind(ct)
         .bind(user_id)
@@ -421,7 +417,7 @@ pub async fn get_avatar(
         .map_err(|_| DashboardError::InternalError("Failed to verify session".to_string()))?
         .ok_or(DashboardError::Unauthorized)?;
 
-    let row = sqlx::query("SELECT avatar_data, avatar_content_type FROM users WHERE id = $1")
+    let row = query("SELECT avatar_data, avatar_content_type FROM users WHERE id = $1")
         .bind(user_id)
         .fetch_one(&pool)
         .await
@@ -433,5 +429,5 @@ pub async fn get_avatar(
     let bytes = data.ok_or(DashboardError::NotFound("No avatar set".to_string()))?;
     let ct = content_type.unwrap_or_else(|| "image/png".to_string());
 
-    Ok(([(header::CONTENT_TYPE, ct)], bytes))
+    Ok(([(CONTENT_TYPE, ct)], bytes))
 }
