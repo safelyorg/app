@@ -2,7 +2,7 @@ mod common;
 
 use crate::common::{
     auth_headers_for, cleanup_test_subscription, cleanup_test_user, create_test_user,
-    insert_test_subscription, test_pool,
+    get_subscription_status_text, insert_test_subscription, test_pool,
 };
 use axum::{
     Json,
@@ -513,13 +513,7 @@ async fn subscription_granted_success() {
     };
 
     handle_subscription_granted(&pool, &parsed).await;
-
-    let saved_status: Option<String> =
-        query_scalar("SELECT status::text FROM subscriptions WHERE creem_subscription_id = $1")
-            .bind(sub_id)
-            .fetch_optional(&pool)
-            .await
-            .expect("expected the query itself to succeed");
+    let saved_status = get_subscription_status_text(&pool, sub_id).await;
 
     assert_eq!(
         saved_status,
@@ -658,13 +652,7 @@ async fn subscription_past_due_success() {
     };
 
     handle_subscription_past_due(&pool, &parsed).await;
-
-    let saved_status: Option<String> =
-        query_scalar("SELECT status::text FROM subscriptions WHERE creem_subscription_id = $1")
-            .bind(sub_id)
-            .fetch_optional(&pool)
-            .await
-            .expect("expected the query itself to succeed");
+    let saved_status = get_subscription_status_text(&pool, sub_id).await;
 
     assert_eq!(
         saved_status,
@@ -803,13 +791,7 @@ async fn subscription_past_due_email_fails_but_upsert_still_succeeds() {
     };
 
     handle_subscription_past_due(&pool, &parsed).await;
-
-    let saved_status: Option<String> =
-        query_scalar("SELECT status::text FROM subscriptions WHERE creem_subscription_id = $1")
-            .bind(sub_id)
-            .fetch_optional(&pool)
-            .await
-            .expect("expected the query itself to succeed");
+    let saved_status = get_subscription_status_text(&pool, sub_id).await;
 
     assert_eq!(
         saved_status,
@@ -859,13 +841,7 @@ async fn subscription_lost_paused() {
 
     let event_type = "subscription.paused";
     handle_subscription_lost(&pool, &parsed, event_type).await;
-
-    let saved_status: Option<String> =
-        query_scalar("SELECT status::text FROM subscriptions WHERE creem_subscription_id = $1")
-            .bind(sub_id)
-            .fetch_optional(&pool)
-            .await
-            .expect("expected the query itself to succeed");
+    let saved_status = get_subscription_status_text(&pool, sub_id).await;
 
     assert_eq!(
         saved_status,
@@ -915,13 +891,7 @@ async fn subscription_lost_expired() {
 
     let event_type = "subscription.expired";
     handle_subscription_lost(&pool, &parsed, event_type).await;
-
-    let saved_status: Option<String> =
-        query_scalar("SELECT status::text FROM subscriptions WHERE creem_subscription_id = $1")
-            .bind(sub_id)
-            .fetch_optional(&pool)
-            .await
-            .expect("expected the query itself to succeed");
+    let saved_status = get_subscription_status_text(&pool, sub_id).await;
 
     assert_eq!(
         saved_status,
@@ -971,13 +941,7 @@ async fn subscription_lost_canceled_genuinely_new() {
 
     let event_type = "subscription.canceled";
     handle_subscription_lost(&pool, &parsed, event_type).await;
-
-    let saved_status: Option<String> =
-        query_scalar("SELECT status::text FROM subscriptions WHERE creem_subscription_id = $1")
-            .bind(sub_id)
-            .fetch_optional(&pool)
-            .await
-            .expect("expected the query itself to succeed");
+    let saved_status = get_subscription_status_text(&pool, sub_id).await;
 
     assert_eq!(
         saved_status,
@@ -1031,13 +995,7 @@ async fn subscription_lost_canceled_already_canceled() {
 
     let event_type = "subscription.canceled";
     handle_subscription_lost(&pool, &parsed, event_type).await;
-
-    let saved_status: Option<String> =
-        query_scalar("SELECT status::text FROM subscriptions WHERE creem_subscription_id = $1")
-            .bind(sub_id)
-            .fetch_optional(&pool)
-            .await
-            .expect("expected the query itself to succeed");
+    let saved_status = get_subscription_status_text(&pool, sub_id).await;
 
     assert_eq!(
         saved_status,
@@ -1179,13 +1137,7 @@ async fn subscription_update_success() {
     };
 
     handle_subscription_update(&pool, &parsed).await;
-
-    let saved_status: Option<String> =
-        query_scalar("SELECT status::text FROM subscriptions WHERE creem_subscription_id = $1")
-            .bind(sub_id)
-            .fetch_optional(&pool)
-            .await
-            .expect("expected the query itself to succeed");
+    let saved_status = get_subscription_status_text(&pool, sub_id).await;
 
     assert_eq!(
         saved_status,
@@ -1517,12 +1469,7 @@ async fn cancel_subscription_creem_rejects() {
         Ok(_) => panic!("expected Creem to reject the cancellation, but it succeeded"),
     }
 
-    let saved_status: Option<String> =
-        query_scalar("SELECT status::text FROM subscriptions WHERE creem_subscription_id = $1")
-            .bind(sub_id)
-            .fetch_optional(&pool)
-            .await
-            .expect("expected the query itself to succeed");
+    let saved_status = get_subscription_status_text(&pool, sub_id).await;
 
     assert_eq!(
         saved_status,
