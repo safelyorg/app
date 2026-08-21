@@ -2,6 +2,7 @@ pub mod analysis;
 pub mod auth;
 pub mod billing;
 pub mod claude;
+pub mod dashboard;
 pub mod email;
 pub mod fraud_reports;
 pub mod google_oauth;
