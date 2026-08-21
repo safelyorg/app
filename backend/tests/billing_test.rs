@@ -38,7 +38,7 @@ async fn checkout_handler_success() {
     dotenvy::dotenv().ok();
     let pool = test_pool().await;
     let email = "checkout_handler@example.com";
-    let user = create_test_user(&pool, email).await;
+    let (user, _) = create_test_user(&pool, email).await;
     let headers = auth_headers_for(&pool, user.id).await;
 
     let checkout_body = CreateCheckoutBody {
@@ -86,7 +86,7 @@ async fn checkout_handler_unauthorized() {
 async fn checkout_handler_creem_rejects_invalid_product() {
     let pool = test_pool().await;
     let email = "checkout_rejected@example.com";
-    let user = create_test_user(&pool, email).await;
+    let (user, _) = create_test_user(&pool, email).await;
     let headers = auth_headers_for(&pool, user.id).await;
 
     let checkout_body = CreateCheckoutBody {
@@ -111,7 +111,7 @@ async fn checkout_handler_creem_rejects_invalid_product() {
 async fn create_checkout_success() {
     let pool = test_pool().await;
     let email = "checkout_success@example.com";
-    let user = create_test_user(&pool, email).await;
+    let (user, _) = create_test_user(&pool, email).await;
 
     let result = create_checkout("prod_6qDjyvwKbCZvWTgIztzqz4", user.id)
         .await
@@ -130,7 +130,7 @@ async fn create_checkout_success() {
 async fn create_checkout_creem_rejected() {
     let pool = test_pool().await;
     let email = "checkout_creem_rejected@example.com";
-    let user = create_test_user(&pool, email).await;
+    let (user, _) = create_test_user(&pool, email).await;
 
     let result = create_checkout("definitely_not_a_real_product_id", user.id).await;
 
@@ -472,7 +472,7 @@ async fn subscription_granted_success() {
     let pool = test_pool().await;
 
     let email = "subscription_granted_test@example.com";
-    let user = create_test_user(&pool, email).await;
+    let (user, _) = create_test_user(&pool, email).await;
 
     let sub_id = "sub_granted_test_001";
     query("DELETE FROM subscriptions WHERE creem_subscription_id = $1")
@@ -611,7 +611,7 @@ async fn subscription_granted_upsert_fails() {
 async fn subscription_past_due_success() {
     let pool = test_pool().await;
     let email = "past_due_test_user@example.com";
-    let user = create_test_user(&pool, email).await;
+    let (user, _) = create_test_user(&pool, email).await;
 
     let sub_id = "sub_past_due_test_001";
     query("DELETE FROM subscriptions WHERE creem_subscription_id = $1")
@@ -750,7 +750,7 @@ async fn subscription_past_due_upsert_fails() {
 async fn subscription_past_due_email_fails_but_upsert_still_succeeds() {
     let pool = test_pool().await;
     let email = "past_due_email_fails_test@example.com";
-    let user = create_test_user(&pool, email).await;
+    let (user, _) = create_test_user(&pool, email).await;
 
     let sub_id = "sub_past_due_email_fails_001";
     query("DELETE FROM subscriptions WHERE creem_subscription_id = $1")
@@ -799,7 +799,7 @@ async fn subscription_past_due_email_fails_but_upsert_still_succeeds() {
 async fn subscription_lost_paused() {
     let pool = test_pool().await;
     let email = "subscription_lost_paused_test@example.com";
-    let user = create_test_user(&pool, email).await;
+    let (user, _) = create_test_user(&pool, email).await;
 
     let sub_id = "sub_lost_paused_test_001";
     query("DELETE FROM subscriptions WHERE creem_subscription_id = $1")
@@ -849,7 +849,7 @@ async fn subscription_lost_paused() {
 async fn subscription_lost_expired() {
     let pool = test_pool().await;
     let email = "subscription_lost_expired_test@example.com";
-    let user = create_test_user(&pool, email).await;
+    let (user, _) = create_test_user(&pool, email).await;
 
     let sub_id = "sub_lost_expired_test_001";
     query("DELETE FROM subscriptions WHERE creem_subscription_id = $1")
@@ -899,7 +899,7 @@ async fn subscription_lost_expired() {
 async fn subscription_lost_canceled_genuinely_new() {
     let pool = test_pool().await;
     let email = "subscription_lost_canceled_test@example.com";
-    let user = create_test_user(&pool, email).await;
+    let (user, _) = create_test_user(&pool, email).await;
 
     let sub_id = "sub_lost_canceled_new_001";
     query("DELETE FROM subscriptions WHERE creem_subscription_id = $1")
@@ -949,7 +949,7 @@ async fn subscription_lost_canceled_genuinely_new() {
 async fn subscription_lost_canceled_already_canceled() {
     let pool = test_pool().await;
     let email = "subscription_lost_already_canceled_test@example.com";
-    let user = create_test_user(&pool, email).await;
+    let (user, _) = create_test_user(&pool, email).await;
 
     let sub_id = "sub_lost_already_canceled_001";
     query("DELETE FROM subscriptions WHERE creem_subscription_id = $1")
@@ -1096,7 +1096,7 @@ async fn subscription_lost_upsert_fails() {
 async fn subscription_update_success() {
     let pool = test_pool().await;
     let email = "subscription_update_test@example.com";
-    let user = create_test_user(&pool, email).await;
+    let (user, _) = create_test_user(&pool, email).await;
 
     let sub_id = "sub_update_test_001";
     query("DELETE FROM subscriptions WHERE creem_subscription_id = $1")
@@ -1393,7 +1393,7 @@ async fn cancel_subscription_unauthorized() {
 async fn cancel_subscription_not_found() {
     let pool = test_pool().await;
     let email = "cancel_not_found_test@example.com";
-    let user = create_test_user(&pool, email).await;
+    let (user, _) = create_test_user(&pool, email).await;
     let headers = auth_headers_for(&pool, user.id).await;
     let result = cancel_subscription_handler(State(pool.clone()), headers).await;
 
@@ -1412,7 +1412,7 @@ async fn cancel_subscription_not_found() {
 async fn cancel_subscription_creem_rejects() {
     let pool = test_pool().await;
     let email = "cancel_creem_rejects_test@example.com";
-    let user = create_test_user(&pool, email).await;
+    let (user, _) = create_test_user(&pool, email).await;
     let headers = auth_headers_for(&pool, user.id).await;
 
     let sub_id = "sub_creem_rejects_fake_001";
@@ -1543,7 +1543,7 @@ async fn cancel_with_creem_rejected() {
 async fn fetch_subscriber_email_found() {
     let pool = test_pool().await;
     let email = "fetch_subscriber_email_test@example.com";
-    let user = create_test_user(&pool, email).await;
+    let (user, _) = create_test_user(&pool, email).await;
 
     let sub_id = "sub_fetch_email_found_001";
     query("DELETE FROM subscriptions WHERE creem_subscription_id = $1")
@@ -1609,7 +1609,7 @@ async fn get_subscription_status_unauthorized() {
 async fn get_subscription_status_no_subscription() {
     let pool = test_pool().await;
     let email = "get_status_no_sub_test@example.com";
-    let user = create_test_user(&pool, email).await;
+    let (user, _) = create_test_user(&pool, email).await;
     let headers = auth_headers_for(&pool, user.id).await;
     let result = get_subscription_status(State(pool.clone()), headers)
         .await
@@ -1634,7 +1634,7 @@ async fn get_subscription_status_no_subscription() {
 async fn get_subscription_status_no_scheduled_downgrade() {
     let pool = test_pool().await;
     let email = "get_status_no_downgrade_test@example.com";
-    let user = create_test_user(&pool, email).await;
+    let (user, _) = create_test_user(&pool, email).await;
     let headers = auth_headers_for(&pool, user.id).await;
 
     let sub_id = "sub_status_no_downgrade_001";
@@ -1681,7 +1681,7 @@ async fn get_subscription_status_no_scheduled_downgrade() {
 async fn get_subscription_status_downgrade_not_yet_due() {
     let pool = test_pool().await;
     let email = "get_status_downgrade_not_due_test@example.com";
-    let user = create_test_user(&pool, email).await;
+    let (user, _) = create_test_user(&pool, email).await;
     let headers = auth_headers_for(&pool, user.id).await;
 
     let sub_id = "sub_status_downgrade_not_due_001";
@@ -1728,7 +1728,7 @@ async fn get_subscription_status_downgrade_not_yet_due() {
 async fn get_subscription_status_downgrade_due_but_creem_rejects() {
     let pool = test_pool().await;
     let email = "get_status_downgrade_due_test@example.com";
-    let user = create_test_user(&pool, email).await;
+    let (user, _) = create_test_user(&pool, email).await;
     let headers = auth_headers_for(&pool, user.id).await;
 
     let sub_id = "sub_status_downgrade_due_fake_001";
@@ -1859,7 +1859,7 @@ async fn apply_scheduled_downgrade_not_yet_due() {
 async fn apply_scheduled_downgrade_creem_rejects() {
     let pool = test_pool().await;
     let email = "apply_downgrade_creem_rejects_test@example.com";
-    let user = create_test_user(&pool, email).await;
+    let (user, _) = create_test_user(&pool, email).await;
 
     let sub_id = "sub_apply_downgrade_fake_001";
     query("DELETE FROM subscriptions WHERE creem_subscription_id = $1")
@@ -1949,7 +1949,7 @@ async fn change_plan_unauthorized() {
 async fn change_plan_not_found() {
     let pool = test_pool().await;
     let email = "change_plan_not_found_test@example.com";
-    let user = create_test_user(&pool, email).await;
+    let (user, _) = create_test_user(&pool, email).await;
     let headers = auth_headers_for(&pool, user.id).await;
 
     let body = ChangePlanBody {
@@ -1974,7 +1974,7 @@ async fn change_plan_not_found() {
 async fn change_plan_conflict_while_trialing() {
     let pool = test_pool().await;
     let email = "change_plan_trialing_test@example.com";
-    let user = create_test_user(&pool, email).await;
+    let (user, _) = create_test_user(&pool, email).await;
     let headers = auth_headers_for(&pool, user.id).await;
 
     let sub_id = "sub_change_plan_trialing_001";
@@ -2012,7 +2012,7 @@ async fn change_plan_conflict_while_trialing() {
 async fn change_plan_invalid_request() {
     let pool = test_pool().await;
     let email = "change_plan_invalid_test@example.com";
-    let user = create_test_user(&pool, email).await;
+    let (user, _) = create_test_user(&pool, email).await;
     let headers = auth_headers_for(&pool, user.id).await;
 
     let sub_id = "sub_change_plan_invalid_001";
@@ -2053,7 +2053,7 @@ async fn change_plan_invalid_request() {
 async fn change_plan_downgrade_success() {
     let pool = test_pool().await;
     let email = "change_plan_downgrade_test@example.com";
-    let user = create_test_user(&pool, email).await;
+    let (user, _) = create_test_user(&pool, email).await;
     let headers = auth_headers_for(&pool, user.id).await;
 
     let sub_id = "sub_change_plan_downgrade_001";
@@ -2109,7 +2109,7 @@ async fn change_plan_downgrade_success() {
 async fn change_plan_upgrade_creem_rejects() {
     let pool = test_pool().await;
     let email = "change_plan_upgrade_test@example.com";
-    let user = create_test_user(&pool, email).await;
+    let (user, _) = create_test_user(&pool, email).await;
     let headers = auth_headers_for(&pool, user.id).await;
 
     let sub_id = "sub_change_plan_upgrade_fake_001";
@@ -2162,7 +2162,7 @@ async fn change_plan_upgrade_creem_rejects() {
 async fn apply_upgrade_creem_rejects() {
     let pool = test_pool().await;
     let email = "apply_upgrade_rejects_test@example.com";
-    let user = create_test_user(&pool, email).await;
+    let (user, _) = create_test_user(&pool, email).await;
 
     let sub_id = "sub_apply_upgrade_fake_001";
     cleanup_test_subscription(&pool, sub_id).await;

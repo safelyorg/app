@@ -6,12 +6,11 @@ use crate::{
     },
     services::{
         auth::{
-            check_last_login, create_session, delete_session, extract_user_id,
-            find_or_create_user_by_email, find_or_create_user_by_google, find_user_by_google_id,
-            find_user_by_id, insert_magic_link, link_google_account, set_login_method,
-            validate_email_format, validate_magic_link,
+            delete_session, extract_user_id, find_or_create_user_by_email,
+            find_or_create_user_by_google, find_user_by_google_id, find_user_by_id, finish_sign_in,
+            insert_magic_link, link_google_account, validate_email_format, validate_magic_link,
         },
-        email::{send_magic_link_email, send_welcome_email},
+        email::send_magic_link_email,
         google_oauth::{build_google_authorize_url, exchange_code_for_user},
     },
 };
@@ -192,24 +191,6 @@ pub async fn google_connect_redirect(
     Ok((jar, Redirect::to(&authorize_url)))
 }
 
-/// POST /api/v1/auth/logout
-///
-/// When someone clicks "Log out" — it deletes their real login session from the database,
-/// so their old token genuinely stops working, not just appears logged out on their screen.
-///
-/// It checks if a real login header was actually sent, pulls the actual token out
-/// of that header, actually deletes that session from the database, and always
-/// reports success, regardless of what actually happened
-pub async fn logout(State(pool): State<Pool<Postgres>>, headers: HeaderMap) -> Json<Value> {
-    if let Some(auth_header) = headers.get("authorization").and_then(|v| v.to_str().ok()) {
-        if let Some(token) = auth_header.strip_prefix("Bearer ") {
-            let _ = delete_session(&pool, token).await;
-        }
-    }
-
-    Json(json!({ "success": true }))
-}
-
 /// GET /api/v1/auth/google/callback
 ///
 /// The moment Google sends someone back to your site, after they've signed in on
@@ -267,6 +248,24 @@ pub async fn google_callback(
         jar,
         Redirect::to(&format!("{}#session={}", DASHBOARD_PATH, session_token)),
     ))
+}
+
+/// POST /api/v1/auth/logout
+///
+/// When someone clicks "Log out" — it deletes their real login session from the database,
+/// so their old token genuinely stops working, not just appears logged out on their screen.
+///
+/// It checks if a real login header was actually sent, pulls the actual token out
+/// of that header, actually deletes that session from the database, and always
+/// reports success, regardless of what actually happened
+pub async fn logout(State(pool): State<Pool<Postgres>>, headers: HeaderMap) -> Json<Value> {
+    if let Some(auth_header) = headers.get("authorization").and_then(|v| v.to_str().ok()) {
+        if let Some(token) = auth_header.strip_prefix("Bearer ") {
+            let _ = delete_session(&pool, token).await;
+        }
+    }
+
+    Json(json!({ "success": true }))
 }
 
 /// It runs when someone who's already logged into Safely finishes
@@ -337,33 +336,4 @@ pub async fn handle_google_connect(
         jar,
         Redirect::to(&format!("{}?google_connected=1", DASHBOARD_PATH)),
     ))
-}
-
-/// It runs at the final, shared step of both sign-in methods (magic link and Google).
-/// It handles the welcome email if they're brand new, updates some login bookkeeping,
-/// and creates their real session.
-///
-/// It sends a welcome email — but only for genuinely new people, updates
-/// "last login" bookkeeping, records how they logged in this time,
-/// creates the real session — the one part that genuinely matters otherwise
-/// the whole sign-in fails.
-pub async fn finish_sign_in(
-    pool: &Pool<Postgres>,
-    user_id: Uuid,
-    is_new: bool,
-    email_for_welcome: &str,
-    login_method: &str,
-) -> Result<String, AuthError> {
-    if is_new {
-        if let Err(e) = send_welcome_email(email_for_welcome).await {
-            eprintln!("Failed to send welcome email: {:?}", e);
-        }
-    }
-    let _ = check_last_login(pool, user_id).await;
-    let _ = set_login_method(pool, user_id, login_method).await;
-
-    create_session(pool, user_id).await.map_err(|e| {
-        eprintln!("create_session error: {}", e);
-        AuthError::DashboardPath("server_error".to_string())
-    })
 }

@@ -7,7 +7,7 @@ use chrono::{DateTime, Utc};
 use hex::encode;
 use hmac::{Hmac, KeyInit, Mac};
 use sha2::Sha256;
-use sqlx::{Pool, Postgres, query, query_scalar};
+use sqlx::{Pool, Postgres, query, query_as, query_scalar};
 use std::env::var;
 use uuid::Uuid;
 
@@ -45,13 +45,13 @@ pub async fn cleanup_test_seller(pool: &Pool<Postgres>, platform: &str, platform
 }
 
 #[allow(dead_code)]
-pub async fn create_test_user(pool: &Pool<Postgres>, email: &str) -> User {
+pub async fn create_test_user(pool: &Pool<Postgres>, email: &str) -> (User, bool) {
     cleanup_test_user(pool, email).await;
-    let (user, _) = find_or_create_user_by_email(pool, email)
+    let (user, yes) = find_or_create_user_by_email(pool, email)
         .await
         .expect("expected to create the test user");
 
-    user
+    (user, yes)
 }
 
 #[allow(dead_code)]
@@ -159,4 +159,29 @@ pub async fn insert_test_subscription_full(
     .bind(options.scheduled_plan_name)
     .execute(pool)
     .await;
+}
+
+// auth
+
+#[allow(dead_code)]
+pub async fn session_exists(pool: &Pool<Postgres>, token: &str) -> bool {
+    let row: Option<(String,)> = query_as("SELECT token FROM sessions WHERE token = $1")
+        .bind(token)
+        .fetch_optional(pool)
+        .await
+        .expect("expected the query itself to succeed");
+
+    row.is_some()
+}
+
+#[allow(dead_code)]
+pub async fn magic_link_exists_for_email(pool: &Pool<Postgres>, email: &str) -> bool {
+    let row: Option<(String,)> =
+        query_as("SELECT email FROM magic_links WHERE email = $1 ORDER BY created_at DESC LIMIT 1")
+            .bind(email)
+            .fetch_optional(pool)
+            .await
+            .expect("expected the query itself to succeed");
+
+    row.is_some()
 }

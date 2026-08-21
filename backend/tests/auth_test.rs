@@ -13,9 +13,8 @@ use axum_extra::extract::{
 use backend::{
     errors::auth::AuthError,
     handlers::auth::{
-        OAUTH_LINK_USER_COOKIE, OAUTH_STATE_COOKIE, finish_sign_in, google_callback,
-        google_connect_redirect, google_redirect, handle_google_connect, logout,
-        request_magic_link, verify_magic_link,
+        OAUTH_LINK_USER_COOKIE, OAUTH_STATE_COOKIE, google_callback, google_connect_redirect,
+        google_redirect, handle_google_connect, logout, request_magic_link, verify_magic_link,
     },
     models::users::{
         GoogleAfterLoginQuery, GoogleConnectQuery, GoogleUserInfoEndpoint, MagicLinkRequest,
@@ -26,14 +25,15 @@ use backend::{
         auth::{
             create_session, extract_user_id, find_or_create_user_by_email,
             find_or_create_user_by_google, find_user_by_email, find_user_by_google_id,
-            insert_magic_link, link_google_account, validate_email_format, validate_magic_link,
+            finish_sign_in, insert_magic_link, link_google_account, validate_email_format,
+            validate_magic_link,
         },
         email::{get_tera, send_magic_link_email},
         google_oauth::build_google_authorize_url,
     },
 };
 use chrono::{Duration as chrono_duration, Utc};
-use common::{cleanup_test_user, test_pool};
+use common::{cleanup_test_user, create_test_user, test_pool};
 use dotenvy::var;
 use reqwest::Body;
 use serial_test::serial;
@@ -98,7 +98,7 @@ async fn requesting_a_magic_link_rejects_an_invalid_email() {
         .uri("/api/v1/auth/magic-link")
         .header("content-type", "application/json")
         .body(Body::from(r#"{"email": "not-an-email"}"#))
-        .unwrap();
+        .expect("expected to build the request");
 
     let response = app
         .oneshot(request)
@@ -317,9 +317,7 @@ async fn checking_email_link_verification() {
 
     assert_eq!(validate.email, email);
 
-    let (user, is_new) = find_or_create_user_by_email(&pool, &validate.email)
-        .await
-        .expect("expected to find or create the user");
+    let (user, is_new) = create_test_user(&pool, &validate.email).await;
 
     let session_token = finish_sign_in(&pool, user.id, is_new, &validate.email, "email")
         .await
@@ -422,11 +420,7 @@ async fn find_user_by_email_finds_an_existing_user() {
     let pool = test_pool().await;
     let email = "test_user_find@example.com";
     let formatted_email = validate_email_format(email).expect("expected to format the email");
-    cleanup_test_user(&pool, email).await;
-
-    let (created_user, _) = find_or_create_user_by_email(&pool, &formatted_email)
-        .await
-        .expect("expected to create the user");
+    let (created_user, _) = create_test_user(&pool, &formatted_email).await;
 
     let found = find_user_by_email(&pool, email)
         .await
@@ -457,11 +451,7 @@ async fn find_user_by_email_returns_none_for_a_nonexistent_user() {
 async fn find_or_create_user_by_email_creates_a_new_user_when_none_exists() {
     let pool = test_pool().await;
     let email = "find_or_create_new@example.com";
-    cleanup_test_user(&pool, email).await;
-
-    let (user, is_new) = find_or_create_user_by_email(&pool, email)
-        .await
-        .expect("expected the call to succeed");
+    let (user, is_new) = create_test_user(&pool, email).await;
 
     assert!(is_new, "expected a brand-new user to be reported as new");
     assert_eq!(user.email, email);
@@ -484,12 +474,8 @@ async fn find_or_create_user_by_email_creates_a_new_user_when_none_exists() {
 async fn find_or_create_user_by_email_returns_the_existing_user_when_one_already_exists() {
     let pool = test_pool().await;
     let email = "find_or_create_existing@example.com";
-    cleanup_test_user(&pool, email).await;
+    let (first_user, first_is_new) = create_test_user(&pool, email).await;
 
-    // First call - genuinely creates the user.
-    let (first_user, first_is_new) = find_or_create_user_by_email(&pool, email)
-        .await
-        .expect("expected the first call to succeed");
     assert!(first_is_new, "expected the first call to report a new user");
 
     // Second call, same email - should find the SAME user, not create another.
@@ -513,11 +499,7 @@ async fn find_or_create_user_by_email_returns_the_existing_user_when_one_already
 async fn handle_google_connect_succeeds_when_emails_match() {
     let pool = test_pool().await;
     let email = "google_link_success@example.com";
-    cleanup_test_user(&pool, email).await;
-
-    let (user, _) = find_or_create_user_by_email(&pool, email)
-        .await
-        .expect("expected to create the base user");
+    let (user, _) = create_test_user(&pool, email).await;
 
     let link_cookie = Cookie::new(OAUTH_LINK_USER_COOKIE, user.id.to_string());
     let google_user = GoogleUserInfoEndpoint {
@@ -552,11 +534,7 @@ async fn handle_google_connect_succeeds_when_emails_match() {
 async fn handle_google_connect_rejects_a_mismatched_email() {
     let pool = test_pool().await;
     let email = "google_link_mismatch@example.com";
-    cleanup_test_user(&pool, email).await;
-
-    let (user, _) = find_or_create_user_by_email(&pool, email)
-        .await
-        .expect("expected to create the base user");
+    let (user, _) = create_test_user(&pool, email).await;
 
     let link_cookie = Cookie::new(OAUTH_LINK_USER_COOKIE, user.id.to_string());
     let google_user = GoogleUserInfoEndpoint {
@@ -578,15 +556,8 @@ async fn handle_google_connect_rejects_a_google_account_already_linked_elsewhere
     let pool = test_pool().await;
     let email_a = "google_link_owner@example.com";
     let email_b = "google_link_intruder@example.com";
-    cleanup_test_user(&pool, email_a).await;
-    cleanup_test_user(&pool, email_b).await;
-
-    let (user_a, _) = find_or_create_user_by_email(&pool, email_a)
-        .await
-        .expect("expected to create user A");
-    let (user_b, _) = find_or_create_user_by_email(&pool, email_b)
-        .await
-        .expect("expected to create user B");
+    let (user_a, _) = create_test_user(&pool, email_a).await;
+    let (user_b, _) = create_test_user(&pool, email_b).await;
 
     let shared_google_id = "google_id_already_taken_789";
 
@@ -787,12 +758,7 @@ async fn google_connect_redirect_succeeds_with_a_valid_session() {
 
     let pool = test_pool().await;
     let email = "google_connect_success@example.com";
-    cleanup_test_user(&pool, email).await;
-
-    // Step 1 - set up a real, genuine logged-in user.
-    let (user, _) = find_or_create_user_by_email(&pool, email)
-        .await
-        .expect("expected to create the user");
+    let (user, _) = create_test_user(&pool, email).await;
 
     let real_session_token = create_session(&pool, user.id)
         .await
@@ -911,11 +877,7 @@ async fn extract_user_id_token_mismatch() {
 async fn extract_user_id_token_match() {
     let pool = test_pool().await;
     let email = "token_match@example.com";
-    cleanup_test_user(&pool, email).await;
-
-    let (user, _) = find_or_create_user_by_email(&pool, email)
-        .await
-        .expect("expected to create the user");
+    let (user, _) = create_test_user(&pool, email).await;
 
     let real_session_token = create_session(&pool, user.id)
         .await
@@ -968,11 +930,7 @@ async fn logout_with_session_present() {
     dotenvy::dotenv().ok();
     let pool = test_pool().await;
     let email = "logged_out_success@example.com";
-    cleanup_test_user(&pool, email).await;
-
-    let (user, _) = find_or_create_user_by_email(&pool, email)
-        .await
-        .expect("expected to create the user");
+    let (user, _) = create_test_user(&pool, email).await;
 
     let real_session_token = create_session(&pool, user.id)
         .await
@@ -1005,11 +963,7 @@ async fn logout_with_no_header() {
     dotenvy::dotenv().ok();
     let pool = test_pool().await;
     let email = "logged_out_success@example.com";
-    cleanup_test_user(&pool, email).await;
-
-    let (user, _) = find_or_create_user_by_email(&pool, email)
-        .await
-        .expect("expected to create the user");
+    let (user, _) = create_test_user(&pool, email).await;
 
     let real_session_token = create_session(&pool, user.id)
         .await
@@ -1058,11 +1012,7 @@ async fn finish_sign_in_with_new_user() {
     dotenvy::dotenv().ok();
     let pool = test_pool().await;
     let email = "signin_with_new_user@example.com";
-    cleanup_test_user(&pool, email).await;
-
-    let (user, _) = find_or_create_user_by_email(&pool, email)
-        .await
-        .expect("expected to create the user");
+    let (user, _) = create_test_user(&pool, email).await;
 
     let session_token = finish_sign_in(&pool, user.id, true, email, "google")
         .await
@@ -1206,11 +1156,7 @@ async fn google_signin_links_onto_an_existing_email_match() {
     let pool = test_pool().await;
     let email = "existing_magic_link_user@example.com";
     let google_id = "google_id_linking_to_existing_001";
-    cleanup_test_user(&pool, email).await;
-
-    let (existing_user, _) = find_or_create_user_by_email(&pool, email)
-        .await
-        .expect("expected to create the existing user");
+    let (existing_user, _) = create_test_user(&pool, email).await;
 
     let (user, is_new) =
         find_or_create_user_by_google(&pool, google_id, email, Some("Existing User"))

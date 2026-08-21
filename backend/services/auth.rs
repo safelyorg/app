@@ -1,6 +1,7 @@
 use crate::{
     errors::auth::{AuthError, AuthServiceError},
     models::users::{MagicLink, User},
+    services::email::send_welcome_email,
 };
 use axum::http::HeaderMap;
 use chrono::{DateTime, Duration, Utc};
@@ -327,4 +328,33 @@ pub async fn create_session(pool: &Pool<Postgres>, user_id: Uuid) -> Result<Stri
         .await?;
 
     Ok(token)
+}
+
+/// It runs at the final, shared step of both sign-in methods (magic link and Google).
+/// It handles the welcome email if they're brand new, updates some login bookkeeping,
+/// and creates their real session.
+///
+/// It sends a welcome email — but only for genuinely new people, updates
+/// "last login" bookkeeping, records how they logged in this time,
+/// creates the real session — the one part that genuinely matters otherwise
+/// the whole sign-in fails.
+pub async fn finish_sign_in(
+    pool: &Pool<Postgres>,
+    user_id: Uuid,
+    is_new: bool,
+    email_for_welcome: &str,
+    login_method: &str,
+) -> Result<String, AuthError> {
+    if is_new {
+        if let Err(e) = send_welcome_email(email_for_welcome).await {
+            eprintln!("Failed to send welcome email: {:?}", e);
+        }
+    }
+    let _ = check_last_login(pool, user_id).await;
+    let _ = set_login_method(pool, user_id, login_method).await;
+
+    create_session(pool, user_id).await.map_err(|e| {
+        eprintln!("create_session error: {}", e);
+        AuthError::DashboardPath("server_error".to_string())
+    })
 }
