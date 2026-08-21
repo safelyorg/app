@@ -1,6 +1,24 @@
-use sqlx::{Pool, Postgres, query};
+use axum::http::{HeaderMap, HeaderValue};
+use backend::{
+    models::users::User,
+    services::auth::{create_session, find_or_create_user_by_email},
+};
+use chrono::{DateTime, Utc};
+use hex::encode;
+use hmac::{Hmac, KeyInit, Mac};
+use sha2::Sha256;
+use sqlx::{Pool, Postgres, query, query_scalar};
 use std::env::var;
 use uuid::Uuid;
+
+type HmacSha256 = Hmac<Sha256>;
+
+#[allow(dead_code)]
+pub struct TestSubscriptionOptions {
+    pub current_period_end: Option<DateTime<Utc>>,
+    pub scheduled_product_id: Option<&'static str>,
+    pub scheduled_plan_name: Option<&'static str>,
+}
 
 pub async fn test_pool() -> Pool<Postgres> {
     dotenvy::dotenv().ok();
@@ -24,6 +42,80 @@ pub async fn cleanup_test_seller(pool: &Pool<Postgres>, platform: &str, platform
         .bind(platform_id)
         .execute(pool)
         .await;
+}
+
+#[allow(dead_code)]
+pub async fn create_test_user(pool: &Pool<Postgres>, email: &str) -> User {
+    cleanup_test_user(pool, email).await;
+    let (user, _) = find_or_create_user_by_email(pool, email)
+        .await
+        .expect("expected to create the test user");
+
+    user
+}
+
+#[allow(dead_code)]
+pub async fn auth_headers_for(pool: &Pool<Postgres>, user_id: Uuid) -> HeaderMap {
+    let token = create_session(pool, user_id)
+        .await
+        .expect("expected to create a real session");
+
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        "authorization",
+        HeaderValue::from_str(&format!("Bearer {}", token))
+            .expect("expected to insert the header value"),
+    );
+
+    headers
+}
+
+#[allow(dead_code)]
+pub async fn get_subscription_status_text(pool: &Pool<Postgres>, sub_id: &str) -> Option<String> {
+    query_scalar("SELECT status::text FROM subscriptions WHERE creem_subscription_id = $1")
+        .bind(sub_id)
+        .fetch_optional(pool)
+        .await
+        .expect("expected the query itself to succeed")
+}
+
+#[allow(dead_code)]
+pub fn compute_creem_signature(secret: &str, raw_body: &str) -> String {
+    let mut mac = HmacSha256::new_from_slice(secret.as_bytes())
+        .expect("expected to build a real HMAC instance");
+    mac.update(raw_body.as_bytes());
+    encode(mac.finalize().into_bytes())
+}
+
+#[allow(dead_code)]
+pub async fn insert_test_subscription_full(
+    pool: &Pool<Postgres>,
+    user_id: Uuid,
+    sub_id: &str,
+    plan_name: &str,
+    status: &str,
+    options: TestSubscriptionOptions,
+) {
+    let _ = query(
+        "INSERT INTO subscriptions (
+            id, user_id, creem_subscription_id, creem_customer_id, creem_product_id,
+            plan_name, status, current_period_end, scheduled_product_id, scheduled_plan_name,
+            created_at, updated_at
+        )
+         VALUES ($1, $2, $3, $4, $5, $6, $7::subscription_status, $8, $9, $10, NOW(), NOW())",
+    )
+    .bind(Uuid::now_v7())
+    .bind(user_id)
+    .bind(sub_id)
+    .bind("cust_fake_test_001")
+    .bind(format!("prod_{}_test", plan_name.to_lowercase()))
+    .bind(plan_name)
+    .bind(status)
+    .bind(options.current_period_end)
+    .bind(options.scheduled_product_id)
+    .bind(options.scheduled_plan_name)
+    .execute(pool)
+    .await;
 }
 
 /// Deletes any subscription row matching this creem_subscription_id, if
