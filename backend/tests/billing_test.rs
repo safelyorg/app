@@ -1,8 +1,9 @@
 mod common;
 
 use crate::common::{
-    auth_headers_for, cleanup_test_subscription, cleanup_test_user, compute_creem_signature,
-    create_test_user, get_subscription_status_text, insert_test_subscription, test_pool,
+    TestSubscriptionOptions, auth_headers_for, cleanup_test_subscription, cleanup_test_user,
+    compute_creem_signature, create_test_user, get_subscription_status_text,
+    insert_test_subscription, insert_test_subscription_full, test_pool,
 };
 use axum::{
     Json,
@@ -1421,22 +1422,9 @@ async fn cancel_subscription_creem_rejects() {
         .await
         .expect("expected cleanup to succeed");
 
-    query(
-        "INSERT INTO subscriptions (id, user_id, creem_subscription_id, creem_customer_id, creem_product_id, plan_name, status, created_at, updated_at)
-        VALUES ($1, $2, $3, $4, $5, $6, 'active'::subscription_status, NOW(), NOW())",
-    )
-    .bind(Uuid::now_v7())
-    .bind(user.id)
-    .bind(sub_id)
-    .bind("cust_fake_test_001")
-    .bind("prod_fake_test_001")
-    .bind("Team")
-    .execute(&pool)
-    .await
-    .expect("expected to pre-seed the fake-but-local subscription");
+    insert_test_subscription(&pool, user.id, sub_id, "Team", "active").await;
 
     let result = cancel_subscription_handler(State(pool.clone()), headers).await;
-
     match result {
         Err(BillingError::ServiceUnavailable(_)) => {}
         Err(other) => panic!(
@@ -1564,19 +1552,7 @@ async fn fetch_subscriber_email_found() {
         .await
         .expect("expected cleanup to succeed");
 
-    query(
-        "INSERT INTO subscriptions (id, user_id, creem_subscription_id, creem_customer_id, creem_product_id, plan_name, status, created_at, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, 'active'::subscription_status, NOW(), NOW())",
-    )
-    .bind(Uuid::now_v7())
-    .bind(user.id)
-    .bind(sub_id)
-    .bind("cust_fake_test_001")
-    .bind("prod_fake_test_001")
-    .bind("Team")
-    .execute(&pool)
-    .await
-    .expect("expected to pre-seed the subscription");
+    insert_test_subscription(&pool, user.id, sub_id, "Team", "active").await;
 
     let result = fetch_subscriber_email(&pool, sub_id).await;
 
@@ -1670,20 +1646,19 @@ async fn get_subscription_status_no_scheduled_downgrade() {
 
     let period_end = Utc::now() + Duration::days(20);
 
-    query(
-        "INSERT INTO subscriptions (id, user_id, creem_subscription_id, creem_customer_id, creem_product_id, plan_name, status, current_period_end, created_at, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, 'active'::subscription_status, $7, NOW(), NOW())",
+    insert_test_subscription_full(
+        &pool,
+        user.id,
+        sub_id,
+        "Team",
+        "active",
+        TestSubscriptionOptions {
+            current_period_end: Some(period_end),
+            scheduled_product_id: None,
+            scheduled_plan_name: None,
+        },
     )
-    .bind(Uuid::now_v7())
-    .bind(user.id)
-    .bind(sub_id)
-    .bind("cust_fake_test_001")
-    .bind("prod_fake_test_001")
-    .bind("Team")
-    .bind(period_end)
-    .execute(&pool)
-    .await
-    .expect("expected to pre-seed the subscription");
+    .await;
 
     let result = get_subscription_status(State(pool.clone()), headers)
         .await
@@ -1718,26 +1693,19 @@ async fn get_subscription_status_downgrade_not_yet_due() {
 
     let period_end = Utc::now() + Duration::days(20);
 
-    query(
-        "INSERT INTO subscriptions (
-            id, user_id, creem_subscription_id, creem_customer_id, creem_product_id,
-            plan_name, status, current_period_end, scheduled_product_id, scheduled_plan_name,
-            created_at, updated_at
-        )
-         VALUES ($1, $2, $3, $4, $5, $6, 'active'::subscription_status, $7, $8, $9, NOW(), NOW())",
+    insert_test_subscription_full(
+        &pool,
+        user.id,
+        sub_id,
+        "Enterprise",
+        "active",
+        TestSubscriptionOptions {
+            current_period_end: Some(period_end),
+            scheduled_product_id: Some("prod_team_scheduled"),
+            scheduled_plan_name: Some("Team"),
+        },
     )
-    .bind(Uuid::now_v7())
-    .bind(user.id)
-    .bind(sub_id)
-    .bind("cust_fake_test_001")
-    .bind("prod_enterprise_current")
-    .bind("Enterprise")
-    .bind(period_end)
-    .bind("prod_team_scheduled")
-    .bind("Team")
-    .execute(&pool)
-    .await
-    .expect("expected to pre-seed the subscription");
+    .await;
 
     let result = get_subscription_status(State(pool.clone()), headers)
         .await
@@ -1772,26 +1740,19 @@ async fn get_subscription_status_downgrade_due_but_creem_rejects() {
 
     let period_end = Utc::now() - Duration::days(1);
 
-    query(
-        "INSERT INTO subscriptions (
-            id, user_id, creem_subscription_id, creem_customer_id, creem_product_id,
-            plan_name, status, current_period_end, scheduled_product_id, scheduled_plan_name,
-            created_at, updated_at
-        )
-         VALUES ($1, $2, $3, $4, $5, $6, 'active'::subscription_status, $7, $8, $9, NOW(), NOW())",
+    insert_test_subscription_full(
+        &pool,
+        user.id,
+        sub_id,
+        "Enterprise",
+        "active",
+        TestSubscriptionOptions {
+            current_period_end: Some(period_end),
+            scheduled_product_id: Some("prod_team_scheduled"),
+            scheduled_plan_name: Some("Team"),
+        },
     )
-    .bind(Uuid::now_v7())
-    .bind(user.id)
-    .bind(sub_id)
-    .bind("cust_fake_test_001")
-    .bind("prod_enterprise_current")
-    .bind("Enterprise")
-    .bind(period_end)
-    .bind("prod_team_scheduled")
-    .bind("Team")
-    .execute(&pool)
-    .await
-    .expect("expected to pre-seed the subscription");
+    .await;
 
     let result = get_subscription_status(State(pool.clone()), headers)
         .await
@@ -1907,33 +1868,28 @@ async fn apply_scheduled_downgrade_creem_rejects() {
         .await
         .expect("expected cleanup to succeed");
 
-    query(
-        "INSERT INTO subscriptions (
-            id, user_id, creem_subscription_id, creem_customer_id, creem_product_id,
-            plan_name, status, current_period_end, scheduled_product_id, scheduled_plan_name,
-            created_at, updated_at
-        )
-         VALUES ($1, $2, $3, $4, $5, $6, 'active'::subscription_status, $7, $8, $9, NOW(), NOW())",
+    let period_end = Utc::now() - Duration::days(1);
+
+    insert_test_subscription_full(
+        &pool,
+        user.id,
+        sub_id,
+        "Enterprise",
+        "active",
+        TestSubscriptionOptions {
+            current_period_end: Some(period_end),
+            scheduled_product_id: Some("prod_team_scheduled"),
+            scheduled_plan_name: Some("Team"),
+        },
     )
-    .bind(Uuid::now_v7())
-    .bind(user.id)
-    .bind(sub_id)
-    .bind("cust_fake_test_001")
-    .bind("prod_enterprise_current")
-    .bind("Enterprise")
-    .bind(Utc::now() - Duration::days(1))
-    .bind("prod_team_scheduled")
-    .bind("Team")
-    .execute(&pool)
-    .await
-    .expect("expected to pre-seed the subscription");
+    .await;
 
     let result = apply_scheduled_downgrade_if_due(
         &pool,
         sub_id,
         Some("prod_team_scheduled"),
         Some("Team"),
-        Some(Utc::now() - Duration::days(1)),
+        Some(period_end),
     )
     .await;
 
@@ -2028,19 +1984,7 @@ async fn change_plan_conflict_while_trialing() {
         .await
         .expect("expected cleanup to succeed");
 
-    query(
-        "INSERT INTO subscriptions (id, user_id, creem_subscription_id, creem_customer_id, creem_product_id, plan_name, status, created_at, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, 'trialing'::subscription_status, NOW(), NOW())",
-    )
-    .bind(Uuid::now_v7())
-    .bind(user.id)
-    .bind(sub_id)
-    .bind("cust_fake_test_001")
-    .bind("prod_team_current")
-    .bind("Team")
-    .execute(&pool)
-    .await
-    .expect("expected to pre-seed the trialing subscription");
+    insert_test_subscription(&pool, user.id, sub_id, "Team", "trialing").await;
 
     let body = ChangePlanBody {
         product_id: "prod_enterprise_target".to_string(),
@@ -2078,19 +2022,7 @@ async fn change_plan_invalid_request() {
         .await
         .expect("expected cleanup to succeed");
 
-    query(
-        "INSERT INTO subscriptions (id, user_id, creem_subscription_id, creem_customer_id, creem_product_id, plan_name, status, created_at, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, 'active'::subscription_status, NOW(), NOW())",
-    )
-    .bind(Uuid::now_v7())
-    .bind(user.id)
-    .bind(sub_id)
-    .bind("cust_fake_test_001")
-    .bind("prod_team_current")
-    .bind("Team")
-    .execute(&pool)
-    .await
-    .expect("expected to pre-seed the active subscription");
+    insert_test_subscription(&pool, user.id, sub_id, "Team", "active").await;
 
     let body = ChangePlanBody {
         product_id: "prod_team_current".to_string(),
@@ -2131,19 +2063,7 @@ async fn change_plan_downgrade_success() {
         .await
         .expect("expected cleanup to succeed");
 
-    query(
-        "INSERT INTO subscriptions (id, user_id, creem_subscription_id, creem_customer_id, creem_product_id, plan_name, status, created_at, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, 'active'::subscription_status, NOW(), NOW())",
-    )
-    .bind(Uuid::now_v7())
-    .bind(user.id)
-    .bind(sub_id)
-    .bind("cust_fake_test_001")
-    .bind("prod_enterprise_current")
-    .bind("Enterprise")
-    .execute(&pool)
-    .await
-    .expect("expected to pre-seed the active subscription");
+    insert_test_subscription(&pool, user.id, sub_id, "Enterprise", "active").await;
 
     let body = ChangePlanBody {
         product_id: "prod_team_target".to_string(),
@@ -2199,19 +2119,7 @@ async fn change_plan_upgrade_creem_rejects() {
         .await
         .expect("expected cleanup to succeed");
 
-    query(
-        "INSERT INTO subscriptions (id, user_id, creem_subscription_id, creem_customer_id, creem_product_id, plan_name, status, created_at, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, 'active'::subscription_status, NOW(), NOW())",
-    )
-    .bind(Uuid::now_v7())
-    .bind(user.id)
-    .bind(sub_id)
-    .bind("cust_fake_test_001")
-    .bind("prod_team_current")
-    .bind("Team")
-    .execute(&pool)
-    .await
-    .expect("expected to pre-seed the active subscription");
+    insert_test_subscription(&pool, user.id, sub_id, "Team", "active").await;
 
     let body = ChangePlanBody {
         product_id: "prod_enterprise_target".to_string(),
