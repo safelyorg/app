@@ -12,7 +12,10 @@ use axum::{
 use backend::{
     errors::dashboard::DashboardError,
     handlers::dashboard::{get_history, get_history_item, get_me, get_reports},
-    services::{auth::set_login_method, history::get_user_history},
+    services::{
+        auth::set_login_method,
+        history::{get_history_detail, get_user_history},
+    },
 };
 use chrono::{Duration, Utc};
 use serde_json::json;
@@ -518,6 +521,198 @@ async fn get_history_item_not_found_belongs_to_another_user() {
     cleanup_test_seller_chain(&pool, "olx", "history_item_owned_by_a_001").await;
     cleanup_test_user(&pool, email_a).await;
     cleanup_test_user(&pool, email_b).await;
+}
+
+#[tokio::test]
+async fn get_history_detail_not_found_nonexistent() {
+    let pool = test_pool().await;
+    let email = "get_history_detail_nonexistent_test@example.com";
+    let (user, _) = create_test_user(&pool, email).await;
+
+    let fake_analysis_id = Uuid::new_v4();
+
+    let result = get_history_detail(&pool, fake_analysis_id, user.id)
+        .await
+        .expect("expected the query itself to succeed");
+
+    assert!(
+        result.is_none(),
+        "expected None when no analysis matches this ID"
+    );
+
+    cleanup_test_user(&pool, email).await;
+}
+
+#[tokio::test]
+async fn get_history_detail_not_found_belongs_to_another_user() {
+    let pool = test_pool().await;
+
+    let email_owner = "history_detail_owner@example.com";
+    let (owner, _) = create_test_user(&pool, email_owner).await;
+
+    let email_intruder = "history_detail_intruder@example.com";
+    let (intruder, _) = create_test_user(&pool, email_intruder).await;
+
+    cleanup_test_seller_chain(&pool, "olx", "history_detail_owned_001").await;
+    let (listing_id, _seller_id) = insert_test_history_chain(
+        &pool,
+        owner.id,
+        "olx",
+        "history_detail_owned_001",
+        "Owner's Private Listing",
+    )
+    .await;
+
+    let analysis_id: Uuid = query_scalar("SELECT id FROM analysis WHERE listing_id = $1")
+        .bind(listing_id)
+        .fetch_one(&pool)
+        .await
+        .expect("expected to find the real analysis id");
+
+    let result = get_history_detail(&pool, analysis_id, intruder.id)
+        .await
+        .expect("expected the query itself to succeed");
+
+    assert!(
+        result.is_none(),
+        "expected None - a real security boundary, not leaking that this ID exists"
+    );
+
+    cleanup_test_seller_chain(&pool, "olx", "history_detail_owned_001").await;
+    cleanup_test_user(&pool, email_owner).await;
+    cleanup_test_user(&pool, email_intruder).await;
+}
+
+#[tokio::test]
+async fn get_history_detail_success_no_reports() {
+    let pool = test_pool().await;
+    let email = "history_detail_no_reports_test@example.com";
+    let (user, _) = create_test_user(&pool, email).await;
+
+    cleanup_test_seller_chain(&pool, "olx", "history_detail_no_reports_001").await;
+    let (listing_id, _seller_id) = insert_test_history_chain(
+        &pool,
+        user.id,
+        "olx",
+        "history_detail_no_reports_001",
+        "Clean Listing Detail",
+    )
+    .await;
+
+    let analysis_id: Uuid = query_scalar("SELECT id FROM analysis WHERE listing_id = $1")
+        .bind(listing_id)
+        .fetch_one(&pool)
+        .await
+        .expect("expected to find the real analysis id");
+
+    let result = get_history_detail(&pool, analysis_id, user.id)
+        .await
+        .expect("expected the query to succeed")
+        .expect("expected the analysis detail to be found");
+
+    assert_eq!(
+        result.listing_title,
+        Some("Clean Listing Detail".to_string())
+    );
+    assert_eq!(result.fraud_report_count, 0);
+    assert!(!result.reported, "expected reported to be false");
+    assert!(result.reports.is_empty(), "expected an empty reports list");
+
+    cleanup_test_seller_chain(&pool, "olx", "history_detail_no_reports_001").await;
+    cleanup_test_user(&pool, email).await;
+}
+
+#[tokio::test]
+async fn get_history_detail_success_with_multiple_reports() {
+    let pool = test_pool().await;
+    let email = "history_detail_multi_reports_test@example.com";
+    let (user, _) = create_test_user(&pool, email).await;
+
+    let platform = "olx";
+    let platform_id = "history_detail_multi_reports_001";
+
+    query("DELETE FROM fraud_reports WHERE seller_id IN (SELECT id FROM sellers WHERE platform = $1 AND platform_id = $2)")
+        .bind(platform)
+        .bind(platform_id)
+        .execute(&pool)
+        .await
+        .ok();
+
+    cleanup_test_seller_chain(&pool, platform, platform_id).await;
+
+    let (listing_id, seller_id) = insert_test_history_chain(
+        &pool,
+        user.id,
+        platform,
+        platform_id,
+        "Multiply Reported Listing",
+    )
+    .await;
+
+    let analysis_id: Uuid = query_scalar("SELECT id FROM analysis WHERE listing_id = $1")
+        .bind(listing_id)
+        .fetch_one(&pool)
+        .await
+        .expect("expected to find the real analysis id");
+
+    let listing_url: String = query_scalar("SELECT listing_url FROM listings WHERE id = $1")
+        .bind(listing_id)
+        .fetch_one(&pool)
+        .await
+        .expect("expected to find the real listing url");
+
+    for report_type in ["scam", "fake_item"] {
+        query(
+            "INSERT INTO fraud_reports (id, seller_id, user_id, platform, platform_id, report_type, listing_url, reported_at)
+             VALUES ($1, $2, $3, $4, $5, $6::report_types, $7, NOW())",
+        )
+        .bind(Uuid::now_v7())
+        .bind(seller_id)
+        .bind(user.id)
+        .bind(platform)
+        .bind(platform_id)
+        .bind(report_type)
+        .bind(&listing_url)
+        .execute(&pool)
+        .await
+        .expect("expected to create the fraud report");
+    }
+
+    let result = get_history_detail(&pool, analysis_id, user.id)
+        .await
+        .expect("expected the query to succeed")
+        .expect("expected the analysis detail to be found");
+
+    assert!(result.reported, "expected reported to be true");
+    assert_eq!(
+        result.reports.len(),
+        2,
+        "expected BOTH reports to appear, not just one"
+    );
+
+    query("DELETE FROM fraud_reports WHERE seller_id = $1")
+        .bind(seller_id)
+        .execute(&pool)
+        .await
+        .ok();
+
+    cleanup_test_seller_chain(&pool, platform, platform_id).await;
+    cleanup_test_user(&pool, email).await;
+}
+
+#[tokio::test]
+async fn get_history_detail_database_error() {
+    let pool = test_pool().await;
+    pool.close().await;
+
+    let fake_analysis_id = Uuid::new_v4();
+    let fake_user_id = Uuid::new_v4();
+    let result = get_history_detail(&pool, fake_analysis_id, fake_user_id).await;
+
+    assert!(
+        result.is_err(),
+        "expected a genuine database error when the connection pool is closed"
+    );
 }
 
 #[tokio::test]
