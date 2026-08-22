@@ -209,6 +209,11 @@ pub async fn verify_and_parse_webhook(
 
 /// Pulls the real Safely user ID out of a subscription's metadata, if
 /// it's genuinely present and valid.
+///
+/// It checks the metadata itself exists, then that a user ID string was
+/// actually included inside it, then that string genuinely parses as a
+/// real UUID - failing quietly back to None at whichever step doesn't
+/// hold, rather than treating a missing or malformed piece as an error.
 pub fn extract_metadata_user_id(parsed: &ParsedSubscription) -> Option<Uuid> {
     parsed
         .metadata
@@ -217,6 +222,15 @@ pub fn extract_metadata_user_id(parsed: &ParsedSubscription) -> Option<Uuid> {
         .and_then(|s| Uuid::parse_str(s).ok())
 }
 
+/// Handles the moment a subscription genuinely becomes active - a trial
+/// starting, a payment succeeding, or a subscription otherwise turning
+/// paid - by saving the real, current state to our own database.
+///
+/// It pulls the real Safely user ID out of the event's metadata, and if
+/// present, upserts the subscription using Creem's own real status
+/// directly, rather than guessing from which specific event name fired.
+/// If the user ID is genuinely missing, it logs that fact and does
+/// nothing further, since there's no account to link this event to.
 pub async fn handle_subscription_granted(pool: &Pool<Postgres>, parsed: &ParsedSubscription) {
     match extract_metadata_user_id(parsed) {
         Some(user_id) => {
@@ -225,21 +239,29 @@ pub async fn handle_subscription_granted(pool: &Pool<Postgres>, parsed: &ParsedS
             }
         }
         None => eprintln!(
-            "subscription event missing safely_user_id in metadata - cannot link to an account"
+            "Subscription event is missing safely_user_id in metadata. It can't link to an account"
         ),
     }
 }
 
+/// Handles the moment Creem tells us a payment genuinely failed - the
+/// subscription isn't canceled yet, but billing is now at risk, so the
+/// person needs a real heads-up and a way to fix it.
+///
+/// It builds a real link straight to the billing-management section of
+/// the dashboard, sends a payment-failed email to the customer's real
+/// address, and separately updates our own database to reflect the
+/// "past_due" status - these two steps are genuinely independent, so a
+/// failure in one (like the email not sending) doesn't stop the other
+/// from completing.
 pub async fn handle_subscription_past_due(pool: &Pool<Postgres>, parsed: &ParsedSubscription) {
     let portal_url = format!(
         "{}/dashboard/?manage_billing=1",
         var("PUBLIC_BASE_URL").unwrap_or_else(|_| "http://localhost:3000".to_string())
     );
-
     if let Err(e) = send_payment_failed_email(&parsed.customer.email, &portal_url).await {
         eprintln!("Failed to send payment-failed email: {:?}", e);
     }
-
     if let Some(user_id) = extract_metadata_user_id(parsed) {
         if let Err(e) = upsert_subscription(pool, user_id, parsed, "past_due").await {
             eprintln!("Failed to upsert subscription: {}", e);
@@ -247,6 +269,17 @@ pub async fn handle_subscription_past_due(pool: &Pool<Postgres>, parsed: &Parsed
     }
 }
 
+/// Handles the three real ways a subscription stops being active -
+/// paused, expired, or genuinely canceled and, for cancellation
+/// specifically, decides whether this is news worth emailing about.
+///
+/// It maps the event type to the correct status, checks what status
+/// this subscription already had before this event arrived, updates our
+/// own database to the new status, and only for a genuinely new
+/// cancellation, one we didn't already know about. It sends the final
+/// "subscription ended" email. If they already canceled through our own
+/// site, this is just Creem confirming what we already know, so no
+/// second email goes out.
 pub async fn handle_subscription_lost(
     pool: &Pool<Postgres>,
     parsed: &ParsedSubscription,
@@ -258,9 +291,6 @@ pub async fn handle_subscription_lost(
         _ => "canceled",
     };
 
-    // If they already canceled through our own site, don't send another
-    // email - Creem's just confirming what we already know. Only email
-    // them if THIS is the moment Creem gave up trying to charge them.
     let previous_status: Option<String> =
         query_scalar("SELECT status::text FROM subscriptions WHERE creem_subscription_id = $1")
             .bind(&parsed.id)
@@ -281,9 +311,13 @@ pub async fn handle_subscription_lost(
     }
 }
 
-// In case someone changes a subscription directly in Creem's
-// dashboard instead of through our site - this keeps our database
-// matching what's actually true.
+/// Keeps our own database in sync whenever a subscription changes on
+/// Creem's side through some path other than our own endpoints - most
+/// often, someone editing it directly from Creem's own dashboard.
+///
+/// It pulls the real user ID out of the event's metadata, and if
+/// present, saves whatever status Creem genuinely reports right now.
+/// No separate logic beyond that.
 pub async fn handle_subscription_update(pool: &Pool<Postgres>, parsed: &ParsedSubscription) {
     if let Some(user_id) = extract_metadata_user_id(parsed) {
         if let Err(e) = upsert_subscription(pool, user_id, parsed, &parsed.status).await {
@@ -390,7 +424,15 @@ pub async fn apply_scheduled_downgrade_if_due(
     Some(sched_plan_name.to_string())
 }
 
-/// Applies an upgrade immediately, both at Creem, and in the database.
+/// Applies an upgrade immediately, both at Creem, and in our own
+/// database unlike a downgrade, an upgrade never waits for the
+/// current period to end, since charging more, right away, is never a
+/// bad experience for the person paying.
+///
+/// It tells Creem to make the real, immediate change, with proration so
+/// the person is charged correctly for the switch, then updates our own
+/// row to match. By clearing any previously scheduled downgrade at the
+/// same time, since a fresh upgrade genuinely supersedes it.
 pub async fn apply_upgrade(
     pool: &Pool<Postgres>,
     sub_id: &str,
