@@ -10,7 +10,8 @@ use axum::{
 };
 use backend::{
     errors::dashboard::DashboardError,
-    handlers::dashboard::{get_history, get_history_item, get_reports},
+    handlers::dashboard::{get_history, get_history_item, get_me, get_reports},
+    services::auth::set_login_method,
 };
 use serde_json::json;
 use sqlx::{query, query_scalar};
@@ -268,5 +269,153 @@ async fn get_reports_success() {
     assert_eq!(reports[0]["report_type"], json!("scam"));
 
     cleanup_test_seller_with_reports(&pool, platform, platform_id).await;
+    cleanup_test_user(&pool, email).await;
+}
+
+#[tokio::test]
+async fn get_me_unauthorized() {
+    let pool = test_pool().await;
+    let headers = HeaderMap::new();
+
+    let result = get_me(State(pool), headers).await;
+    match result {
+        Err(DashboardError::Unauthorized) => {}
+        Err(other) => panic!("expected Unauthorized, got a different error: {:?}", other),
+        Ok(_) => panic!("expected an unauthenticated request to be rejected, but it succeeded"),
+    }
+}
+
+#[tokio::test]
+async fn get_me_success_with_explicit_login_method() {
+    let pool = test_pool().await;
+    let email = "get_me_explicit_method_test@example.com";
+    let (user, _) = create_test_user(&pool, email).await;
+    let headers = auth_headers_for(&pool, user.id).await;
+
+    set_login_method(&pool, user.id, "google")
+        .await
+        .expect("expected to set the login method");
+
+    let result = get_me(State(pool.clone()), headers)
+        .await
+        .expect("expected the request to succeed")
+        .0;
+
+    assert_eq!(
+        result["signed_in_with"],
+        json!("google"),
+        "expected the explicit, real login method to be used directly"
+    );
+    assert_eq!(result["email"], json!(email));
+
+    cleanup_test_user(&pool, email).await;
+}
+
+#[tokio::test]
+async fn get_me_success_fallback_google_linked() {
+    let pool = test_pool().await;
+    let email = "get_me_fallback_google_test@example.com";
+    let (user, _) = create_test_user(&pool, email).await;
+    let headers = auth_headers_for(&pool, user.id).await;
+
+    // Genuinely link a Google ID directly, WITHOUT ever calling
+    // set_login_method - this leaves last_login_method NULL.
+    query("UPDATE users SET google_id = $1 WHERE id = $2")
+        .bind("fallback_test_google_id_001")
+        .bind(user.id)
+        .execute(&pool)
+        .await
+        .expect("expected to link the google id directly");
+
+    let result = get_me(State(pool.clone()), headers)
+        .await
+        .expect("expected the request to succeed")
+        .0;
+
+    assert_eq!(
+        result["signed_in_with"],
+        json!("google"),
+        "expected the fallback to correctly guess 'google', since last_login_method is NULL but google_id is set"
+    );
+    assert_eq!(result["google_linked"], json!(true));
+
+    cleanup_test_user(&pool, email).await;
+}
+
+#[tokio::test]
+async fn get_me_success_fallback_no_google_link() {
+    let pool = test_pool().await;
+    let email = "get_me_fallback_email_test@example.com";
+    let (user, _) = create_test_user(&pool, email).await;
+    let headers = auth_headers_for(&pool, user.id).await;
+
+    let result = get_me(State(pool.clone()), headers)
+        .await
+        .expect("expected the request to succeed")
+        .0;
+
+    assert_eq!(
+        result["signed_in_with"],
+        json!("email"),
+        "expected the fallback to default to 'email', since neither last_login_method nor google_id is set"
+    );
+    assert_eq!(result["google_linked"], json!(false));
+
+    cleanup_test_user(&pool, email).await;
+}
+
+#[tokio::test]
+async fn get_me_success_has_avatar() {
+    let pool = test_pool().await;
+    let email = "get_me_has_avatar_test@example.com";
+    let (user, _) = create_test_user(&pool, email).await;
+    let headers = auth_headers_for(&pool, user.id).await;
+
+    // Genuinely real bytes stored - the actual content doesn't matter
+    // here, only that avatar_data is NOT NULL.
+    let fake_image_bytes: Vec<u8> = vec![0xFF, 0xD8, 0xFF, 0xE0];
+    query("UPDATE users SET avatar_data = $1, avatar_content_type = $2 WHERE id = $3")
+        .bind(&fake_image_bytes)
+        .bind("image/png")
+        .bind(user.id)
+        .execute(&pool)
+        .await
+        .expect("expected to set the avatar data");
+
+    let result = get_me(State(pool.clone()), headers)
+        .await
+        .expect("expected the request to succeed")
+        .0;
+
+    assert_eq!(
+        result["has_avatar"],
+        json!(true),
+        "expected has_avatar to be true, since avatar_data is genuinely set"
+    );
+
+    cleanup_test_user(&pool, email).await;
+}
+
+// Deliberately no setup here - a brand-new test user genuinely has
+// no avatar_data set at all, which is exactly what this scenario
+// needs.
+#[tokio::test]
+async fn get_me_success_no_avatar() {
+    let pool = test_pool().await;
+    let email = "get_me_no_avatar_test@example.com";
+    let (user, _) = create_test_user(&pool, email).await;
+    let headers = auth_headers_for(&pool, user.id).await;
+
+    let result = get_me(State(pool.clone()), headers)
+        .await
+        .expect("expected the request to succeed")
+        .0;
+
+    assert_eq!(
+        result["has_avatar"],
+        json!(false),
+        "expected has_avatar to be false, since no avatar was ever set"
+    );
+
     cleanup_test_user(&pool, email).await;
 }
