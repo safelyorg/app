@@ -7,8 +7,9 @@ use crate::common::{
 };
 use axum::{
     Json,
+    body::Body,
     extract::{Path, State},
-    http::HeaderMap,
+    http::{HeaderMap, Request, StatusCode},
     response::IntoResponse,
 };
 use backend::{
@@ -18,8 +19,9 @@ use backend::{
         get_reports, update_me,
     },
     models::fraud_reports::ReportTypes,
+    routes::dashboard::dashboard_routes,
     services::{
-        auth::{insert_magic_link, set_login_method},
+        auth::{create_session, insert_magic_link, set_login_method},
         history::{get_history_detail, get_user_history, get_user_reports},
     },
 };
@@ -27,6 +29,7 @@ use chrono::{Duration, Utc};
 use reqwest::header::CONTENT_TYPE;
 use serde_json::json;
 use sqlx::{query, query_scalar};
+use tower::ServiceExt;
 use uuid::Uuid;
 
 #[tokio::test]
@@ -1539,4 +1542,254 @@ async fn get_avatar_database_error() {
         Err(other) => panic!("expected InternalError, got a different error: {:?}", other),
         Ok(_) => panic!("expected a genuine database error, but the request succeeded"),
     }
+}
+
+#[tokio::test]
+async fn upload_avatar_unauthorized() {
+    let pool = test_pool().await;
+    let app = dashboard_routes().with_state(pool.clone());
+
+    let boundary = "----test_boundary_unauthorized";
+    let fake_image_bytes: &[u8] = &[0xFF, 0xD8, 0xFF, 0xE0];
+
+    let mut body = Vec::new();
+    body.extend_from_slice(format!("--{}\r\n", boundary).as_bytes());
+    body.extend_from_slice(
+        b"Content-Disposition: form-data; name=\"avatar\"; filename=\"test.jpg\"\r\n",
+    );
+    body.extend_from_slice(b"Content-Type: image/jpeg\r\n\r\n");
+    body.extend_from_slice(fake_image_bytes);
+    body.extend_from_slice(format!("\r\n--{}--\r\n", boundary).as_bytes());
+
+    let request = Request::builder()
+        .method("POST")
+        .uri("/api/v1/me/avatar")
+        .header(
+            "content-type",
+            format!("multipart/form-data; boundary={}", boundary),
+        )
+        .body(Body::from(body))
+        .expect("expected to build the request");
+
+    let response = app
+        .oneshot(request)
+        .await
+        .expect("expected to get a response");
+
+    assert_eq!(
+        response.status(),
+        StatusCode::UNAUTHORIZED,
+        "expected an unauthenticated upload to be rejected"
+    );
+}
+
+#[tokio::test]
+async fn upload_avatar_bad_request_no_file() {
+    let pool = test_pool().await;
+    let email = "upload_avatar_no_file_test@example.com";
+    let (user, _) = create_test_user(&pool, email).await;
+    let session_token = create_session(&pool, user.id)
+        .await
+        .expect("expected to create a real session");
+
+    let app = dashboard_routes().with_state(pool.clone());
+
+    let boundary = "----test_boundary_no_file";
+    let mut body = Vec::new();
+    body.extend_from_slice(format!("--{}\r\n", boundary).as_bytes());
+    body.extend_from_slice(b"Content-Disposition: form-data; name=\"not_avatar\"\r\n\r\n");
+    body.extend_from_slice(b"some unrelated value");
+    body.extend_from_slice(format!("\r\n--{}--\r\n", boundary).as_bytes());
+
+    let request = Request::builder()
+        .method("POST")
+        .uri("/api/v1/me/avatar")
+        .header("authorization", format!("Bearer {}", session_token))
+        .header(
+            "content-type",
+            format!("multipart/form-data; boundary={}", boundary),
+        )
+        .body(Body::from(body))
+        .expect("expected to build the request");
+
+    let response = app
+        .oneshot(request)
+        .await
+        .expect("expected to get a response");
+
+    assert_eq!(
+        response.status(),
+        StatusCode::BAD_REQUEST,
+        "expected a missing avatar field to be rejected as BadRequest"
+    );
+
+    cleanup_test_user(&pool, email).await;
+}
+
+#[tokio::test]
+async fn upload_avatar_bad_request_file_too_large() {
+    let pool = test_pool().await;
+    let email = "upload_avatar_too_large_test@example.com";
+    let (user, _) = create_test_user(&pool, email).await;
+    let session_token = create_session(&pool, user.id)
+        .await
+        .expect("expected to create a real session");
+
+    let app = dashboard_routes().with_state(pool.clone());
+
+    // Genuinely over 2MB - deliberately 2MB + 1 byte, to test right at
+    // the actual boundary, not just "obviously huge."
+    let oversized_bytes = vec![0u8; (2 * 1024 * 1024) + 1];
+
+    let boundary = "----test_boundary_too_large";
+    let mut body = Vec::new();
+    body.extend_from_slice(format!("--{}\r\n", boundary).as_bytes());
+    body.extend_from_slice(
+        b"Content-Disposition: form-data; name=\"avatar\"; filename=\"big.png\"\r\n",
+    );
+    body.extend_from_slice(b"Content-Type: image/png\r\n\r\n");
+    body.extend_from_slice(&oversized_bytes);
+    body.extend_from_slice(format!("\r\n--{}--\r\n", boundary).as_bytes());
+
+    let request = Request::builder()
+        .method("POST")
+        .uri("/api/v1/me/avatar")
+        .header("authorization", format!("Bearer {}", session_token))
+        .header(
+            "content-type",
+            format!("multipart/form-data; boundary={}", boundary),
+        )
+        .body(Body::from(body))
+        .expect("expected to build the request");
+
+    let response = app
+        .oneshot(request)
+        .await
+        .expect("expected to get a response");
+
+    assert_eq!(
+        response.status(),
+        StatusCode::BAD_REQUEST,
+        "expected a file over 2MB to be rejected as BadRequest"
+    );
+
+    cleanup_test_user(&pool, email).await;
+}
+
+#[tokio::test]
+async fn upload_avatar_bad_request_unsupported_type() {
+    let pool = test_pool().await;
+    let email = "upload_avatar_wrong_type_test@example.com";
+    let (user, _) = create_test_user(&pool, email).await;
+    let session_token = create_session(&pool, user.id)
+        .await
+        .expect("expected to create a real session");
+
+    let app = dashboard_routes().with_state(pool.clone());
+
+    // A genuinely real, small file - but with an unsupported content
+    // type, not PNG/JPEG/WEBP.
+    let fake_bytes: &[u8] = b"just some plain text content";
+
+    let boundary = "----test_boundary_wrong_type";
+    let mut body = Vec::new();
+    body.extend_from_slice(format!("--{}\r\n", boundary).as_bytes());
+    body.extend_from_slice(
+        b"Content-Disposition: form-data; name=\"avatar\"; filename=\"notes.txt\"\r\n",
+    );
+    body.extend_from_slice(b"Content-Type: text/plain\r\n\r\n");
+    body.extend_from_slice(fake_bytes);
+    body.extend_from_slice(format!("\r\n--{}--\r\n", boundary).as_bytes());
+
+    let request = Request::builder()
+        .method("POST")
+        .uri("/api/v1/me/avatar")
+        .header("authorization", format!("Bearer {}", session_token))
+        .header(
+            "content-type",
+            format!("multipart/form-data; boundary={}", boundary),
+        )
+        .body(Body::from(body))
+        .expect("expected to build the request");
+
+    let response = app
+        .oneshot(request)
+        .await
+        .expect("expected to get a response");
+
+    assert_eq!(
+        response.status(),
+        StatusCode::BAD_REQUEST,
+        "expected an unsupported content type (text/plain) to be rejected"
+    );
+
+    cleanup_test_user(&pool, email).await;
+}
+
+#[tokio::test]
+async fn upload_avatar_success() {
+    let pool = test_pool().await;
+    let email = "upload_avatar_success_test@example.com";
+    let (user, _) = create_test_user(&pool, email).await;
+    let session_token = create_session(&pool, user.id)
+        .await
+        .expect("expected to create a real session");
+
+    let app = dashboard_routes().with_state(pool.clone());
+
+    let real_png_bytes: &[u8] = &[0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
+
+    let boundary = "----test_boundary_success";
+    let mut body = Vec::new();
+    body.extend_from_slice(format!("--{}\r\n", boundary).as_bytes());
+    body.extend_from_slice(
+        b"Content-Disposition: form-data; name=\"avatar\"; filename=\"real.png\"\r\n",
+    );
+    body.extend_from_slice(b"Content-Type: image/png\r\n\r\n");
+    body.extend_from_slice(real_png_bytes);
+    body.extend_from_slice(format!("\r\n--{}--\r\n", boundary).as_bytes());
+
+    let request = Request::builder()
+        .method("POST")
+        .uri("/api/v1/me/avatar")
+        .header("authorization", format!("Bearer {}", session_token))
+        .header(
+            "content-type",
+            format!("multipart/form-data; boundary={}", boundary),
+        )
+        .body(Body::from(body))
+        .expect("expected to build the request");
+
+    let response = app
+        .oneshot(request)
+        .await
+        .expect("expected to get a response");
+
+    assert_eq!(
+        response.status(),
+        StatusCode::OK,
+        "expected a genuinely valid PNG upload to succeed"
+    );
+
+    let saved_data: Option<Vec<u8>> = query_scalar("SELECT avatar_data FROM users WHERE id = $1")
+        .bind(user.id)
+        .fetch_one(&pool)
+        .await
+        .expect("expected the query to succeed");
+
+    let saved_content_type: Option<String> =
+        query_scalar("SELECT avatar_content_type FROM users WHERE id = $1")
+            .bind(user.id)
+            .fetch_one(&pool)
+            .await
+            .expect("expected the query to succeed");
+
+    assert_eq!(
+        saved_data.as_deref(),
+        Some(real_png_bytes),
+        "expected the exact, real PNG bytes to be saved"
+    );
+    assert_eq!(saved_content_type, Some("image/png".to_string()));
+
+    cleanup_test_user(&pool, email).await;
 }
