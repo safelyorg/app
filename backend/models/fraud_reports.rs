@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use sqlx::Type;
 
-#[derive(Debug, Serialize, Deserialize, Type)]
+#[derive(Debug, PartialEq, Serialize, Deserialize, Type)]
 #[sqlx(type_name = "report_types", rename_all = "snake_case")]
 #[serde(rename_all = "snake_case")]
 pub enum ReportTypes {

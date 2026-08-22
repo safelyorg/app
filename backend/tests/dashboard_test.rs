@@ -12,9 +12,10 @@ use axum::{
 use backend::{
     errors::dashboard::DashboardError,
     handlers::dashboard::{get_history, get_history_item, get_me, get_reports},
+    models::fraud_reports::ReportTypes,
     services::{
         auth::set_login_method,
-        history::{get_history_detail, get_user_history},
+        history::{get_history_detail, get_user_history, get_user_reports},
     },
 };
 use chrono::{Duration, Utc};
@@ -708,6 +709,210 @@ async fn get_history_detail_database_error() {
     let fake_analysis_id = Uuid::new_v4();
     let fake_user_id = Uuid::new_v4();
     let result = get_history_detail(&pool, fake_analysis_id, fake_user_id).await;
+
+    assert!(
+        result.is_err(),
+        "expected a genuine database error when the connection pool is closed"
+    );
+}
+
+#[tokio::test]
+async fn get_user_reports_empty_when_no_reports() {
+    let pool = test_pool().await;
+    let email = "get_user_reports_empty_test@example.com";
+    let (user, _) = create_test_user(&pool, email).await;
+
+    let result = get_user_reports(&pool, user.id)
+        .await
+        .expect("expected the query itself to succeed");
+
+    assert!(
+        result.is_empty(),
+        "expected an empty list, not an error, when no reports exist"
+    );
+
+    cleanup_test_user(&pool, email).await;
+}
+
+#[tokio::test]
+async fn get_user_reports_success_across_multiple_sellers() {
+    let pool = test_pool().await;
+    let email = "get_user_reports_multi_seller_test@example.com";
+    let (user, _) = create_test_user(&pool, email).await;
+
+    let platform = "olx";
+    let platform_id_a = "reports_multi_seller_a_001";
+    let platform_id_b = "reports_multi_seller_b_001";
+
+    cleanup_test_seller_with_reports(&pool, platform, platform_id_a).await;
+    cleanup_test_seller_with_reports(&pool, platform, platform_id_b).await;
+
+    let seller_a_id = Uuid::now_v7();
+    query(
+        "INSERT INTO sellers (id, platform, platform_id, name, verification, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, 'unknown'::seller_verification, NOW(), NOW())",
+    )
+    .bind(seller_a_id)
+    .bind(platform)
+    .bind(platform_id_a)
+    .bind("Seller A")
+    .execute(&pool)
+    .await
+    .expect("expected to create seller A");
+
+    let seller_b_id = Uuid::now_v7();
+    query(
+        "INSERT INTO sellers (id, platform, platform_id, name, verification, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, 'unknown'::seller_verification, NOW(), NOW())",
+    )
+    .bind(seller_b_id)
+    .bind(platform)
+    .bind(platform_id_b)
+    .bind("Seller B")
+    .execute(&pool)
+    .await
+    .expect("expected to create seller B");
+
+    query(
+        "INSERT INTO fraud_reports (id, seller_id, user_id, platform, platform_id, report_type, listing_url, reported_at)
+         VALUES ($1, $2, $3, $4, $5, $6::report_types, $7, NOW())",
+    )
+    .bind(Uuid::now_v7())
+    .bind(seller_a_id)
+    .bind(user.id)
+    .bind(platform)
+    .bind(platform_id_a)
+    .bind("scam")
+    .bind("https://olx.com/item/report-against-a")
+    .execute(&pool)
+    .await
+    .expect("expected to create the report against seller A");
+
+    query(
+        "INSERT INTO fraud_reports (id, seller_id, user_id, platform, platform_id, report_type, listing_url, reported_at)
+         VALUES ($1, $2, $3, $4, $5, $6::report_types, $7, NOW())",
+    )
+    .bind(Uuid::now_v7())
+    .bind(seller_b_id)
+    .bind(user.id)
+    .bind(platform)
+    .bind(platform_id_b)
+    .bind("fake_item")
+    .bind("https://olx.com/item/report-against-b")
+    .execute(&pool)
+    .await
+    .expect("expected to create the report against seller B");
+
+    let result = get_user_reports(&pool, user.id)
+        .await
+        .expect("expected the query to succeed");
+
+    assert_eq!(
+        result.len(),
+        2,
+        "expected both reports, across two different sellers, to appear"
+    );
+
+    let names: Vec<&str> = result
+        .iter()
+        .map(|r| r.seller_name.as_deref().unwrap_or(""))
+        .collect();
+
+    assert!(
+        names.contains(&"Seller A"),
+        "expected the report against Seller A"
+    );
+    assert!(
+        names.contains(&"Seller B"),
+        "expected the report against Seller B"
+    );
+
+    cleanup_test_seller_with_reports(&pool, platform, platform_id_a).await;
+    cleanup_test_seller_with_reports(&pool, platform, platform_id_b).await;
+    cleanup_test_user(&pool, email).await;
+}
+
+#[tokio::test]
+async fn get_user_reports_orders_newest_first() {
+    let pool = test_pool().await;
+    let email = "get_user_reports_ordering_test@example.com";
+    let (user, _) = create_test_user(&pool, email).await;
+
+    let platform = "olx";
+    let platform_id = "reports_ordering_seller_001";
+    cleanup_test_seller_with_reports(&pool, platform, platform_id).await;
+
+    let seller_id = Uuid::now_v7();
+    query(
+        "INSERT INTO sellers (id, platform, platform_id, name, verification, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, 'unknown'::seller_verification, NOW(), NOW())",
+    )
+    .bind(seller_id)
+    .bind(platform)
+    .bind(platform_id)
+    .bind("Ordering Test Seller")
+    .execute(&pool)
+    .await
+    .expect("expected to create the seller");
+
+    let now = Utc::now();
+
+    let reports = [
+        ("scam", now - Duration::hours(3)),        // oldest
+        ("fake_item", now - Duration::hours(2)),   // middle
+        ("no_delivery", now - Duration::hours(1)), // newest
+    ];
+
+    for (report_type, reported_at) in reports {
+        query(
+            "INSERT INTO fraud_reports (id, seller_id, user_id, platform, platform_id, report_type, listing_url, reported_at)
+             VALUES ($1, $2, $3, $4, $5, $6::report_types, $7, $8)",
+        )
+        .bind(Uuid::now_v7())
+        .bind(seller_id)
+        .bind(user.id)
+        .bind(platform)
+        .bind(platform_id)
+        .bind(report_type)
+        .bind(format!("https://olx.com/item/ordering-{}", report_type))
+        .bind(reported_at)
+        .execute(&pool)
+        .await
+        .expect("expected to create the fraud report");
+    }
+
+    let result = get_user_reports(&pool, user.id)
+        .await
+        .expect("expected the query to succeed");
+
+    assert_eq!(result.len(), 3, "expected all three reports to appear");
+    assert_eq!(
+        result[0].report_type,
+        ReportTypes::NoDelivery,
+        "expected the newest report first"
+    );
+    assert_eq!(
+        result[1].report_type,
+        ReportTypes::FakeItem,
+        "expected the middle report second"
+    );
+    assert_eq!(
+        result[2].report_type,
+        ReportTypes::Scam,
+        "expected the oldest report last"
+    );
+
+    cleanup_test_seller_with_reports(&pool, platform, platform_id).await;
+    cleanup_test_user(&pool, email).await;
+}
+
+#[tokio::test]
+async fn get_user_reports_database_error() {
+    let pool = test_pool().await;
+    pool.close().await;
+
+    let fake_user_id = Uuid::new_v4();
+    let result = get_user_reports(&pool, fake_user_id).await;
 
     assert!(
         result.is_err(),
