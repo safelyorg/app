@@ -9,12 +9,13 @@ use axum::{
     Json,
     extract::{Path, State},
     http::HeaderMap,
+    response::IntoResponse,
 };
 use backend::{
     errors::dashboard::DashboardError,
     handlers::dashboard::{
-        UpdateMeRequest, delete_account, get_history, get_history_item, get_me, get_reports,
-        update_me,
+        UpdateMeRequest, delete_account, get_avatar, get_history, get_history_item, get_me,
+        get_reports, update_me,
     },
     models::fraud_reports::ReportTypes,
     services::{
@@ -23,6 +24,7 @@ use backend::{
     },
 };
 use chrono::{Duration, Utc};
+use reqwest::header::CONTENT_TYPE;
 use serde_json::json;
 use sqlx::{query, query_scalar};
 use uuid::Uuid;
@@ -1433,6 +1435,104 @@ async fn delete_account_database_error() {
     pool.close().await;
 
     let result = delete_account(State(pool), headers).await;
+
+    match result {
+        Err(DashboardError::InternalError(_)) => {}
+        Err(other) => panic!("expected InternalError, got a different error: {:?}", other),
+        Ok(_) => panic!("expected a genuine database error, but the request succeeded"),
+    }
+}
+
+#[tokio::test]
+async fn get_avatar_unauthorized() {
+    let pool = test_pool().await;
+
+    let headers = HeaderMap::new();
+
+    let result = get_avatar(State(pool), headers).await;
+
+    match result {
+        Err(DashboardError::Unauthorized) => {}
+        Err(other) => panic!("expected Unauthorized, got a different error: {:?}", other),
+        Ok(_) => panic!("expected an unauthenticated request to be rejected, but it succeeded"),
+    }
+}
+
+#[tokio::test]
+async fn get_avatar_not_found_no_avatar_set() {
+    let pool = test_pool().await;
+    let email = "get_avatar_no_avatar_test@example.com";
+    let (user, _) = create_test_user(&pool, email).await;
+    let headers = auth_headers_for(&pool, user.id).await;
+
+    let result = get_avatar(State(pool.clone()), headers).await;
+
+    match result {
+        Err(DashboardError::NotFound(_)) => {}
+        Err(other) => panic!("expected NotFound, got a different error: {:?}", other),
+        Ok(_) => panic!("expected no avatar to be rejected as NotFound, but it succeeded"),
+    }
+
+    cleanup_test_user(&pool, email).await;
+}
+
+#[tokio::test]
+async fn get_avatar_success() {
+    let pool = test_pool().await;
+    let email = "get_avatar_success_test@example.com";
+    let (user, _) = create_test_user(&pool, email).await;
+    let headers = auth_headers_for(&pool, user.id).await;
+
+    // Real, deliberately arbitrary bytes - matching a genuine JPEG file
+    // signature, though the exact content doesn't matter here.
+    let real_bytes: Vec<u8> = vec![0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10];
+    query("UPDATE users SET avatar_data = $1, avatar_content_type = $2 WHERE id = $3")
+        .bind(&real_bytes)
+        .bind("image/jpeg")
+        .bind(user.id)
+        .execute(&pool)
+        .await
+        .expect("expected to set the avatar data");
+
+    let result = get_avatar(State(pool.clone()), headers)
+        .await
+        .expect("expected the request to succeed");
+
+    let response = result.into_response();
+
+    let content_type = response
+        .headers()
+        .get(CONTENT_TYPE)
+        .expect("expected a real Content-Type header")
+        .to_str()
+        .expect("expected the header to be valid text");
+
+    assert_eq!(content_type, "image/jpeg");
+
+    let body_bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("expected to read the real response body");
+    assert_eq!(
+        body_bytes.as_ref(),
+        real_bytes.as_slice(),
+        "expected the exact, real image bytes to come back unchanged"
+    );
+
+    cleanup_test_user(&pool, email).await;
+}
+
+#[tokio::test]
+async fn get_avatar_database_error() {
+    let pool = test_pool().await;
+    let email = "get_avatar_db_error_test@example.com";
+    let (user, _) = create_test_user(&pool, email).await;
+
+    let headers = auth_headers_for(&pool, user.id).await;
+
+    cleanup_test_user(&pool, email).await;
+    pool.close().await;
+
+    let result = get_avatar(State(pool), headers).await;
 
     match result {
         Err(DashboardError::InternalError(_)) => {}
