@@ -4,25 +4,27 @@ use crate::models::history::{
 use crate::models::sellers::{Sellers, SellersResponse};
 use crate::services::fraud_reports::{build_network_summary, count_fraud_reports};
 use crate::services::listings::get_monthly_visit_activity;
-use sqlx::{Error, Pool, Postgres};
+use sqlx::{Error, Pool, Postgres, query_as};
 use uuid::Uuid;
 
-/// Every LISTING this user has analyzed, most recent first - deduplicated by
-/// the ad's actual identity (its scraped listing_id, e.g. OLX's "iid-..."
-/// number, falling back to the full listing_url if that wasn't captured),
-/// NOT by the listings table's internal row id.
+/// Gets every listing this person has ever analyzed, newest first.
 ///
-/// "reported" means "have I filed a report against THIS SPECIFIC listing" -
-/// matched by listing_url, not just by seller - so it stays consistent with
-/// the detail view, which only ever shows reports for the one listing being
-/// viewed. A seller with multiple listings can be reported on one and not
-/// another; this reflects that correctly instead of flagging every listing
-/// from that seller the moment any one of them gets reported.
+/// Each listing only appears once, even if it was analyzed several
+/// times - matched by its real scraped ID (like OLX's "iid-..." number),
+/// or its full URL if that ID wasn't captured. This is NOT the same as
+/// the listing's internal database row ID, since the same real ad could
+/// technically end up with more than one row over time.
+///
+/// "reported" means "did I file a report on THIS exact listing" - not
+/// just this seller in general. A seller can have five listings, with
+/// one reported and four not, and this correctly shows that difference,
+/// instead of marking all five as reported the moment any one of them
+/// gets flagged.
 pub async fn get_user_history(
     pool: &Pool<Postgres>,
     user_id: Uuid,
 ) -> Result<Vec<HistoryItem>, Error> {
-    sqlx::query_as::<_, HistoryItem>(
+    query_as::<_, HistoryItem>(
         "
         SELECT * FROM (
             SELECT DISTINCT ON (s.id, COALESCE(l.listing_id, l.listing_url))
@@ -56,44 +58,25 @@ pub async fn get_user_history(
     .await
 }
 
-/// Every fraud report this user has personally filed, across every
-/// listing and seller - this is the "My Reports" tab, deliberately NOT
-/// scoped to any single listing, unlike get_history_detail below.
-pub async fn get_user_reports(
-    pool: &Pool<Postgres>,
-    user_id: Uuid,
-) -> Result<Vec<ReportItem>, Error> {
-    sqlx::query_as::<_, ReportItem>(
-        "
-        SELECT
-            fr.id,
-            fr.reported_at,
-            fr.report_type,
-            fr.platform,
-            s.name AS seller_name,
-            s.id AS seller_id,
-            fr.listing_url
-        FROM fraud_reports fr
-        JOIN sellers s ON fr.seller_id = s.id
-        WHERE fr.user_id = $1
-        ORDER BY fr.reported_at DESC
-        LIMIT 200
-        ",
-    )
-    .bind(user_id)
-    .fetch_all(pool)
-    .await
-}
-
-/// Full detail for one specific listing analysis, including EVERY report
-/// this user has filed against this exact listing (matched by listing_url)
-/// - not just the seller's most recent report from anywhere.
+/// Gets the full, detailed record for one specific analysis - everything
+/// that was originally shown, plus EVERY report this person has filed
+/// against this exact listing (not just the seller's most recent report
+/// from anywhere else).
+///
+/// It looks up the analysis, matched by BOTH its ID and the requesting
+/// person's own user ID together - so a genuinely nonexistent analysis,
+/// and someone else's real analysis, both correctly come back as
+/// "nothing found," rather than accidentally revealing that a given ID
+/// belongs to someone. If found, it fetches the seller's real profile,
+/// their fraud-report count, their real visit-activity chart, and every
+/// report this specific person has filed against this specific listing,
+/// then assembles it all into the final, complete response.
 pub async fn get_history_detail(
     pool: &Pool<Postgres>,
     analysis_id: Uuid,
     user_id: Uuid,
 ) -> Result<Option<HistoryDetailResponse>, Error> {
-    let row = sqlx::query_as::<_, AnalysisDetailRow>(
+    let row = query_as::<_, AnalysisDetailRow>(
         "
         SELECT
             a.id,
@@ -119,7 +102,7 @@ pub async fn get_history_detail(
         return Ok(None);
     };
 
-    let seller = sqlx::query_as::<_, Sellers>("SELECT * FROM sellers WHERE id = $1")
+    let seller = query_as::<_, Sellers>("SELECT * FROM sellers WHERE id = $1")
         .bind(row.seller_id)
         .fetch_one(pool)
         .await?;
@@ -130,7 +113,7 @@ pub async fn get_history_detail(
         .await
         .unwrap_or_else(|_| vec![0i32; 12]);
 
-    let reports = sqlx::query_as::<_, ReportSummary>(
+    let reports = query_as::<_, ReportSummary>(
         "SELECT report_type, reported_at FROM fraud_reports
          WHERE user_id = $1 AND seller_id = $2 AND listing_url = $3
          ORDER BY reported_at DESC",
@@ -161,4 +144,33 @@ pub async fn get_history_detail(
         reported,
         reports,
     }))
+}
+
+/// Every fraud report this user has personally filed, across every
+/// listing and seller - this is the "My Reports" tab, deliberately NOT
+/// scoped to any single listing, unlike get_history_detail below.
+pub async fn get_user_reports(
+    pool: &Pool<Postgres>,
+    user_id: Uuid,
+) -> Result<Vec<ReportItem>, Error> {
+    sqlx::query_as::<_, ReportItem>(
+        "
+        SELECT
+            fr.id,
+            fr.reported_at,
+            fr.report_type,
+            fr.platform,
+            s.name AS seller_name,
+            s.id AS seller_id,
+            fr.listing_url
+        FROM fraud_reports fr
+        JOIN sellers s ON fr.seller_id = s.id
+        WHERE fr.user_id = $1
+        ORDER BY fr.reported_at DESC
+        LIMIT 200
+        ",
+    )
+    .bind(user_id)
+    .fetch_all(pool)
+    .await
 }

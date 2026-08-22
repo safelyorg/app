@@ -4,9 +4,17 @@ use crate::common::{
     auth_headers_for, cleanup_test_seller_chain, cleanup_test_user, create_test_user,
     insert_test_history_chain, test_pool,
 };
-use axum::{extract::State, http::HeaderMap};
-use backend::{errors::dashboard::DashboardError, handlers::dashboard::get_history};
+use axum::{
+    extract::{Path, State},
+    http::HeaderMap,
+};
+use backend::{
+    errors::dashboard::DashboardError,
+    handlers::dashboard::{get_history, get_history_item},
+};
 use serde_json::json;
+use sqlx::query_scalar;
+use uuid::Uuid;
 
 #[tokio::test]
 async fn get_history_unauthorized() {
@@ -76,4 +84,116 @@ async fn get_history_database_error() {
         Err(other) => panic!("expected InternalError, got a different error: {:?}", other),
         Ok(_) => panic!("expected a genuine database error, but the request succeeded"),
     }
+}
+
+#[tokio::test]
+async fn get_history_item_unauthorized() {
+    let pool = test_pool().await;
+
+    let headers = HeaderMap::new();
+    let fake_id = Uuid::new_v4();
+
+    let result = get_history_item(State(pool), headers, Path(fake_id)).await;
+    match result {
+        Err(DashboardError::Unauthorized) => {}
+        Err(other) => panic!("expected Unauthorized, got a different error: {:?}", other),
+        Ok(_) => panic!("expected an unauthenticated request to be rejected, but it succeeded"),
+    }
+}
+
+#[tokio::test]
+async fn get_history_item_success() {
+    let pool = test_pool().await;
+    let email = "get_history_item_success_test@example.com";
+    let (user, _) = create_test_user(&pool, email).await;
+    let headers = auth_headers_for(&pool, user.id).await;
+
+    cleanup_test_seller_chain(&pool, "olx", "history_item_success_001").await;
+    let (listing_id, _seller_id) = insert_test_history_chain(
+        &pool,
+        user.id,
+        "olx",
+        "history_item_success_001",
+        "Test Listing For Detail",
+    )
+    .await;
+
+    let analysis_id: Uuid = query_scalar("SELECT id FROM analysis WHERE listing_id = $1")
+        .bind(listing_id)
+        .fetch_one(&pool)
+        .await
+        .expect("expected to find the real analysis id");
+
+    let result = get_history_item(State(pool.clone()), headers, Path(analysis_id))
+        .await
+        .expect("expected the request to succeed")
+        .0;
+
+    assert_eq!(result["listing_title"], json!("Test Listing For Detail"));
+    assert_eq!(result["platform"], json!("olx"));
+    assert_eq!(result["reported"], json!(false));
+    assert_eq!(result["fraud_report_count"], json!(0));
+
+    cleanup_test_seller_chain(&pool, "olx", "history_item_success_001").await;
+    cleanup_test_user(&pool, email).await;
+}
+
+#[tokio::test]
+async fn get_history_item_not_found_nonexistent() {
+    let pool = test_pool().await;
+    let email = "get_history_item_not_found_test@example.com";
+    let (user, _) = create_test_user(&pool, email).await;
+    let headers = auth_headers_for(&pool, user.id).await;
+    let fake_id = Uuid::new_v4();
+
+    let result = get_history_item(State(pool.clone()), headers, Path(fake_id)).await;
+    match result {
+        Err(DashboardError::NotFound(_)) => {}
+        Err(other) => panic!("expected NotFound, got a different error: {:?}", other),
+        Ok(_) => panic!("expected a nonexistent analysis to be rejected, but it succeeded"),
+    }
+
+    cleanup_test_user(&pool, email).await;
+}
+
+#[tokio::test]
+async fn get_history_item_not_found_belongs_to_another_user() {
+    let pool = test_pool().await;
+
+    let email_a = "history_item_owner@example.com";
+    let (user_a, _) = create_test_user(&pool, email_a).await;
+
+    let email_b = "history_item_intruder@example.com";
+    let (user_b, _) = create_test_user(&pool, email_b).await;
+    let headers_b = auth_headers_for(&pool, user_b.id).await;
+
+    cleanup_test_seller_chain(&pool, "olx", "history_item_owned_by_a_001").await;
+    let (listing_id, _seller_id) = insert_test_history_chain(
+        &pool,
+        user_a.id,
+        "olx",
+        "history_item_owned_by_a_001",
+        "Person A's Private Listing",
+    )
+    .await;
+
+    let analysis_id: Uuid = query_scalar("SELECT id FROM analysis WHERE listing_id = $1")
+        .bind(listing_id)
+        .fetch_one(&pool)
+        .await
+        .expect("expected to find the real analysis id");
+
+    let result = get_history_item(State(pool.clone()), headers_b, Path(analysis_id)).await;
+
+    match result {
+        Err(DashboardError::NotFound(_)) => {}
+        Err(other) => panic!("expected NotFound, got a different error: {:?}", other),
+        Ok(_) => {
+            panic!("expected person B to be denied access to person A's analysis, but it succeeded")
+        }
+    }
+
+    cleanup_test_seller_chain(&pool, "olx", "history_item_owned_by_a_001").await;
+    cleanup_test_user(&pool, email_a).await;
+    cleanup_test_user(&pool, email_b).await;
 }
