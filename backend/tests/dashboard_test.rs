@@ -2,7 +2,8 @@ mod common;
 
 use crate::common::{
     auth_headers_for, cleanup_test_seller_chain, cleanup_test_seller_with_reports,
-    cleanup_test_user, create_test_user, insert_test_history_chain, test_pool,
+    cleanup_test_user, create_test_user, insert_test_history_chain, set_analysis_created_at,
+    test_pool,
 };
 use axum::{
     extract::{Path, State},
@@ -11,8 +12,9 @@ use axum::{
 use backend::{
     errors::dashboard::DashboardError,
     handlers::dashboard::{get_history, get_history_item, get_me, get_reports},
-    services::auth::set_login_method,
+    services::{auth::set_login_method, history::get_user_history},
 };
+use chrono::{Duration, Utc};
 use serde_json::json;
 use sqlx::{query, query_scalar};
 use uuid::Uuid;
@@ -85,6 +87,325 @@ async fn get_history_database_error() {
         Err(other) => panic!("expected InternalError, got a different error: {:?}", other),
         Ok(_) => panic!("expected a genuine database error, but the request succeeded"),
     }
+}
+
+#[tokio::test]
+async fn get_user_history_empty_when_no_history() {
+    let pool = test_pool().await;
+    let email = "get_user_history_empty_test@example.com";
+    let (user, _) = create_test_user(&pool, email).await;
+
+    let result = get_user_history(&pool, user.id)
+        .await
+        .expect("expected the query itself to succeed");
+
+    assert!(
+        result.is_empty(),
+        "expected an empty list, not an error, when no history exists"
+    );
+
+    cleanup_test_user(&pool, email).await;
+}
+
+#[tokio::test]
+async fn get_user_history_success_single_item() {
+    let pool = test_pool().await;
+    let email = "get_user_history_single_test@example.com";
+    let (user, _) = create_test_user(&pool, email).await;
+
+    cleanup_test_seller_chain(&pool, "olx", "history_single_item_001").await;
+    let (listing_id, seller_id) = insert_test_history_chain(
+        &pool,
+        user.id,
+        "olx",
+        "history_single_item_001",
+        "Single Item Test Listing",
+    )
+    .await;
+
+    let result = get_user_history(&pool, user.id)
+        .await
+        .expect("expected the query to succeed");
+
+    assert_eq!(result.len(), 1, "expected exactly one history item");
+    let item = &result[0];
+
+    assert_eq!(
+        item.listing_title,
+        Some("Single Item Test Listing".to_string())
+    );
+    assert_eq!(item.platform, "olx");
+    assert_eq!(item.seller_name, Some("Test Seller".to_string()));
+    assert_eq!(item.seller_id, seller_id);
+    assert!(
+        !item.reported,
+        "expected reported to be false, since no fraud report was filed"
+    );
+
+    cleanup_test_seller_chain(&pool, "olx", "history_single_item_001").await;
+    cleanup_test_user(&pool, email).await;
+
+    let _ = listing_id;
+}
+
+#[tokio::test]
+async fn get_user_history_deduplicates_same_listing() {
+    let pool = test_pool().await;
+    let email = "get_user_history_dedup_test@example.com";
+    let (user, _) = create_test_user(&pool, email).await;
+
+    cleanup_test_seller_chain(&pool, "olx", "history_dedup_001").await;
+
+    let (listing_id, _seller_id) = insert_test_history_chain(
+        &pool,
+        user.id,
+        "olx",
+        "history_dedup_001",
+        "Duplicated Listing",
+    )
+    .await;
+
+    // A SECOND, genuinely later analysis of the SAME listing - a
+    // deliberately different risk_score (99) lets us confirm exactly
+    // which row survives deduplication.
+    query(
+        "INSERT INTO analysis (id, listing_id, risk_score, risk_level, signals, user_id, created_at)
+         VALUES ($1, $2, $3, 'low'::risk_level_type, $4, $5, NOW() + INTERVAL '1 second')",
+    )
+    .bind(Uuid::now_v7())
+    .bind(listing_id)
+    .bind(99_i16)
+    .bind(serde_json::json!([]))
+    .bind(user.id)
+    .execute(&pool)
+    .await
+    .expect("expected to create the second, later analysis");
+
+    let result = get_user_history(&pool, user.id)
+        .await
+        .expect("expected the query to succeed");
+
+    assert_eq!(
+        result.len(),
+        1,
+        "expected only ONE entry, even though this listing was analyzed twice"
+    );
+    assert_eq!(
+        result[0].risk_score, 99,
+        "expected the MOST RECENT analysis (risk_score 99) to be the one kept"
+    );
+
+    cleanup_test_seller_chain(&pool, "olx", "history_dedup_001").await;
+    cleanup_test_user(&pool, email).await;
+}
+
+#[tokio::test]
+async fn get_user_history_reported_scoped_per_listing() {
+    let pool = test_pool().await;
+    let email = "get_user_history_scoped_test@example.com";
+    let (user, _) = create_test_user(&pool, email).await;
+
+    let platform = "olx";
+    let platform_id = "history_scoped_seller_001";
+
+    // Clean up any leftovers - fraud_reports first, then the usual chain.
+    query("DELETE FROM fraud_reports WHERE seller_id IN (SELECT id FROM sellers WHERE platform = $1 AND platform_id = $2)")
+        .bind(platform)
+        .bind(platform_id)
+        .execute(&pool)
+        .await
+        .ok();
+    cleanup_test_seller_chain(&pool, platform, platform_id).await;
+
+    let seller_id = Uuid::now_v7();
+    query(
+        "INSERT INTO sellers (id, platform, platform_id, name, verification, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, 'unknown'::seller_verification, NOW(), NOW())",
+    )
+    .bind(seller_id)
+    .bind(platform)
+    .bind(platform_id)
+    .bind("Same Seller, Two Listings")
+    .execute(&pool)
+    .await
+    .expect("expected to create the seller");
+
+    let listing_id_reported = Uuid::now_v7();
+    let listing_url_reported = "https://olx.com/item/reported-listing-001";
+    query(
+        "INSERT INTO listings (id, seller_id, platform, listing_url, listing_id, title, first_seen_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())",
+    )
+    .bind(listing_id_reported)
+    .bind(seller_id)
+    .bind(platform)
+    .bind(listing_url_reported)
+    .bind("reported_listing_001")
+    .bind("Reported Listing")
+    .execute(&pool)
+    .await
+    .expect("expected to create the reported listing");
+
+    let listing_id_clean = Uuid::now_v7();
+    let listing_url_clean = "https://olx.com/item/clean-listing-002";
+    query(
+        "INSERT INTO listings (id, seller_id, platform, listing_url, listing_id, title, first_seen_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())",
+    )
+    .bind(listing_id_clean)
+    .bind(seller_id)
+    .bind(platform)
+    .bind(listing_url_clean)
+    .bind("clean_listing_002")
+    .bind("Clean Listing")
+    .execute(&pool)
+    .await
+    .expect("expected to create the clean listing");
+
+    for listing_id in [listing_id_reported, listing_id_clean] {
+        query(
+            "INSERT INTO analysis (id, listing_id, risk_score, risk_level, signals, user_id, created_at)
+             VALUES ($1, $2, $3, 'low'::risk_level_type, $4, $5, NOW())",
+        )
+        .bind(Uuid::now_v7())
+        .bind(listing_id)
+        .bind(15_i16)
+        .bind(serde_json::json!([]))
+        .bind(user.id)
+        .execute(&pool)
+        .await
+        .expect("expected to create the analysis");
+    }
+
+    // A fraud report, filed by THIS user, against ONLY the first listing.
+    query(
+        "INSERT INTO fraud_reports (id, seller_id, user_id, platform, platform_id, report_type, listing_url, reported_at)
+         VALUES ($1, $2, $3, $4, $5, $6::report_types, $7, NOW())",
+    )
+    .bind(Uuid::now_v7())
+    .bind(seller_id)
+    .bind(user.id)
+    .bind(platform)
+    .bind(platform_id)
+    .bind("scam")
+    .bind(listing_url_reported)
+    .execute(&pool)
+    .await
+    .expect("expected to create the fraud report");
+
+    let result = get_user_history(&pool, user.id)
+        .await
+        .expect("expected the query to succeed");
+
+    assert_eq!(result.len(), 2, "expected both listings to appear");
+
+    let reported_item = result
+        .iter()
+        .find(|i| i.listing_url == listing_url_reported)
+        .expect("expected to find the reported listing");
+    let clean_item = result
+        .iter()
+        .find(|i| i.listing_url == listing_url_clean)
+        .expect("expected to find the clean listing");
+
+    assert!(
+        reported_item.reported,
+        "expected the specifically-reported listing to show reported: true"
+    );
+    assert!(
+        !clean_item.reported,
+        "expected the OTHER listing, from the SAME seller, to show reported: false"
+    );
+
+    query("DELETE FROM fraud_reports WHERE seller_id = $1")
+        .bind(seller_id)
+        .execute(&pool)
+        .await
+        .ok();
+
+    cleanup_test_seller_chain(&pool, platform, platform_id).await;
+    cleanup_test_user(&pool, email).await;
+}
+
+#[tokio::test]
+async fn get_user_history_orders_newest_first() {
+    let pool = test_pool().await;
+    let email = "get_user_history_ordering_test@example.com";
+    let (user, _) = create_test_user(&pool, email).await;
+
+    cleanup_test_seller_chain(&pool, "olx", "history_order_oldest_001").await;
+    cleanup_test_seller_chain(&pool, "olx", "history_order_middle_001").await;
+    cleanup_test_seller_chain(&pool, "olx", "history_order_newest_001").await;
+
+    let (listing_oldest, _) = insert_test_history_chain(
+        &pool,
+        user.id,
+        "olx",
+        "history_order_oldest_001",
+        "Oldest Listing",
+    )
+    .await;
+    let (listing_middle, _) = insert_test_history_chain(
+        &pool,
+        user.id,
+        "olx",
+        "history_order_middle_001",
+        "Middle Listing",
+    )
+    .await;
+    let (listing_newest, _) = insert_test_history_chain(
+        &pool,
+        user.id,
+        "olx",
+        "history_order_newest_001",
+        "Newest Listing",
+    )
+    .await;
+
+    let now = Utc::now();
+    set_analysis_created_at(&pool, listing_oldest, now - Duration::hours(3)).await;
+    set_analysis_created_at(&pool, listing_middle, now - Duration::hours(2)).await;
+    set_analysis_created_at(&pool, listing_newest, now - Duration::hours(1)).await;
+
+    let result = get_user_history(&pool, user.id)
+        .await
+        .expect("expected the query to succeed");
+
+    assert_eq!(result.len(), 3, "expected all three listings to appear");
+    assert_eq!(
+        result[0].listing_title,
+        Some("Newest Listing".to_string()),
+        "expected the newest listing to appear first"
+    );
+    assert_eq!(
+        result[1].listing_title,
+        Some("Middle Listing".to_string()),
+        "expected the middle listing to appear second"
+    );
+    assert_eq!(
+        result[2].listing_title,
+        Some("Oldest Listing".to_string()),
+        "expected the oldest listing to appear last"
+    );
+
+    cleanup_test_seller_chain(&pool, "olx", "history_order_oldest_001").await;
+    cleanup_test_seller_chain(&pool, "olx", "history_order_middle_001").await;
+    cleanup_test_seller_chain(&pool, "olx", "history_order_newest_001").await;
+    cleanup_test_user(&pool, email).await;
+}
+
+#[tokio::test]
+async fn get_user_history_database_error() {
+    let pool = test_pool().await;
+    pool.close().await;
+
+    let fake_user_id = Uuid::new_v4();
+    let result = get_user_history(&pool, fake_user_id).await;
+
+    assert!(
+        result.is_err(),
+        "expected a genuine database error when the connection pool is closed"
+    );
 }
 
 #[tokio::test]

@@ -307,3 +307,20 @@ pub async fn cleanup_test_seller_with_reports(
         .execute(pool)
         .await;
 }
+
+/// Overwrites an analysis row's created_at to a specific, deliberately
+/// chosen timestamp - used to build deterministic ordering tests,
+/// rather than relying on the natural (and potentially flaky) timing
+/// gaps between consecutive inserts.
+#[allow(dead_code)]
+pub async fn set_analysis_created_at(
+    pool: &Pool<Postgres>,
+    listing_id: Uuid,
+    created_at: DateTime<Utc>,
+) {
+    let _ = query("UPDATE analysis SET created_at = $1 WHERE listing_id = $2")
+        .bind(created_at)
+        .bind(listing_id)
+        .execute(pool)
+        .await;
+}
