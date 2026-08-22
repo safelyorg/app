@@ -22,6 +22,7 @@ use backend::{
     routes::dashboard::dashboard_routes,
     services::{
         auth::{create_session, insert_magic_link, set_login_method},
+        dashboard::{delete_user_account, unlink_google_account},
         history::{get_history_detail, get_user_history, get_user_reports},
     },
 };
@@ -1447,6 +1448,151 @@ async fn delete_account_database_error() {
 }
 
 #[tokio::test]
+async fn delete_user_account_success_verifies_every_effect() {
+    let pool = test_pool().await;
+    let email = "delete_user_account_service_test@example.com";
+    let (user, _) = create_test_user(&pool, email).await;
+
+    let platform = "olx";
+    let platform_id = "delete_user_account_seller_001";
+    cleanup_test_seller_chain(&pool, platform, platform_id).await;
+
+    let (listing_id, seller_id) = insert_test_history_chain(
+        &pool,
+        user.id,
+        platform,
+        platform_id,
+        "Listing To Be Orphaned Directly",
+    )
+    .await;
+
+    query(
+        "INSERT INTO fraud_reports (id, seller_id, user_id, platform, platform_id, report_type, listing_url, reported_at)
+         VALUES ($1, $2, $3, $4, $5, $6::report_types, $7, NOW())",
+    )
+    .bind(Uuid::now_v7())
+    .bind(seller_id)
+    .bind(user.id)
+    .bind(platform)
+    .bind(platform_id)
+    .bind("scam")
+    .bind("https://olx.com/item/delete-user-account-report")
+    .execute(&pool)
+    .await
+    .expect("expected to create the fraud report");
+
+    insert_magic_link(&pool, &email)
+        .await
+        .expect("expected to create the magic link");
+
+    let session_token = create_session(&pool, user.id)
+        .await
+        .expect("expected to create a real session");
+
+    delete_user_account(&pool, user.id)
+        .await
+        .expect("expected the deletion to succeed");
+
+    // 1. The user row itself is genuinely gone.
+    let user_still_exists: Option<Uuid> = query_scalar("SELECT id FROM users WHERE id = $1")
+        .bind(user.id)
+        .fetch_optional(&pool)
+        .await
+        .expect("expected the query to succeed");
+
+    assert!(
+        user_still_exists.is_none(),
+        "expected the user row to be genuinely deleted"
+    );
+
+    // 2. The analysis row still exists, but its user_id is now NULL.
+    let analysis_user_id: Option<Uuid> =
+        query_scalar("SELECT user_id FROM analysis WHERE listing_id = $1")
+            .bind(listing_id)
+            .fetch_one(&pool)
+            .await
+            .expect("expected the analysis row to still exist");
+
+    assert!(
+        analysis_user_id.is_none(),
+        "expected the analysis to be disconnected (user_id NULL), not deleted"
+    );
+
+    // 3. The fraud report still exists, but its user_id is now NULL.
+    let report_user_id: Option<Uuid> =
+        query_scalar("SELECT user_id FROM fraud_reports WHERE seller_id = $1")
+            .bind(seller_id)
+            .fetch_one(&pool)
+            .await
+            .expect("expected the fraud report to still exist");
+
+    assert!(
+        report_user_id.is_none(),
+        "expected the fraud report to be disconnected (user_id NULL), not deleted"
+    );
+
+    // 4. The session is genuinely gone.
+    let session_still_exists: Option<String> =
+        query_scalar("SELECT token FROM sessions WHERE token = $1")
+            .bind(&session_token)
+            .fetch_optional(&pool)
+            .await
+            .expect("expected the query to succeed");
+
+    assert!(
+        session_still_exists.is_none(),
+        "expected the session to be genuinely deleted"
+    );
+
+    // 5. The magic link is genuinely gone.
+    let magic_link_still_exists: Option<String> =
+        query_scalar("SELECT email FROM magic_links WHERE email = $1")
+            .bind(&email)
+            .fetch_optional(&pool)
+            .await
+            .expect("expected the query to succeed");
+
+    assert!(
+        magic_link_still_exists.is_none(),
+        "expected the magic link to be genuinely deleted"
+    );
+
+    query("DELETE FROM fraud_reports WHERE seller_id = $1")
+        .bind(seller_id)
+        .execute(&pool)
+        .await
+        .ok();
+
+    cleanup_test_seller_chain(&pool, platform, platform_id).await;
+}
+
+#[tokio::test]
+async fn delete_user_account_nonexistent_user() {
+    let pool = test_pool().await;
+    let fake_user_id = Uuid::new_v4();
+
+    let result = delete_user_account(&pool, fake_user_id).await;
+    assert!(
+        result.is_err(),
+        "expected the deletion to fail honestly when the user doesn't exist at all"
+    );
+}
+
+#[tokio::test]
+async fn delete_user_account_database_error() {
+    let pool = test_pool().await;
+    pool.close().await;
+
+    let fake_user_id = Uuid::new_v4();
+    let result = delete_user_account(&pool, fake_user_id).await;
+
+    assert!(
+        result.is_err(),
+        "expected a genuine database error when the connection pool is closed"
+    );
+}
+
+#[tokio::test]
 async fn get_avatar_unauthorized() {
     let pool = test_pool().await;
 
@@ -1900,4 +2046,141 @@ async fn disconnect_google_database_error() {
         Err(other) => panic!("expected InternalError, got a different error: {:?}", other),
         Ok(_) => panic!("expected a genuine database error, but the request succeeded"),
     }
+}
+
+#[tokio::test]
+async fn unlink_google_account_success_clears_existing_link() {
+    let pool = test_pool().await;
+    let email = "unlink_google_existing_test@example.com";
+    let (user, _) = create_test_user(&pool, email).await;
+
+    query("UPDATE users SET google_id = $1 WHERE id = $2")
+        .bind("unlink_test_google_id_001")
+        .bind(user.id)
+        .execute(&pool)
+        .await
+        .expect("expected to link the google id");
+
+    unlink_google_account(&pool, user.id)
+        .await
+        .expect("expected the unlink to succeed");
+
+    let google_id: Option<String> = query_scalar("SELECT google_id FROM users WHERE id = $1")
+        .bind(user.id)
+        .fetch_one(&pool)
+        .await
+        .expect("expected the query to succeed");
+
+    assert!(
+        google_id.is_none(),
+        "expected google_id to be genuinely cleared"
+    );
+
+    cleanup_test_user(&pool, email).await;
+}
+
+#[tokio::test]
+async fn unlink_google_account_success_even_without_a_link() {
+    let pool = test_pool().await;
+    let email = "unlink_google_no_link_test@example.com";
+    let (user, _) = create_test_user(&pool, email).await;
+
+    // Deliberately no setup - google_id is genuinely NULL from the
+    // start, since this account was never connected to Google.
+    unlink_google_account(&pool, user.id)
+        .await
+        .expect("expected the unlink to succeed even without a prior link");
+
+    let google_id: Option<String> = query_scalar("SELECT google_id FROM users WHERE id = $1")
+        .bind(user.id)
+        .fetch_one(&pool)
+        .await
+        .expect("expected the query to succeed");
+
+    assert!(
+        google_id.is_none(),
+        "expected google_id to remain None, genuinely unaffected either way"
+    );
+
+    cleanup_test_user(&pool, email).await;
+}
+
+#[tokio::test]
+async fn unlink_google_account_database_error() {
+    let pool = test_pool().await;
+    pool.close().await;
+
+    let fake_user_id = Uuid::new_v4();
+    let result = unlink_google_account(&pool, fake_user_id).await;
+
+    assert!(
+        result.is_err(),
+        "expected a genuine database error when the connection pool is closed"
+    );
+}
+
+#[tokio::test]
+async fn set_login_method_success_email() {
+    let pool = test_pool().await;
+    let email = "set_login_method_email_test@example.com";
+    let (user, _) = create_test_user(&pool, email).await;
+
+    set_login_method(&pool, user.id, "email")
+        .await
+        .expect("expected the update to succeed");
+
+    let saved_method: Option<String> =
+        query_scalar("SELECT last_login_method FROM users WHERE id = $1")
+            .bind(user.id)
+            .fetch_one(&pool)
+            .await
+            .expect("expected the query to succeed");
+
+    assert_eq!(
+        saved_method,
+        Some("email".to_string()),
+        "expected the real database row to genuinely reflect 'email'"
+    );
+
+    cleanup_test_user(&pool, email).await;
+}
+
+#[tokio::test]
+async fn set_login_method_success_google() {
+    let pool = test_pool().await;
+    let email = "set_login_method_google_test@example.com";
+    let (user, _) = create_test_user(&pool, email).await;
+
+    set_login_method(&pool, user.id, "google")
+        .await
+        .expect("expected the update to succeed");
+
+    let saved_method: Option<String> =
+        query_scalar("SELECT last_login_method FROM users WHERE id = $1")
+            .bind(user.id)
+            .fetch_one(&pool)
+            .await
+            .expect("expected the query to succeed");
+
+    assert_eq!(
+        saved_method,
+        Some("google".to_string()),
+        "expected the real database row to genuinely reflect 'google'"
+    );
+
+    cleanup_test_user(&pool, email).await;
+}
+
+#[tokio::test]
+async fn set_login_method_database_error() {
+    let pool = test_pool().await;
+    pool.close().await;
+
+    let fake_user_id = Uuid::new_v4();
+    let result = set_login_method(&pool, fake_user_id, "email").await;
+
+    assert!(
+        result.is_err(),
+        "expected a genuine database error when the connection pool is closed"
+    );
 }
