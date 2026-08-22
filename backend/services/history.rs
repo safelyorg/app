@@ -146,9 +146,14 @@ pub async fn get_history_detail(
     }))
 }
 
-/// Every fraud report this user has personally filed, across every
-/// listing and seller - this is the "My Reports" tab, deliberately NOT
-/// scoped to any single listing, unlike get_history_detail below.
+/// Gets every fraud report this person has ever filed, across every
+/// listing and seller they've ever reported - this is the "My Reports"
+/// tab.
+///
+/// Unlike get_history_detail, this is deliberately NOT limited to one
+/// specific listing - it shows this person's entire reporting history
+/// at once, joined with each seller's name so the list is readable
+/// without needing a separate lookup.
 pub async fn get_user_reports(
     pool: &Pool<Postgres>,
     user_id: Uuid,

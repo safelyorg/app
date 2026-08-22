@@ -280,3 +280,30 @@ pub async fn insert_test_history_chain(
 
     (listing_id, seller_id)
 }
+
+/// Deletes a seller and any fraud reports genuinely tied to them - fraud
+/// reports first, then the seller itself, since the report references
+/// the seller. Safe to call before a test too, as a guard against
+/// leftover data from a previous failed run.
+#[allow(dead_code)]
+pub async fn cleanup_test_seller_with_reports(
+    pool: &Pool<Postgres>,
+    platform: &str,
+    platform_id: &str,
+) {
+    let _ = query(
+        "DELETE FROM fraud_reports WHERE seller_id IN (
+            SELECT id FROM sellers WHERE platform = $1 AND platform_id = $2
+        )",
+    )
+    .bind(platform)
+    .bind(platform_id)
+    .execute(pool)
+    .await;
+
+    let _ = query("DELETE FROM sellers WHERE platform = $1 AND platform_id = $2")
+        .bind(platform)
+        .bind(platform_id)
+        .execute(pool)
+        .await;
+}

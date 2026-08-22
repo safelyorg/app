@@ -1,8 +1,8 @@
 mod common;
 
 use crate::common::{
-    auth_headers_for, cleanup_test_seller_chain, cleanup_test_user, create_test_user,
-    insert_test_history_chain, test_pool,
+    auth_headers_for, cleanup_test_seller_chain, cleanup_test_seller_with_reports,
+    cleanup_test_user, create_test_user, insert_test_history_chain, test_pool,
 };
 use axum::{
     extract::{Path, State},
@@ -10,10 +10,10 @@ use axum::{
 };
 use backend::{
     errors::dashboard::DashboardError,
-    handlers::dashboard::{get_history, get_history_item},
+    handlers::dashboard::{get_history, get_history_item, get_reports},
 };
 use serde_json::json;
-use sqlx::query_scalar;
+use sqlx::{query, query_scalar};
 use uuid::Uuid;
 
 #[tokio::test]
@@ -196,4 +196,77 @@ async fn get_history_item_not_found_belongs_to_another_user() {
     cleanup_test_seller_chain(&pool, "olx", "history_item_owned_by_a_001").await;
     cleanup_test_user(&pool, email_a).await;
     cleanup_test_user(&pool, email_b).await;
+}
+
+#[tokio::test]
+async fn get_reports_unauthorized() {
+    let pool = test_pool().await;
+    let headers = HeaderMap::new();
+
+    let result = get_reports(State(pool), headers).await;
+    match result {
+        Err(DashboardError::Unauthorized) => {}
+        Err(other) => panic!("expected Unauthorized, got a different error: {:?}", other),
+        Ok(_) => panic!("expected an unauthenticated request to be rejected, but it succeeded"),
+    }
+}
+
+#[tokio::test]
+async fn get_reports_success() {
+    let pool = test_pool().await;
+    let email = "get_reports_success_test@example.com";
+    let (user, _) = create_test_user(&pool, email).await;
+    let headers = auth_headers_for(&pool, user.id).await;
+
+    let platform = "olx";
+    let platform_id = "get_reports_seller_001";
+
+    cleanup_test_seller_with_reports(&pool, platform, platform_id).await;
+
+    let seller_id = Uuid::now_v7();
+    query(
+        "INSERT INTO sellers (id, platform, platform_id, name, verification, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, 'unknown'::seller_verification, NOW(), NOW())",
+    )
+    .bind(seller_id)
+    .bind(platform)
+    .bind(platform_id)
+    .bind("Reported Seller")
+    .execute(&pool)
+    .await
+    .expect("expected to create the seller");
+
+    let listing_url = "https://olx.com.pk/item/get-reports-test-listing";
+    query(
+        "INSERT INTO fraud_reports (id, seller_id, user_id, platform, platform_id, report_type, listing_url, reported_at)
+         VALUES ($1, $2, $3, $4, $5, $6::report_types, $7, NOW())",
+    )
+    .bind(Uuid::now_v7())
+    .bind(seller_id)
+    .bind(user.id)
+    .bind(platform)
+    .bind(platform_id)
+    .bind("scam")
+    .bind(listing_url)
+    .execute(&pool)
+    .await
+    .expect("expected to create the fraud report");
+
+    let result = get_reports(State(pool.clone()), headers)
+        .await
+        .expect("expected the request to succeed")
+        .0;
+
+    let reports = result["reports"]
+        .as_array()
+        .expect("expected reports to be a real array");
+
+    assert_eq!(reports.len(), 1, "expected exactly one report");
+    assert_eq!(reports[0]["seller_name"], json!("Reported Seller"));
+    assert_eq!(reports[0]["platform"], json!("olx"));
+    assert_eq!(reports[0]["listing_url"], json!(listing_url));
+    assert_eq!(reports[0]["report_type"], json!("scam"));
+
+    cleanup_test_seller_with_reports(&pool, platform, platform_id).await;
+    cleanup_test_user(&pool, email).await;
 }
