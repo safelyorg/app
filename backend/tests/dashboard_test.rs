@@ -15,8 +15,8 @@ use axum::{
 use backend::{
     errors::dashboard::DashboardError,
     handlers::dashboard::{
-        UpdateMeRequest, delete_account, get_avatar, get_history, get_history_item, get_me,
-        get_reports, update_me,
+        UpdateMeRequest, delete_account, disconnect_google, get_avatar, get_history,
+        get_history_item, get_me, get_reports, update_me,
     },
     models::fraud_reports::ReportTypes,
     routes::dashboard::dashboard_routes,
@@ -1792,4 +1792,112 @@ async fn upload_avatar_success() {
     assert_eq!(saved_content_type, Some("image/png".to_string()));
 
     cleanup_test_user(&pool, email).await;
+}
+
+#[tokio::test]
+async fn disconnect_google_unauthorized() {
+    let pool = test_pool().await;
+    let headers = HeaderMap::new();
+
+    let result = disconnect_google(State(pool), headers).await;
+    match result {
+        Err(DashboardError::Unauthorized) => {}
+        Err(other) => panic!("expected Unauthorized, got a different error: {:?}", other),
+        Ok(_) => panic!("expected an unauthenticated request to be rejected, but it succeeded"),
+    }
+}
+
+#[tokio::test]
+async fn disconnect_google_success_genuinely_clears_it() {
+    let pool = test_pool().await;
+    let email = "disconnect_google_success_test@example.com";
+    let (user, _) = create_test_user(&pool, email).await;
+    let headers = auth_headers_for(&pool, user.id).await;
+
+    query("UPDATE users SET google_id = $1 WHERE id = $2")
+        .bind("disconnect_test_google_id_001")
+        .bind(user.id)
+        .execute(&pool)
+        .await
+        .expect("expected to link the google id");
+
+    let result = disconnect_google(State(pool.clone()), headers)
+        .await
+        .expect("expected the disconnect to succeed")
+        .0;
+
+    assert_eq!(result["success"], json!(true));
+    assert_eq!(result["signed_in_with"], json!("email"));
+
+    let google_id: Option<String> = query_scalar("SELECT google_id FROM users WHERE id = $1")
+        .bind(user.id)
+        .fetch_one(&pool)
+        .await
+        .expect("expected the query to succeed");
+
+    assert!(
+        google_id.is_none(),
+        "expected google_id to be genuinely cleared in the database"
+    );
+
+    let last_login_method: Option<String> =
+        query_scalar("SELECT last_login_method FROM users WHERE id = $1")
+            .bind(user.id)
+            .fetch_one(&pool)
+            .await
+            .expect("expected the query to succeed");
+
+    assert_eq!(
+        last_login_method,
+        Some("email".to_string()),
+        "expected the login method to be immediately updated to 'email'"
+    );
+
+    cleanup_test_user(&pool, email).await;
+}
+
+#[tokio::test]
+async fn disconnect_google_success_even_without_google_linked() {
+    let pool = test_pool().await;
+    let email = "disconnect_google_no_link_test@example.com";
+    let (user, _) = create_test_user(&pool, email).await;
+    let headers = auth_headers_for(&pool, user.id).await;
+
+    let result = disconnect_google(State(pool.clone()), headers)
+        .await
+        .expect("expected disconnect to succeed even without a prior Google link")
+        .0;
+
+    assert_eq!(result["success"], json!(true));
+    assert_eq!(result["signed_in_with"], json!("email"));
+
+    let google_id: Option<String> = query_scalar("SELECT google_id FROM users WHERE id = $1")
+        .bind(user.id)
+        .fetch_one(&pool)
+        .await
+        .expect("expected the query to succeed");
+    assert!(
+        google_id.is_none(),
+        "expected google_id to remain None, genuinely unaffected either way"
+    );
+
+    cleanup_test_user(&pool, email).await;
+}
+
+#[tokio::test]
+async fn disconnect_google_database_error() {
+    let pool = test_pool().await;
+    let email = "disconnect_google_db_error_test@example.com";
+    let (user, _) = create_test_user(&pool, email).await;
+    let headers = auth_headers_for(&pool, user.id).await;
+
+    cleanup_test_user(&pool, email).await;
+    pool.close().await;
+
+    let result = disconnect_google(State(pool), headers).await;
+    match result {
+        Err(DashboardError::InternalError(_)) => {}
+        Err(other) => panic!("expected InternalError, got a different error: {:?}", other),
+        Ok(_) => panic!("expected a genuine database error, but the request succeeded"),
+    }
 }
