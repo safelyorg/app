@@ -13,11 +13,12 @@ use axum::{
 use backend::{
     errors::dashboard::DashboardError,
     handlers::dashboard::{
-        UpdateMeRequest, get_history, get_history_item, get_me, get_reports, update_me,
+        UpdateMeRequest, delete_account, get_history, get_history_item, get_me, get_reports,
+        update_me,
     },
     models::fraud_reports::ReportTypes,
     services::{
-        auth::set_login_method,
+        auth::{insert_magic_link, set_login_method},
         history::{get_history_detail, get_user_history, get_user_reports},
     },
 };
@@ -1282,6 +1283,156 @@ async fn update_me_database_error() {
     };
 
     let result = update_me(State(pool), headers, Json(body)).await;
+    match result {
+        Err(DashboardError::InternalError(_)) => {}
+        Err(other) => panic!("expected InternalError, got a different error: {:?}", other),
+        Ok(_) => panic!("expected a genuine database error, but the request succeeded"),
+    }
+}
+
+#[tokio::test]
+async fn delete_account_unauthorized() {
+    let pool = test_pool().await;
+    let headers = HeaderMap::new();
+
+    let result = delete_account(State(pool), headers).await;
+    match result {
+        Err(DashboardError::Unauthorized) => {}
+        Err(other) => panic!("expected Unauthorized, got a different error: {:?}", other),
+        Ok(_) => panic!("expected an unauthenticated request to be rejected, but it succeeded"),
+    }
+}
+
+#[tokio::test]
+async fn delete_account_success_verifies_every_effect() {
+    let pool = test_pool().await;
+    let email = "delete_account_full_test@example.com";
+    let (user, _) = create_test_user(&pool, email).await;
+    let headers = auth_headers_for(&pool, user.id).await;
+
+    let platform = "olx";
+    let platform_id = "delete_account_seller_001";
+    cleanup_test_seller_chain(&pool, platform, platform_id).await;
+
+    let (listing_id, seller_id) = insert_test_history_chain(
+        &pool,
+        user.id,
+        platform,
+        platform_id,
+        "Listing To Be Orphaned",
+    )
+    .await;
+
+    query(
+        "INSERT INTO fraud_reports (id, seller_id, user_id, platform, platform_id, report_type, listing_url, reported_at)
+         VALUES ($1, $2, $3, $4, $5, $6::report_types, $7, NOW())",
+    )
+    .bind(Uuid::now_v7())
+    .bind(seller_id)
+    .bind(user.id)
+    .bind(platform)
+    .bind(platform_id)
+    .bind("scam")
+    .bind("https://olx.com/item/delete-account-report")
+    .execute(&pool)
+    .await
+    .expect("expected to create the fraud report");
+
+    insert_magic_link(&pool, &email)
+        .await
+        .expect("expected to create the magic link");
+
+    let session_token = headers
+        .get("authorization")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.strip_prefix("Bearer "))
+        .expect("expected a real bearer token")
+        .to_string();
+
+    let result = delete_account(State(pool.clone()), headers)
+        .await
+        .expect("expected the deletion to succeed");
+    assert_eq!(result.0["success"], json!(true));
+
+    let user_still_exists: Option<Uuid> = query_scalar("SELECT id FROM users WHERE id = $1")
+        .bind(user.id)
+        .fetch_optional(&pool)
+        .await
+        .expect("expected the query to succeed");
+
+    assert!(
+        user_still_exists.is_none(),
+        "expected the user row to be genuinely deleted"
+    );
+
+    let analysis_user_id: Option<Uuid> =
+        query_scalar("SELECT user_id FROM analysis WHERE listing_id = $1")
+            .bind(listing_id)
+            .fetch_one(&pool)
+            .await
+            .expect("expected the analysis row to still exist");
+
+    assert!(
+        analysis_user_id.is_none(),
+        "expected the analysis to be disconnected (user_id NULL), not deleted"
+    );
+
+    let report_user_id: Option<Uuid> =
+        query_scalar("SELECT user_id FROM fraud_reports WHERE seller_id = $1")
+            .bind(seller_id)
+            .fetch_one(&pool)
+            .await
+            .expect("expected the fraud report to still exist");
+
+    assert!(
+        report_user_id.is_none(),
+        "expected the fraud report to be disconnected (user_id NULL), not deleted"
+    );
+
+    let session_still_exists: Option<String> =
+        query_scalar("SELECT token FROM sessions WHERE token = $1")
+            .bind(&session_token)
+            .fetch_optional(&pool)
+            .await
+            .expect("expected the query to succeed");
+
+    assert!(
+        session_still_exists.is_none(),
+        "expected the session to be genuinely deleted"
+    );
+
+    let magic_link_still_exists: Option<String> =
+        query_scalar("SELECT email FROM magic_links WHERE email = $1")
+            .bind(&email)
+            .fetch_optional(&pool)
+            .await
+            .expect("expected the query to succeed");
+
+    assert!(
+        magic_link_still_exists.is_none(),
+        "expected the magic link to be genuinely deleted"
+    );
+
+    query("DELETE FROM fraud_reports WHERE seller_id = $1")
+        .bind(seller_id)
+        .execute(&pool)
+        .await
+        .ok();
+
+    cleanup_test_seller_chain(&pool, platform, platform_id).await;
+}
+
+#[tokio::test]
+async fn delete_account_database_error() {
+    let pool = test_pool().await;
+    let email = "delete_account_db_error_test@example.com";
+    let (user, _) = create_test_user(&pool, email).await;
+    let headers = auth_headers_for(&pool, user.id).await;
+
+    cleanup_test_user(&pool, email).await;
+    pool.close().await;
+
+    let result = delete_account(State(pool), headers).await;
 
     match result {
         Err(DashboardError::InternalError(_)) => {}
