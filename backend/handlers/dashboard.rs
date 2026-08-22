@@ -47,31 +47,6 @@ pub async fn get_history(
     Ok(Json(json!({ "history": items })))
 }
 
-/// GET /api/v1/reports
-///
-/// It hands back the real fraud reports this person has personally
-/// submitted through Safely, so the dashboard can show them their own
-/// contribution history.
-///
-/// It confirms who's genuinely signed in, then fetches their real
-/// reports from the database, reporting back specifically if either
-/// step goes wrong, rather than a single, generic failure.
-pub async fn get_reports(
-    State(pool): State<Pool<Postgres>>,
-    headers: HeaderMap,
-) -> Result<Json<Value>, DashboardError> {
-    let user_id = extract_user_id(&headers, &pool)
-        .await
-        .map_err(|_| DashboardError::InternalError("Failed to verify session".to_string()))?
-        .ok_or(DashboardError::Unauthorized)?;
-
-    let items = get_user_reports(&pool, user_id)
-        .await
-        .map_err(|e| DashboardError::InternalError(e.to_string()))?;
-
-    Ok(Json(json!({ "reports": items })))
-}
-
 /// GET /api/v1/history/{id}
 ///
 /// It hands back the full, detailed record of one specific analysis the
@@ -107,48 +82,29 @@ pub async fn get_history_item(
     }
 }
 
-/// PATCH /api/v1/me
+/// GET /api/v1/reports
 ///
-/// Currently only lets a person set/change their display name - this is
-/// the one field magic-link users have no other way of ever getting
-/// populated (there's no name to scrape from just an email address,
-/// unlike Google sign-in which provides one automatically).
+/// It hands back the real fraud reports this person has personally
+/// submitted through Safely, so the dashboard can show them their own
+/// contribution history.
 ///
-/// It confirms who's genuinely signed in, checks the new name is
-/// neither empty nor unreasonably long, then saves it - reporting back
-/// specifically which of those checks failed, rather than a single,
-/// generic rejection.
-pub async fn update_me(
+/// It confirms who's genuinely signed in, then fetches their real
+/// reports from the database, reporting back specifically if either
+/// step goes wrong, rather than a single, generic failure.
+pub async fn get_reports(
     State(pool): State<Pool<Postgres>>,
     headers: HeaderMap,
-    Json(req): Json<UpdateMeRequest>,
 ) -> Result<Json<Value>, DashboardError> {
     let user_id = extract_user_id(&headers, &pool)
         .await
         .map_err(|_| DashboardError::InternalError("Failed to verify session".to_string()))?
         .ok_or(DashboardError::Unauthorized)?;
 
-    let trimmed = req.name.trim();
-    if trimmed.is_empty() {
-        return Err(DashboardError::BadRequest(
-            "Name cannot be empty".to_string(),
-        ));
-    }
-
-    if trimmed.chars().count() > 100 {
-        return Err(DashboardError::BadRequest(
-            "Name must be 100 characters or fewer".to_string(),
-        ));
-    }
-
-    query("UPDATE users SET name = $1 WHERE id = $2")
-        .bind(trimmed)
-        .bind(user_id)
-        .execute(&pool)
+    let items = get_user_reports(&pool, user_id)
         .await
         .map_err(|e| DashboardError::InternalError(e.to_string()))?;
 
-    Ok(Json(json!({ "success": true, "name": trimmed })))
+    Ok(Json(json!({ "reports": items })))
 }
 
 /// GET /api/v1/me
@@ -211,6 +167,50 @@ pub async fn get_me(
     })))
 }
 
+/// PATCH /api/v1/me
+///
+/// Currently only lets a person set/change their display name - this is
+/// the one field magic-link users have no other way of ever getting
+/// populated (there's no name to scrape from just an email address,
+/// unlike Google sign-in which provides one automatically).
+///
+/// It confirms who's genuinely signed in, checks the new name is
+/// neither empty nor unreasonably long, then saves it - reporting back
+/// specifically which of those checks failed, rather than a single,
+/// generic rejection.
+pub async fn update_me(
+    State(pool): State<Pool<Postgres>>,
+    headers: HeaderMap,
+    Json(req): Json<UpdateMeRequest>,
+) -> Result<Json<Value>, DashboardError> {
+    let user_id = extract_user_id(&headers, &pool)
+        .await
+        .map_err(|_| DashboardError::InternalError("Failed to verify session".to_string()))?
+        .ok_or(DashboardError::Unauthorized)?;
+
+    let trimmed = req.name.trim();
+    if trimmed.is_empty() {
+        return Err(DashboardError::BadRequest(
+            "Name cannot be empty".to_string(),
+        ));
+    }
+
+    if trimmed.chars().count() > 100 {
+        return Err(DashboardError::BadRequest(
+            "Name must be 100 characters or fewer".to_string(),
+        ));
+    }
+
+    query("UPDATE users SET name = $1 WHERE id = $2")
+        .bind(trimmed)
+        .bind(user_id)
+        .execute(&pool)
+        .await
+        .map_err(|e| DashboardError::InternalError(e.to_string()))?;
+
+    Ok(Json(json!({ "success": true, "name": trimmed })))
+}
+
 /// DELETE /api/v1/me
 ///
 /// Permanently deletes the account. See delete_user_account in
@@ -235,34 +235,40 @@ pub async fn delete_account(
     Ok(Json(json!({ "success": true })))
 }
 
-/// POST /api/v1/me/google/disconnect
+/// GET /api/v1/me/avatar
 ///
-/// Always safe to allow: email is the one identity that's never optional
-/// on this account (even a Google-only signup has an email captured from
-/// the Google profile), so disconnecting Google never locks anyone out -
-/// they can always fall back to a magic link on that same email.
+/// Returns the raw image bytes with the correct Content-Type, so the
+/// browser can render them directly - this is authenticated the same
+/// way as every other endpoint (Bearer token), which is exactly why the
+/// frontend can't just point a plain <img src="..."> at this URL; it
+/// has to fetch the bytes itself with the auth header attached, then
+/// hand the result to the browser as an object URL.
 ///
-/// It confirms who's genuinely signed in, clears the Google connection
-/// from their account, then immediately updates their "signed in with"
-/// label to email - since Google no longer works as a way back in for
-/// this account, the label should reflect that right away, not just
-/// after their next actual login happens to update it.
-pub async fn disconnect_google(
+/// It confirms who's genuinely signed in, looks up their real avatar
+/// data, and reports back specifically if either step fails, or if
+/// this account genuinely has no avatar set at all.
+pub async fn get_avatar(
     State(pool): State<Pool<Postgres>>,
     headers: HeaderMap,
-) -> Result<Json<Value>, DashboardError> {
+) -> Result<impl IntoResponse, DashboardError> {
     let user_id = extract_user_id(&headers, &pool)
         .await
         .map_err(|_| DashboardError::InternalError("Failed to verify session".to_string()))?
         .ok_or(DashboardError::Unauthorized)?;
 
-    unlink_google_account(&pool, user_id)
+    let row = query("SELECT avatar_data, avatar_content_type FROM users WHERE id = $1")
+        .bind(user_id)
+        .fetch_one(&pool)
         .await
         .map_err(|e| DashboardError::InternalError(e.to_string()))?;
 
-    let _ = set_login_method(&pool, user_id, "email").await;
+    let data: Option<Vec<u8>> = row.get("avatar_data");
+    let content_type: Option<String> = row.get("avatar_content_type");
 
-    Ok(Json(json!({ "success": true, "signed_in_with": "email" })))
+    let bytes = data.ok_or(DashboardError::NotFound("No avatar set".to_string()))?;
+    let ct = content_type.unwrap_or_else(|| "image/png".to_string());
+
+    Ok(([(CONTENT_TYPE, ct)], bytes))
 }
 
 /// POST /api/v1/me/avatar
@@ -336,38 +342,32 @@ pub async fn upload_avatar(
     Ok(Json(json!({ "success": true })))
 }
 
-/// GET /api/v1/me/avatar
+/// POST /api/v1/me/google/disconnect
 ///
-/// Returns the raw image bytes with the correct Content-Type, so the
-/// browser can render them directly - this is authenticated the same
-/// way as every other endpoint (Bearer token), which is exactly why the
-/// frontend can't just point a plain <img src="..."> at this URL; it
-/// has to fetch the bytes itself with the auth header attached, then
-/// hand the result to the browser as an object URL.
+/// Always safe to allow: email is the one identity that's never optional
+/// on this account (even a Google-only signup has an email captured from
+/// the Google profile), so disconnecting Google never locks anyone out -
+/// they can always fall back to a magic link on that same email.
 ///
-/// It confirms who's genuinely signed in, looks up their real avatar
-/// data, and reports back specifically if either step fails, or if
-/// this account genuinely has no avatar set at all.
-pub async fn get_avatar(
+/// It confirms who's genuinely signed in, clears the Google connection
+/// from their account, then immediately updates their "signed in with"
+/// label to email - since Google no longer works as a way back in for
+/// this account, the label should reflect that right away, not just
+/// after their next actual login happens to update it.
+pub async fn disconnect_google(
     State(pool): State<Pool<Postgres>>,
     headers: HeaderMap,
-) -> Result<impl IntoResponse, DashboardError> {
+) -> Result<Json<Value>, DashboardError> {
     let user_id = extract_user_id(&headers, &pool)
         .await
         .map_err(|_| DashboardError::InternalError("Failed to verify session".to_string()))?
         .ok_or(DashboardError::Unauthorized)?;
 
-    let row = query("SELECT avatar_data, avatar_content_type FROM users WHERE id = $1")
-        .bind(user_id)
-        .fetch_one(&pool)
+    unlink_google_account(&pool, user_id)
         .await
         .map_err(|e| DashboardError::InternalError(e.to_string()))?;
 
-    let data: Option<Vec<u8>> = row.get("avatar_data");
-    let content_type: Option<String> = row.get("avatar_content_type");
+    let _ = set_login_method(&pool, user_id, "email").await;
 
-    let bytes = data.ok_or(DashboardError::NotFound("No avatar set".to_string()))?;
-    let ct = content_type.unwrap_or_else(|| "image/png".to_string());
-
-    Ok(([(CONTENT_TYPE, ct)], bytes))
+    Ok(Json(json!({ "success": true, "signed_in_with": "email" })))
 }

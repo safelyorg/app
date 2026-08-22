@@ -185,3 +185,98 @@ pub async fn magic_link_exists_for_email(pool: &Pool<Postgres>, email: &str) -> 
 
     row.is_some()
 }
+
+/// Deletes a seller and everything genuinely depending on it - analysis
+/// rows, then listings, then the seller itself - in the correct order,
+/// so foreign keys never block the cleanup. Safe to call before a test
+/// too, as a guard against leftover data from a previous failed run.
+#[allow(dead_code)]
+pub async fn cleanup_test_seller_chain(pool: &Pool<Postgres>, platform: &str, platform_id: &str) {
+    let _ = query(
+        "DELETE FROM analysis WHERE listing_id IN (
+            SELECT id FROM listings WHERE seller_id IN (
+                SELECT id FROM sellers WHERE platform = $1 AND platform_id = $2
+            )
+        )",
+    )
+    .bind(platform)
+    .bind(platform_id)
+    .execute(pool)
+    .await;
+
+    let _ = query(
+        "DELETE FROM listings WHERE seller_id IN (
+            SELECT id FROM sellers WHERE platform = $1 AND platform_id = $2
+        )",
+    )
+    .bind(platform)
+    .bind(platform_id)
+    .execute(pool)
+    .await;
+
+    let _ = query("DELETE FROM sellers WHERE platform = $1 AND platform_id = $2")
+        .bind(platform)
+        .bind(platform_id)
+        .execute(pool)
+        .await;
+}
+
+// dashboard
+
+/// Inserts a real, connected chain for testing anything that reads
+/// analysis history - a seller, a listing tied to that seller, and an
+/// analysis row tied to both the listing and a real user. Returns the
+/// listing_id and seller_id, since callers often need them for
+/// assertions or further setup.
+#[allow(dead_code)]
+pub async fn insert_test_history_chain(
+    pool: &Pool<Postgres>,
+    user_id: Uuid,
+    platform: &str,
+    platform_id: &str,
+    listing_title: &str,
+) -> (Uuid, Uuid) {
+    let seller_id = Uuid::now_v7();
+    query(
+        "INSERT INTO sellers (id, platform, platform_id, name, verification, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, 'unknown'::seller_verification, NOW(), NOW())",
+    )
+    .bind(seller_id)
+    .bind(platform)
+    .bind(platform_id)
+    .bind("Test Seller")
+    .execute(pool)
+    .await
+    .expect("expected to create the test seller");
+
+    let listing_id = Uuid::now_v7();
+    let listing_url = format!("https://{}.com/item/{}", platform, platform_id);
+    query(
+        "INSERT INTO listings (id, seller_id, platform, listing_url, listing_id, title, first_seen_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())",
+    )
+    .bind(listing_id)
+    .bind(seller_id)
+    .bind(platform)
+    .bind(&listing_url)
+    .bind(platform_id)
+    .bind(listing_title)
+    .execute(pool)
+    .await
+    .expect("expected to create the test listing");
+
+    query(
+        "INSERT INTO analysis (id, listing_id, risk_score, risk_level, signals, user_id, created_at)
+         VALUES ($1, $2, $3, 'low'::risk_level_type, $4, $5, NOW())",
+    )
+    .bind(Uuid::now_v7())
+    .bind(listing_id)
+    .bind(15_i16)
+    .bind(serde_json::json!([]))
+    .bind(user_id)
+    .execute(pool)
+    .await
+    .expect("expected to create the test analysis");
+
+    (listing_id, seller_id)
+}
