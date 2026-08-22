@@ -6,12 +6,15 @@ use crate::common::{
     test_pool,
 };
 use axum::{
+    Json,
     extract::{Path, State},
     http::HeaderMap,
 };
 use backend::{
     errors::dashboard::DashboardError,
-    handlers::dashboard::{get_history, get_history_item, get_me, get_reports},
+    handlers::dashboard::{
+        UpdateMeRequest, get_history, get_history_item, get_me, get_reports, update_me,
+    },
     models::fraud_reports::ReportTypes,
     services::{
         auth::set_login_method,
@@ -1139,4 +1142,150 @@ async fn get_me_success_no_avatar() {
     );
 
     cleanup_test_user(&pool, email).await;
+}
+
+#[tokio::test]
+async fn update_me_unauthorized() {
+    let pool = test_pool().await;
+    let headers = HeaderMap::new();
+
+    let body = UpdateMeRequest {
+        name: "Doesn't Matter".to_string(),
+    };
+
+    let result = update_me(State(pool), headers, Json(body)).await;
+
+    match result {
+        Err(DashboardError::Unauthorized) => {}
+        Err(other) => panic!("expected Unauthorized, got a different error: {:?}", other),
+        Ok(_) => panic!("expected an unauthenticated request to be rejected, but it succeeded"),
+    }
+}
+
+#[tokio::test]
+async fn update_me_bad_request_empty_name() {
+    let pool = test_pool().await;
+    let email = "update_me_empty_name_test@example.com";
+    let (user, _) = create_test_user(&pool, email).await;
+    let headers = auth_headers_for(&pool, user.id).await;
+
+    let body = UpdateMeRequest {
+        name: "   ".to_string(),
+    };
+
+    let result = update_me(State(pool.clone()), headers, Json(body)).await;
+
+    match result {
+        Err(DashboardError::BadRequest(_)) => {}
+        Err(other) => panic!("expected BadRequest, got a different error: {:?}", other),
+        Ok(_) => panic!("expected a whitespace-only name to be rejected, but it succeeded"),
+    }
+
+    cleanup_test_user(&pool, email).await;
+}
+
+#[tokio::test]
+async fn update_me_bad_request_name_too_long() {
+    let pool = test_pool().await;
+    let email = "update_me_too_long_test@example.com";
+    let (user, _) = create_test_user(&pool, email).await;
+    let headers = auth_headers_for(&pool, user.id).await;
+
+    let too_long_name = "a".repeat(101);
+
+    let body = UpdateMeRequest {
+        name: too_long_name,
+    };
+
+    let result = update_me(State(pool.clone()), headers, Json(body)).await;
+
+    match result {
+        Err(DashboardError::BadRequest(_)) => {}
+        Err(other) => panic!("expected BadRequest, got a different error: {:?}", other),
+        Ok(_) => panic!("expected a name over 100 characters to be rejected, but it succeeded"),
+    }
+
+    cleanup_test_user(&pool, email).await;
+}
+
+#[tokio::test]
+async fn update_me_success_trims_whitespace() {
+    let pool = test_pool().await;
+    let email = "update_me_trim_test@example.com";
+    let (user, _) = create_test_user(&pool, email).await;
+    let headers = auth_headers_for(&pool, user.id).await;
+
+    let body = UpdateMeRequest {
+        name: "   Bilal Khan   ".to_string(),
+    };
+
+    let result = update_me(State(pool.clone()), headers, Json(body))
+        .await
+        .expect("expected the update to succeed")
+        .0;
+
+    assert_eq!(
+        result["name"],
+        json!("Bilal Khan"),
+        "expected the RESPONSE to show the trimmed name, not the raw input"
+    );
+
+    let saved_name: String = query_scalar("SELECT name FROM users WHERE id = $1")
+        .bind(user.id)
+        .fetch_one(&pool)
+        .await
+        .expect("expected the query to succeed");
+
+    assert_eq!(
+        saved_name, "Bilal Khan",
+        "expected the DATABASE to genuinely store the trimmed name"
+    );
+
+    cleanup_test_user(&pool, email).await;
+}
+
+#[tokio::test]
+async fn update_me_success_exactly_100_characters() {
+    let pool = test_pool().await;
+    let email = "update_me_exactly_100_test@example.com";
+    let (user, _) = create_test_user(&pool, email).await;
+    let headers = auth_headers_for(&pool, user.id).await;
+
+    let exactly_100_name = "a".repeat(100);
+
+    let body = UpdateMeRequest {
+        name: exactly_100_name.clone(),
+    };
+
+    let result = update_me(State(pool.clone()), headers, Json(body))
+        .await
+        .expect("expected exactly 100 characters to be accepted, not rejected");
+
+    assert_eq!(result.0["name"], json!(exactly_100_name));
+
+    cleanup_test_user(&pool, email).await;
+}
+
+#[tokio::test]
+async fn update_me_database_error() {
+    let pool = test_pool().await;
+    let email = "update_me_db_error_test@example.com";
+    let (user, _) = create_test_user(&pool, email).await;
+
+    let headers = auth_headers_for(&pool, user.id).await;
+
+    cleanup_test_user(&pool, email).await;
+    pool.close().await;
+
+    let body = UpdateMeRequest {
+        name: "Doesn't Matter".to_string(),
+    };
+
+    let result = update_me(State(pool), headers, Json(body)).await;
+
+    match result {
+        Err(DashboardError::InternalError(_)) => {}
+        Err(other) => panic!("expected InternalError, got a different error: {:?}", other),
+        Ok(_) => panic!("expected a genuine database error, but the request succeeded"),
+    }
 }
