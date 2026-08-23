@@ -10,7 +10,6 @@ const WELCOME_EMAIL_TEMPLATE: &str = include_str!("../templates/welcome_email.ht
 const PAYMENT_FAILED_TEMPLATE: &str = include_str!("../templates/payment_failed_email.html");
 const SUBSCRIPTION_CANCELED_TEMPLATE: &str =
     include_str!("../templates/subscription_canceled_email.html");
-
 const SUBSCRIPTION_ENDED_TEMPLATE: &str =
     include_str!("../templates/subscription_ended_email.html");
 
@@ -57,6 +56,7 @@ pub async fn send_magic_link_email(
     let api_key = var("RESEND_API_KEY").map_err(|_| {
         AuthError::InternalServerError("RESEND_API_KEY needs to be setup".to_string())
     })?;
+
     let base_url = var("PUBLIC_BASE_URL").map_err(|_| {
         AuthError::InternalServerError("PUBLIC_BASE_URL needs to be configured".to_string())
     })?;
@@ -100,11 +100,13 @@ pub async fn send_magic_link_email(
             .text()
             .await
             .unwrap_or_else(|_| "could not read the response text".to_string());
+
         return Err(AuthError::InternalServerError(format!(
             "Resend error ({}): {}",
             status, text
         )));
     }
+
     Ok(response.status())
 }
 
@@ -118,9 +120,11 @@ pub async fn send_welcome_email(to_email: &str) -> Result<(), AuthError> {
     let api_key = var("RESEND_API_KEY").map_err(|_| {
         AuthError::InternalServerError("RESEND_API_KEY needs to be setup".to_string())
     })?;
+
     let base_url = var("PUBLIC_BASE_URL").map_err(|_| {
         AuthError::InternalServerError("PUBLIC_BASE_URL needs to be configured".to_string())
     })?;
+
     let from_address =
         var("RESEND_FROM_EMAIL").unwrap_or_else(|_| "onboarding@resend.dev".to_string());
 
@@ -160,6 +164,7 @@ pub async fn send_welcome_email(to_email: &str) -> Result<(), AuthError> {
     if !response.status().is_success() {
         let status = response.status();
         let text = response.text().await.unwrap_or_default();
+
         return Err(AuthError::InternalServerError(format!(
             "Resend error ({}): {}",
             status, text
@@ -178,6 +183,7 @@ pub async fn send_payment_failed_email(to_email: &str, portal_url: &str) -> Resu
     let api_key = var("RESEND_API_KEY").map_err(|_| {
         AuthError::InternalServerError("RESEND_API_KEY needs to be setup".to_string())
     })?;
+
     let base_url = var("PUBLIC_BASE_URL").unwrap_or_else(|_| "http://localhost:3000".to_string());
     let logo_url = format!("{}/images/white_logo.png", base_url);
     let from_address =
@@ -193,12 +199,14 @@ pub async fn send_payment_failed_email(to_email: &str, portal_url: &str) -> Resu
     let html_body = tera
         .render("payment_failed_email.html", &context)
         .expect("tera needs to render the payment failed email");
+
     let body = json!({
         "from": format!("Safely <{}>", from_address),
         "to": [to_email],
         "subject": "Payment issue with your Safely subscription",
         "html": html_body,
     });
+
     let response = client
         .post("https://api.resend.com/emails")
         .bearer_auth(api_key)
@@ -206,6 +214,7 @@ pub async fn send_payment_failed_email(to_email: &str, portal_url: &str) -> Resu
         .send()
         .await
         .map_err(|e| AuthError::InternalServerError(e.to_string()))?;
+
     if !response.status().is_success() {
         let status = response.status();
         let text = response.text().await.unwrap_or_default();
@@ -214,6 +223,7 @@ pub async fn send_payment_failed_email(to_email: &str, portal_url: &str) -> Resu
             status, text
         )));
     }
+
     Ok(())
 }
 /// Sent exactly once, the moment a subscription is genuinely and
@@ -242,6 +252,7 @@ pub async fn send_subscription_ended_email(to_email: &str) -> Result<(), AuthErr
     let html_body = tera
         .render("subscription_ended_email.html", &context)
         .expect("tera needs to render the subscription ended email");
+
     let body = json!({
         "from": format!("Safely <{}>", from_address),
         "to": [to_email],
@@ -275,30 +286,37 @@ pub async fn send_subscription_ended_email(to_email: &str) -> Result<(), AuthErr
 /// event fires either way, so this distinction can only be made by our
 /// own code, at the moment we know for certain which case we're in.
 pub async fn send_subscription_canceled_email(to_email: &str) -> Result<(), AuthError> {
+    let client = Client::new();
+    let mut context = Context::new();
+
     let api_key = var("RESEND_API_KEY").map_err(|_| {
         AuthError::InternalServerError("RESEND_API_KEY needs to be setup".to_string())
     })?;
+
     let base_url = var("PUBLIC_BASE_URL").map_err(|_| {
         AuthError::InternalServerError("PUBLIC_BASE_URL needs to be configured".to_string())
     })?;
+
     let from_address =
         var("RESEND_FROM_EMAIL").unwrap_or_else(|_| "onboarding@resend.dev".to_string());
     let dashboard_url = format!("{}/dashboard/", base_url);
     let logo_url = format!("{}/images/white_logo.png", base_url);
     let tera = get_tera();
-    let client = Client::new();
-    let mut context = Context::new();
+
     context.insert("dashboard_url", &dashboard_url);
     context.insert("logo_url", &logo_url);
+
     let html_body = tera
         .render("subscription_canceled_email.html", &context)
         .expect("tera needs to render the subscription canceled email");
+
     let body = json!({
         "from": format!("Safely <{}>", from_address),
         "to": [to_email],
         "subject": "Your Safely subscription has been canceled",
         "html": html_body,
     });
+
     let response = client
         .post("https://api.resend.com/emails")
         .bearer_auth(api_key)
@@ -306,6 +324,7 @@ pub async fn send_subscription_canceled_email(to_email: &str) -> Result<(), Auth
         .send()
         .await
         .map_err(|e| AuthError::InternalServerError(e.to_string()))?;
+
     if !response.status().is_success() {
         let status = response.status();
         let text = response.text().await.unwrap_or_default();
@@ -314,6 +333,7 @@ pub async fn send_subscription_canceled_email(to_email: &str) -> Result<(), Auth
             status, text
         )));
     }
+
     Ok(())
 }
 

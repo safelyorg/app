@@ -25,10 +25,10 @@ use backend::{
         auth::{
             create_session, extract_user_id, find_or_create_user_by_email,
             find_or_create_user_by_google, find_user_by_email, find_user_by_google_id,
-            finish_sign_in, insert_magic_link, link_google_account, validate_email_format,
-            validate_magic_link,
+            finish_sign_in, insert_magic_link, link_google_account, set_login_method,
+            validate_email_format, validate_magic_link,
         },
-        email::{get_tera, send_magic_link_email},
+        email::{get_tera, send_magic_link_email, send_welcome_email},
         google_oauth::build_google_authorize_url,
     },
 };
@@ -41,6 +41,53 @@ use sqlx::{query, query_as, query_scalar};
 use std::env::{remove_var, set_var};
 use tower::ServiceExt;
 use uuid::Uuid;
+
+#[tokio::test]
+async fn requesting_magic_link() {
+    let test_email = "delivered@resend.dev ";
+    let pool = test_pool().await;
+    let formatted_email = validate_email_format(test_email).expect("email needs to be trimmed");
+    cleanup_test_user(&pool, &formatted_email).await;
+
+    let email_token = insert_magic_link(&pool, formatted_email.as_str())
+        .await
+        .expect("the magic link needs to be inserted");
+    let base_url = var("PUBLIC_BASE_URL").expect("public base url needs to be configured");
+    let verify_url = format!("{}/api/v1/auth/verify?token={}", base_url, email_token);
+
+    send_magic_link_email(&formatted_email, &verify_url)
+        .await
+        .expect("magic link needs to be sent");
+
+    let row: Option<(String,)> =
+        query_as("SELECT email FROM magic_links WHERE email = $1 ORDER BY created_at DESC LIMIT 1")
+            .bind(&formatted_email)
+            .fetch_optional(&pool)
+            .await
+            .expect("query is expecting email from magic link");
+
+    assert!(
+        row.is_some(),
+        "expected a magic link row to actually exist in the database"
+    );
+
+    let result = request_magic_link(
+        State(pool.clone()),
+        Json(MagicLinkRequest {
+            email: formatted_email.clone(),
+        }),
+    )
+    .await
+    .expect("expected the magic link request to succeed");
+
+    assert_eq!(result.success, true);
+    assert_eq!(
+        result.message,
+        "If that email is valid, a sign-in link is on its way."
+    );
+
+    cleanup_test_user(&pool, &formatted_email).await;
+}
 
 #[tokio::test]
 async fn requesting_a_magic_link_succeeds_for_a_valid_email() {
@@ -137,53 +184,6 @@ async fn checking_email_format() {
     assert_eq!(contains_ampersand, true);
     assert_eq!(not_empty, true);
     assert_eq!(validate.is_ok(), true);
-}
-
-#[tokio::test]
-async fn requesting_magic_link() {
-    let test_email = "delivered@resend.dev ";
-    let pool = test_pool().await;
-    let formatted_email = validate_email_format(test_email).expect("email needs to be trimmed");
-    cleanup_test_user(&pool, &formatted_email).await;
-
-    let email_token = insert_magic_link(&pool, formatted_email.as_str())
-        .await
-        .expect("the magic link needs to be inserted");
-    let base_url = var("PUBLIC_BASE_URL").expect("public base url needs to be configured");
-    let verify_url = format!("{}/api/v1/auth/verify?token={}", base_url, email_token);
-
-    send_magic_link_email(&formatted_email, &verify_url)
-        .await
-        .expect("magic link needs to be sent");
-
-    let row: Option<(String,)> =
-        query_as("SELECT email FROM magic_links WHERE email = $1 ORDER BY created_at DESC LIMIT 1")
-            .bind(&formatted_email)
-            .fetch_optional(&pool)
-            .await
-            .expect("query is expecting email from magic link");
-
-    assert!(
-        row.is_some(),
-        "expected a magic link row to actually exist in the database"
-    );
-
-    let result = request_magic_link(
-        State(pool.clone()),
-        Json(MagicLinkRequest {
-            email: formatted_email.clone(),
-        }),
-    )
-    .await
-    .expect("expected the magic link request to succeed");
-
-    assert_eq!(result.success, true);
-    assert_eq!(
-        result.message,
-        "If that email is valid, a sign-in link is on its way."
-    );
-
-    cleanup_test_user(&pool, &formatted_email).await;
 }
 
 #[tokio::test]
@@ -390,7 +390,6 @@ async fn verify_magic_link_rejects_a_token_that_was_already_used() {
         .await
         .expect("expected to insert a real magic link");
 
-    // First use - should succeed, and marks the token as used.
     let first_result = verify_magic_link(
         State(pool.clone()),
         Query(VerifyMagicLinkToken {
@@ -400,51 +399,18 @@ async fn verify_magic_link_rejects_a_token_that_was_already_used() {
     .await;
     assert!(first_result.is_ok(), "expected the first use to succeed");
 
-    // Second use, same token - should be rejected, since
-    // validate_magic_link only matches rows where used_at IS NULL.
     let second_result = verify_magic_link(
         State(pool.clone()),
         Query(VerifyMagicLinkToken { token: real_token }),
     )
     .await;
+
     assert!(
         second_result.is_err(),
         "expected a reused token to be rejected"
     );
 
     cleanup_test_user(&pool, email).await;
-}
-
-#[tokio::test]
-async fn find_user_by_email_finds_an_existing_user() {
-    let pool = test_pool().await;
-    let email = "test_user_find@example.com";
-    let formatted_email = validate_email_format(email).expect("expected to format the email");
-    let (created_user, _) = create_test_user(&pool, &formatted_email).await;
-
-    let found = find_user_by_email(&pool, email)
-        .await
-        .expect("expected the query to succeed");
-
-    let found_user = found.expect("expected to find the user that was just created");
-    assert_eq!(found_user.id, created_user.id);
-    assert_eq!(found_user.email, email);
-
-    cleanup_test_user(&pool, email).await;
-}
-
-#[tokio::test]
-async fn find_user_by_email_returns_none_for_a_nonexistent_user() {
-    let pool = test_pool().await;
-    let email = "definitely_does_not_exist_anywhere@example.com";
-    let formatted_email = validate_email_format(email).expect("expected to format the email");
-    cleanup_test_user(&pool, email).await;
-
-    let found = find_user_by_email(&pool, &formatted_email)
-        .await
-        .expect("expected the query itself to succeed");
-
-    assert!(found.is_none(), "expected no user to be found");
 }
 
 #[tokio::test]
@@ -494,6 +460,258 @@ async fn find_or_create_user_by_email_returns_the_existing_user_when_one_already
 
     cleanup_test_user(&pool, email).await;
 }
+
+#[tokio::test]
+async fn find_user_by_email_finds_an_existing_user() {
+    let pool = test_pool().await;
+    let email = "test_user_find@example.com";
+    let formatted_email = validate_email_format(email).expect("expected to format the email");
+    let (created_user, _) = create_test_user(&pool, &formatted_email).await;
+
+    let found = find_user_by_email(&pool, email)
+        .await
+        .expect("expected the query to succeed");
+
+    let found_user = found.expect("expected to find the user that was just created");
+    assert_eq!(found_user.id, created_user.id);
+    assert_eq!(found_user.email, email);
+
+    cleanup_test_user(&pool, email).await;
+}
+
+#[tokio::test]
+async fn find_user_by_email_returns_none_for_a_nonexistent_user() {
+    let pool = test_pool().await;
+    let email = "definitely_does_not_exist_anywhere@example.com";
+    let formatted_email = validate_email_format(email).expect("expected to format the email");
+    cleanup_test_user(&pool, email).await;
+
+    let found = find_user_by_email(&pool, &formatted_email)
+        .await
+        .expect("expected the query itself to succeed");
+
+    assert!(found.is_none(), "expected no user to be found");
+}
+
+#[tokio::test]
+#[serial]
+async fn finish_sign_in_with_new_user() {
+    dotenvy::dotenv().ok();
+    let pool = test_pool().await;
+    let email = "signin_with_new_user@example.com";
+    let (user, _) = create_test_user(&pool, email).await;
+
+    let session_token = finish_sign_in(&pool, user.id, true, email, "google")
+        .await
+        .expect("expected sign-in to complete successfully");
+
+    assert!(
+        !session_token.is_empty(),
+        "expected a real, non-empty session token"
+    );
+
+    let found: Option<(String,)> = query_as("SELECT token FROM sessions WHERE token = $1")
+        .bind(&session_token)
+        .fetch_optional(&pool)
+        .await
+        .expect("expected the query to succeed");
+
+    assert!(
+        found.is_some(),
+        "expected the session to genuinely exist in the database"
+    );
+
+    cleanup_test_user(&pool, email).await;
+}
+
+#[tokio::test]
+#[serial]
+async fn finish_sign_in_with_old_user() {
+    dotenvy::dotenv().ok();
+    let pool = test_pool().await;
+    let email = "signin_with_old_user@example.com";
+    cleanup_test_user(&pool, email).await;
+
+    let (user, _) = find_or_create_user_by_email(&pool, email)
+        .await
+        .expect("expected to create the user");
+
+    let session_token = finish_sign_in(&pool, user.id, false, email, "google")
+        .await
+        .expect("expected sign-in to complete successfully");
+
+    assert!(
+        !session_token.is_empty(),
+        "expected a real, non-empty session token"
+    );
+
+    let found: Option<(String,)> = query_as("SELECT token FROM sessions WHERE token = $1")
+        .bind(&session_token)
+        .fetch_optional(&pool)
+        .await
+        .expect("expected the query to succeed");
+
+    assert!(
+        found.is_some(),
+        "expected the session to genuinely exist in the database"
+    );
+
+    cleanup_test_user(&pool, email).await;
+}
+
+#[tokio::test]
+#[serial]
+async fn send_welcome_email_missing_api_key() {
+    dotenvy::dotenv().ok();
+    let original_key = var("RESEND_API_KEY").ok();
+    unsafe {
+        remove_var("RESEND_API_KEY");
+    }
+
+    let result = send_welcome_email("delivered@resend.dev").await;
+
+    match result {
+        Err(AuthError::InternalServerError(_)) => {}
+        Err(other) => panic!(
+            "expected InternalServerError, got a different error: {:?}",
+            other
+        ),
+        Ok(_) => panic!("expected the email to fail without a real API key, but it succeeded"),
+    }
+
+    unsafe {
+        if let Some(key) = original_key {
+            set_var("RESEND_API_KEY", key);
+        }
+    }
+}
+
+#[tokio::test]
+#[serial]
+async fn send_welcome_email_missing_base_url() {
+    dotenvy::dotenv().ok();
+    let original_url = var("PUBLIC_BASE_URL").ok();
+    unsafe {
+        remove_var("PUBLIC_BASE_URL");
+    }
+
+    let result = send_welcome_email("delivered@resend.dev").await;
+
+    match result {
+        Err(AuthError::InternalServerError(_)) => {}
+        Err(other) => panic!(
+            "expected InternalServerError, got a different error: {:?}",
+            other
+        ),
+        Ok(_) => panic!("expected the email to fail without PUBLIC_BASE_URL, but it succeeded"),
+    }
+
+    unsafe {
+        if let Some(url) = original_url {
+            set_var("PUBLIC_BASE_URL", url);
+        }
+    }
+}
+
+#[tokio::test]
+#[serial]
+async fn send_welcome_email_succeeds() {
+    dotenvy::dotenv().ok();
+
+    let result = send_welcome_email("delivered@resend.dev").await;
+
+    assert!(
+        result.is_ok(),
+        "expected the welcome email to send successfully, got: {:?}",
+        result
+    );
+}
+
+#[tokio::test]
+#[serial]
+async fn send_welcome_email_fails_for_a_blocked_domain() {
+    dotenvy::dotenv().ok();
+
+    let result = send_welcome_email("test_user@example.com").await;
+    match result {
+        Err(AuthError::InternalServerError(message)) => {
+            assert!(
+                message.contains("Invalid `to` field"),
+                "expected Resend's specific rejection message, got: {}",
+                message
+            )
+        }
+        other => panic!("expected an InternalServerError, got: {:?}", other),
+    }
+}
+
+#[tokio::test]
+async fn set_login_method_success_email() {
+    let pool = test_pool().await;
+    let email = "set_login_method_email_test@example.com";
+    let (user, _) = create_test_user(&pool, email).await;
+
+    set_login_method(&pool, user.id, "email")
+        .await
+        .expect("expected the update to succeed");
+
+    let saved_method: Option<String> =
+        query_scalar("SELECT last_login_method FROM users WHERE id = $1")
+            .bind(user.id)
+            .fetch_one(&pool)
+            .await
+            .expect("expected the query to succeed");
+
+    assert_eq!(
+        saved_method,
+        Some("email".to_string()),
+        "expected the real database row to genuinely reflect 'email'"
+    );
+
+    cleanup_test_user(&pool, email).await;
+}
+
+#[tokio::test]
+async fn set_login_method_success_google() {
+    let pool = test_pool().await;
+    let email = "set_login_method_google_test@example.com";
+    let (user, _) = create_test_user(&pool, email).await;
+
+    set_login_method(&pool, user.id, "google")
+        .await
+        .expect("expected the update to succeed");
+
+    let saved_method: Option<String> =
+        query_scalar("SELECT last_login_method FROM users WHERE id = $1")
+            .bind(user.id)
+            .fetch_one(&pool)
+            .await
+            .expect("expected the query to succeed");
+
+    assert_eq!(
+        saved_method,
+        Some("google".to_string()),
+        "expected the real database row to genuinely reflect 'google'"
+    );
+
+    cleanup_test_user(&pool, email).await;
+}
+
+#[tokio::test]
+async fn set_login_method_database_error() {
+    let pool = test_pool().await;
+    pool.close().await;
+
+    let fake_user_id = Uuid::new_v4();
+    let result = set_login_method(&pool, fake_user_id, "email").await;
+
+    assert!(
+        result.is_err(),
+        "expected a genuine database error when the connection pool is closed"
+    );
+}
+
+// ------------------------------------
 
 #[tokio::test]
 async fn handle_google_connect_succeeds_when_emails_match() {
@@ -1004,71 +1222,6 @@ async fn logout_with_fake_token() {
 
     let response = logout(State(pool.clone()), headers).await;
     assert_eq!(response.0["success"], true);
-}
-
-#[tokio::test]
-#[serial]
-async fn finish_sign_in_with_new_user() {
-    dotenvy::dotenv().ok();
-    let pool = test_pool().await;
-    let email = "signin_with_new_user@example.com";
-    let (user, _) = create_test_user(&pool, email).await;
-
-    let session_token = finish_sign_in(&pool, user.id, true, email, "google")
-        .await
-        .expect("expected sign-in to complete successfully");
-
-    assert!(
-        !session_token.is_empty(),
-        "expected a real, non-empty session token"
-    );
-
-    let found: Option<(String,)> = query_as("SELECT token FROM sessions WHERE token = $1")
-        .bind(&session_token)
-        .fetch_optional(&pool)
-        .await
-        .expect("expected the query to succeed");
-
-    assert!(
-        found.is_some(),
-        "expected the session to genuinely exist in the database"
-    );
-
-    cleanup_test_user(&pool, email).await;
-}
-#[tokio::test]
-#[serial]
-async fn finish_sign_in_with_old_user() {
-    dotenvy::dotenv().ok();
-    let pool = test_pool().await;
-    let email = "signin_with_old_user@example.com";
-    cleanup_test_user(&pool, email).await;
-
-    let (user, _) = find_or_create_user_by_email(&pool, email)
-        .await
-        .expect("expected to create the user");
-
-    let session_token = finish_sign_in(&pool, user.id, false, email, "google")
-        .await
-        .expect("expected sign-in to complete successfully");
-
-    assert!(
-        !session_token.is_empty(),
-        "expected a real, non-empty session token"
-    );
-
-    let found: Option<(String,)> = query_as("SELECT token FROM sessions WHERE token = $1")
-        .bind(&session_token)
-        .fetch_optional(&pool)
-        .await
-        .expect("expected the query to succeed");
-
-    assert!(
-        found.is_some(),
-        "expected the session to genuinely exist in the database"
-    );
-
-    cleanup_test_user(&pool, email).await;
 }
 
 #[tokio::test]

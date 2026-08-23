@@ -27,7 +27,6 @@ async fn newsletter_subscribe_bad_request_invalid_email() {
 #[tokio::test]
 async fn newsletter_subscribe_success() {
     dotenvy::dotenv().ok();
-
     let request = NewsletterSubscribeRequest {
         email: "newsletter_test_user@example.com".to_string(),
     };
@@ -54,7 +53,6 @@ async fn subscribe_to_newsletter_missing_api_key() {
     }
 
     let result = subscribe_to_newsletter("newsletter_test_missing_key@example.com").await;
-
     match result {
         Err(AuthError::InternalServerError(_)) => {}
         Err(other) => panic!(
@@ -83,7 +81,6 @@ async fn subscribe_to_newsletter_kit_rejects_wrong_key() {
     }
 
     let result = subscribe_to_newsletter("newsletter_test_wrong_key@example.com").await;
-
     match result {
         Err(AuthError::InternalServerError(_)) => {}
         Err(other) => panic!(
@@ -105,7 +102,6 @@ async fn subscribe_to_newsletter_kit_rejects_wrong_key() {
 #[serial]
 async fn subscribe_to_newsletter_success() {
     dotenvy::dotenv().ok();
-
     let result = subscribe_to_newsletter("newsletter_test_service_success@example.com").await;
 
     assert!(
