@@ -1,9 +1,11 @@
 use crate::{
     errors::auth::{AuthError, AuthServiceError},
-    models::users::{MagicLink, User},
+    handlers::auth::{DASHBOARD_PATH, OAUTH_LINK_USER_COOKIE, OAUTH_STATE_COOKIE},
+    models::users::{GoogleUserInfoEndpoint, MagicLink, User},
     services::email::send_welcome_email,
 };
-use axum::http::HeaderMap;
+use axum::{http::HeaderMap, response::Redirect};
+use axum_extra::extract::{CookieJar, cookie::Cookie};
 use chrono::{DateTime, Duration, Utc};
 use sqlx::{Error, Pool, Postgres, Row, query, query_as};
 use uuid::Uuid;
@@ -115,6 +117,87 @@ pub async fn find_user_by_email(
     Ok(result)
 }
 
+/// It runs at the final, shared step of both sign-in methods (magic link and Google).
+/// It handles the welcome email if they're brand new, updates some login bookkeeping,
+/// and creates their real session.
+///
+/// It sends a welcome email — but only for genuinely new people, updates
+/// "last login" bookkeeping, records how they logged in this time,
+/// creates the real session — the one part that genuinely matters otherwise
+/// the whole sign-in fails.
+pub async fn finish_sign_in(
+    pool: &Pool<Postgres>,
+    user_id: Uuid,
+    is_new: bool,
+    email_for_welcome: &str,
+    login_method: &str,
+) -> Result<String, AuthError> {
+    if is_new {
+        if let Err(e) = send_welcome_email(email_for_welcome).await {
+            eprintln!("Failed to send welcome email: {:?}", e);
+        }
+    }
+    let _ = check_last_login(pool, user_id).await;
+    let _ = set_login_method(pool, user_id, login_method).await;
+
+    create_session(pool, user_id).await.map_err(|e| {
+        eprintln!("create_session error: {}", e);
+        AuthError::DashboardPath("server_error".to_string())
+    })
+}
+
+/// It records the current moment as this user's most recent login time.
+///
+/// Updates the user's row using the query and returns success, with nothing meaningful inside it
+pub async fn check_last_login(pool: &Pool<Postgres>, user_id: Uuid) -> Result<(), Error> {
+    query("UPDATE users SET last_login_at = NOW() WHERE id = $1")
+        .bind(user_id)
+        .execute(pool)
+        .await?;
+
+    Ok(())
+}
+
+/// It records which method someone just used to sign in — either "email" or "google".
+///
+/// Updates the user's row using the query and returns success,
+/// with nothing meaningful inside it
+pub async fn set_login_method(
+    pool: &Pool<Postgres>,
+    user_id: Uuid,
+    method: &str,
+) -> Result<(), Error> {
+    query("UPDATE users SET last_login_method = $1 WHERE id = $2")
+        .bind(method)
+        .bind(user_id)
+        .execute(pool)
+        .await?;
+
+    Ok(())
+}
+
+/// It creates a genuine, real login session for a user, valid for 30 days,
+/// and hands back the actual token they'll use to prove they're logged in.
+///
+/// It generates an ID for this session row, builds the actual session token,
+/// sets when this session expires, saves the session to the database and
+/// returns the real token.
+pub async fn create_session(pool: &Pool<Postgres>, user_id: Uuid) -> Result<String, Error> {
+    let id = Uuid::now_v7();
+    let token = format!("{}{}", Uuid::new_v4(), Uuid::new_v4()).replace('-', "");
+    let expires_at = Utc::now() + Duration::days(30);
+
+    query("INSERT INTO sessions (id, user_id, token, expires_at) VALUES ($1, $2, $3, $4)")
+        .bind(id)
+        .bind(user_id)
+        .bind(&token)
+        .bind(expires_at)
+        .execute(pool)
+        .await?;
+
+    Ok(token)
+}
+
 /// It checks if a request includes a genuine, valid login token,
 /// and hands back the real user's ID if so — quietly returning "no one"
 /// for a missing or malformed token, but now genuinely reporting a real
@@ -137,6 +220,76 @@ pub async fn extract_user_id(
     let user = get_user_from_token(pool, token).await?;
 
     Ok(user.map(|u| u.id))
+}
+
+/// It runs when someone who's already logged into Safely finishes
+/// connecting their Google account and it makes sure Google gets
+/// attached to their specific account.
+///
+/// It cleans up two temporary cookies that were no longer needed,
+/// reads which account this connection request belongs to, confirms
+/// that the account genuinly exists.
+///
+/// First checks that the emails actually match and the secondly
+/// checks if the Google account already claimed by someone else.
+pub async fn handle_google_connect(
+    pool: &Pool<Postgres>,
+    jar: CookieJar,
+    link_cookie: Cookie<'static>,
+    google_user: &GoogleUserInfoEndpoint,
+) -> Result<(CookieJar, Redirect), AuthError> {
+    let mut removed_state = Cookie::from(OAUTH_STATE_COOKIE);
+    let mut removed_link = Cookie::from(OAUTH_LINK_USER_COOKIE);
+    removed_state.set_path("/");
+    removed_link.set_path("/");
+    let jar = jar.remove(removed_state).remove(removed_link);
+
+    let linking_user_id = Uuid::parse_str(link_cookie.value())
+        .map_err(|_| AuthError::DashboardPathWithJar(jar.clone(), "server_error".to_string()))?;
+
+    let linking_user = find_user_by_id(pool, linking_user_id)
+        .await
+        .map_err(|e| {
+            eprintln!("find_user_by_id error: {}", e);
+            AuthError::DashboardPath("server_error".to_string())
+        })?
+        .ok_or_else(|| AuthError::DashboardPath("server_error".to_string()))?;
+
+    if linking_user.email.trim().to_lowercase() != google_user.email.trim().to_lowercase() {
+        return Err(AuthError::DashboardPathWithJar(
+            jar,
+            "google_email_mismatch".to_string(),
+        ));
+    }
+
+    let existing_user = find_user_by_google_id(pool, &google_user.id)
+        .await
+        .map_err(|e| {
+            eprintln!("find_user_by_google_id error: {}", e);
+            AuthError::DashboardPathWithJar(jar.clone(), "server_error".to_string())
+        })?;
+
+    if let Some(existing) = existing_user {
+        if existing.id != linking_user_id {
+            return Err(AuthError::DashboardPathWithJar(
+                jar,
+                "google_already_linked".to_string(),
+            ));
+        }
+    }
+
+    if let Err(e) = link_google_account(pool, linking_user_id, &google_user.id).await {
+        eprintln!("link_google_account error: {}", e);
+        return Err(AuthError::DashboardPathWithJar(
+            jar,
+            "server_error".to_string(),
+        ));
+    }
+
+    Ok((
+        jar,
+        Redirect::to(&format!("{}?google_connected=1", DASHBOARD_PATH)),
+    ))
 }
 
 /// It looks up who a session token belongs to, and quietly extends that session's
@@ -277,85 +430,4 @@ pub async fn link_google_account(
         .await?;
 
     Ok(())
-}
-
-/// It records the current moment as this user's most recent login time.
-///
-/// Updates the user's row using the query and returns success, with nothing meaningful inside it
-pub async fn check_last_login(pool: &Pool<Postgres>, user_id: Uuid) -> Result<(), Error> {
-    query("UPDATE users SET last_login_at = NOW() WHERE id = $1")
-        .bind(user_id)
-        .execute(pool)
-        .await?;
-
-    Ok(())
-}
-
-/// It records which method someone just used to sign in — either "email" or "google".
-///
-/// Updates the user's row using the query and returns success,
-/// with nothing meaningful inside it
-pub async fn set_login_method(
-    pool: &Pool<Postgres>,
-    user_id: Uuid,
-    method: &str,
-) -> Result<(), Error> {
-    query("UPDATE users SET last_login_method = $1 WHERE id = $2")
-        .bind(method)
-        .bind(user_id)
-        .execute(pool)
-        .await?;
-
-    Ok(())
-}
-
-/// It creates a genuine, real login session for a user, valid for 30 days,
-/// and hands back the actual token they'll use to prove they're logged in.
-///
-/// It generates an ID for this session row, builds the actual session token,
-/// sets when this session expires, saves the session to the database and
-/// returns the real token.
-pub async fn create_session(pool: &Pool<Postgres>, user_id: Uuid) -> Result<String, Error> {
-    let id = Uuid::now_v7();
-    let token = format!("{}{}", Uuid::new_v4(), Uuid::new_v4()).replace('-', "");
-    let expires_at = Utc::now() + Duration::days(30);
-
-    query("INSERT INTO sessions (id, user_id, token, expires_at) VALUES ($1, $2, $3, $4)")
-        .bind(id)
-        .bind(user_id)
-        .bind(&token)
-        .bind(expires_at)
-        .execute(pool)
-        .await?;
-
-    Ok(token)
-}
-
-/// It runs at the final, shared step of both sign-in methods (magic link and Google).
-/// It handles the welcome email if they're brand new, updates some login bookkeeping,
-/// and creates their real session.
-///
-/// It sends a welcome email — but only for genuinely new people, updates
-/// "last login" bookkeeping, records how they logged in this time,
-/// creates the real session — the one part that genuinely matters otherwise
-/// the whole sign-in fails.
-pub async fn finish_sign_in(
-    pool: &Pool<Postgres>,
-    user_id: Uuid,
-    is_new: bool,
-    email_for_welcome: &str,
-    login_method: &str,
-) -> Result<String, AuthError> {
-    if is_new {
-        if let Err(e) = send_welcome_email(email_for_welcome).await {
-            eprintln!("Failed to send welcome email: {:?}", e);
-        }
-    }
-    let _ = check_last_login(pool, user_id).await;
-    let _ = set_login_method(pool, user_id, login_method).await;
-
-    create_session(pool, user_id).await.map_err(|e| {
-        eprintln!("create_session error: {}", e);
-        AuthError::DashboardPath("server_error".to_string())
-    })
 }

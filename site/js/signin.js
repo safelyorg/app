@@ -71,6 +71,7 @@
       if (e.key === "Enter") magicBtn.click();
     });
   }
+
   // The X close button only makes sense in a dismissible context (the
   // landing page's overlay, where there's somewhere to return to) - it's
   // hidden by default and only shown when the embedding page explicitly

@@ -1,14 +1,14 @@
 use crate::{
     errors::auth::AuthError,
     models::users::{
-        GoogleAfterLoginQuery, GoogleConnectQuery, GoogleUserInfoEndpoint, MagicLinkAuthResponse,
-        MagicLinkRequest, VerifyMagicLinkToken,
+        GoogleAfterLoginQuery, GoogleConnectQuery, MagicLinkAuthResponse, MagicLinkRequest,
+        VerifyMagicLinkToken,
     },
     services::{
         auth::{
             delete_session, extract_user_id, find_or_create_user_by_email,
-            find_or_create_user_by_google, find_user_by_google_id, find_user_by_id, finish_sign_in,
-            insert_magic_link, link_google_account, validate_email_format, validate_magic_link,
+            find_or_create_user_by_google, finish_sign_in, handle_google_connect,
+            insert_magic_link, validate_email_format, validate_magic_link,
         },
         email::send_magic_link_email,
         google_oauth::{build_google_authorize_url, exchange_code_for_user},
@@ -27,7 +27,7 @@ use std::env::var;
 use time::Duration;
 use uuid::Uuid;
 
-const DASHBOARD_PATH: &str = "/dashboard/";
+pub const DASHBOARD_PATH: &str = "/dashboard/";
 pub const OAUTH_STATE_COOKIE: &str = "oauth_state";
 pub const OAUTH_LINK_USER_COOKIE: &str = "oauth_link_user_id";
 
@@ -160,7 +160,7 @@ pub async fn google_connect_redirect(
 
     let user_id = extract_user_id(&synthetic_headers, &pool)
         .await
-        .expect("expected to extract the user id")
+        .map_err(|_| AuthError::DashboardPath("server_error".to_string()))?
         .ok_or_else(|| AuthError::DashboardPath("session_expired".to_string()))?;
 
     let state = Uuid::new_v4().to_string();
@@ -188,6 +188,7 @@ pub async fn google_connect_redirect(
     link_cookie.set_same_site(SameSite::Lax);
 
     let jar = jar.add(state_cookie).add(link_cookie);
+
     Ok((jar, Redirect::to(&authorize_url)))
 }
 
@@ -210,13 +211,16 @@ pub async fn google_callback(
     if query.error.is_some() {
         return Err(AuthError::DashboardPath("google_denied".to_string()));
     }
+
     let Some(code) = query.code else {
         return Err(AuthError::DashboardPath("missing_code".to_string()));
     };
+
     let expected_state = jar.get(OAUTH_STATE_COOKIE).map(|c| c.value().to_string());
     if expected_state.is_none() || expected_state != query.state {
         return Err(AuthError::DashboardPath("state_mismatch".to_string()));
     }
+
     let google_user = exchange_code_for_user(&code).await.map_err(|e| {
         eprintln!("exchange_code_for_user error: {}", e);
         AuthError::DashboardPath("google_exchange_failed".to_string())
@@ -266,74 +270,4 @@ pub async fn logout(State(pool): State<Pool<Postgres>>, headers: HeaderMap) -> J
     }
 
     Json(json!({ "success": true }))
-}
-
-/// It runs when someone who's already logged into Safely finishes
-/// connecting their Google account and it makes sure Google gets
-/// attached to their specific account.
-///
-/// It cleans up two temporary cookies that were no longer needed,
-/// reads which account this connection request belongs to, confirms
-/// that the account genuinly exists.
-///
-/// First checks that the emails actually match and the secondly
-/// checks if the Google account already claimed by someone else.
-pub async fn handle_google_connect(
-    pool: &Pool<Postgres>,
-    jar: CookieJar,
-    link_cookie: Cookie<'static>,
-    google_user: &GoogleUserInfoEndpoint,
-) -> Result<(CookieJar, Redirect), AuthError> {
-    let mut removed_state = Cookie::from(OAUTH_STATE_COOKIE);
-    let mut removed_link = Cookie::from(OAUTH_LINK_USER_COOKIE);
-    removed_state.set_path("/");
-    removed_link.set_path("/");
-    let jar = jar.remove(removed_state).remove(removed_link);
-
-    let linking_user_id = Uuid::parse_str(link_cookie.value())
-        .map_err(|_| AuthError::DashboardPathWithJar(jar.clone(), "server_error".to_string()))?;
-
-    let linking_user = find_user_by_id(pool, linking_user_id)
-        .await
-        .map_err(|e| {
-            eprintln!("find_user_by_id error: {}", e);
-            AuthError::DashboardPath("server_error".to_string())
-        })?
-        .ok_or_else(|| AuthError::DashboardPath("server_error".to_string()))?;
-
-    if linking_user.email.trim().to_lowercase() != google_user.email.trim().to_lowercase() {
-        return Err(AuthError::DashboardPathWithJar(
-            jar,
-            "google_email_mismatch".to_string(),
-        ));
-    }
-
-    let existing_user = find_user_by_google_id(pool, &google_user.id)
-        .await
-        .map_err(|e| {
-            eprintln!("find_user_by_google_id error: {}", e);
-            AuthError::DashboardPathWithJar(jar.clone(), "server_error".to_string())
-        })?;
-
-    if let Some(existing) = existing_user {
-        if existing.id != linking_user_id {
-            return Err(AuthError::DashboardPathWithJar(
-                jar,
-                "google_already_linked".to_string(),
-            ));
-        }
-    }
-
-    if let Err(e) = link_google_account(pool, linking_user_id, &google_user.id).await {
-        eprintln!("link_google_account error: {}", e);
-        return Err(AuthError::DashboardPathWithJar(
-            jar,
-            "server_error".to_string(),
-        ));
-    }
-
-    Ok((
-        jar,
-        Redirect::to(&format!("{}?google_connected=1", DASHBOARD_PATH)),
-    ))
 }

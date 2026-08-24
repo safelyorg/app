@@ -11,10 +11,13 @@ use axum_extra::extract::{
     cookie::{Cookie, SameSite},
 };
 use backend::{
-    errors::auth::{AuthError, AuthServiceError},
+    errors::{
+        auth::{AuthError, AuthServiceError},
+        google_oauth::GoogleOauthConfigError,
+    },
     handlers::auth::{
         OAUTH_LINK_USER_COOKIE, OAUTH_STATE_COOKIE, google_callback, google_connect_redirect,
-        google_redirect, handle_google_connect, logout, request_magic_link, verify_magic_link,
+        google_redirect, logout, request_magic_link, verify_magic_link,
     },
     models::users::{
         GoogleAfterLoginQuery, GoogleConnectQuery, GoogleUserInfoEndpoint, MagicLinkRequest,
@@ -25,11 +28,12 @@ use backend::{
         auth::{
             check_last_login, create_session, extract_user_id, find_or_create_user_by_email,
             find_or_create_user_by_google, find_user_by_email, find_user_by_google_id,
-            find_user_by_id, finish_sign_in, get_user_from_token, insert_magic_link,
-            link_google_account, set_login_method, validate_email_format, validate_magic_link,
+            find_user_by_id, finish_sign_in, get_user_from_token, handle_google_connect,
+            insert_magic_link, link_google_account, set_login_method, validate_email_format,
+            validate_magic_link,
         },
         email::{get_tera, send_magic_link_email, send_welcome_email},
-        google_oauth::build_google_authorize_url,
+        google_oauth::{build_google_authorize_url, exchange_code_for_user},
     },
 };
 use chrono::{DateTime, Duration as chrono_duration, Utc};
@@ -595,6 +599,7 @@ async fn verify_magic_link_rejects_a_token_that_was_already_used() {
     cleanup_test_user(&pool, email).await;
 }
 
+// Find or Create User by Email Test
 #[tokio::test]
 async fn find_or_create_user_by_email_creates_a_new_user_when_none_exists() {
     let pool = test_pool().await;
@@ -643,6 +648,7 @@ async fn find_or_create_user_by_email_returns_the_existing_user_when_one_already
     cleanup_test_user(&pool, email).await;
 }
 
+// Find User By Email Test
 #[tokio::test]
 async fn find_user_by_email_finds_an_existing_user() {
     let pool = test_pool().await;
@@ -675,6 +681,7 @@ async fn find_user_by_email_returns_none_for_a_nonexistent_user() {
     assert!(found.is_none(), "expected no user to be found");
 }
 
+// Finish Sign In Test
 #[tokio::test]
 #[serial]
 async fn finish_sign_in_with_new_user() {
@@ -741,6 +748,7 @@ async fn finish_sign_in_with_old_user() {
     cleanup_test_user(&pool, email).await;
 }
 
+// Send Welcome Email Test
 #[tokio::test]
 #[serial]
 async fn send_welcome_email_missing_api_key() {
@@ -801,7 +809,6 @@ async fn send_welcome_email_succeeds() {
     dotenvy::dotenv().ok();
 
     let result = send_welcome_email("delivered@resend.dev").await;
-
     assert!(
         result.is_ok(),
         "expected the welcome email to send successfully, got: {:?}",
@@ -827,6 +834,7 @@ async fn send_welcome_email_fails_for_a_blocked_domain() {
     }
 }
 
+// Check Last Login Test
 #[tokio::test]
 async fn check_last_login_success() {
     let pool = test_pool().await;
@@ -879,6 +887,7 @@ async fn check_last_login_database_error() {
     );
 }
 
+// Set Login Method Test
 #[tokio::test]
 async fn set_login_method_success_email() {
     let pool = test_pool().await;
@@ -945,6 +954,7 @@ async fn set_login_method_database_error() {
     );
 }
 
+// Create Session
 #[tokio::test]
 async fn create_session_success_correct_shape_and_expiry() {
     let pool = test_pool().await;
@@ -1040,117 +1050,7 @@ async fn create_session_fails_for_nonexistent_user() {
     );
 }
 
-#[tokio::test]
-async fn handle_google_connect_succeeds_when_emails_match() {
-    let pool = test_pool().await;
-    let email = "google_link_success@example.com";
-    let (user, _) = create_test_user(&pool, email).await;
-
-    let link_cookie = Cookie::new(OAUTH_LINK_USER_COOKIE, user.id.to_string());
-    let google_user = GoogleUserInfoEndpoint {
-        id: "google_id_success_123".to_string(),
-        email: email.to_string(),
-        name: Some("Test User".to_string()),
-    };
-
-    let jar = CookieJar::new();
-    let result = handle_google_connect(&pool, jar, link_cookie, &google_user).await;
-
-    assert!(
-        result.is_ok(),
-        "expected linking to succeed, got: {:?}",
-        result
-    );
-
-    // Confirm the actual database was genuinely updated.
-    let linked = find_user_by_google_id(&pool, "google_id_success_123")
-        .await
-        .expect("expected the query to succeed");
-    assert!(
-        linked.is_some(),
-        "expected the user to now have a linked Google account"
-    );
-    assert_eq!(linked.unwrap().id, user.id);
-
-    cleanup_test_user(&pool, email).await;
-}
-
-#[tokio::test]
-async fn handle_google_connect_rejects_a_mismatched_email() {
-    let pool = test_pool().await;
-    let email = "google_link_mismatch@example.com";
-    let (user, _) = create_test_user(&pool, email).await;
-
-    let link_cookie = Cookie::new(OAUTH_LINK_USER_COOKIE, user.id.to_string());
-    let google_user = GoogleUserInfoEndpoint {
-        id: "google_id_mismatch_456".to_string(),
-        email: "a_totally_different_email@example.com".to_string(), // deliberately different
-        name: None,
-    };
-
-    let jar = CookieJar::new();
-    let result = handle_google_connect(&pool, jar, link_cookie, &google_user).await;
-
-    assert!(result.is_err(), "expected mismatched emails to be rejected");
-
-    cleanup_test_user(&pool, email).await;
-}
-
-#[tokio::test]
-async fn handle_google_connect_rejects_a_google_account_already_linked_elsewhere() {
-    let pool = test_pool().await;
-    let email_a = "google_link_owner@example.com";
-    let email_b = "google_link_intruder@example.com";
-    let (user_a, _) = create_test_user(&pool, email_a).await;
-    let (user_b, _) = create_test_user(&pool, email_b).await;
-
-    let shared_google_id = "google_id_already_taken_789";
-
-    // User A already linked this Google account.
-    link_google_account(&pool, user_a.id, shared_google_id)
-        .await
-        .expect("expected the first link to succeed");
-
-    // Now user B tries to link the SAME Google account.
-    let link_cookie = Cookie::new(OAUTH_LINK_USER_COOKIE, user_b.id.to_string());
-    let google_user = GoogleUserInfoEndpoint {
-        id: shared_google_id.to_string(),
-        email: email_b.to_string(), // matches user B's own email - only the Google ID conflicts
-        name: None,
-    };
-
-    let jar = CookieJar::new();
-    let result = handle_google_connect(&pool, jar, link_cookie, &google_user).await;
-
-    assert!(
-        result.is_err(),
-        "expected an already-linked Google account to be rejected"
-    );
-
-    cleanup_test_user(&pool, email_a).await;
-    cleanup_test_user(&pool, email_b).await;
-}
-
-#[tokio::test]
-async fn handle_google_connect_rejects_a_malformed_link_cookie() {
-    let pool = test_pool().await;
-
-    let link_cookie = Cookie::new(OAUTH_LINK_USER_COOKIE, "not-a-real-uuid");
-    let google_user = GoogleUserInfoEndpoint {
-        id: "google_id_whatever".to_string(),
-        email: "irrelevant@example.com".to_string(),
-        name: None,
-    };
-
-    let jar = CookieJar::new();
-    let result = handle_google_connect(&pool, jar, link_cookie, &google_user).await;
-
-    assert!(
-        result.is_err(),
-        "expected a malformed cookie value to be rejected"
-    );
-}
-
+// Google Redirect Test
 #[tokio::test]
 #[serial]
 async fn google_redirect_success() {
@@ -1206,6 +1106,105 @@ async fn google_redirect_failure() {
     }
 }
 
+#[tokio::test]
+#[serial]
+async fn google_redirect_failure_missing_redirect_uri() {
+    dotenvy::dotenv().ok();
+    let original_value = var("GOOGLE_REDIRECT_URI").ok();
+    unsafe {
+        remove_var("GOOGLE_REDIRECT_URI");
+    }
+
+    let jar = CookieJar::new();
+    let result = google_redirect(jar).await;
+
+    assert!(
+        result.is_err(),
+        "expected google_redirect to fail when GOOGLE_REDIRECT_URI is missing"
+    );
+
+    unsafe {
+        if let Some(value) = original_value {
+            set_var("GOOGLE_REDIRECT_URI", value);
+        }
+    }
+}
+
+#[tokio::test]
+#[serial]
+async fn google_redirect_success_url_contains_real_values() {
+    dotenvy::dotenv().ok();
+
+    let real_client_id = var("GOOGLE_CLIENT_ID")
+        .expect("expected GOOGLE_CLIENT_ID to be genuinely set for this test");
+
+    let jar = CookieJar::new();
+    let (returned_jar, redirect) = google_redirect(jar)
+        .await
+        .expect("expected google_redirect to succeed");
+
+    // Extract the real, actual redirect destination.
+    let response = redirect.into_response();
+    let location = response
+        .headers()
+        .get("location")
+        .expect("expected a real Location header")
+        .to_str()
+        .expect("expected the header to be valid text");
+
+    assert!(
+        location.starts_with("https://accounts.google.com"),
+        "expected a genuine Google authorization URL, got: {}",
+        location
+    );
+    assert!(
+        location.contains(&real_client_id),
+        "expected the real client_id to genuinely appear in the redirect URL"
+    );
+
+    // Confirm the state code embedded in the URL matches the real
+    // cookie value that was just set.
+    let state_cookie = returned_jar
+        .get(OAUTH_STATE_COOKIE)
+        .expect("expected the state cookie to be present");
+
+    assert!(
+        location.contains(state_cookie.value()),
+        "expected the redirect URL's state parameter to match the cookie's real value"
+    );
+}
+
+#[tokio::test]
+#[serial]
+async fn google_redirect_produces_unique_state_codes() {
+    dotenvy::dotenv().ok();
+
+    let (first_jar, _) = google_redirect(CookieJar::new())
+        .await
+        .expect("expected the first call to succeed");
+    let (second_jar, _) = google_redirect(CookieJar::new())
+        .await
+        .expect("expected the second call to succeed");
+
+    let first_code = first_jar
+        .get(OAUTH_STATE_COOKIE)
+        .expect("expected the first state cookie to be present")
+        .value()
+        .to_string();
+
+    let second_code = second_jar
+        .get(OAUTH_STATE_COOKIE)
+        .expect("expected the second state cookie to be present")
+        .value()
+        .to_string();
+
+    assert_ne!(
+        first_code, second_code,
+        "expected two genuinely distinct state codes, since each call should produce fresh randomness"
+    );
+}
+
+// Google Authorize URL Test
 #[test]
 #[serial]
 fn google_authorize_url_success() {
@@ -1296,6 +1295,118 @@ fn google_authorize_url_failure_on_redirect_uri_missing() {
     }
 }
 
+#[test]
+#[serial]
+fn google_authorize_url_specific_error_variants() {
+    let client_key = "GOOGLE_CLIENT_ID";
+    let uri_key = "GOOGLE_REDIRECT_URI";
+
+    // Missing client_id specifically.
+    unsafe {
+        remove_var(client_key);
+        set_var(uri_key, "URI_VALUE");
+    }
+    let result = build_google_authorize_url("state123");
+    match result {
+        Err(GoogleOauthConfigError::GoogleClientId) => {}
+        other => panic!(
+            "expected GoogleClientId variant specifically, got: {:?}",
+            other
+        ),
+    }
+
+    // Missing redirect_uri specifically.
+    unsafe {
+        set_var(client_key, "CLIENT_VALUE");
+        remove_var(uri_key);
+    }
+    let result = build_google_authorize_url("state123");
+    match result {
+        Err(GoogleOauthConfigError::GoogleRedirectUri) => {
+            // This is the correct, expected outcome.
+        }
+        other => panic!(
+            "expected GoogleRedirectUri variant specifically, got: {:?}",
+            other
+        ),
+    }
+
+    unsafe {
+        remove_var(client_key);
+        remove_var(uri_key);
+    }
+}
+
+#[test]
+#[serial]
+fn google_authorize_url_encodes_special_characters_correctly() {
+    let client_key = "GOOGLE_CLIENT_ID";
+    let uri_key = "GOOGLE_REDIRECT_URI";
+
+    // A genuinely real-shaped redirect_uri, containing characters that
+    // MUST be percent-encoded for a valid URL - "://" specifically.
+    let real_redirect_uri = "http://localhost:3000/api/v1/auth/google/callback";
+    unsafe {
+        set_var(client_key, "CLIENT_VALUE");
+        set_var(uri_key, real_redirect_uri);
+    }
+
+    let result =
+        build_google_authorize_url("state123").expect("expected the URL to build successfully");
+
+    assert!(
+        !result.contains("redirect_uri=http://localhost"),
+        "expected the redirect_uri to be genuinely percent-encoded, not embedded raw"
+    );
+    assert!(
+        result.contains("redirect_uri=http%3A%2F%2Flocalhost"),
+        "expected the redirect_uri to be correctly percent-encoded, got: {}",
+        result
+    );
+
+    unsafe {
+        remove_var(client_key);
+        remove_var(uri_key);
+    }
+}
+
+#[test]
+#[serial]
+fn google_authorize_url_contains_correct_fixed_parameters() {
+    let client_key = "GOOGLE_CLIENT_ID";
+    let uri_key = "GOOGLE_REDIRECT_URI";
+    unsafe {
+        set_var(client_key, "CLIENT_VALUE");
+        set_var(uri_key, "URI_VALUE");
+    }
+
+    let result =
+        build_google_authorize_url("state123").expect("expected the URL to build successfully");
+
+    assert!(
+        result.starts_with("https://accounts.google.com/o/oauth2/v2/auth?"),
+        "expected the correct real Google OAuth base URL"
+    );
+    assert!(
+        result.contains("response_type=code"),
+        "expected response_type=code"
+    );
+    assert!(
+        result.contains("scope=openid%20email%20profile"),
+        "expected the correct, exact scope parameter"
+    );
+    assert!(
+        result.contains("prompt=select_account"),
+        "expected prompt=select_account"
+    );
+
+    unsafe {
+        remove_var(client_key);
+        remove_var(uri_key);
+    }
+}
+
+// Google Connect Redirect Test
 #[tokio::test]
 #[serial]
 async fn google_connect_redirect_succeeds_with_a_valid_session() {
@@ -1362,6 +1473,121 @@ async fn google_connect_redirect_fails_with_an_invalid_session() {
     );
 }
 
+#[tokio::test]
+#[serial]
+async fn google_connect_redirect_success_sets_state_cookie_correctly() {
+    dotenvy::dotenv().ok();
+
+    let pool = test_pool().await;
+    let email = "google_connect_state_cookie_test@example.com";
+    let (user, _) = create_test_user(&pool, email).await;
+
+    let real_session_token = create_session(&pool, user.id)
+        .await
+        .expect("expected to create a real session");
+
+    let jar = CookieJar::new();
+    let (returned_jar, _redirect) = google_connect_redirect(
+        State(pool.clone()),
+        Query(GoogleConnectQuery {
+            session: real_session_token,
+        }),
+        jar,
+    )
+    .await
+    .expect("expected the connect flow to succeed");
+
+    let state_cookie = returned_jar
+        .get(OAUTH_STATE_COOKIE)
+        .expect("expected an oauth_state cookie to be present");
+
+    assert!(
+        !state_cookie.value().is_empty(),
+        "expected the state cookie's value to be a real, non-empty code"
+    );
+    assert_eq!(state_cookie.path(), Some("/"));
+    assert_eq!(state_cookie.http_only(), Some(true));
+    assert_eq!(state_cookie.same_site(), Some(SameSite::Lax));
+    assert_eq!(state_cookie.max_age(), Some(time::Duration::minutes(10)));
+
+    cleanup_test_user(&pool, email).await;
+}
+
+#[tokio::test]
+#[serial]
+async fn google_connect_redirect_fails_when_google_config_missing() {
+    dotenvy::dotenv().ok();
+
+    let pool = test_pool().await;
+    let email = "google_connect_config_missing_test@example.com";
+    let (user, _) = create_test_user(&pool, email).await;
+
+    let real_session_token = create_session(&pool, user.id)
+        .await
+        .expect("expected to create a real session");
+
+    let original_client_id = var("GOOGLE_CLIENT_ID").ok();
+    unsafe {
+        remove_var("GOOGLE_CLIENT_ID");
+    }
+
+    let jar = CookieJar::new();
+    let result = google_connect_redirect(
+        State(pool.clone()),
+        Query(GoogleConnectQuery {
+            session: real_session_token,
+        }),
+        jar,
+    )
+    .await;
+
+    assert!(
+        result.is_err(),
+        "expected the redirect to fail when GOOGLE_CLIENT_ID is missing"
+    );
+
+    unsafe {
+        if let Some(value) = original_client_id {
+            set_var("GOOGLE_CLIENT_ID", value);
+        }
+    }
+
+    cleanup_test_user(&pool, email).await;
+}
+
+#[tokio::test]
+#[serial]
+async fn google_connect_redirect_database_error() {
+    dotenvy::dotenv().ok();
+
+    let pool = test_pool().await;
+    let email = "google_connect_db_error_test@example.com";
+    let (user, _) = create_test_user(&pool, email).await;
+
+    let real_session_token = create_session(&pool, user.id)
+        .await
+        .expect("expected to create a real session");
+
+    cleanup_test_user(&pool, email).await;
+    pool.close().await;
+
+    let jar = CookieJar::new();
+    let result = google_connect_redirect(
+        State(pool),
+        Query(GoogleConnectQuery {
+            session: real_session_token,
+        }),
+        jar,
+    )
+    .await;
+
+    assert!(
+        result.is_err(),
+        "expected a genuine database error when the connection pool is closed"
+    );
+}
+
+// Extract User ID Test
 #[tokio::test]
 async fn extract_user_id_missing_authorization() {
     let pool = test_pool().await;
@@ -1448,6 +1674,27 @@ async fn extract_user_id_token_match() {
     cleanup_test_user(&pool, email).await;
 }
 
+#[tokio::test]
+async fn extract_user_db_error() {
+    let pool = test_pool().await;
+    pool.close().await;
+    let fake_token = Uuid::new_v4().to_string();
+
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        "authorization",
+        HeaderValue::from_str(&format!("Bearer {}", fake_token))
+            .expect("expected to insert the header value"),
+    );
+
+    let result = extract_user_id(&headers, &pool).await;
+    assert!(
+        result.is_err(),
+        "expected a genuine database error when the connection pool is closed"
+    );
+}
+
+// Get User from Token Test
 #[tokio::test]
 async fn get_user_from_token_no_match() {
     let pool = test_pool().await;
@@ -1596,26 +1843,333 @@ async fn get_user_from_token_database_error() {
     );
 }
 
+// Google Callback Test
 #[tokio::test]
-async fn extract_user_db_error() {
+#[serial]
+async fn google_callback_error_reported() {
     let pool = test_pool().await;
-    pool.close().await;
-    let fake_token = Uuid::new_v4().to_string();
+    let jar = CookieJar::new();
+    let query = GoogleAfterLoginQuery {
+        error: Some("access_denied".to_string()),
+        code: None,
+        state: None,
+    };
 
-    let mut headers = HeaderMap::new();
-    headers.insert(
-        "authorization",
-        HeaderValue::from_str(&format!("Bearer {}", fake_token))
-            .expect("expected to insert the header value"),
-    );
+    let result = google_callback(State(pool), jar, Query(query)).await;
 
-    let result = extract_user_id(&headers, &pool).await;
     assert!(
         result.is_err(),
-        "expected a genuine database error when the connection pool is closed"
+        "expected google_callback to reject a Google-reported error"
     );
 }
 
+#[tokio::test]
+#[serial]
+async fn google_callback_code_missing() {
+    let pool = test_pool().await;
+    let jar = CookieJar::new();
+    let query = GoogleAfterLoginQuery {
+        error: None,
+        code: None,
+        state: None,
+    };
+    let result = google_callback(State(pool), jar, Query(query)).await;
+    assert!(
+        result.is_err(),
+        "expected google_callback to reject a request with no authorization code"
+    );
+}
+
+#[tokio::test]
+#[serial]
+async fn google_callback_state_mismatch() {
+    let pool = test_pool().await;
+    let jar = CookieJar::new();
+    let query = GoogleAfterLoginQuery {
+        error: None,
+        code: Some("some_real_looking_code".to_string()),
+        state: Some("state_mismatch".to_string()),
+    };
+    let result = google_callback(State(pool), jar, Query(query)).await;
+    assert!(
+        result.is_err(),
+        "expected google_callback to reject a request with a mismatched or missing state"
+    );
+}
+
+#[tokio::test]
+#[serial]
+async fn google_callback_state_present_but_mismatched() {
+    let pool = test_pool().await;
+
+    let mut jar = CookieJar::new();
+    let real_cookie = Cookie::new(OAUTH_STATE_COOKIE, "genuine_saved_state_value");
+    jar = jar.add(real_cookie);
+
+    let query = GoogleAfterLoginQuery {
+        error: None,
+        code: Some("some_real_looking_code".to_string()),
+        state: Some("a_completely_different_state_value".to_string()),
+    };
+
+    let result = google_callback(State(pool), jar, Query(query)).await;
+
+    assert!(
+        result.is_err(),
+        "expected a genuinely present but mismatched state to be rejected"
+    );
+}
+
+#[tokio::test]
+#[serial]
+async fn google_callback_exchange_fails_for_a_fake_code() {
+    let pool = test_pool().await;
+
+    let state_value = "matching_state_value_001";
+    let mut jar = CookieJar::new();
+    let real_cookie = Cookie::new(OAUTH_STATE_COOKIE, state_value);
+    jar = jar.add(real_cookie);
+
+    let query = GoogleAfterLoginQuery {
+        error: None,
+        code: Some("genuinely_fake_authorization_code_00000".to_string()),
+        state: Some(state_value.to_string()),
+    };
+
+    let result = google_callback(State(pool), jar, Query(query)).await;
+
+    assert!(
+        result.is_err(),
+        "expected Google to genuinely reject a fake authorization code"
+    );
+}
+
+// Exchange Code of User Test
+#[tokio::test]
+#[serial]
+async fn exchange_code_for_user_missing_client_id() {
+    let client_key = "GOOGLE_CLIENT_ID";
+    let secret_key = "GOOGLE_CLIENT_SECRET";
+    let uri_key = "GOOGLE_REDIRECT_URI";
+    let original_client_id = var(client_key).ok();
+
+    unsafe {
+        remove_var(client_key);
+        set_var(secret_key, "SECRET_VALUE");
+        set_var(uri_key, "URI_VALUE");
+    }
+
+    let result = exchange_code_for_user("doesnt_matter").await;
+
+    match result {
+        Err(GoogleOauthConfigError::GoogleClientId) => {}
+        other => panic!(
+            "expected GoogleClientId, got a different result: {:?}",
+            other
+        ),
+    }
+
+    unsafe {
+        remove_var(secret_key);
+        remove_var(uri_key);
+        if let Some(value) = original_client_id {
+            set_var(client_key, value);
+        }
+    }
+}
+
+#[tokio::test]
+#[serial]
+async fn exchange_code_for_user_missing_client_secret() {
+    let client_key = "GOOGLE_CLIENT_ID";
+    let secret_key = "GOOGLE_CLIENT_SECRET";
+    let uri_key = "GOOGLE_REDIRECT_URI";
+    let original_secret = var(secret_key).ok();
+
+    unsafe {
+        set_var(client_key, "CLIENT_VALUE");
+        remove_var(secret_key);
+        set_var(uri_key, "URI_VALUE");
+    }
+
+    let result = exchange_code_for_user("doesnt_matter").await;
+
+    match result {
+        Err(GoogleOauthConfigError::GoogleClientSecret) => {}
+        other => panic!(
+            "expected GoogleClientSecret, got a different result: {:?}",
+            other
+        ),
+    }
+
+    unsafe {
+        remove_var(client_key);
+        remove_var(uri_key);
+        if let Some(value) = original_secret {
+            set_var(secret_key, value);
+        }
+    }
+}
+
+#[tokio::test]
+#[serial]
+async fn exchange_code_for_user_missing_redirect_uri() {
+    let client_key = "GOOGLE_CLIENT_ID";
+    let secret_key = "GOOGLE_CLIENT_SECRET";
+    let uri_key = "GOOGLE_REDIRECT_URI";
+    let original_uri = var(uri_key).ok();
+
+    unsafe {
+        set_var(client_key, "CLIENT_VALUE");
+        set_var(secret_key, "SECRET_VALUE");
+        remove_var(uri_key);
+    }
+
+    let result = exchange_code_for_user("doesnt_matter").await;
+    match result {
+        Err(GoogleOauthConfigError::GoogleRedirectUri) => {}
+        other => panic!(
+            "expected GoogleRedirectUri, got a different result: {:?}",
+            other
+        ),
+    }
+
+    unsafe {
+        remove_var(client_key);
+        remove_var(secret_key);
+        if let Some(value) = original_uri {
+            set_var(uri_key, value);
+        }
+    }
+}
+
+#[tokio::test]
+#[serial]
+async fn exchange_code_for_user_token_exchange_genuinely_rejected() {
+    dotenvy::dotenv().ok();
+
+    let result = exchange_code_for_user("genuinely_fake_code_00000_never_real").await;
+    match result {
+        Err(GoogleOauthConfigError::TokenExchangeFailed(_)) => {}
+        Err(other) => panic!(
+            "expected TokenExchangeFailed, got a different error: {:?}",
+            other
+        ),
+        Ok(_) => panic!("expected Google to reject a fake code, but it succeeded"),
+    }
+}
+
+// Handle Google Connect
+#[tokio::test]
+async fn handle_google_connect_succeeds_when_emails_match() {
+    let pool = test_pool().await;
+    let email = "google_link_success@example.com";
+    let (user, _) = create_test_user(&pool, email).await;
+
+    let link_cookie = Cookie::new(OAUTH_LINK_USER_COOKIE, user.id.to_string());
+    let google_user = GoogleUserInfoEndpoint {
+        id: "google_id_success_123".to_string(),
+        email: email.to_string(),
+        name: Some("Test User".to_string()),
+    };
+
+    let jar = CookieJar::new();
+    let result = handle_google_connect(&pool, jar, link_cookie, &google_user).await;
+
+    assert!(
+        result.is_ok(),
+        "expected linking to succeed, got: {:?}",
+        result
+    );
+
+    // Confirm the actual database was genuinely updated.
+    let linked = find_user_by_google_id(&pool, "google_id_success_123")
+        .await
+        .expect("expected the query to succeed");
+    assert!(
+        linked.is_some(),
+        "expected the user to now have a linked Google account"
+    );
+    assert_eq!(linked.unwrap().id, user.id);
+
+    cleanup_test_user(&pool, email).await;
+}
+
+#[tokio::test]
+async fn handle_google_connect_rejects_a_mismatched_email() {
+    let pool = test_pool().await;
+    let email = "google_link_mismatch@example.com";
+    let (user, _) = create_test_user(&pool, email).await;
+
+    let link_cookie = Cookie::new(OAUTH_LINK_USER_COOKIE, user.id.to_string());
+    let google_user = GoogleUserInfoEndpoint {
+        id: "google_id_mismatch_456".to_string(),
+        email: "a_totally_different_email@example.com".to_string(), // deliberately different
+        name: None,
+    };
+
+    let jar = CookieJar::new();
+    let result = handle_google_connect(&pool, jar, link_cookie, &google_user).await;
+
+    assert!(result.is_err(), "expected mismatched emails to be rejected");
+
+    cleanup_test_user(&pool, email).await;
+}
+
+#[tokio::test]
+async fn handle_google_connect_rejects_a_google_account_already_linked_elsewhere() {
+    let pool = test_pool().await;
+    let email_a = "google_link_owner@example.com";
+    let email_b = "google_link_intruder@example.com";
+    let (user_a, _) = create_test_user(&pool, email_a).await;
+    let (user_b, _) = create_test_user(&pool, email_b).await;
+
+    let shared_google_id = "google_id_already_taken_789";
+
+    link_google_account(&pool, user_a.id, shared_google_id)
+        .await
+        .expect("expected the first link to succeed");
+
+    let link_cookie = Cookie::new(OAUTH_LINK_USER_COOKIE, user_b.id.to_string());
+    let google_user = GoogleUserInfoEndpoint {
+        id: shared_google_id.to_string(),
+        email: email_b.to_string(),
+        name: None,
+    };
+
+    let jar = CookieJar::new();
+    let result = handle_google_connect(&pool, jar, link_cookie, &google_user).await;
+
+    assert!(
+        result.is_err(),
+        "expected an already-linked Google account to be rejected"
+    );
+
+    cleanup_test_user(&pool, email_a).await;
+    cleanup_test_user(&pool, email_b).await;
+}
+
+#[tokio::test]
+async fn handle_google_connect_rejects_a_malformed_link_cookie() {
+    let pool = test_pool().await;
+
+    let link_cookie = Cookie::new(OAUTH_LINK_USER_COOKIE, "not-a-real-uuid");
+    let google_user = GoogleUserInfoEndpoint {
+        id: "google_id_whatever".to_string(),
+        email: "irrelevant@example.com".to_string(),
+        name: None,
+    };
+
+    let jar = CookieJar::new();
+    let result = handle_google_connect(&pool, jar, link_cookie, &google_user).await;
+
+    assert!(
+        result.is_err(),
+        "expected a malformed cookie value to be rejected"
+    );
+}
+
+// Find User by ID Test
 #[tokio::test]
 async fn find_user_by_id_found() {
     let pool = test_pool().await;
@@ -1655,6 +2209,110 @@ async fn find_user_by_id_database_error() {
 
     let fake_id = Uuid::new_v4();
     let result = find_user_by_id(&pool, fake_id).await;
+
+    assert!(
+        result.is_err(),
+        "expected a genuine database error when the connection pool is closed"
+    );
+}
+
+// Find User By Google ID Test
+#[tokio::test]
+async fn find_user_by_google_id_not_found() {
+    let pool = test_pool().await;
+
+    let result = find_user_by_google_id(&pool, "definitely_never_linked_google_id_001")
+        .await
+        .expect("expected the query itself to succeed");
+
+    assert!(
+        result.is_none(),
+        "expected None when no user has this Google ID linked"
+    );
+}
+
+#[tokio::test]
+async fn find_user_by_google_id_database_error() {
+    let pool = test_pool().await;
+    pool.close().await;
+
+    let result = find_user_by_google_id(&pool, "doesnt_matter").await;
+
+    assert!(
+        result.is_err(),
+        "expected a genuine database error when the connection pool is closed"
+    );
+}
+
+#[tokio::test]
+#[serial]
+async fn google_signin_links_onto_an_existing_email_match() {
+    dotenvy::dotenv().ok();
+    let pool = test_pool().await;
+    let email = "existing_magic_link_user@example.com";
+    let google_id = "google_id_linking_to_existing_001";
+    let (existing_user, _) = create_test_user(&pool, email).await;
+
+    let (user, is_new) =
+        find_or_create_user_by_google(&pool, google_id, email, Some("Existing User"))
+            .await
+            .expect("expected the call to succeed");
+
+    assert!(
+        !is_new,
+        "expected this to link onto an existing account, not create a new one"
+    );
+    assert_eq!(
+        user.id, existing_user.id,
+        "expected the SAME user, not a new one"
+    );
+
+    let linked = find_user_by_google_id(&pool, google_id)
+        .await
+        .expect("expected the query to succeed");
+
+    assert!(
+        linked.is_some(),
+        "expected the existing user to now have this Google ID linked"
+    );
+    assert_eq!(linked.unwrap().id, existing_user.id);
+
+    cleanup_test_user(&pool, email).await;
+}
+
+// Link Google Account Test
+#[tokio::test]
+async fn link_google_account_success() {
+    let pool = test_pool().await;
+    let email = "link_google_account_test@example.com";
+    let (user, _) = create_test_user(&pool, email).await;
+
+    link_google_account(&pool, user.id, "link_test_google_id_001")
+        .await
+        .expect("expected the link to succeed");
+
+    let saved_google_id: Option<String> = query_scalar("SELECT google_id FROM users WHERE id = $1")
+        .bind(user.id)
+        .fetch_one(&pool)
+        .await
+        .expect("expected the query to succeed");
+
+    assert_eq!(
+        saved_google_id,
+        Some("link_test_google_id_001".to_string()),
+        "expected the real database row to genuinely reflect the linked google_id"
+    );
+
+    cleanup_test_user(&pool, email).await;
+}
+
+#[tokio::test]
+async fn link_google_account_database_error() {
+    let pool = test_pool().await;
+    pool.close().await;
+
+    let fake_user_id = Uuid::new_v4();
+    let result = link_google_account(&pool, fake_user_id, "doesnt_matter").await;
 
     assert!(
         result.is_err(),
@@ -1746,59 +2404,6 @@ async fn logout_with_fake_token() {
 
 #[tokio::test]
 #[serial]
-async fn google_callback_error_reported() {
-    let pool = test_pool().await;
-    let jar = CookieJar::new();
-    let query = GoogleAfterLoginQuery {
-        error: Some("access_denied".to_string()),
-        code: None,
-        state: None,
-    };
-
-    let result = google_callback(State(pool), jar, Query(query)).await;
-
-    assert!(
-        result.is_err(),
-        "expected google_callback to reject a Google-reported error"
-    );
-}
-
-#[tokio::test]
-#[serial]
-async fn google_callback_code_missing() {
-    let pool = test_pool().await;
-    let jar = CookieJar::new();
-    let query = GoogleAfterLoginQuery {
-        error: None,
-        code: None,
-        state: None,
-    };
-    let result = google_callback(State(pool), jar, Query(query)).await;
-    assert!(
-        result.is_err(),
-        "expected google_callback to reject a request with no authorization code"
-    );
-}
-
-#[tokio::test]
-#[serial]
-async fn google_callback_state_mismatch() {
-    let pool = test_pool().await;
-    let jar = CookieJar::new();
-    let query = GoogleAfterLoginQuery {
-        error: None,
-        code: Some("some_real_looking_code".to_string()),
-        state: Some("state_mismatch".to_string()),
-    };
-    let result = google_callback(State(pool), jar, Query(query)).await;
-    assert!(
-        result.is_err(),
-        "expected google_callback to reject a request with a mismatched or missing state"
-    );
-}
-
-#[tokio::test]
-#[serial]
 async fn fresh_google_signin_creates_account_and_session() {
     dotenvy::dotenv().ok();
     let pool = test_pool().await;
@@ -1823,37 +2428,112 @@ async fn fresh_google_signin_creates_account_and_session() {
 }
 
 #[tokio::test]
-#[serial]
-async fn google_signin_links_onto_an_existing_email_match() {
-    dotenvy::dotenv().ok();
+async fn find_user_by_google_id_found() {
     let pool = test_pool().await;
-    let email = "existing_magic_link_user@example.com";
-    let google_id = "google_id_linking_to_existing_001";
-    let (existing_user, _) = create_test_user(&pool, email).await;
+    let email = "find_by_google_id_found_test@example.com";
+    let google_id = "find_by_google_id_test_001";
+    let (user, _) = create_test_user(&pool, email).await;
 
-    let (user, is_new) =
-        find_or_create_user_by_google(&pool, google_id, email, Some("Existing User"))
-            .await
-            .expect("expected the call to succeed");
+    query("UPDATE users SET google_id = $1 WHERE id = $2")
+        .bind(google_id)
+        .bind(user.id)
+        .execute(&pool)
+        .await
+        .expect("expected to link the google id");
 
-    assert!(
-        !is_new,
-        "expected this to link onto an existing account, not create a new one"
-    );
-    assert_eq!(
-        user.id, existing_user.id,
-        "expected the SAME user, not a new one"
-    );
-
-    let linked = find_user_by_google_id(&pool, google_id)
+    let result = find_user_by_google_id(&pool, google_id)
         .await
         .expect("expected the query to succeed");
 
-    assert!(
-        linked.is_some(),
-        "expected the existing user to now have this Google ID linked"
-    );
-    assert_eq!(linked.unwrap().id, existing_user.id);
+    let found_user = result.expect("expected the user to genuinely be found");
+    assert_eq!(found_user.id, user.id);
+    assert_eq!(found_user.email, email);
 
     cleanup_test_user(&pool, email).await;
+}
+
+#[tokio::test]
+#[serial]
+async fn google_signin_finds_existing_google_id_immediately() {
+    dotenvy::dotenv().ok();
+    let pool = test_pool().await;
+    let email = "existing_google_id_user@example.com";
+    let google_id = "google_id_already_linked_001";
+    let (existing_user, _) = create_test_user(&pool, email).await;
+
+    query("UPDATE users SET google_id = $1 WHERE id = $2")
+        .bind(google_id)
+        .bind(existing_user.id)
+        .execute(&pool)
+        .await
+        .expect("expected to link the google id directly");
+
+    let (user, is_new) = find_or_create_user_by_google(
+        &pool,
+        google_id,
+        "a_totally_different_email@example.com",
+        Some("Some Name"),
+    )
+    .await
+    .expect("expected the call to succeed");
+
+    assert!(
+        !is_new,
+        "expected the existing account to be found, not a new one created"
+    );
+    assert_eq!(
+        user.id, existing_user.id,
+        "expected the SAME user, matched purely by google_id"
+    );
+
+    cleanup_test_user(&pool, email).await;
+}
+
+#[tokio::test]
+#[serial]
+async fn google_signin_preserves_existing_name_when_linking_by_email() {
+    dotenvy::dotenv().ok();
+    let pool = test_pool().await;
+    let email = "preserve_name_test@example.com";
+    let google_id = "google_id_preserve_name_001";
+    cleanup_test_user(&pool, email).await;
+
+    let (existing_user, _) = find_or_create_user_by_email(&pool, email)
+        .await
+        .expect("expected to create the user");
+    query("UPDATE users SET name = $1 WHERE id = $2")
+        .bind("Genuinely Real Original Name")
+        .bind(existing_user.id)
+        .execute(&pool)
+        .await
+        .expect("expected to set the real name");
+
+    let (user, is_new) =
+        find_or_create_user_by_google(&pool, google_id, email, Some("A Different Google Name"))
+            .await
+            .expect("expected the call to succeed");
+
+    assert!(!is_new);
+    assert_eq!(
+        user.name,
+        Some("Genuinely Real Original Name".to_string()),
+        "expected the ORIGINAL name to be preserved, NOT overwritten by Google's name"
+    );
+
+    cleanup_test_user(&pool, email).await;
+}
+
+#[tokio::test]
+async fn find_or_create_user_by_google_database_error() {
+    let pool = test_pool().await;
+    pool.close().await;
+
+    let result =
+        find_or_create_user_by_google(&pool, "doesnt_matter", "doesnt_matter@example.com", None)
+            .await;
+
+    assert!(
+        result.is_err(),
+        "expected a genuine database error when the connection pool is closed"
+    );
 }
