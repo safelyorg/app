@@ -25,8 +25,8 @@ use backend::{
         auth::{
             check_last_login, create_session, extract_user_id, find_or_create_user_by_email,
             find_or_create_user_by_google, find_user_by_email, find_user_by_google_id,
-            finish_sign_in, insert_magic_link, link_google_account, set_login_method,
-            validate_email_format, validate_magic_link,
+            find_user_by_id, finish_sign_in, get_user_from_token, insert_magic_link,
+            link_google_account, set_login_method, validate_email_format, validate_magic_link,
         },
         email::{get_tera, send_magic_link_email, send_welcome_email},
         google_oauth::build_google_authorize_url,
@@ -858,8 +858,6 @@ async fn create_session_fails_for_nonexistent_user() {
     );
 }
 
-// ------------------------------------
-
 #[tokio::test]
 async fn handle_google_connect_succeeds_when_emails_match() {
     let pool = test_pool().await;
@@ -869,7 +867,7 @@ async fn handle_google_connect_succeeds_when_emails_match() {
     let link_cookie = Cookie::new(OAUTH_LINK_USER_COOKIE, user.id.to_string());
     let google_user = GoogleUserInfoEndpoint {
         id: "google_id_success_123".to_string(),
-        email: email.to_string(), // matches the Safely account's real email
+        email: email.to_string(),
         name: Some("Test User".to_string()),
     };
 
@@ -1269,11 +1267,159 @@ async fn extract_user_id_token_match() {
 }
 
 #[tokio::test]
+async fn get_user_from_token_no_match() {
+    let pool = test_pool().await;
+    let fake_token = Uuid::new_v4().to_string();
+
+    let result = get_user_from_token(&pool, &fake_token)
+        .await
+        .expect("expected the query itself to succeed");
+
+    assert!(
+        result.is_none(),
+        "expected None when no session matches this token"
+    );
+}
+
+#[tokio::test]
+async fn get_user_from_token_expired_session() {
+    let pool = test_pool().await;
+    let email = "get_user_from_token_expired_test@example.com";
+    let (user, _) = create_test_user(&pool, email).await;
+
+    let expired_token = format!("{}{}", Uuid::new_v4(), Uuid::new_v4()).replace('-', "");
+    query("INSERT INTO sessions (id, user_id, token, expires_at) VALUES ($1, $2, $3, $4)")
+        .bind(Uuid::now_v7())
+        .bind(user.id)
+        .bind(&expired_token)
+        .bind(Utc::now() - chrono_duration::days(1))
+        .execute(&pool)
+        .await
+        .expect("expected to create the expired session");
+
+    let result = get_user_from_token(&pool, &expired_token)
+        .await
+        .expect("expected the query itself to succeed");
+
+    assert!(
+        result.is_none(),
+        "expected an expired session to be treated as if it doesn't exist"
+    );
+
+    cleanup_test_user(&pool, email).await;
+}
+
+#[tokio::test]
+async fn get_user_from_token_success_no_unnecessary_extension() {
+    let pool = test_pool().await;
+    let email = "get_user_from_token_fresh_test@example.com";
+    let (user, _) = create_test_user(&pool, email).await;
+
+    let token = create_session(&pool, user.id)
+        .await
+        .expect("expected to create a real session");
+
+    let expires_before: DateTime<Utc> =
+        query_scalar("SELECT expires_at FROM sessions WHERE token = $1")
+            .bind(&token)
+            .fetch_one(&pool)
+            .await
+            .expect("expected the query to succeed");
+
+    let result = get_user_from_token(&pool, &token)
+        .await
+        .expect("expected the query to succeed")
+        .expect("expected the real user to be found");
+
+    assert_eq!(
+        result.id, user.id,
+        "expected the correct user to be returned"
+    );
+
+    let expires_after: DateTime<Utc> =
+        query_scalar("SELECT expires_at FROM sessions WHERE token = $1")
+            .bind(&token)
+            .fetch_one(&pool)
+            .await
+            .expect("expected the query to succeed");
+
+    assert_eq!(
+        expires_before, expires_after,
+        "expected expires_at to remain genuinely UNCHANGED, since this session wasn't near expiry"
+    );
+
+    cleanup_test_user(&pool, email).await;
+}
+
+#[tokio::test]
+async fn get_user_from_token_success_extends_when_near_expiry() {
+    let pool = test_pool().await;
+    let email = "get_user_from_token_near_expiry_test@example.com";
+    let (user, _) = create_test_user(&pool, email).await;
+
+    let token = format!("{}{}", Uuid::new_v4(), Uuid::new_v4()).replace('-', "");
+    let near_expiry = Utc::now() + chrono_duration::days(24);
+    query("INSERT INTO sessions (id, user_id, token, expires_at) VALUES ($1, $2, $3, $4)")
+        .bind(Uuid::now_v7())
+        .bind(user.id)
+        .bind(&token)
+        .bind(near_expiry)
+        .execute(&pool)
+        .await
+        .expect("expected to create the near-expiry session");
+
+    let result = get_user_from_token(&pool, &token)
+        .await
+        .expect("expected the query to succeed")
+        .expect("expected the real user to be found");
+
+    assert_eq!(
+        result.id, user.id,
+        "expected the correct user to be returned"
+    );
+
+    let expires_after: DateTime<Utc> =
+        query_scalar("SELECT expires_at FROM sessions WHERE token = $1")
+            .bind(&token)
+            .fetch_one(&pool)
+            .await
+            .expect("expected the query to succeed");
+
+    assert!(
+        expires_after > near_expiry,
+        "expected expires_at to be genuinely extended, not left as-is"
+    );
+
+    let expected_new_expiry = Utc::now() + chrono_duration::days(30);
+    let difference = (expected_new_expiry - expires_after).num_seconds().abs();
+    assert!(
+        difference < 60,
+        "expected the new expiry to be genuinely ~30 days out, off by {} seconds",
+        difference
+    );
+
+    cleanup_test_user(&pool, email).await;
+}
+
+#[tokio::test]
+async fn get_user_from_token_database_error() {
+    let pool = test_pool().await;
+    pool.close().await;
+    let fake_token = Uuid::new_v4().to_string();
+
+    let result = get_user_from_token(&pool, &fake_token).await;
+    assert!(
+        result.is_err(),
+        "expected a genuine database error when the connection pool is closed"
+    );
+}
+
+#[tokio::test]
 async fn extract_user_db_error() {
     let pool = test_pool().await;
     pool.close().await;
-
     let fake_token = Uuid::new_v4().to_string();
+
     let mut headers = HeaderMap::new();
     headers.insert(
         "authorization",
@@ -1282,6 +1428,51 @@ async fn extract_user_db_error() {
     );
 
     let result = extract_user_id(&headers, &pool).await;
+    assert!(
+        result.is_err(),
+        "expected a genuine database error when the connection pool is closed"
+    );
+}
+
+#[tokio::test]
+async fn find_user_by_id_found() {
+    let pool = test_pool().await;
+    let email = "find_user_by_id_found_test@example.com";
+    let (user, _) = create_test_user(&pool, email).await;
+
+    let result = find_user_by_id(&pool, user.id)
+        .await
+        .expect("expected the query to succeed");
+
+    let found_user = result.expect("expected the user to genuinely be found");
+    assert_eq!(found_user.id, user.id);
+    assert_eq!(found_user.email, email);
+
+    cleanup_test_user(&pool, email).await;
+}
+
+#[tokio::test]
+async fn find_user_by_id_not_found() {
+    let pool = test_pool().await;
+    let fake_id = Uuid::new_v4();
+
+    let result = find_user_by_id(&pool, fake_id)
+        .await
+        .expect("expected the query itself to succeed");
+
+    assert!(
+        result.is_none(),
+        "expected None when no user matches this ID"
+    );
+}
+
+#[tokio::test]
+async fn find_user_by_id_database_error() {
+    let pool = test_pool().await;
+    pool.close().await;
+
+    let fake_id = Uuid::new_v4();
+    let result = find_user_by_id(&pool, fake_id).await;
 
     assert!(
         result.is_err(),

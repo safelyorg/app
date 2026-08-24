@@ -61,6 +61,27 @@ pub static RATE_LIMITS: OnceLock<Mutex<HashMap<Uuid, (u32, Instant)>>> = OnceLoc
 const RATE_LIMIT_WINDOW: Duration = Duration::from_secs(300);
 const RATE_LIMIT_MAX_REQUESTS: u32 = 10;
 
+/// Confirms the caller is genuinely signed in, then checks they haven't
+/// exceeded their request rate limit. Real analysis costs real Claude
+/// API money per request, so this endpoint must actually reject an
+/// anonymous or over-limit caller, not just proceed anyway.
+///
+/// It checks if this is a genuinely signed-in person, checks if they've
+/// already hit their rate limit and if both checks passed, hand back their real user ID.
+pub async fn authorize_request(
+    headers: &HeaderMap,
+    pool: &Pool<Postgres>,
+) -> Result<Uuid, AnalyzeError> {
+    let user_id = extract_user_id(headers, pool)
+        .await
+        .map_err(|_| AnalyzeError::Unauthorized)?
+        .ok_or(AnalyzeError::Unauthorized)?;
+
+    check_rate_limit(user_id)?;
+
+    Ok(user_id)
+}
+
 /// Every time someone tries to use /analyze, this checks their notebook entry, lets them
 /// through and counts it, unless they've already hit 10 within the last 5 minutes, in which
 /// case it tells them exactly how many seconds until they can try again.
@@ -90,27 +111,6 @@ pub fn check_rate_limit(user_id: Uuid) -> Result<(), AnalyzeError> {
         let remaining = RATE_LIMIT_WINDOW.saturating_sub(elapsed);
         Err(AnalyzeError::RateLimited(remaining.as_secs()))
     }
-}
-
-/// Confirms the caller is genuinely signed in, then checks they haven't
-/// exceeded their request rate limit. Real analysis costs real Claude
-/// API money per request, so this endpoint must actually reject an
-/// anonymous or over-limit caller, not just proceed anyway.
-///
-/// It checks if this is a genuinely signed-in person, checks if they've
-/// already hit their rate limit and if both checks passed, hand back their real user ID.
-pub async fn authorize_request(
-    headers: &HeaderMap,
-    pool: &Pool<Postgres>,
-) -> Result<Uuid, AnalyzeError> {
-    let user_id = extract_user_id(headers, pool)
-        .await
-        .map_err(|_| AnalyzeError::Unauthorized)?
-        .ok_or(AnalyzeError::Unauthorized)?;
-
-    check_rate_limit(user_id)?;
-
-    Ok(user_id)
 }
 
 /// It takes the one big request that arrives from your extension, and splits it into two separate,

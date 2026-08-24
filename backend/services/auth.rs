@@ -175,6 +175,19 @@ pub async fn get_user_from_token(
     find_user_by_id(pool, user_id).await
 }
 
+/// It looks up a user by their exact ID, and returns them if
+/// found or nothing, if no such user exists.
+///
+/// It runs the actual lookup query and returns whatever was found.
+pub async fn find_user_by_id(pool: &Pool<Postgres>, id: Uuid) -> Result<Option<User>, Error> {
+    let result = query_as::<_, User>("SELECT * FROM users WHERE id = $1 LIMIT 1")
+        .bind(id)
+        .fetch_optional(pool)
+        .await?;
+
+    Ok(result)
+}
+
 /// It deletes a specific session from the database, using its token to find it.
 ///
 /// It runs the deletion query and returns success, with nothing meaningful inside it
@@ -229,19 +242,6 @@ pub async fn find_or_create_user_by_google(
     .await?;
 
     Ok((user, true))
-}
-
-/// It looks up a user by their exact ID, and returns them if
-/// found or nothing, if no such user exists.
-///
-/// It runs the actual lookup query and returns whatever was found.
-pub async fn find_user_by_id(pool: &Pool<Postgres>, id: Uuid) -> Result<Option<User>, Error> {
-    let result = query_as::<_, User>("SELECT * FROM users WHERE id = $1 LIMIT 1")
-        .bind(id)
-        .fetch_optional(pool)
-        .await?;
-
-    Ok(result)
 }
 
 /// It looks up a user by their linked Google account ID,

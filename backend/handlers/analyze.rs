@@ -31,7 +31,6 @@ pub async fn analyze(
     Json(request): Json<AnalyzeRequest>,
 ) -> Result<Json<AnalyzeResponse>, AnalyzeError> {
     let user_id = authorize_request(&headers, &pool).await?;
-
     let (seller_req, listing_req) = build_requests(&request);
 
     let platform_id = request.platform_id.as_deref().unwrap_or("");
@@ -42,7 +41,6 @@ pub async fn analyze(
         .map_err(|e| AnalyzeError::Database(e.to_string()))?;
 
     let claude_analysis = run_claude_analysis(&listing, &resolved.seller).await?;
-
     let signals = build_all_signals(&claude_analysis, &resolved.seller, &request);
 
     let risk_score = calculate_risk_score(&claude_analysis, resolved.fraud_count);
