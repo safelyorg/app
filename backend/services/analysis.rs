@@ -8,7 +8,7 @@ use crate::{
     },
     services::{
         auth::extract_user_id,
-        claude::{ClaudeAnalysis, call_claude},
+        claude::{CallClaudeArguments, ClaudeAnalysis, call_claude},
         fraud_reports::{build_network_summary, count_fraud_reports},
         listings::get_monthly_visit_activity,
         sellers::{create_seller, find_seller},
@@ -217,15 +217,15 @@ pub async fn run_claude_analysis(
 
     let image_urls = listing.image_urls.as_deref().unwrap_or(&[]);
 
-    call_claude(
-        &listing.platform,
-        seller.name.as_deref().unwrap_or("Unknown"),
-        &account_age,
-        listing.title.as_deref().unwrap_or("Untitled"),
-        listing.price.unwrap_or(0),
-        listing.description.as_deref().unwrap_or("No Description"),
+    call_claude(CallClaudeArguments {
+        platform: &listing.platform,
+        seller_name: seller.name.as_deref().unwrap_or("Unknown"),
+        seller_account_age: &account_age,
+        title: listing.title.as_deref().unwrap_or("Untitled"),
+        price: listing.price.unwrap_or(0),
+        description: listing.description.as_deref().unwrap_or("No Description"),
         image_urls,
-    )
+    })
     .await
     .map_err(|e| AnalyzeError::ClaudeAnalysisFailed(e.to_string()))
 }

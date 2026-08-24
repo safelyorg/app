@@ -2,6 +2,7 @@ use crate::errors::claude::ClaudeError;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::from_str;
+use std::env::var;
 
 // 1. Packaging the question for Claude's API
 #[derive(Serialize)]
@@ -74,16 +75,70 @@ pub struct PriceAssessment {
 }
 
 #[derive(Debug)]
-pub struct ContentArguments<'a> {
+pub struct CallClaudeArguments<'a> {
     pub platform: &'a str,
     pub seller_name: &'a str,
     pub seller_account_age: &'a str,
     pub title: &'a str,
     pub price: i64,
     pub description: &'a str,
+    pub image_urls: &'a [String],
 }
 
-pub fn content(arg: ContentArguments) -> String {
+pub async fn call_claude(args: CallClaudeArguments<'_>) -> Result<ClaudeAnalysis, ClaudeError> {
+    let client = Client::new();
+    let api_key = var("ANTHROPIC_API_KEY").map_err(|_| ClaudeError::MissingApiKey)?;
+    let prompt = content(&args);
+
+    // Commenting to prevent image detection because it takes a lot of tokens
+    let content_blocks: Vec<ContentItem> = vec![ContentItem::Text { text: prompt }];
+    // for url in args.image_urls.iter().take(3) {
+    //     content_blocks.push(ContentItem::Image {
+    //         source: ImageSource {
+    //             source_type: "url".to_string(),
+    //             url: url.clone(),
+    //         },
+    //     });
+    // }
+
+    let payload = ClaudeRequest {
+        model: String::from("claude-sonnet-4-6"),
+        max_tokens: 2048,
+        messages: vec![Message {
+            role: "user".to_string(),
+            content: content_blocks,
+        }],
+    };
+
+    let response = client
+        .post("https://api.anthropic.com/v1/messages")
+        .header("x-api-key", api_key)
+        .header("anthropic-version", "2023-06-01")
+        .json(&payload)
+        .send()
+        .await
+        .map_err(|e| ClaudeError::RequestFailed(e.to_string()))?;
+
+    let body_text = response
+        .text()
+        .await
+        .map_err(|e| ClaudeError::RequestFailed(e.to_string()))?;
+
+    let envelope: ClaudeEnvelope =
+        from_str(&body_text).map_err(|e| ClaudeError::ParseFailed(e.to_string()))?;
+
+    let inner_json = &envelope.content[0].text;
+    let cleaned = inner_json
+        .trim()
+        .trim_start_matches("```json")
+        .trim_start_matches("```")
+        .trim_end_matches("```")
+        .trim();
+
+    from_str(cleaned).map_err(|e| ClaudeError::ParseFailed(e.to_string()))
+}
+
+pub fn content(arg: &CallClaudeArguments) -> String {
     format!(
         r#"
         You are a fraud detection assistant for an online marketplace.
@@ -139,71 +194,4 @@ pub fn content(arg: ContentArguments) -> String {
         price = arg.price,
         description = arg.description,
     )
-}
-pub async fn call_claude(
-    platform: &str,
-    seller_name: &str,
-    seller_account_age: &str,
-    title: &str,
-    price: i64,
-    description: &str,
-    _image_urls: &[String],
-) -> Result<ClaudeAnalysis, ClaudeError> {
-    let client = Client::new();
-    let api_key = std::env::var("ANTHROPIC_API_KEY").map_err(|_| ClaudeError::MissingApiKey)?;
-    let args = ContentArguments {
-        platform,
-        seller_name,
-        seller_account_age,
-        title,
-        price,
-        description,
-    };
-    let prompt = content(args);
-    // Commenting to prevent image detection because it takes a lot of tokens
-    let mut content_blocks: Vec<ContentItem> = vec![ContentItem::Text { text: prompt }];
-    // for url in image_urls.iter().take(3) {
-    //     content_blocks.push(ContentItem::Image {
-    //         source: ImageSource {
-    //             source_type: "url".to_string(),
-    //             url: url.clone(),
-    //         },
-    //     });
-    // }
-
-    let payload = ClaudeRequest {
-        model: String::from("claude-sonnet-4-6"),
-        max_tokens: 2048,
-        messages: vec![Message {
-            role: "user".to_string(),
-            content: content_blocks,
-        }],
-    };
-
-    let response = client
-        .post("https://api.anthropic.com/v1/messages")
-        .header("x-api-key", api_key)
-        .header("anthropic-version", "2023-06-01")
-        .json(&payload)
-        .send()
-        .await
-        .map_err(|e| ClaudeError::RequestFailed(e.to_string()))?;
-
-    let body_text = response
-        .text()
-        .await
-        .map_err(|e| ClaudeError::RequestFailed(e.to_string()))?;
-
-    let envelope: ClaudeEnvelope =
-        serde_json::from_str(&body_text).map_err(|e| ClaudeError::ParseFailed(e.to_string()))?;
-
-    let inner_json = &envelope.content[0].text;
-    let cleaned = inner_json
-        .trim()
-        .trim_start_matches("```json")
-        .trim_start_matches("```")
-        .trim_end_matches("```")
-        .trim();
-
-    from_str(cleaned).map_err(|e| ClaudeError::ParseFailed(e.to_string()))
 }

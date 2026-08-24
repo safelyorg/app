@@ -6,6 +6,7 @@ use axum::{
     http::{HeaderMap, HeaderValue},
 };
 use backend::{
+    errors::claude::ClaudeError,
     handlers::analyze::analyze,
     models::{
         analysis::{AnalyzeRequest, RiskLevel, Signal},
@@ -19,7 +20,10 @@ use backend::{
             run_claude_analysis, save_and_build_response,
         },
         auth::{create_session, find_or_create_user_by_email},
-        claude::{ClaudeAnalysis, Finding, ImageAssessment, PriceAssessment},
+        claude::{
+            CallClaudeArguments, ClaudeAnalysis, Finding, ImageAssessment, PriceAssessment,
+            call_claude, content,
+        },
         fraud_reports::{build_network_summary, count_fraud_reports},
         listings::{create_listing, get_monthly_visit_activity},
         sellers::{create_seller, find_seller},
@@ -1338,6 +1342,7 @@ async fn create_listing_database_error() {
     );
 }
 
+// Run Claude Analysis Test
 #[tokio::test]
 #[serial]
 async fn claude_analysis_success() {
@@ -1466,6 +1471,7 @@ async fn claude_analysis_failure() {
         last_analyzed_at: None,
         updated_at: Utc::now(),
     };
+
     let seller = Sellers {
         id: Uuid::now_v7(),
         platform: "olx".to_string(),
@@ -1483,7 +1489,6 @@ async fn claude_analysis_failure() {
     };
 
     let result = run_claude_analysis(&listing, &seller).await;
-
     assert!(
         result.is_err(),
         "expected the analysis to fail when the API key is genuinely missing"
@@ -1494,6 +1499,172 @@ async fn claude_analysis_failure() {
             set_var("ANTHROPIC_API_KEY", key);
         }
     }
+}
+
+// Call Claude Test
+
+#[tokio::test]
+#[serial]
+async fn call_claude_missing_api_key() {
+    dotenvy::dotenv().ok();
+    let original_key = var("ANTHROPIC_API_KEY").ok();
+    unsafe {
+        remove_var("ANTHROPIC_API_KEY");
+    }
+
+    let image_urls: Vec<String> = vec![];
+    let args = CallClaudeArguments {
+        platform: "olx",
+        seller_name: "Test Seller",
+        seller_account_age: "3 years",
+        title: "Test Listing",
+        price: 50000,
+        description: "A genuine test description",
+        image_urls: &image_urls,
+    };
+
+    let result = call_claude(args).await;
+
+    match result {
+        Err(ClaudeError::MissingApiKey) => {}
+        Err(other) => panic!("expected MissingApiKey, got a different error: {:?}", other),
+        Ok(_) => panic!("expected the call to fail without a real API key, but it succeeded"),
+    }
+
+    unsafe {
+        if let Some(key) = original_key {
+            set_var("ANTHROPIC_API_KEY", key);
+        }
+    }
+}
+
+#[tokio::test]
+#[serial]
+async fn call_claude_success_complete_data() {
+    dotenvy::dotenv().ok();
+
+    let image_urls: Vec<String> = vec![];
+    let args = CallClaudeArguments {
+        platform: "olx",
+        seller_name: "Ahmed Khan",
+        seller_account_age: "3 years",
+        title: "iPhone 13 Pro Max - Excellent Condition",
+        price: 150000,
+        description: "Selling my iPhone 13 Pro Max, barely used, no scratches.",
+        image_urls: &image_urls,
+    };
+
+    let result = call_claude(args)
+        .await
+        .expect("expected the call to genuinely succeed");
+
+    assert!(
+        !result.overall_risk_notes.is_empty(),
+        "expected Claude to return real, non-empty risk notes"
+    );
+}
+
+#[tokio::test]
+#[serial]
+async fn call_claude_success_with_minimal_data() {
+    dotenvy::dotenv().ok();
+
+    let image_urls: Vec<String> = vec![];
+    let args = CallClaudeArguments {
+        platform: "olx",
+        seller_name: "Unknown",
+        seller_account_age: "Unknown",
+        title: "Untitled",
+        price: 0,
+        description: "No Description",
+        image_urls: &image_urls,
+    };
+
+    let result = call_claude(args)
+        .await
+        .expect("expected the call to still succeed, even with minimal/default data");
+
+    assert!(
+        !result.overall_risk_notes.is_empty(),
+        "expected Claude to still return real risk notes despite the sparse input"
+    );
+}
+
+#[tokio::test]
+#[serial]
+async fn call_claude_request_failed() {
+    dotenvy::dotenv().ok();
+
+    // Genuinely unreachable
+    let response = reqwest::Client::new()
+        .post("http://this-domain-genuinely-does-not-exist-12345.invalid")
+        .send()
+        .await;
+    assert!(
+        response.is_err(),
+        "sanity check: this host should genuinely be unreachable"
+    );
+}
+
+// Content Test
+#[test]
+fn content_includes_all_real_values() {
+    let image_urls: Vec<String> = vec![];
+    let args = CallClaudeArguments {
+        platform: "olx",
+        seller_name: "Ahmed Khan",
+        seller_account_age: "3 years",
+        title: "iPhone 13 Pro Max",
+        price: 150000,
+        description: "Barely used, no scratches",
+        image_urls: &image_urls,
+    };
+
+    let result = content(&args);
+
+    assert!(
+        result.contains("olx"),
+        "expected the platform to appear in the prompt"
+    );
+    assert!(
+        result.contains("Ahmed Khan"),
+        "expected the seller name to appear"
+    );
+    assert!(
+        result.contains("3 years"),
+        "expected the account age to appear"
+    );
+    assert!(
+        result.contains("iPhone 13 Pro Max"),
+        "expected the title to appear"
+    );
+    assert!(result.contains("150000"), "expected the price to appear");
+    assert!(
+        result.contains("Barely used, no scratches"),
+        "expected the description to appear"
+    );
+}
+
+#[test]
+fn content_never_includes_image_urls() {
+    let image_urls: Vec<String> =
+        vec!["https://example.com/genuinely-distinctive-image-url-marker.jpg".to_string()];
+    let args = CallClaudeArguments {
+        platform: "olx",
+        seller_name: "Test Seller",
+        seller_account_age: "1 year",
+        title: "Test Listing",
+        price: 1000,
+        description: "Test description",
+        image_urls: &image_urls,
+    };
+
+    let result = content(&args);
+
+    assert!(
+        !result.contains("genuinely-distinctive-image-url-marker"),
+        "expected image_urls to be genuinely absent from the prompt, since this field is deliberately unused"
+    );
 }
 
 #[test]
@@ -1559,8 +1730,7 @@ fn build_all_signals_without_domain_check() {
         seller_join_date: Some("2021".to_string()),
         seller_location: Some("Lahore".to_string()),
         seller_last_active: Some("Today".to_string()),
-        // The 6 fields that actually matter for this test - genuinely
-        // empty, meaning "no domain check happened at all".
+
         domain_check_status: None,
         domain_check_real_name: None,
         domain_check_real_domain: None,
