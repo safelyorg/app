@@ -26,8 +26,9 @@ use backend::{
         signals::{build_domain_signal, build_signals},
     },
 };
-use chrono::{NaiveDate, Utc};
+use chrono::{Duration as chrono_duration, NaiveDate, Utc};
 use common::{cleanup_test_seller, cleanup_test_user, test_pool};
+use serde_json::json;
 use serial_test::serial;
 use sqlx::query;
 use std::{
@@ -38,6 +39,7 @@ use std::{
 };
 use uuid::Uuid;
 
+// Analyze Test
 #[tokio::test]
 async fn analyze_unauthorized_request() {
     let pool = test_pool().await;
@@ -171,6 +173,7 @@ async fn analyze_success() {
     cleanup_test_user(&pool, email).await;
 }
 
+// Authorize Request Test
 #[tokio::test]
 async fn authorize_request_success() {
     let pool = test_pool().await;
@@ -259,6 +262,7 @@ async fn authorize_request_rate_limit_passed() {
     cleanup_test_user(&pool, email).await;
 }
 
+// Check Rate Limit Test
 #[test]
 fn checking_rate_limit_one_time() {
     let user_id = Uuid::new_v4();
@@ -307,7 +311,6 @@ fn check_rate_limit_blocks_the_eleventh_call_within_the_window() {
 #[test]
 fn check_rate_limit_resets_after_the_window_expires() {
     let user_id = Uuid::new_v4();
-
     let map = RATE_LIMITS.get_or_init(|| Mutex::new(HashMap::new()));
     {
         let mut map = map.lock().expect("expected to lock the map");
@@ -323,6 +326,7 @@ fn check_rate_limit_resets_after_the_window_expires() {
     );
 }
 
+// Build Requests Test
 #[test]
 fn build_requests_correctly_splits_seller_and_listing_data() {
     let fake_request = AnalyzeRequest {
@@ -354,12 +358,9 @@ fn build_requests_correctly_splits_seller_and_listing_data() {
 
     let (seller_req, listing_req) = build_requests(&fake_request);
 
-    // Confirm the seller piece got the right seller-specific fields.
     assert_eq!(seller_req.name, Some("Test Seller".to_string()));
     assert_eq!(seller_req.handle, Some("test_seller_handle".to_string()));
     assert_eq!(seller_req.location, Some("Lahore".to_string()));
-
-    // Confirm the listing piece got the right listing-specific fields.
     assert_eq!(listing_req.title, Some("Test Listing".to_string()));
     assert_eq!(listing_req.price, Some(50000));
     assert_eq!(
@@ -367,11 +368,91 @@ fn build_requests_correctly_splits_seller_and_listing_data() {
         "https://olx.com.pk/item/test-listing"
     );
 
-    // Confirm the one shared field (platform) correctly landed in BOTH pieces.
     assert_eq!(seller_req.platform, "olx");
     assert_eq!(listing_req.platform, "olx");
 }
 
+#[test]
+fn build_requests_none_values_stay_none() {
+    let fake_request = AnalyzeRequest {
+        platform: "olx".to_string(),
+        seller_id: None,
+        listing_url: "https://olx.com.pk/item/test-listing".to_string(),
+        listing_id: None,
+        title: None,
+        price: None,
+        description: None,
+        category: None,
+        image_urls: None,
+        posted_date: None,
+        platform_id: None,
+        seller_name: None,
+        seller_handle: None,
+        seller_phone: None,
+        seller_profile_url: None,
+        seller_join_date: None,
+        seller_location: None,
+        seller_last_active: None,
+        domain_check_status: None,
+        domain_check_real_name: None,
+        domain_check_real_domain: None,
+        domain_check_current_domain: None,
+        domain_check_current_html: None,
+        domain_check_real_html: None,
+    };
+
+    let (seller_req, listing_req) = build_requests(&fake_request);
+
+    assert_eq!(seller_req.name, None);
+    assert_eq!(seller_req.handle, None);
+    assert_eq!(seller_req.location, None);
+    assert_eq!(listing_req.title, None);
+    assert_eq!(listing_req.price, None);
+    assert_eq!(listing_req.category, None);
+    assert_eq!(listing_req.image_urls, None);
+    assert_eq!(listing_req.posted_date, None);
+}
+
+#[test]
+fn build_requests_seller_id_lands_only_on_listing_request() {
+    let fake_seller_id = Uuid::new_v4();
+    let fake_request = AnalyzeRequest {
+        platform: "olx".to_string(),
+        seller_id: Some(fake_seller_id),
+        listing_url: "https://olx.com.pk/item/test-listing".to_string(),
+        listing_id: Some("12345".to_string()),
+        title: Some("Test Listing".to_string()),
+        price: Some(50000),
+        description: Some("A test listing description".to_string()),
+        category: None,
+        image_urls: None,
+        posted_date: None,
+        platform_id: Some("platform_id_123".to_string()),
+        seller_name: Some("Test Seller".to_string()),
+        seller_handle: Some("test_seller_handle".to_string()),
+        seller_phone: Some("03001234567".to_string()),
+        seller_profile_url: Some("https://olx.com.pk/profile/test-seller".to_string()),
+        seller_join_date: Some("2021".to_string()),
+        seller_location: Some("Lahore".to_string()),
+        seller_last_active: Some("Today".to_string()),
+        domain_check_status: None,
+        domain_check_real_name: None,
+        domain_check_real_domain: None,
+        domain_check_current_domain: None,
+        domain_check_current_html: None,
+        domain_check_real_html: None,
+    };
+
+    let (_seller_req, listing_req) = build_requests(&fake_request);
+
+    assert_eq!(
+        listing_req.seller_id,
+        Some(fake_seller_id),
+        "expected seller_id to correctly land on listing_req specifically"
+    );
+}
+
+// Resolve Seller Tests
 #[tokio::test]
 async fn resolve_new_seller() {
     let pool = test_pool().await;
@@ -479,12 +560,57 @@ async fn resolve_existing_seller_with_real_fraud_report() {
     cleanup_test_seller(&pool, &platform, &platform_id).await;
 }
 
+// Find Seller Tests
+#[tokio::test]
+async fn find_seller_exists() {
+    let pool = test_pool().await;
+    let platform = "olx";
+    let platform_id = "find_seller_exists_001";
+    cleanup_test_seller(&pool, platform, platform_id).await;
+
+    let request = SellersRequest {
+        platform: platform.to_string(),
+        platform_id: Some(platform_id.to_string()),
+        name: Some("Findable Seller".to_string()),
+        handle: Some("findable_handle".to_string()),
+        phone: Some("03001234567".to_string()),
+        profile_url: Some("https://olx.com.pk/profile/findable".to_string()),
+        join_date: None,
+        location: Some("Lahore".to_string()),
+        last_active: Some("Today".to_string()),
+    };
+    let created_seller = create_seller(&pool, &request, SellerVerification::Unknown)
+        .await
+        .expect("expected the seller to be created");
+
+    let result = find_seller(&pool, platform, platform_id)
+        .await
+        .expect("expected the query to succeed");
+
+    let found_seller = result.expect("expected a real seller to be found");
+    assert_eq!(found_seller.id, created_seller.id);
+    assert_eq!(found_seller.name, Some("Findable Seller".to_string()));
+
+    cleanup_test_seller(&pool, platform, platform_id).await;
+}
+
+#[tokio::test]
+async fn find_seller_database_error() {
+    let pool = test_pool().await;
+    pool.close().await;
+
+    let result = find_seller(&pool, "olx", "doesnt_matter").await;
+    assert!(
+        result.is_err(),
+        "expected a genuine database error when the connection pool is closed"
+    );
+}
+
 #[tokio::test]
 async fn find_seller_not_exists() {
     let pool = test_pool().await;
     let platform = "olx".to_string();
     let platform_id = "find_seller_not_exists".to_string();
-
     cleanup_test_seller(&pool, &platform, &platform_id).await;
 
     let result = find_seller(&pool, &platform, &platform_id)
@@ -494,6 +620,64 @@ async fn find_seller_not_exists() {
     assert!(result.is_none(), "expected no seller to be found");
 }
 
+// Count Fraud Reports Test
+#[tokio::test]
+async fn zero_fraud_reports() {
+    let pool = test_pool().await;
+    let seller_id = Uuid::new_v4();
+
+    let count = count_fraud_reports(&pool, seller_id)
+        .await
+        .expect("expected to count the fraud reports");
+
+    assert_eq!(count, 0);
+}
+
+#[tokio::test]
+async fn having_fraud_reports() {
+    let pool = test_pool().await;
+    let platform = "olx".to_string();
+    let platform_id = "sellers_have_reports_test_001".to_string();
+    cleanup_test_seller(&pool, &platform, &platform_id).await;
+
+    let seller_request = SellersRequest {
+        platform: platform.clone(),
+        platform_id: Some(platform_id.clone()),
+        name: Some("Test name".to_string()),
+        handle: Some("test_handle".to_string()),
+        phone: Some("123456789".to_string()),
+        profile_url: Some("https://olx.com.pk/profile/test-seller".to_string()),
+        join_date: Some("2021".to_string()),
+        location: Some("Lahore".to_string()),
+        last_active: Some("Today".to_string()),
+    };
+
+    let seller = create_seller(&pool, &seller_request, SellerVerification::Unknown)
+        .await
+        .expect("expected to create the seller");
+
+    for _ in 0..2 {
+        query("INSERT INTO fraud_reports (seller_id, platform, platform_id, report_type, description) VALUES ($1, $2, $3, $4::report_types, $5)")
+            .bind(seller.id)
+            .bind(&platform)
+            .bind(&platform_id)
+            .bind("scam")
+            .bind("Test fraud report")
+            .execute(&pool)
+            .await
+            .expect("expected to create a real fraud report");
+    }
+
+    let count = count_fraud_reports(&pool, seller.id)
+        .await
+        .expect("expected to count the fraud reports");
+
+    assert_eq!(count, 2);
+
+    cleanup_test_seller(&pool, &platform, &platform_id).await;
+}
+
+// Create Seller Tests
 #[tokio::test]
 async fn create_seller_creates_brand_new() {
     let pool = test_pool().await;
@@ -605,6 +789,7 @@ async fn create_seller_never_overwrites_good_data_with_blanks() {
     let first_result = create_seller(&pool, &initial_request, SellerVerification::Unknown)
         .await
         .expect("expected the initial creation to succeed");
+
     assert_eq!(
         first_result.name,
         Some("Genuinely Real Seller Name".to_string())
@@ -621,6 +806,7 @@ async fn create_seller_never_overwrites_good_data_with_blanks() {
         location: Some("Lahore".to_string()),
         last_active: Some("Today".to_string()),
     };
+
     let second_result = create_seller(&pool, &blank_request, SellerVerification::Unknown)
         .await
         .expect("expected the second call to succeed");
@@ -656,6 +842,7 @@ async fn create_seller_verification_always_updates() {
         location: Some("Lahore".to_string()),
         last_active: Some("Today".to_string()),
     };
+
     let first_result = create_seller(&pool, &request, SellerVerification::Unknown)
         .await
         .expect("expected the initial creation to succeed");
@@ -770,62 +957,7 @@ async fn create_seller_database_error() {
     );
 }
 
-#[tokio::test]
-async fn zero_fraud_reports() {
-    let pool = test_pool().await;
-    let seller_id = Uuid::new_v4();
-
-    let count = count_fraud_reports(&pool, seller_id)
-        .await
-        .expect("expected to count the fraud reports");
-
-    assert_eq!(count, 0);
-}
-
-#[tokio::test]
-async fn having_fraud_reports() {
-    let pool = test_pool().await;
-    let platform = "olx".to_string();
-    let platform_id = "sellers_have_reports_test_001".to_string();
-    cleanup_test_seller(&pool, &platform, &platform_id).await;
-
-    let seller_request = SellersRequest {
-        platform: platform.clone(),
-        platform_id: Some(platform_id.clone()),
-        name: Some("Test name".to_string()),
-        handle: Some("test_handle".to_string()),
-        phone: Some("123456789".to_string()),
-        profile_url: Some("https://olx.com.pk/profile/test-seller".to_string()),
-        join_date: Some("2021".to_string()),
-        location: Some("Lahore".to_string()),
-        last_active: Some("Today".to_string()),
-    };
-
-    let seller = create_seller(&pool, &seller_request, SellerVerification::Unknown)
-        .await
-        .expect("expected to create the seller");
-
-    for _ in 0..2 {
-        query("INSERT INTO fraud_reports (seller_id, platform, platform_id, report_type, description) VALUES ($1, $2, $3, $4::report_types, $5)")
-            .bind(seller.id)
-            .bind(&platform)
-            .bind(&platform_id)
-            .bind("scam")
-            .bind("Test fraud report")
-            .execute(&pool)
-            .await
-            .expect("expected to create a real fraud report");
-    }
-
-    let count = count_fraud_reports(&pool, seller.id)
-        .await
-        .expect("expected to count the fraud reports");
-
-    assert_eq!(count, 2);
-
-    cleanup_test_seller(&pool, &platform, &platform_id).await;
-}
-
+// Build Network Summary Test
 #[test]
 fn build_network_first_summary() {
     let fraud_count = 0;
@@ -855,6 +987,354 @@ fn build_network_third_summary() {
     assert_eq!(
         result,
         "2 fraud reports found on Safely network. High risk seller."
+    );
+}
+
+// Create Listing Test
+#[tokio::test]
+async fn create_listing_creates_brand_new() {
+    let pool = test_pool().await;
+    let platform = "olx";
+    let platform_id = "create_listing_new_seller_001";
+    cleanup_test_seller(&pool, platform, platform_id).await;
+
+    let seller_request = SellersRequest {
+        platform: platform.to_string(),
+        platform_id: Some(platform_id.to_string()),
+        name: Some("Listing Test Seller".to_string()),
+        handle: None,
+        phone: None,
+        profile_url: None,
+        join_date: None,
+        location: None,
+        last_active: None,
+    };
+
+    let seller = create_seller(&pool, &seller_request, SellerVerification::Unknown)
+        .await
+        .expect("expected the seller to be created");
+
+    let listing_url = "https://olx.com.pk/item/create-listing-new-001";
+    query("DELETE FROM listings WHERE listing_url = $1")
+        .bind(listing_url)
+        .execute(&pool)
+        .await
+        .ok();
+
+    let listing_request = ListingsRequest {
+        seller_id: Some(seller.id),
+        platform: platform.to_string(),
+        listing_url: listing_url.to_string(),
+        listing_id: Some("create_listing_new_001".to_string()),
+        title: Some("Brand New Listing".to_string()),
+        price: Some(75000),
+        description: Some("A genuinely new listing".to_string()),
+        category: None,
+        image_urls: None,
+        posted_date: None,
+    };
+
+    let listing = create_listing(&pool, &listing_request, seller.id)
+        .await
+        .expect("expected a brand-new listing to be created");
+
+    assert_eq!(listing.listing_url, listing_url);
+    assert_eq!(listing.title, Some("Brand New Listing".to_string()));
+    assert_eq!(listing.price, Some(75000));
+    assert_eq!(listing.seller_id, Some(seller.id));
+    assert!(
+        listing.last_analyzed_at.is_none(),
+        "expected last_analyzed_at to start as None on a brand-new listing"
+    );
+
+    query("DELETE FROM listings WHERE listing_url = $1")
+        .bind(listing_url)
+        .execute(&pool)
+        .await
+        .ok();
+
+    cleanup_test_seller(&pool, platform, platform_id).await;
+}
+
+#[tokio::test]
+async fn create_listing_updates_and_fills_in_new_data() {
+    let pool = test_pool().await;
+    let platform = "olx";
+    let platform_id = "create_listing_fill_in_seller_001";
+    cleanup_test_seller(&pool, platform, platform_id).await;
+
+    let seller_request = SellersRequest {
+        platform: platform.to_string(),
+        platform_id: Some(platform_id.to_string()),
+        name: Some("Fill In Test Seller".to_string()),
+        handle: None,
+        phone: None,
+        profile_url: None,
+        join_date: None,
+        location: None,
+        last_active: None,
+    };
+
+    let seller = create_seller(&pool, &seller_request, SellerVerification::Unknown)
+        .await
+        .expect("expected the seller to be created");
+
+    let listing_url = "https://olx.com.pk/item/create-listing-fill-in-001";
+    query("DELETE FROM listings WHERE listing_url = $1")
+        .bind(listing_url)
+        .execute(&pool)
+        .await
+        .ok();
+
+    let initial_request = ListingsRequest {
+        seller_id: Some(seller.id),
+        platform: platform.to_string(),
+        listing_url: listing_url.to_string(),
+        listing_id: Some("create_listing_fill_in_001".to_string()),
+        title: Some("Listing Title".to_string()),
+        price: Some(50000),
+        description: None,
+        category: None,
+        image_urls: None,
+        posted_date: None,
+    };
+    let first_result = create_listing(&pool, &initial_request, seller.id)
+        .await
+        .expect("expected the initial creation to succeed");
+    assert!(
+        first_result.description.is_none(),
+        "expected description to start as None"
+    );
+
+    let updated_request = ListingsRequest {
+        seller_id: Some(seller.id),
+        platform: platform.to_string(),
+        listing_url: listing_url.to_string(),
+        listing_id: Some("create_listing_fill_in_001".to_string()),
+        title: Some("Listing Title".to_string()),
+        price: Some(50000),
+        description: Some("Now genuinely described".to_string()),
+        category: None,
+        image_urls: None,
+        posted_date: None,
+    };
+
+    let updated_result = create_listing(&pool, &updated_request, seller.id)
+        .await
+        .expect("expected the update to succeed");
+
+    assert_eq!(
+        updated_result.id, first_result.id,
+        "expected the SAME listing row to be updated, not a new one created"
+    );
+    assert_eq!(
+        updated_result.description,
+        Some("Now genuinely described".to_string()),
+        "expected the previously-missing description to now be filled in"
+    );
+
+    query("DELETE FROM listings WHERE listing_url = $1")
+        .bind(listing_url)
+        .execute(&pool)
+        .await
+        .ok();
+
+    cleanup_test_seller(&pool, platform, platform_id).await;
+}
+
+#[tokio::test]
+async fn create_listing_never_overwrites_good_data_with_blanks() {
+    let pool = test_pool().await;
+    let platform = "olx";
+    let platform_id = "create_listing_preserve_seller_001";
+    cleanup_test_seller(&pool, platform, platform_id).await;
+
+    let seller_request = SellersRequest {
+        platform: platform.to_string(),
+        platform_id: Some(platform_id.to_string()),
+        name: Some("Preserve Test Seller".to_string()),
+        handle: None,
+        phone: None,
+        profile_url: None,
+        join_date: None,
+        location: None,
+        last_active: None,
+    };
+
+    let seller = create_seller(&pool, &seller_request, SellerVerification::Unknown)
+        .await
+        .expect("expected the seller to be created");
+
+    let listing_url = "https://olx.com.pk/item/create-listing-preserve-001";
+    query("DELETE FROM listings WHERE listing_url = $1")
+        .bind(listing_url)
+        .execute(&pool)
+        .await
+        .ok();
+
+    let initial_request = ListingsRequest {
+        seller_id: Some(seller.id),
+        platform: platform.to_string(),
+        listing_url: listing_url.to_string(),
+        listing_id: Some("create_listing_preserve_001".to_string()),
+        title: Some("Genuinely Real Listing Title".to_string()),
+        price: Some(50000),
+        description: Some("Real description".to_string()),
+        category: None,
+        image_urls: None,
+        posted_date: None,
+    };
+    let first_result = create_listing(&pool, &initial_request, seller.id)
+        .await
+        .expect("expected the initial creation to succeed");
+
+    assert_eq!(
+        first_result.title,
+        Some("Genuinely Real Listing Title".to_string())
+    );
+
+    let blank_request = ListingsRequest {
+        seller_id: Some(seller.id),
+        platform: platform.to_string(),
+        listing_url: listing_url.to_string(),
+        listing_id: Some("create_listing_preserve_001".to_string()),
+        title: None,
+        price: None,
+        description: Some("Real description".to_string()),
+        category: None,
+        image_urls: None,
+        posted_date: None,
+    };
+
+    let second_result = create_listing(&pool, &blank_request, seller.id)
+        .await
+        .expect("expected the second call to succeed");
+
+    assert_eq!(
+        second_result.id, first_result.id,
+        "expected the SAME listing row"
+    );
+    assert_eq!(
+        second_result.title,
+        Some("Genuinely Real Listing Title".to_string()),
+        "expected the ORIGINAL, real title to be preserved, NOT wiped out by the blank"
+    );
+    assert_eq!(
+        second_result.price,
+        Some(50000),
+        "expected the ORIGINAL, real price to be preserved, NOT wiped out by the blank"
+    );
+
+    query("DELETE FROM listings WHERE listing_url = $1")
+        .bind(listing_url)
+        .execute(&pool)
+        .await
+        .ok();
+
+    cleanup_test_seller(&pool, platform, platform_id).await;
+}
+
+#[tokio::test]
+async fn create_listing_last_analyzed_at_set_on_update() {
+    let pool = test_pool().await;
+    let platform = "olx";
+    let platform_id = "create_listing_last_analyzed_seller_001";
+    cleanup_test_seller(&pool, platform, platform_id).await;
+
+    let seller_request = SellersRequest {
+        platform: platform.to_string(),
+        platform_id: Some(platform_id.to_string()),
+        name: Some("Last Analyzed Test Seller".to_string()),
+        handle: None,
+        phone: None,
+        profile_url: None,
+        join_date: None,
+        location: None,
+        last_active: None,
+    };
+    let seller = create_seller(&pool, &seller_request, SellerVerification::Unknown)
+        .await
+        .expect("expected the seller to be created");
+
+    let listing_url = "https://olx.com.pk/item/create-listing-last-analyzed-001";
+    query("DELETE FROM listings WHERE listing_url = $1")
+        .bind(listing_url)
+        .execute(&pool)
+        .await
+        .ok();
+
+    let request = ListingsRequest {
+        seller_id: Some(seller.id),
+        platform: platform.to_string(),
+        listing_url: listing_url.to_string(),
+        listing_id: Some("create_listing_last_analyzed_001".to_string()),
+        title: Some("Last Analyzed Test Listing".to_string()),
+        price: Some(50000),
+        description: Some("Test description".to_string()),
+        category: None,
+        image_urls: None,
+        posted_date: None,
+    };
+
+    let first_result = create_listing(&pool, &request, seller.id)
+        .await
+        .expect("expected the initial creation to succeed");
+    assert!(
+        first_result.last_analyzed_at.is_none(),
+        "expected last_analyzed_at to start as None on a brand-new listing"
+    );
+
+    let second_result = create_listing(&pool, &request, seller.id)
+        .await
+        .expect("expected the second call to succeed");
+
+    assert_eq!(
+        second_result.id, first_result.id,
+        "expected the SAME listing row"
+    );
+    assert!(
+        second_result.last_analyzed_at.is_some(),
+        "expected last_analyzed_at to genuinely be set now, after a real update"
+    );
+
+    let recorded_time = second_result.last_analyzed_at.unwrap();
+    assert!(
+        Utc::now() - recorded_time < chrono_duration::minutes(1),
+        "expected the recorded time to be genuinely recent"
+    );
+
+    query("DELETE FROM listings WHERE listing_url = $1")
+        .bind(listing_url)
+        .execute(&pool)
+        .await
+        .ok();
+
+    cleanup_test_seller(&pool, platform, platform_id).await;
+}
+
+#[tokio::test]
+async fn create_listing_database_error() {
+    let pool = test_pool().await;
+    pool.close().await;
+
+    let fake_seller_id = Uuid::new_v4();
+    let request = ListingsRequest {
+        seller_id: Some(fake_seller_id),
+        platform: "olx".to_string(),
+        listing_url: "https://olx.com.pk/item/db-error-test".to_string(),
+        listing_id: Some("db_error_test_001".to_string()),
+        title: Some("Doesn't Matter".to_string()),
+        price: None,
+        description: None,
+        category: None,
+        image_urls: None,
+        posted_date: None,
+    };
+
+    let result = create_listing(&pool, &request, fake_seller_id).await;
+    assert!(
+        result.is_err(),
+        "expected a genuine database error when the connection pool is closed"
     );
 }
 
@@ -1468,7 +1948,6 @@ async fn save_and_build_response_database_failure() {
     };
 
     let result = save_and_build_response(data).await;
-
     assert!(
         result.is_err(),
         "expected save_and_build_response to fail when listing_id and user_id don't genuinely exist"
@@ -1563,7 +2042,6 @@ async fn create_analysis_success() {
         .expect("expected listing cleanup to succeed");
 
     cleanup_test_seller(&pool, &platform, &platform_id).await;
-
     cleanup_test_user(&pool, email).await;
 }
 
@@ -1574,7 +2052,7 @@ async fn create_analysis_database_failure() {
     let fake_listing_id = Uuid::new_v4();
     let fake_user_id = Uuid::new_v4();
 
-    let signals_json = serde_json::json!([
+    let signals_json = json!([
         { "label": "Price analysis", "sub": "Normal", "value": "Normal", "signal_type": "good" }
     ]);
 

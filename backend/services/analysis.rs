@@ -101,7 +101,6 @@ pub fn check_rate_limit(user_id: Uuid) -> Result<(), AnalyzeError> {
         entry.0 = 0;
         entry.1 = now;
     }
-
     entry.0 += 1;
 
     if entry.0 <= RATE_LIMIT_MAX_REQUESTS {
