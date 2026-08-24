@@ -13,35 +13,6 @@ const SUBSCRIPTION_CANCELED_TEMPLATE: &str =
 const SUBSCRIPTION_ENDED_TEMPLATE: &str =
     include_str!("../templates/subscription_ended_email.html");
 
-/// It builds one shared "template engine" containing all the email templates, and hands them back
-///
-/// TERA is a special kind of variable (OnceLock) that can only ever be set up once, globally,
-/// for your entire running program. get_or_init means: "if this has already been built before,
-/// just hand back that same one. If it hasn't been built yet, run this code block right now to build it.
-/// It creates a brand-new, empty template engine — nothing loaded into it yet.
-/// Each raw template loads one specific email template into the engine, giving it a name
-/// tera as return statement, this is the whole block produces, once all five templates are loaded.
-pub fn get_tera() -> &'static Tera {
-    TERA.get_or_init(|| {
-        let mut tera = Tera::default();
-        tera.add_raw_template("email.html", EMAIL_TEMPLATE)
-            .expect("tera should add the sign-in raw template");
-        tera.add_raw_template("welcome_email.html", WELCOME_EMAIL_TEMPLATE)
-            .expect("tera should add the welcome raw template");
-        tera.add_raw_template("payment_failed_email.html", PAYMENT_FAILED_TEMPLATE)
-            .expect("tera should add the payment failed raw template");
-        tera.add_raw_template("subscription_ended_email.html", SUBSCRIPTION_ENDED_TEMPLATE)
-            .expect("tera should add the subscription ended raw template");
-        tera.add_raw_template(
-            "subscription_canceled_email.html",
-            SUBSCRIPTION_CANCELED_TEMPLATE,
-        )
-        .expect("tera should add the subscription canceled raw template");
-
-        tera
-    })
-}
-
 /// It sends the "click here to sign in" magic-link email to whoever's trying to log in,
 /// and hands back the real status code from Resend once it's done.
 ///
@@ -108,6 +79,35 @@ pub async fn send_magic_link_email(
     }
 
     Ok(response.status())
+}
+
+/// It builds one shared "template engine" containing all the email templates, and hands them back
+///
+/// TERA is a special kind of variable (OnceLock) that can only ever be set up once, globally,
+/// for your entire running program. get_or_init means: "if this has already been built before,
+/// just hand back that same one. If it hasn't been built yet, run this code block right now to build it.
+/// It creates a brand-new, empty template engine — nothing loaded into it yet.
+/// Each raw template loads one specific email template into the engine, giving it a name
+/// tera as return statement, this is the whole block produces, once all five templates are loaded.
+pub fn get_tera() -> &'static Tera {
+    TERA.get_or_init(|| {
+        let mut tera = Tera::default();
+        tera.add_raw_template("email.html", EMAIL_TEMPLATE)
+            .expect("tera should add the sign-in raw template");
+        tera.add_raw_template("welcome_email.html", WELCOME_EMAIL_TEMPLATE)
+            .expect("tera should add the welcome raw template");
+        tera.add_raw_template("payment_failed_email.html", PAYMENT_FAILED_TEMPLATE)
+            .expect("tera should add the payment failed raw template");
+        tera.add_raw_template("subscription_ended_email.html", SUBSCRIPTION_ENDED_TEMPLATE)
+            .expect("tera should add the subscription ended raw template");
+        tera.add_raw_template(
+            "subscription_canceled_email.html",
+            SUBSCRIPTION_CANCELED_TEMPLATE,
+        )
+        .expect("tera should add the subscription canceled raw template");
+
+        tera
+    })
 }
 
 /// It sends someone a welcome email, exactly once, the very first time they genuinely sign up.

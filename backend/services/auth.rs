@@ -16,6 +16,7 @@ pub fn validate_email_format(email: &str) -> Result<String, AuthError> {
     if trimmed.is_empty() || !trimmed.contains('@') {
         return Err(AuthError::BadRequest);
     }
+
     Ok(trimmed)
 }
 

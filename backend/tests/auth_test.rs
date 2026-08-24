@@ -11,7 +11,7 @@ use axum_extra::extract::{
     cookie::{Cookie, SameSite},
 };
 use backend::{
-    errors::auth::AuthError,
+    errors::auth::{AuthError, AuthServiceError},
     handlers::auth::{
         OAUTH_LINK_USER_COOKIE, OAUTH_STATE_COOKIE, google_callback, google_connect_redirect,
         google_redirect, handle_google_connect, logout, request_magic_link, verify_magic_link,
@@ -42,6 +42,7 @@ use std::env::{remove_var, set_var};
 use tower::ServiceExt;
 use uuid::Uuid;
 
+// Request Magic Link Test
 #[tokio::test]
 async fn requesting_magic_link() {
     let test_email = "delivered@resend.dev ";
@@ -168,24 +169,63 @@ async fn requesting_a_magic_link_rejects_an_invalid_email() {
     );
 }
 
-#[tokio::test]
-async fn checking_email_format() {
-    let test_email = "test_user@example.com";
-    let trimmed_email = test_email.trim();
-    let lowercase_email = trimmed_email.to_lowercase();
-    let contains_ampersand = lowercase_email.contains("@");
-    let not_empty = !lowercase_email.is_empty();
-    let validate = validate_email_format(test_email);
-    let pool = test_pool().await;
-    cleanup_test_user(&pool, test_email).await;
-
-    assert_eq!(trimmed_email, test_email);
-    assert_eq!(lowercase_email, test_email);
-    assert_eq!(contains_ampersand, true);
-    assert_eq!(not_empty, true);
-    assert_eq!(validate.is_ok(), true);
+// Validate Email Format Test
+#[test]
+fn validate_email_format_already_clean() {
+    let result = validate_email_format("test_user@example.com")
+        .expect("expected a valid, clean email to be accepted");
+    assert_eq!(result, "test_user@example.com");
 }
 
+#[test]
+fn validate_email_format_trims_whitespace() {
+    let result = validate_email_format("  test_user@example.com  ")
+        .expect("expected whitespace to be trimmed, not rejected");
+    assert_eq!(result, "test_user@example.com");
+}
+
+#[test]
+fn validate_email_format_lowercases_uppercase() {
+    let result = validate_email_format("Test_User@Example.COM")
+        .expect("expected uppercase letters to be lowercased, not rejected");
+    assert_eq!(result, "test_user@example.com");
+}
+
+#[test]
+fn validate_email_format_trims_and_lowercases_together() {
+    let result = validate_email_format("  Test_User@Example.COM  ")
+        .expect("expected both trimming and lowercasing to apply together");
+    assert_eq!(result, "test_user@example.com");
+}
+
+#[test]
+fn validate_email_format_rejects_empty_string() {
+    let result = validate_email_format("");
+    assert!(
+        matches!(result, Err(AuthError::BadRequest)),
+        "expected a genuinely empty string to be rejected"
+    );
+}
+
+#[test]
+fn validate_email_format_rejects_whitespace_only() {
+    let result = validate_email_format("   ");
+    assert!(
+        matches!(result, Err(AuthError::BadRequest)),
+        "expected whitespace-only input to be rejected, since it trims to empty"
+    );
+}
+
+#[test]
+fn validate_email_format_rejects_missing_at_symbol() {
+    let result = validate_email_format("not_an_email_at_all");
+    assert!(
+        matches!(result, Err(AuthError::BadRequest)),
+        "expected a string with no '@' to be rejected"
+    );
+}
+
+// Insert Magic Link Test
 #[tokio::test]
 async fn checking_magic_link_insertion() {
     let pool = test_pool().await;
@@ -234,6 +274,77 @@ async fn checking_magic_link_insertion() {
 }
 
 #[tokio::test]
+async fn insert_magic_link_success_direct_verification() {
+    let pool = test_pool().await;
+    let email = "insert_magic_link_success_test@example.com";
+    cleanup_test_user(&pool, email).await;
+
+    let before_call = Utc::now();
+    let token = insert_magic_link(&pool, email)
+        .await
+        .expect("expected the magic link to be inserted successfully");
+
+    let (saved_email, expires_at): (String, DateTime<Utc>) =
+        query_as("SELECT email, expires_at FROM magic_links WHERE token = $1")
+            .bind(&token)
+            .fetch_one(&pool)
+            .await
+            .expect("expected the real row to exist");
+
+    assert_eq!(saved_email, email, "expected the correct email to be saved");
+
+    let expected_expiry = before_call + chrono_duration::minutes(15);
+    let difference = (expected_expiry - expires_at).num_seconds().abs();
+    assert!(
+        difference < 60,
+        "expected expires_at to be genuinely ~15 minutes out, off by {} seconds",
+        difference
+    );
+
+    cleanup_test_user(&pool, email).await;
+}
+
+#[tokio::test]
+async fn insert_magic_link_invalid_email() {
+    let pool = test_pool().await;
+    let malformed_email = "not_an_email_at_all";
+
+    let result = insert_magic_link(&pool, malformed_email).await;
+
+    match result {
+        Err(AuthServiceError::InvalidEmail) => {}
+        Err(other) => panic!("expected InvalidEmail, got a different error: {:?}", other),
+        Ok(_) => panic!("expected a malformed email to be rejected, but it succeeded"),
+    }
+
+    let row_exists: Option<String> = query_scalar("SELECT email FROM magic_links WHERE email = $1")
+        .bind(malformed_email)
+        .fetch_optional(&pool)
+        .await
+        .expect("expected the query to succeed");
+
+    assert!(
+        row_exists.is_none(),
+        "expected no magic link row to be created for an invalid email"
+    );
+}
+
+#[tokio::test]
+async fn insert_magic_link_database_error() {
+    let pool = test_pool().await;
+    pool.close().await;
+
+    let result = insert_magic_link(&pool, "delivered@resend.dev").await;
+
+    assert!(
+        result.is_err(),
+        "expected a genuine database error when the connection pool is closed"
+    );
+}
+
+// Send Magic Link Test
+#[tokio::test]
+#[serial]
 async fn sending_magic_link_email_succeeds() {
     dotenvy::dotenv().ok();
 
@@ -244,7 +355,6 @@ async fn sending_magic_link_email_succeeds() {
     let verify_url = format!("{}/api/v1/auth/verify?token=1234", base_url);
 
     let result = send_magic_link_email(&to_formatted, &verify_url).await;
-
     assert!(
         result.is_ok(),
         "expected the email to send successfully, got: {:?}",
@@ -253,6 +363,7 @@ async fn sending_magic_link_email_succeeds() {
 }
 
 #[tokio::test]
+#[serial]
 async fn sending_magic_link_email_fails_for_a_blocked_domain() {
     dotenvy::dotenv().ok();
 
@@ -276,6 +387,65 @@ async fn sending_magic_link_email_fails_for_a_blocked_domain() {
     }
 }
 
+#[tokio::test]
+#[serial]
+async fn sending_magic_link_email_missing_api_key() {
+    dotenvy::dotenv().ok();
+    let original_key = var("RESEND_API_KEY").ok();
+    unsafe {
+        remove_var("RESEND_API_KEY");
+    }
+
+    let to_email = "delivered@resend.dev";
+    let verify_url = "http://localhost:3000/api/v1/auth/verify?token=1234";
+    let result = send_magic_link_email(to_email, verify_url).await;
+
+    match result {
+        Err(AuthError::InternalServerError(_)) => {}
+        Err(other) => panic!(
+            "expected InternalServerError, got a different error: {:?}",
+            other
+        ),
+        Ok(_) => panic!("expected the email to fail without a real API key, but it succeeded"),
+    }
+
+    unsafe {
+        if let Some(key) = original_key {
+            set_var("RESEND_API_KEY", key);
+        }
+    }
+}
+
+#[tokio::test]
+#[serial]
+async fn sending_magic_link_email_missing_base_url() {
+    dotenvy::dotenv().ok();
+    let original_url = var("PUBLIC_BASE_URL").ok();
+    unsafe {
+        remove_var("PUBLIC_BASE_URL");
+    }
+
+    let to_email = "delivered@resend.dev";
+    let verify_url = "http://localhost:3000/api/v1/auth/verify?token=1234";
+    let result = send_magic_link_email(to_email, verify_url).await;
+
+    match result {
+        Err(AuthError::InternalServerError(_)) => {}
+        Err(other) => panic!(
+            "expected InternalServerError, got a different error: {:?}",
+            other
+        ),
+        Ok(_) => panic!("expected the email to fail without PUBLIC_BASE_URL, but it succeeded"),
+    }
+
+    unsafe {
+        if let Some(url) = original_url {
+            set_var("PUBLIC_BASE_URL", url);
+        }
+    }
+}
+
+// Get Tera Test
 #[test]
 fn get_tera_loads_all_five_email_templates() {
     let tera = get_tera();
@@ -299,6 +469,18 @@ fn get_tera_loads_all_five_email_templates() {
     }
 }
 
+#[test]
+fn get_tera_returns_the_same_singleton_instance() {
+    let first_call = get_tera();
+    let second_call = get_tera();
+
+    assert!(
+        std::ptr::eq(first_call, second_call),
+        "expected get_tera() to return the exact same instance on every call"
+    );
+}
+
+// Verify Magic Link
 #[tokio::test]
 async fn checking_email_link_verification() {
     let pool = test_pool().await;
