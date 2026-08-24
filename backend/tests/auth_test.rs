@@ -763,6 +763,101 @@ async fn set_login_method_database_error() {
     );
 }
 
+#[tokio::test]
+async fn create_session_success_correct_shape_and_expiry() {
+    let pool = test_pool().await;
+    let email = "create_session_shape_test@example.com";
+    let (user, _) = create_test_user(&pool, email).await;
+
+    let token = create_session(&pool, user.id)
+        .await
+        .expect("expected the session to be created successfully");
+
+    assert_eq!(
+        token.len(),
+        64,
+        "expected the token to be exactly 64 characters, got: {}",
+        token.len()
+    );
+    assert!(
+        token.chars().all(|c| c.is_ascii_hexdigit()),
+        "expected the token to contain only hex characters, got: {}",
+        token
+    );
+
+    let expires_at: DateTime<Utc> =
+        query_scalar("SELECT expires_at FROM sessions WHERE token = $1")
+            .bind(&token)
+            .fetch_one(&pool)
+            .await
+            .expect("expected the query to succeed");
+
+    let expected_expiry = Utc::now() + chrono_duration::days(30);
+    let difference = (expected_expiry - expires_at).num_seconds().abs();
+    assert!(
+        difference < 60,
+        "expected expires_at to be genuinely ~30 days out, off by {} seconds",
+        difference
+    );
+
+    cleanup_test_user(&pool, email).await;
+}
+
+#[tokio::test]
+async fn create_session_produces_unique_tokens() {
+    let pool = test_pool().await;
+    let email = "create_session_uniqueness_test@example.com";
+    let (user, _) = create_test_user(&pool, email).await;
+
+    let first_token = create_session(&pool, user.id)
+        .await
+        .expect("expected the first session to be created");
+
+    let second_token = create_session(&pool, user.id)
+        .await
+        .expect("expected the second session to be created");
+
+    assert_ne!(
+        first_token, second_token,
+        "expected two genuinely distinct tokens, since each call should produce fresh randomness"
+    );
+
+    let first_exists: Option<String> = query_scalar("SELECT token FROM sessions WHERE token = $1")
+        .bind(&first_token)
+        .fetch_optional(&pool)
+        .await
+        .expect("expected the query to succeed");
+
+    let second_exists: Option<String> = query_scalar("SELECT token FROM sessions WHERE token = $1")
+        .bind(&second_token)
+        .fetch_optional(&pool)
+        .await
+        .expect("expected the query to succeed");
+
+    assert!(
+        first_exists.is_some(),
+        "expected the first session to genuinely exist"
+    );
+    assert!(
+        second_exists.is_some(),
+        "expected the second session to genuinely exist"
+    );
+
+    cleanup_test_user(&pool, email).await;
+}
+
+#[tokio::test]
+async fn create_session_fails_for_nonexistent_user() {
+    let pool = test_pool().await;
+    let fake_user_id = Uuid::new_v4();
+    let result = create_session(&pool, fake_user_id).await;
+
+    assert!(
+        result.is_err(),
+        "expected session creation to fail for a user that genuinely doesn't exist"
+    );
+}
+
 // ------------------------------------
 
 #[tokio::test]
