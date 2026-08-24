@@ -23,7 +23,7 @@ use backend::{
     routes::auth::auth_routes,
     services::{
         auth::{
-            create_session, extract_user_id, find_or_create_user_by_email,
+            check_last_login, create_session, extract_user_id, find_or_create_user_by_email,
             find_or_create_user_by_google, find_user_by_email, find_user_by_google_id,
             finish_sign_in, insert_magic_link, link_google_account, set_login_method,
             validate_email_format, validate_magic_link,
@@ -32,7 +32,7 @@ use backend::{
         google_oauth::build_google_authorize_url,
     },
 };
-use chrono::{Duration as chrono_duration, Utc};
+use chrono::{DateTime, Duration as chrono_duration, Utc};
 use common::{cleanup_test_user, create_test_user, test_pool};
 use dotenvy::var;
 use reqwest::Body;
@@ -643,6 +643,58 @@ async fn send_welcome_email_fails_for_a_blocked_domain() {
         }
         other => panic!("expected an InternalServerError, got: {:?}", other),
     }
+}
+
+#[tokio::test]
+async fn check_last_login_success() {
+    let pool = test_pool().await;
+    let email = "check_last_login_test@example.com";
+    let (user, _) = create_test_user(&pool, email).await;
+
+    let before: Option<DateTime<Utc>> =
+        query_scalar("SELECT last_login_at FROM users WHERE id = $1")
+            .bind(user.id)
+            .fetch_one(&pool)
+            .await
+            .expect("expected the query to succeed");
+
+    assert!(before.is_none(), "expected last_login_at to start as None");
+
+    check_last_login(&pool, user.id)
+        .await
+        .expect("expected the update to succeed");
+
+    let after: Option<DateTime<Utc>> =
+        query_scalar("SELECT last_login_at FROM users WHERE id = $1")
+            .bind(user.id)
+            .fetch_one(&pool)
+            .await
+            .expect("expected the query to succeed");
+
+    assert!(
+        after.is_some(),
+        "expected last_login_at to genuinely be set now"
+    );
+    assert!(
+        Utc::now() - after.unwrap() < chrono_duration::minutes(1),
+        "expected the recorded time to be genuinely recent"
+    );
+
+    cleanup_test_user(&pool, email).await;
+}
+
+#[tokio::test]
+async fn check_last_login_database_error() {
+    let pool = test_pool().await;
+    pool.close().await;
+
+    let fake_user_id = Uuid::new_v4();
+    let result = check_last_login(&pool, fake_user_id).await;
+
+    assert!(
+        result.is_err(),
+        "expected a genuine database error when the connection pool is closed"
+    );
 }
 
 #[tokio::test]
