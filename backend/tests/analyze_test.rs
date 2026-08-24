@@ -26,11 +26,12 @@ use backend::{
         },
         fraud_reports::{build_network_summary, count_fraud_reports},
         listings::{create_listing, get_monthly_visit_activity},
+        scoring::calculate_risk_score,
         sellers::{create_seller, find_seller},
         signals::{build_domain_signal, build_signals},
     },
 };
-use chrono::{Duration as chrono_duration, NaiveDate, Utc};
+use chrono::{Datelike, Duration as chrono_duration, NaiveDate, Utc};
 use common::{cleanup_test_seller, cleanup_test_user, test_pool};
 use serde_json::json;
 use serial_test::serial;
@@ -42,6 +43,10 @@ use std::{
     time::{Duration, Instant},
 };
 use uuid::Uuid;
+
+use crate::common::{
+    cleanup_test_seller_chain, create_test_user, insert_test_history_chain, set_analysis_created_at,
+};
 
 // Analyze Test
 #[tokio::test]
@@ -1667,6 +1672,7 @@ fn content_never_includes_image_urls() {
     );
 }
 
+// Build All Signals Test
 #[test]
 fn build_all_signals_without_domain_check() {
     let finding = Finding {
@@ -1823,6 +1829,7 @@ fn build_all_signals_with_domain_check() {
     assert_eq!(all_signals[0].label, "Domain check");
 }
 
+// Build Domain Signal Test
 #[test]
 fn build_domain_signal_with_legitimate_status() {
     let status = Some("legitimate");
@@ -1937,6 +1944,346 @@ fn build_domain_signal_prefers_highlighted_html_over_plain_text() {
     );
 }
 
+// Calculate Risk Score Test
+#[test]
+fn calculate_risk_score_baseline_zero() {
+    let analysis = ClaudeAnalysis {
+        urgency_language: Finding {
+            found: false,
+            evidence: "".to_string(),
+        },
+        advance_payment_request: Finding {
+            found: false,
+            evidence: "".to_string(),
+        },
+        duplicate_listing: Finding {
+            found: false,
+            evidence: "".to_string(),
+        },
+        image_authenticity: ImageAssessment {
+            verdict: "original".to_string(),
+            reasoning: "".to_string(),
+        },
+        fraud_pattern_match: Finding {
+            found: false,
+            evidence: "".to_string(),
+        },
+        contact_info_in_listing: Finding {
+            found: false,
+            evidence: "".to_string(),
+        },
+        price_assessment: PriceAssessment {
+            verdict: "normal".to_string(),
+            reasoning: "".to_string(),
+        },
+        overall_risk_notes: "".to_string(),
+    };
+
+    let score = calculate_risk_score(&analysis, 0);
+
+    assert_eq!(score, 0, "expected a genuinely clean listing to score 0");
+}
+
+#[test]
+fn calculate_risk_score_urgency_language() {
+    let mut analysis = ClaudeAnalysis {
+        urgency_language: Finding {
+            found: false,
+            evidence: "".to_string(),
+        },
+        advance_payment_request: Finding {
+            found: false,
+            evidence: "".to_string(),
+        },
+        duplicate_listing: Finding {
+            found: false,
+            evidence: "".to_string(),
+        },
+        image_authenticity: ImageAssessment {
+            verdict: "original".to_string(),
+            reasoning: "".to_string(),
+        },
+        fraud_pattern_match: Finding {
+            found: false,
+            evidence: "".to_string(),
+        },
+        contact_info_in_listing: Finding {
+            found: false,
+            evidence: "".to_string(),
+        },
+        price_assessment: PriceAssessment {
+            verdict: "normal".to_string(),
+            reasoning: "".to_string(),
+        },
+        overall_risk_notes: "".to_string(),
+    };
+    analysis.urgency_language.found = true;
+
+    let score = calculate_risk_score(&analysis, 0);
+
+    assert_eq!(
+        score, 15,
+        "expected urgency_language alone to add exactly 15 points"
+    );
+}
+
+#[test]
+fn calculate_risk_score_advance_payment_request() {
+    let mut analysis = ClaudeAnalysis {
+        urgency_language: Finding {
+            found: false,
+            evidence: "".to_string(),
+        },
+        advance_payment_request: Finding {
+            found: false,
+            evidence: "".to_string(),
+        },
+        duplicate_listing: Finding {
+            found: false,
+            evidence: "".to_string(),
+        },
+        image_authenticity: ImageAssessment {
+            verdict: "original".to_string(),
+            reasoning: "".to_string(),
+        },
+        fraud_pattern_match: Finding {
+            found: false,
+            evidence: "".to_string(),
+        },
+        contact_info_in_listing: Finding {
+            found: false,
+            evidence: "".to_string(),
+        },
+        price_assessment: PriceAssessment {
+            verdict: "normal".to_string(),
+            reasoning: "".to_string(),
+        },
+        overall_risk_notes: "".to_string(),
+    };
+    analysis.advance_payment_request.found = true;
+
+    let score = calculate_risk_score(&analysis, 0);
+
+    assert_eq!(
+        score, 20,
+        "expected advance_payment_request alone to add exactly 20 points"
+    );
+}
+
+#[test]
+fn calculate_risk_score_duplicate_listing() {
+    let mut analysis = ClaudeAnalysis {
+        urgency_language: Finding {
+            found: false,
+            evidence: "".to_string(),
+        },
+        advance_payment_request: Finding {
+            found: false,
+            evidence: "".to_string(),
+        },
+        duplicate_listing: Finding {
+            found: false,
+            evidence: "".to_string(),
+        },
+        image_authenticity: ImageAssessment {
+            verdict: "original".to_string(),
+            reasoning: "".to_string(),
+        },
+        fraud_pattern_match: Finding {
+            found: false,
+            evidence: "".to_string(),
+        },
+        contact_info_in_listing: Finding {
+            found: false,
+            evidence: "".to_string(),
+        },
+        price_assessment: PriceAssessment {
+            verdict: "normal".to_string(),
+            reasoning: "".to_string(),
+        },
+        overall_risk_notes: "".to_string(),
+    };
+    analysis.duplicate_listing.found = true;
+
+    let score = calculate_risk_score(&analysis, 0);
+
+    assert_eq!(
+        score, 15,
+        "expected duplicate_listing alone to add exactly 15 points"
+    );
+}
+
+#[test]
+fn calculate_risk_score_fraud_pattern_match() {
+    let mut analysis = ClaudeAnalysis {
+        urgency_language: Finding {
+            found: false,
+            evidence: "".to_string(),
+        },
+        advance_payment_request: Finding {
+            found: false,
+            evidence: "".to_string(),
+        },
+        duplicate_listing: Finding {
+            found: false,
+            evidence: "".to_string(),
+        },
+        image_authenticity: ImageAssessment {
+            verdict: "original".to_string(),
+            reasoning: "".to_string(),
+        },
+        fraud_pattern_match: Finding {
+            found: false,
+            evidence: "".to_string(),
+        },
+        contact_info_in_listing: Finding {
+            found: false,
+            evidence: "".to_string(),
+        },
+        price_assessment: PriceAssessment {
+            verdict: "normal".to_string(),
+            reasoning: "".to_string(),
+        },
+        overall_risk_notes: "".to_string(),
+    };
+    analysis.fraud_pattern_match.found = true;
+
+    let score = calculate_risk_score(&analysis, 0);
+
+    assert_eq!(
+        score, 30,
+        "expected fraud_pattern_match alone to add exactly 30 points"
+    );
+}
+
+#[test]
+fn calculate_risk_score_contact_info_in_listing() {
+    let mut analysis = ClaudeAnalysis {
+        urgency_language: Finding {
+            found: false,
+            evidence: "".to_string(),
+        },
+        advance_payment_request: Finding {
+            found: false,
+            evidence: "".to_string(),
+        },
+        duplicate_listing: Finding {
+            found: false,
+            evidence: "".to_string(),
+        },
+        image_authenticity: ImageAssessment {
+            verdict: "original".to_string(),
+            reasoning: "".to_string(),
+        },
+        fraud_pattern_match: Finding {
+            found: false,
+            evidence: "".to_string(),
+        },
+        contact_info_in_listing: Finding {
+            found: false,
+            evidence: "".to_string(),
+        },
+        price_assessment: PriceAssessment {
+            verdict: "normal".to_string(),
+            reasoning: "".to_string(),
+        },
+        overall_risk_notes: "".to_string(),
+    };
+    analysis.contact_info_in_listing.found = true;
+
+    let score = calculate_risk_score(&analysis, 0);
+
+    assert_eq!(
+        score, 10,
+        "expected contact_info_in_listing alone to add exactly 10 points"
+    );
+}
+
+#[test]
+fn calculate_risk_score_price_assessment_not_normal() {
+    let analysis = ClaudeAnalysis {
+        urgency_language: Finding {
+            found: false,
+            evidence: "".to_string(),
+        },
+        advance_payment_request: Finding {
+            found: false,
+            evidence: "".to_string(),
+        },
+        duplicate_listing: Finding {
+            found: false,
+            evidence: "".to_string(),
+        },
+        image_authenticity: ImageAssessment {
+            verdict: "original".to_string(),
+            reasoning: "".to_string(),
+        },
+        fraud_pattern_match: Finding {
+            found: false,
+            evidence: "".to_string(),
+        },
+        contact_info_in_listing: Finding {
+            found: false,
+            evidence: "".to_string(),
+        },
+        price_assessment: PriceAssessment {
+            verdict: "suspiciously_low".to_string(),
+            reasoning: "".to_string(),
+        },
+        overall_risk_notes: "".to_string(),
+    };
+
+    let score = calculate_risk_score(&analysis, 0);
+
+    assert_eq!(
+        score, 20,
+        "expected a non-'normal' price verdict alone to add exactly 20 points"
+    );
+}
+
+#[test]
+fn calculate_risk_score_image_authenticity_not_original() {
+    let analysis = ClaudeAnalysis {
+        urgency_language: Finding {
+            found: false,
+            evidence: "".to_string(),
+        },
+        advance_payment_request: Finding {
+            found: false,
+            evidence: "".to_string(),
+        },
+        duplicate_listing: Finding {
+            found: false,
+            evidence: "".to_string(),
+        },
+        image_authenticity: ImageAssessment {
+            verdict: "stolen".to_string(),
+            reasoning: "".to_string(),
+        },
+        fraud_pattern_match: Finding {
+            found: false,
+            evidence: "".to_string(),
+        },
+        contact_info_in_listing: Finding {
+            found: false,
+            evidence: "".to_string(),
+        },
+        price_assessment: PriceAssessment {
+            verdict: "normal".to_string(),
+            reasoning: "".to_string(),
+        },
+        overall_risk_notes: "".to_string(),
+    };
+
+    let score = calculate_risk_score(&analysis, 0);
+
+    assert_eq!(
+        score, 10,
+        "expected a non-'original' image verdict alone to add exactly 10 points"
+    );
+}
+
+// Save and Build Response Test
 #[tokio::test]
 async fn save_and_build_response_success() {
     let pool = test_pool().await;
@@ -2124,12 +2471,13 @@ async fn save_and_build_response_database_failure() {
     );
 }
 
+// Create Analysis Test
 #[tokio::test]
 async fn create_analysis_success() {
     let pool = test_pool().await;
-
     let email = "create_analysis_test@example.com";
     cleanup_test_user(&pool, email).await;
+
     let (user, _) = find_or_create_user_by_email(&pool, email)
         .await
         .expect("expected to create the user");
@@ -2150,6 +2498,7 @@ async fn create_analysis_success() {
         location: Some("Lahore".to_string()),
         last_active: Some("Today".to_string()),
     };
+
     let seller = create_seller(&pool, &seller_request, SellerVerification::Unknown)
         .await
         .expect("expected to create the seller");
@@ -2166,11 +2515,12 @@ async fn create_analysis_success() {
         image_urls: None,
         posted_date: None,
     };
+
     let listing = create_listing(&pool, &listing_request, seller.id)
         .await
         .expect("expected to create the listing");
 
-    let signals_json = serde_json::json!([
+    let signals_json = json!([
         { "label": "Price analysis", "sub": "Normal", "value": "Normal", "signal_type": "good" }
     ]);
 
@@ -2245,6 +2595,7 @@ async fn create_analysis_database_failure() {
     );
 }
 
+// Get Monthly Visit Activity Test
 #[tokio::test]
 #[serial]
 async fn get_monthly_visit_activity_database_error() {
@@ -2259,4 +2610,215 @@ async fn get_monthly_visit_activity_database_error() {
         result.is_err(),
         "expected a genuine database error when the connection pool is closed"
     );
+}
+
+#[tokio::test]
+async fn get_monthly_visit_activity_no_activity() {
+    let pool = test_pool().await;
+    let platform = "olx";
+    let platform_id = "monthly_activity_no_activity_001";
+    cleanup_test_seller(&pool, platform, platform_id).await;
+
+    let seller_request = SellersRequest {
+        platform: platform.to_string(),
+        platform_id: Some(platform_id.to_string()),
+        name: Some("No Activity Seller".to_string()),
+        handle: None,
+        phone: None,
+        profile_url: None,
+        join_date: None,
+        location: None,
+        last_active: None,
+    };
+    let seller = create_seller(&pool, &seller_request, SellerVerification::Unknown)
+        .await
+        .expect("expected the seller to be created");
+
+    let result = get_monthly_visit_activity(&pool, seller.id)
+        .await
+        .expect("expected the query to succeed");
+
+    assert_eq!(result.len(), 12, "expected exactly 12 entries");
+    assert!(
+        result.iter().all(|&count| count == 0),
+        "expected all 12 months to be genuinely 0, got: {:?}",
+        result
+    );
+
+    cleanup_test_seller(&pool, platform, platform_id).await;
+}
+
+#[tokio::test]
+async fn get_monthly_visit_activity_single_month_correctly_placed() {
+    let pool = test_pool().await;
+    let platform = "olx";
+    let platform_id = "monthly_activity_single_001";
+    cleanup_test_seller_chain(&pool, platform, platform_id).await;
+
+    let email = "monthly_activity_single_user@example.com";
+    let (user, _) = create_test_user(&pool, email).await;
+    let (_listing_id, seller_id) = insert_test_history_chain(
+        &pool,
+        user.id,
+        platform,
+        platform_id,
+        "Single Month Test Listing",
+    )
+    .await;
+
+    let result = get_monthly_visit_activity(&pool, seller_id)
+        .await
+        .expect("expected the query to succeed");
+
+    let current_month_index = (Utc::now().month() - 1) as usize;
+    assert_eq!(
+        result[current_month_index], 1,
+        "expected exactly 1 visit in the current month's position"
+    );
+    let total: i32 = result.iter().sum();
+    assert_eq!(
+        total, 1,
+        "expected exactly one non-zero entry total, across all 12 months"
+    );
+
+    cleanup_test_seller_chain(&pool, platform, platform_id).await;
+}
+
+#[tokio::test]
+async fn get_monthly_visit_activity_multiple_in_same_month() {
+    let pool = test_pool().await;
+    let platform = "olx";
+    let platform_id = "monthly_activity_multiple_001";
+    cleanup_test_seller_chain(&pool, platform, platform_id).await;
+
+    let email = "monthly_activity_single_user@example.com";
+    let (user, _) = create_test_user(&pool, email).await;
+    let (listing_id, seller_id) = insert_test_history_chain(
+        &pool,
+        user.id,
+        platform,
+        platform_id,
+        "Single Month Test Listing",
+    )
+    .await;
+
+    query(
+        "INSERT INTO analysis (id, listing_id, risk_score, risk_level, signals, user_id, created_at)
+         VALUES ($1, $2, $3, 'low'::risk_level_type, $4, $5, NOW())",
+    )
+    .bind(Uuid::now_v7())
+    .bind(listing_id)
+    .bind(15_i16)
+    .bind(json!([]))
+    .bind(user.id)
+    .execute(&pool)
+    .await
+    .expect("expected to create the second analysis");
+
+    let result = get_monthly_visit_activity(&pool, seller_id)
+        .await
+        .expect("expected the query to succeed");
+
+    let current_month_index = (Utc::now().month() - 1) as usize;
+    assert_eq!(
+        result[current_month_index], 2,
+        "expected exactly 2 visits genuinely counted in the current month"
+    );
+
+    cleanup_test_seller_chain(&pool, platform, platform_id).await;
+}
+
+#[tokio::test]
+async fn get_monthly_visit_activity_excludes_old_activity() {
+    let pool = test_pool().await;
+    let platform = "olx";
+    let platform_id = "monthly_activity_old_001";
+    cleanup_test_seller_chain(&pool, platform, platform_id).await;
+
+    let email = "monthly_activity_single_user@example.com";
+    let (user, _) = create_test_user(&pool, email).await;
+    let (listing_id, seller_id) = insert_test_history_chain(
+        &pool,
+        user.id,
+        platform,
+        platform_id,
+        "Single Month Test Listing",
+    )
+    .await;
+
+    set_analysis_created_at(&pool, listing_id, Utc::now() - chrono_duration::days(395)).await;
+    let result = get_monthly_visit_activity(&pool, seller_id)
+        .await
+        .expect("expected the query to succeed");
+
+    assert!(
+        result.iter().all(|&count| count == 0),
+        "expected genuinely old activity to be excluded entirely, got: {:?}",
+        result
+    );
+
+    cleanup_test_seller_chain(&pool, platform, platform_id).await;
+}
+
+#[tokio::test]
+async fn get_monthly_visit_activity_isolated_between_sellers() {
+    let pool = test_pool().await;
+    let email = "monthly_activity_isolation_user@example.com";
+    let (user, _) = create_test_user(&pool, email).await;
+
+    let platform = "olx";
+    let platform_id_a = "monthly_activity_isolation_a_001";
+    let platform_id_b = "monthly_activity_isolation_b_001";
+    cleanup_test_seller_chain(&pool, platform, platform_id_a).await;
+    cleanup_test_seller_chain(&pool, platform, platform_id_b).await;
+
+    // Seller A has real, current activity.
+    let (_listing_a, seller_a_id) = insert_test_history_chain(
+        &pool,
+        user.id,
+        platform,
+        platform_id_a,
+        "Seller A's Listing",
+    )
+    .await;
+
+    // Seller B genuinely has NO activity at all.
+    let seller_b_request = SellersRequest {
+        platform: platform.to_string(),
+        platform_id: Some(platform_id_b.to_string()),
+        name: Some("Seller B - No Activity".to_string()),
+        handle: None,
+        phone: None,
+        profile_url: None,
+        join_date: None,
+        location: None,
+        last_active: None,
+    };
+
+    let seller_b = create_seller(&pool, &seller_b_request, SellerVerification::Unknown)
+        .await
+        .expect("expected seller B to be created");
+
+    let result_a = get_monthly_visit_activity(&pool, seller_a_id)
+        .await
+        .expect("expected seller A's query to succeed");
+    let result_b = get_monthly_visit_activity(&pool, seller_b.id)
+        .await
+        .expect("expected seller B's query to succeed");
+
+    let total_a: i32 = result_a.iter().sum();
+    let total_b: i32 = result_b.iter().sum();
+
+    assert_eq!(
+        total_a, 1,
+        "expected seller A to show their own real activity"
+    );
+    assert_eq!(
+        total_b, 0,
+        "expected seller B to show ZERO activity, genuinely unaffected by seller A's"
+    );
+
+    cleanup_test_seller_chain(&pool, platform, platform_id_a).await;
+    cleanup_test_seller(&pool, platform, platform_id_b).await;
+    cleanup_test_user(&pool, email).await;
 }
