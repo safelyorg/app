@@ -407,7 +407,6 @@ async fn resolve_existing_seller_have_no_reports() {
     let pool = test_pool().await;
     let platform = "olx".to_string();
     let platform_id = "sellers_have_no_report_test_001".to_string();
-
     cleanup_test_seller(&pool, &platform, &platform_id).await;
 
     let seller_request = SellersRequest {
@@ -496,6 +495,282 @@ async fn find_seller_not_exists() {
 }
 
 #[tokio::test]
+async fn create_seller_creates_brand_new() {
+    let pool = test_pool().await;
+    let platform = "olx";
+    let platform_id = "create_seller_new_001";
+    cleanup_test_seller(&pool, platform, platform_id).await;
+
+    let request = SellersRequest {
+        platform: platform.to_string(),
+        platform_id: Some(platform_id.to_string()),
+        name: Some("Brand New Seller".to_string()),
+        handle: Some("new_seller_handle".to_string()),
+        phone: Some("03001234567".to_string()),
+        profile_url: Some("https://olx.com.pk/profile/new-seller".to_string()),
+        join_date: None,
+        location: Some("Lahore".to_string()),
+        last_active: Some("Today".to_string()),
+    };
+
+    let seller = create_seller(&pool, &request, SellerVerification::Unknown)
+        .await
+        .expect("expected a brand-new seller to be created");
+
+    assert_eq!(seller.platform, platform);
+    assert_eq!(seller.platform_id, platform_id);
+    assert_eq!(seller.name, Some("Brand New Seller".to_string()));
+    assert_eq!(seller.handle, Some("new_seller_handle".to_string()));
+    assert_eq!(seller.location, Some("Lahore".to_string()));
+    assert_eq!(seller.verification, SellerVerification::Unknown);
+
+    cleanup_test_seller(&pool, platform, platform_id).await;
+}
+
+#[tokio::test]
+async fn create_seller_updates_and_fills_in_new_data() {
+    let pool = test_pool().await;
+    let platform = "olx";
+    let platform_id = "create_seller_fill_in_001";
+    cleanup_test_seller(&pool, platform, platform_id).await;
+
+    let initial_request = SellersRequest {
+        platform: platform.to_string(),
+        platform_id: Some(platform_id.to_string()),
+        name: Some("Seller Name".to_string()),
+        handle: Some("seller_handle".to_string()),
+        phone: Some("03001234567".to_string()),
+        profile_url: Some("https://olx.com.pk/profile/seller".to_string()),
+        join_date: None,
+        location: None,
+        last_active: Some("Today".to_string()),
+    };
+
+    let first_result = create_seller(&pool, &initial_request, SellerVerification::Unknown)
+        .await
+        .expect("expected the initial creation to succeed");
+
+    assert!(
+        first_result.location.is_none(),
+        "expected location to start as None"
+    );
+
+    let updated_request = SellersRequest {
+        platform: platform.to_string(),
+        platform_id: Some(platform_id.to_string()),
+        name: Some("Seller Name".to_string()),
+        handle: Some("seller_handle".to_string()),
+        phone: Some("03001234567".to_string()),
+        profile_url: Some("https://olx.com.pk/profile/seller".to_string()),
+        join_date: None,
+        location: Some("Karachi".to_string()),
+        last_active: Some("Today".to_string()),
+    };
+
+    let updated_result = create_seller(&pool, &updated_request, SellerVerification::Unknown)
+        .await
+        .expect("expected the update to succeed");
+
+    assert_eq!(
+        updated_result.id, first_result.id,
+        "expected the SAME seller row to be updated, not a new one created"
+    );
+    assert_eq!(
+        updated_result.location,
+        Some("Karachi".to_string()),
+        "expected the previously-missing location to now be filled in"
+    );
+
+    cleanup_test_seller(&pool, platform, platform_id).await;
+}
+
+#[tokio::test]
+async fn create_seller_never_overwrites_good_data_with_blanks() {
+    let pool = test_pool().await;
+    let platform = "olx";
+    let platform_id = "create_seller_preserve_001";
+    cleanup_test_seller(&pool, platform, platform_id).await;
+
+    let initial_request = SellersRequest {
+        platform: platform.to_string(),
+        platform_id: Some(platform_id.to_string()),
+        name: Some("Genuinely Real Seller Name".to_string()),
+        handle: Some("seller_handle".to_string()),
+        phone: Some("03001234567".to_string()),
+        profile_url: Some("https://olx.com.pk/profile/seller".to_string()),
+        join_date: None,
+        location: Some("Lahore".to_string()),
+        last_active: Some("Today".to_string()),
+    };
+    let first_result = create_seller(&pool, &initial_request, SellerVerification::Unknown)
+        .await
+        .expect("expected the initial creation to succeed");
+    assert_eq!(
+        first_result.name,
+        Some("Genuinely Real Seller Name".to_string())
+    );
+
+    let blank_request = SellersRequest {
+        platform: platform.to_string(),
+        platform_id: Some(platform_id.to_string()),
+        name: None,
+        handle: Some("seller_handle".to_string()),
+        phone: Some("03001234567".to_string()),
+        profile_url: Some("https://olx.com.pk/profile/seller".to_string()),
+        join_date: None,
+        location: Some("Lahore".to_string()),
+        last_active: Some("Today".to_string()),
+    };
+    let second_result = create_seller(&pool, &blank_request, SellerVerification::Unknown)
+        .await
+        .expect("expected the second call to succeed");
+
+    assert_eq!(
+        second_result.id, first_result.id,
+        "expected the SAME seller row"
+    );
+    assert_eq!(
+        second_result.name,
+        Some("Genuinely Real Seller Name".to_string()),
+        "expected the ORIGINAL, real name to be preserved, NOT wiped out by the blank"
+    );
+
+    cleanup_test_seller(&pool, platform, platform_id).await;
+}
+
+#[tokio::test]
+async fn create_seller_verification_always_updates() {
+    let pool = test_pool().await;
+    let platform = "olx";
+    let platform_id = "create_seller_verification_001";
+    cleanup_test_seller(&pool, platform, platform_id).await;
+
+    let request = SellersRequest {
+        platform: platform.to_string(),
+        platform_id: Some(platform_id.to_string()),
+        name: Some("Verification Test Seller".to_string()),
+        handle: Some("seller_handle".to_string()),
+        phone: Some("03001234567".to_string()),
+        profile_url: Some("https://olx.com.pk/profile/seller".to_string()),
+        join_date: None,
+        location: Some("Lahore".to_string()),
+        last_active: Some("Today".to_string()),
+    };
+    let first_result = create_seller(&pool, &request, SellerVerification::Unknown)
+        .await
+        .expect("expected the initial creation to succeed");
+    assert_eq!(first_result.verification, SellerVerification::Unknown);
+
+    let second_result = create_seller(&pool, &request, SellerVerification::Reported)
+        .await
+        .expect("expected the second call to succeed");
+
+    assert_eq!(
+        second_result.id, first_result.id,
+        "expected the SAME seller row"
+    );
+    assert_eq!(
+        second_result.verification,
+        SellerVerification::Reported,
+        "expected verification to be UNCONDITIONALLY updated, unlike other fields"
+    );
+    assert_eq!(
+        second_result.name,
+        Some("Verification Test Seller".to_string()),
+        "expected name to remain correctly preserved, confirming other fields aren't affected"
+    );
+
+    cleanup_test_seller(&pool, platform, platform_id).await;
+}
+
+#[tokio::test]
+async fn create_seller_join_date_parses_successfully() {
+    let pool = test_pool().await;
+    let platform = "olx";
+    let platform_id = "create_seller_join_date_success_001";
+    cleanup_test_seller(&pool, platform, platform_id).await;
+
+    let request = SellersRequest {
+        platform: platform.to_string(),
+        platform_id: Some(platform_id.to_string()),
+        name: Some("Join Date Test Seller".to_string()),
+        handle: Some("seller_handle".to_string()),
+        phone: Some("03001234567".to_string()),
+        profile_url: Some("https://olx.com.pk/profile/seller".to_string()),
+        join_date: Some("Member since 2021".to_string()),
+        location: Some("Lahore".to_string()),
+        last_active: Some("Today".to_string()),
+    };
+
+    let seller = create_seller(&pool, &request, SellerVerification::Unknown)
+        .await
+        .expect("expected the seller to be created successfully");
+
+    assert_eq!(
+        seller.join_date,
+        NaiveDate::from_ymd_opt(2021, 1, 1),
+        "expected the year 2021 to be genuinely extracted and stored as a real date"
+    );
+
+    cleanup_test_seller(&pool, platform, platform_id).await;
+}
+
+#[tokio::test]
+async fn create_seller_join_date_malformed_becomes_none() {
+    let pool = test_pool().await;
+    let platform = "olx";
+    let platform_id = "create_seller_join_date_malformed_001";
+    cleanup_test_seller(&pool, platform, platform_id).await;
+
+    let request = SellersRequest {
+        platform: platform.to_string(),
+        platform_id: Some(platform_id.to_string()),
+        name: Some("Malformed Join Date Seller".to_string()),
+        handle: Some("seller_handle".to_string()),
+        phone: Some("03001234567".to_string()),
+        profile_url: Some("https://olx.com.pk/profile/seller".to_string()),
+        join_date: Some("Member since forever".to_string()),
+        location: Some("Lahore".to_string()),
+        last_active: Some("Today".to_string()),
+    };
+
+    let seller = create_seller(&pool, &request, SellerVerification::Unknown)
+        .await
+        .expect("expected the seller to be created successfully, even with malformed join_date");
+
+    assert!(
+        seller.join_date.is_none(),
+        "expected malformed join_date text to quietly become None, not cause an error"
+    );
+
+    cleanup_test_seller(&pool, platform, platform_id).await;
+}
+
+#[tokio::test]
+async fn create_seller_database_error() {
+    let pool = test_pool().await;
+    pool.close().await;
+
+    let request = SellersRequest {
+        platform: "olx".to_string(),
+        platform_id: Some("create_seller_db_error_001".to_string()),
+        name: Some("Doesn't Matter".to_string()),
+        handle: None,
+        phone: None,
+        profile_url: None,
+        join_date: None,
+        location: None,
+        last_active: None,
+    };
+
+    let result = create_seller(&pool, &request, SellerVerification::Unknown).await;
+    assert!(
+        result.is_err(),
+        "expected a genuine database error when the connection pool is closed"
+    );
+}
+
+#[tokio::test]
 async fn zero_fraud_reports() {
     let pool = test_pool().await;
     let seller_id = Uuid::new_v4();
@@ -512,7 +787,6 @@ async fn having_fraud_reports() {
     let pool = test_pool().await;
     let platform = "olx".to_string();
     let platform_id = "sellers_have_reports_test_001".to_string();
-
     cleanup_test_seller(&pool, &platform, &platform_id).await;
 
     let seller_request = SellersRequest {
@@ -555,7 +829,6 @@ async fn having_fraud_reports() {
 #[test]
 fn build_network_first_summary() {
     let fraud_count = 0;
-
     let result = build_network_summary(fraud_count);
 
     assert_eq!(
@@ -567,7 +840,6 @@ fn build_network_first_summary() {
 #[test]
 fn build_network_second_summary() {
     let fraud_count = 1;
-
     let result = build_network_summary(fraud_count);
 
     assert_eq!(
