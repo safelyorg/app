@@ -2688,10 +2688,10 @@ async fn change_creem_subscription_product_creem_rejects() {
     }
 }
 
+// Change Plan Handler Tests
 #[tokio::test]
 async fn change_plan_unauthorized() {
     let pool = test_pool().await;
-
     let headers = HeaderMap::new();
 
     let body = ChangePlanBody {
@@ -2921,6 +2921,7 @@ async fn change_plan_upgrade_creem_rejects() {
     cleanup_test_user(&pool, email).await;
 }
 
+// Apply Upgrade Tests
 #[tokio::test]
 async fn apply_upgrade_creem_rejects() {
     let pool = test_pool().await;
@@ -2937,7 +2938,6 @@ async fn apply_upgrade_creem_rejects() {
     };
 
     let result = apply_upgrade(&pool, sub_id, &body).await;
-
     match result {
         Err(BillingError::ServiceUnavailable(_)) => {}
         Err(other) => panic!("expected ServiceUnavailable, got: {:?}", other),
@@ -2957,6 +2957,7 @@ async fn apply_upgrade_creem_rejects() {
     cleanup_test_user(&pool, email).await;
 }
 
+// Get Product IDs Tests
 #[tokio::test]
 #[serial]
 async fn get_product_ids_success() {
