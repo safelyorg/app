@@ -26,11 +26,11 @@ use backend::{
     routes::auth::auth_routes,
     services::{
         auth::{
-            check_last_login, create_session, extract_user_id, find_or_create_user_by_email,
-            find_or_create_user_by_google, find_user_by_email, find_user_by_google_id,
-            find_user_by_id, finish_sign_in, get_user_from_token, handle_google_connect,
-            insert_magic_link, link_google_account, set_login_method, validate_email_format,
-            validate_magic_link,
+            check_last_login, create_session, delete_session, extract_user_id,
+            find_or_create_user_by_email, find_or_create_user_by_google, find_user_by_email,
+            find_user_by_google_id, find_user_by_id, finish_sign_in, get_user_from_token,
+            handle_google_connect, insert_magic_link, link_google_account, set_login_method,
+            validate_email_format, validate_magic_link,
         },
         email::{get_tera, send_magic_link_email, send_welcome_email},
         google_oauth::{build_google_authorize_url, exchange_code_for_user},
@@ -679,6 +679,31 @@ async fn find_user_by_email_returns_none_for_a_nonexistent_user() {
         .expect("expected the query itself to succeed");
 
     assert!(found.is_none(), "expected no user to be found");
+}
+
+#[tokio::test]
+async fn find_user_by_email_invalid_email() {
+    let pool = test_pool().await;
+
+    let result = find_user_by_email(&pool, "not_an_email_at_all").await;
+
+    match result {
+        Err(AuthServiceError::InvalidEmail) => {}
+        Err(other) => panic!("expected InvalidEmail, got a different error: {:?}", other),
+        Ok(_) => panic!("expected a malformed email to be rejected, but it succeeded"),
+    }
+}
+
+#[tokio::test]
+async fn find_user_by_email_database_error() {
+    let pool = test_pool().await;
+    pool.close().await;
+
+    let result = find_user_by_email(&pool, "delivered@resend.dev").await;
+    assert!(
+        result.is_err(),
+        "expected a genuine database error when the connection pool is closed"
+    );
 }
 
 // Finish Sign In Test
@@ -2086,6 +2111,7 @@ async fn handle_google_connect_succeeds_when_emails_match() {
     let linked = find_user_by_google_id(&pool, "google_id_success_123")
         .await
         .expect("expected the query to succeed");
+
     assert!(
         linked.is_some(),
         "expected the user to now have a linked Google account"
@@ -2280,6 +2306,31 @@ async fn google_signin_links_onto_an_existing_email_match() {
     cleanup_test_user(&pool, email).await;
 }
 
+#[tokio::test]
+async fn find_user_by_google_id_found() {
+    let pool = test_pool().await;
+    let email = "find_by_google_id_found_test@example.com";
+    let google_id = "find_by_google_id_test_001";
+    let (user, _) = create_test_user(&pool, email).await;
+
+    query("UPDATE users SET google_id = $1 WHERE id = $2")
+        .bind(google_id)
+        .bind(user.id)
+        .execute(&pool)
+        .await
+        .expect("expected to link the google id");
+
+    let result = find_user_by_google_id(&pool, google_id)
+        .await
+        .expect("expected the query to succeed");
+
+    let found_user = result.expect("expected the user to genuinely be found");
+    assert_eq!(found_user.id, user.id);
+    assert_eq!(found_user.email, email);
+
+    cleanup_test_user(&pool, email).await;
+}
+
 // Link Google Account Test
 #[tokio::test]
 async fn link_google_account_success() {
@@ -2313,6 +2364,124 @@ async fn link_google_account_database_error() {
 
     let fake_user_id = Uuid::new_v4();
     let result = link_google_account(&pool, fake_user_id, "doesnt_matter").await;
+
+    assert!(
+        result.is_err(),
+        "expected a genuine database error when the connection pool is closed"
+    );
+}
+
+// Find or Create User by Google Test
+#[tokio::test]
+#[serial]
+async fn fresh_google_signin_creates_account_and_session() {
+    dotenvy::dotenv().ok();
+    let pool = test_pool().await;
+    let email = "fresh_google_signin@example.com";
+    let google_id = "google_id_fresh_signin_001";
+    cleanup_test_user(&pool, email).await;
+
+    let (user, is_new) = find_or_create_user_by_google(&pool, google_id, email, Some("Test User"))
+        .await
+        .expect("expected to create a new user from Google info");
+
+    assert!(is_new, "expected a brand-new user to be created");
+    assert_eq!(user.email, email);
+
+    let session_token = finish_sign_in(&pool, user.id, is_new, email, "google")
+        .await
+        .expect("expected sign-in to complete");
+
+    assert!(!session_token.is_empty(), "expected a real session token");
+
+    cleanup_test_user(&pool, email).await;
+}
+
+#[tokio::test]
+#[serial]
+async fn google_signin_finds_existing_google_id_immediately() {
+    dotenvy::dotenv().ok();
+    let pool = test_pool().await;
+    let email = "existing_google_id_user@example.com";
+    let google_id = "google_id_already_linked_001";
+    let (existing_user, _) = create_test_user(&pool, email).await;
+
+    query("UPDATE users SET google_id = $1 WHERE id = $2")
+        .bind(google_id)
+        .bind(existing_user.id)
+        .execute(&pool)
+        .await
+        .expect("expected to link the google id directly");
+
+    let (user, is_new) = find_or_create_user_by_google(
+        &pool,
+        google_id,
+        "a_totally_different_email@example.com",
+        Some("Some Name"),
+    )
+    .await
+    .expect("expected the call to succeed");
+
+    assert!(
+        !is_new,
+        "expected the existing account to be found, not a new one created"
+    );
+    assert_eq!(
+        user.id, existing_user.id,
+        "expected the SAME user, matched purely by google_id"
+    );
+
+    cleanup_test_user(&pool, email).await;
+}
+
+#[tokio::test]
+#[serial]
+async fn google_signin_preserves_existing_name_when_linking_by_email() {
+    dotenvy::dotenv().ok();
+    let pool = test_pool().await;
+    let email = "preserve_name_test@example.com";
+    let google_id = "google_id_preserve_name_001";
+    cleanup_test_user(&pool, email).await;
+
+    let (existing_user, _) = find_or_create_user_by_email(&pool, email)
+        .await
+        .expect("expected to create the user");
+
+    query("UPDATE users SET name = $1 WHERE id = $2")
+        .bind("Genuinely Real Original Name")
+        .bind(existing_user.id)
+        .execute(&pool)
+        .await
+        .expect("expected to set the real name");
+
+    let (user, is_new) =
+        find_or_create_user_by_google(&pool, google_id, email, Some("A Different Google Name"))
+            .await
+            .expect("expected the call to succeed");
+
+    assert!(!is_new);
+    assert_eq!(
+        user.name,
+        Some("Genuinely Real Original Name".to_string()),
+        "expected the ORIGINAL name to be preserved, NOT overwritten by Google's name"
+    );
+    assert_eq!(
+        user.google_id,
+        Some(google_id.to_string()),
+        "expected the google_id to genuinely be saved during the email-match linking"
+    );
+
+    cleanup_test_user(&pool, email).await;
+}
+
+#[tokio::test]
+async fn find_or_create_user_by_google_database_error() {
+    let pool = test_pool().await;
+    pool.close().await;
+
+    let result =
+        find_or_create_user_by_google(&pool, "doesnt_matter", "doesnt_matter@example.com", None)
+            .await;
 
     assert!(
         result.is_err(),
@@ -2402,136 +2571,53 @@ async fn logout_with_fake_token() {
     assert_eq!(response.0["success"], true);
 }
 
+// Delete Session Test
 #[tokio::test]
-#[serial]
-async fn fresh_google_signin_creates_account_and_session() {
-    dotenvy::dotenv().ok();
+async fn delete_session_success_genuinely_deletes() {
     let pool = test_pool().await;
-    let email = "fresh_google_signin@example.com";
-    let google_id = "google_id_fresh_signin_001";
-    cleanup_test_user(&pool, email).await;
-
-    let (user, is_new) = find_or_create_user_by_google(&pool, google_id, email, Some("Test User"))
-        .await
-        .expect("expected to create a new user from Google info");
-
-    assert!(is_new, "expected a brand-new user to be created");
-    assert_eq!(user.email, email);
-
-    let session_token = finish_sign_in(&pool, user.id, is_new, email, "google")
-        .await
-        .expect("expected sign-in to complete");
-
-    assert!(!session_token.is_empty(), "expected a real session token");
-
-    cleanup_test_user(&pool, email).await;
-}
-
-#[tokio::test]
-async fn find_user_by_google_id_found() {
-    let pool = test_pool().await;
-    let email = "find_by_google_id_found_test@example.com";
-    let google_id = "find_by_google_id_test_001";
+    let email = "delete_session_success_test@example.com";
     let (user, _) = create_test_user(&pool, email).await;
 
-    query("UPDATE users SET google_id = $1 WHERE id = $2")
-        .bind(google_id)
-        .bind(user.id)
-        .execute(&pool)
+    let token = create_session(&pool, user.id)
         .await
-        .expect("expected to link the google id");
+        .expect("expected to create a real session");
 
-    let result = find_user_by_google_id(&pool, google_id)
+    delete_session(&pool, &token)
+        .await
+        .expect("expected the deletion to succeed");
+
+    let still_exists: Option<String> = query_scalar("SELECT token FROM sessions WHERE token = $1")
+        .bind(&token)
+        .fetch_optional(&pool)
         .await
         .expect("expected the query to succeed");
 
-    let found_user = result.expect("expected the user to genuinely be found");
-    assert_eq!(found_user.id, user.id);
-    assert_eq!(found_user.email, email);
-
-    cleanup_test_user(&pool, email).await;
-}
-
-#[tokio::test]
-#[serial]
-async fn google_signin_finds_existing_google_id_immediately() {
-    dotenvy::dotenv().ok();
-    let pool = test_pool().await;
-    let email = "existing_google_id_user@example.com";
-    let google_id = "google_id_already_linked_001";
-    let (existing_user, _) = create_test_user(&pool, email).await;
-
-    query("UPDATE users SET google_id = $1 WHERE id = $2")
-        .bind(google_id)
-        .bind(existing_user.id)
-        .execute(&pool)
-        .await
-        .expect("expected to link the google id directly");
-
-    let (user, is_new) = find_or_create_user_by_google(
-        &pool,
-        google_id,
-        "a_totally_different_email@example.com",
-        Some("Some Name"),
-    )
-    .await
-    .expect("expected the call to succeed");
-
     assert!(
-        !is_new,
-        "expected the existing account to be found, not a new one created"
-    );
-    assert_eq!(
-        user.id, existing_user.id,
-        "expected the SAME user, matched purely by google_id"
+        still_exists.is_none(),
+        "expected the session to genuinely be deleted"
     );
 
     cleanup_test_user(&pool, email).await;
 }
 
 #[tokio::test]
-#[serial]
-async fn google_signin_preserves_existing_name_when_linking_by_email() {
-    dotenvy::dotenv().ok();
+async fn delete_session_success_even_for_nonexistent_token() {
     let pool = test_pool().await;
-    let email = "preserve_name_test@example.com";
-    let google_id = "google_id_preserve_name_001";
-    cleanup_test_user(&pool, email).await;
+    let fake_token = Uuid::new_v4().to_string();
 
-    let (existing_user, _) = find_or_create_user_by_email(&pool, email)
-        .await
-        .expect("expected to create the user");
-    query("UPDATE users SET name = $1 WHERE id = $2")
-        .bind("Genuinely Real Original Name")
-        .bind(existing_user.id)
-        .execute(&pool)
-        .await
-        .expect("expected to set the real name");
-
-    let (user, is_new) =
-        find_or_create_user_by_google(&pool, google_id, email, Some("A Different Google Name"))
-            .await
-            .expect("expected the call to succeed");
-
-    assert!(!is_new);
-    assert_eq!(
-        user.name,
-        Some("Genuinely Real Original Name".to_string()),
-        "expected the ORIGINAL name to be preserved, NOT overwritten by Google's name"
+    let result = delete_session(&pool, &fake_token).await;
+    assert!(
+        result.is_ok(),
+        "expected deleting a nonexistent token to still succeed, not error"
     );
-
-    cleanup_test_user(&pool, email).await;
 }
 
 #[tokio::test]
-async fn find_or_create_user_by_google_database_error() {
+async fn delete_session_database_error() {
     let pool = test_pool().await;
     pool.close().await;
 
-    let result =
-        find_or_create_user_by_google(&pool, "doesnt_matter", "doesnt_matter@example.com", None)
-            .await;
-
+    let result = delete_session(&pool, "doesnt_matter").await;
     assert!(
         result.is_err(),
         "expected a genuine database error when the connection pool is closed"
