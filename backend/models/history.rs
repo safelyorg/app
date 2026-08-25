@@ -67,8 +67,5 @@ pub struct HistoryDetailResponse {
     pub seller: SellersResponse,
     pub fraud_report_count: i64,
     pub reported: bool,
-    // All reports filed against THIS specific listing (by this user) -
-    // not the seller's reports from other listings, and not just the
-    // single most recent one.
     pub reports: Vec<ReportSummary>,
 }

@@ -8,11 +8,12 @@ use crate::{
 };
 use axum::{Json, body::Bytes, http::HeaderMap};
 use chrono::{DateTime, Utc};
+use hex::encode;
 use hmac::{Hmac, KeyInit, Mac};
 use reqwest::Client;
-use serde_json::{Value, from_str, json};
+use serde_json::{Value, from_str, from_value, json};
 use sha2::Sha256;
-use sqlx::{Pool, Postgres, query, query_scalar};
+use sqlx::{Error, Pool, Postgres, query, query_scalar};
 use std::{env::var, str::from_utf8};
 use uuid::Uuid;
 
@@ -72,111 +73,6 @@ pub async fn create_checkout(
         .map_err(|e| CreateCheckoutError::RequestFailed(e.to_string()))
 }
 
-/// Verifies that a webhook request genuinely came from Creem, and
-/// wasn't forged by someone who simply knows your webhook URL.
-///
-/// Creem signs every webhook using HMAC-SHA256, with your webhook
-/// secret as the key and the raw request body as the message - this
-/// recomputes that same signature independently and compares it
-/// against what Creem actually sent in the `creem-signature` header.
-/// If they don't match exactly, the request is rejected outright,
-/// before any real event-handling logic ever runs.
-pub fn verify_creem_signature(raw_body: &str, received_signature: &str, secret: &str) -> bool {
-    let mut mac = match HmacSha256::new_from_slice(secret.as_bytes()) {
-        Ok(m) => m,
-        Err(_) => return false,
-    };
-    mac.update(raw_body.as_bytes());
-    let computed = hex::encode(mac.finalize().into_bytes());
-    computed == received_signature
-}
-
-/// Creates or updates a subscription row for a given user, keyed by
-/// Creem's own subscription ID. Since this same function handles every
-/// real lifecycle state (active, past_due, canceled, ...), it's called
-/// from every event type that touches a subscription - each call just
-/// passes in whatever status that specific event represents.
-pub async fn upsert_subscription(
-    pool: &Pool<Postgres>,
-    user_id: Uuid,
-    parsed: &ParsedSubscription,
-    status: &str,
-) -> Result<(), sqlx::Error> {
-    let current_period_end = parsed
-        .current_period_end_date
-        .as_ref()
-        .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
-        .map(|dt| dt.with_timezone(&chrono::Utc));
-    let canceled_at = parsed
-        .canceled_at
-        .as_ref()
-        .and_then(|v| v.as_str())
-        .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
-        .map(|dt| dt.with_timezone(&chrono::Utc));
-
-    sqlx::query(
-        "INSERT INTO subscriptions (
-            id, user_id, creem_subscription_id, creem_customer_id,
-            creem_product_id, plan_name, status, current_period_end,
-            canceled_at, created_at, updated_at
-        )
-        VALUES ($1, $2, $3, $4, $5, $6, $7::subscription_status, $8, $9, NOW(), NOW())
-        ON CONFLICT (creem_subscription_id) DO UPDATE SET
-            status = EXCLUDED.status,
-            current_period_end = EXCLUDED.current_period_end,
-            canceled_at = EXCLUDED.canceled_at,
-            updated_at = NOW()",
-    )
-    .bind(Uuid::now_v7())
-    .bind(user_id)
-    .bind(&parsed.id)
-    .bind(&parsed.customer.id)
-    .bind(&parsed.product.id)
-    .bind(&parsed.product.name)
-    .bind(status)
-    .bind(current_period_end)
-    .bind(canceled_at)
-    .execute(pool)
-    .await?;
-
-    Ok(())
-}
-
-/// Calls Creem's real subscription-upgrade endpoint - used both for a
-/// genuine immediate upgrade (proration-charge-immediately) and for
-/// actually applying a downgrade that was previously scheduled, once
-/// its period has genuinely ended (proration-none, since nothing new
-/// is being gained mid-cycle at that point).
-pub async fn change_creem_subscription_product(
-    sub_id: &str,
-    new_product_id: &str,
-    update_behavior: &str,
-) -> Result<(), String> {
-    let api_key =
-        std::env::var("CREEM_API_KEY").map_err(|_| "CREEM_API_KEY not set".to_string())?;
-    let creem_base_url = std::env::var("CREEM_API_BASE_URL")
-        .unwrap_or_else(|_| "https://test-api.creem.io".to_string());
-    let client = reqwest::Client::new();
-    let response = client
-        .post(format!(
-            "{}/v1/subscriptions/{}/upgrade",
-            creem_base_url, sub_id
-        ))
-        .header("x-api-key", api_key)
-        .json(&serde_json::json!({
-            "product_id": new_product_id,
-            "update_behavior": update_behavior,
-        }))
-        .send()
-        .await
-        .map_err(|e| e.to_string())?;
-    if !response.status().is_success() {
-        let text = response.text().await.unwrap_or_default();
-        return Err(format!("Creem rejected plan change: {}", text));
-    }
-    Ok(())
-}
-
 /// Confirms a webhook request is genuinely, verifiably from Creem, and
 /// hands back the real, parsed event if so.
 ///
@@ -207,6 +103,70 @@ pub async fn verify_and_parse_webhook(
         .map_err(|e| WebhookError::InvalidPayload(format!("Invalid webhook payload: {}", e)))
 }
 
+/// Verifies that a webhook request genuinely came from Creem, and
+/// wasn't forged by someone who simply knows your webhook URL.
+///
+/// Creem signs every webhook using HMAC-SHA256, with your webhook
+/// secret as the key and the raw request body as the message - this
+/// recomputes that same signature independently and compares it
+/// against what Creem actually sent in the `creem-signature` header.
+/// If they don't match exactly, the request is rejected outright,
+/// before any real event-handling logic ever runs.
+pub fn verify_creem_signature(raw_body: &str, received_signature: &str, secret: &str) -> bool {
+    let mut mac = match HmacSha256::new_from_slice(secret.as_bytes()) {
+        Ok(m) => m,
+        Err(_) => return false,
+    };
+
+    mac.update(raw_body.as_bytes());
+    let computed = encode(mac.finalize().into_bytes());
+
+    computed == received_signature
+}
+
+/// Pulls the subscription data out of a webhook event - the data can
+/// arrive in one of two places, depending on the event type.
+///
+/// A "subscription.*" event has it directly at the top level. A
+/// "checkout.completed" event has it nested one level deeper, inside a
+/// "subscription" field. This checks which one applies and pulls it
+/// out from the right spot. If the event type is something else, or
+/// the data doesn't actually look like a real subscription, it just
+/// returns None.
+pub fn extract_subscription(event_type: &str, object: &Value) -> Option<ParsedSubscription> {
+    let subscription_value = if event_type.starts_with("subscription.") {
+        object.clone()
+    } else if event_type == "checkout.completed" {
+        object.get("subscription")?.clone()
+    } else {
+        return None;
+    };
+
+    from_value(subscription_value).ok()
+}
+
+/// Handles a subscription becoming active - a trial starting, a
+/// payment going through, or a subscription otherwise turning paid -
+/// by saving the current state to our database.
+///
+/// It looks for the real Safely user ID inside the event's metadata.
+/// If it's there, it saves the subscription using Creem's own status
+/// directly, rather than guessing based on which event fired. If the
+/// user ID is missing, it just logs that and stops, since there's no
+/// account to attach this event to.
+pub async fn handle_subscription_granted(pool: &Pool<Postgres>, parsed: &ParsedSubscription) {
+    match extract_metadata_user_id(parsed) {
+        Some(user_id) => {
+            if let Err(e) = upsert_subscription(pool, user_id, parsed, &parsed.status).await {
+                eprintln!("Failed to upsert subscription: {}", e);
+            }
+        }
+        None => eprintln!(
+            "Subscription event is missing safely_user_id in metadata. It can't link to an account"
+        ),
+    }
+}
+
 /// Pulls the real Safely user ID out of a subscription's metadata, if
 /// it's genuinely present and valid.
 ///
@@ -222,26 +182,66 @@ pub fn extract_metadata_user_id(parsed: &ParsedSubscription) -> Option<Uuid> {
         .and_then(|s| Uuid::parse_str(s).ok())
 }
 
-/// Handles the moment a subscription genuinely becomes active - a trial
-/// starting, a payment succeeding, or a subscription otherwise turning
-/// paid - by saving the real, current state to our own database.
+/// Creates or updates a subscription row for a user, matched by
+/// Creem's own subscription ID. This one function handles every real
+/// state a subscription can be in - active, past_due, canceled, and so
+/// on - so it's called from every event type that touches a
+/// subscription, each time with whatever status that specific event
+/// represents.
 ///
-/// It pulls the real Safely user ID out of the event's metadata, and if
-/// present, upserts the subscription using Creem's own real status
-/// directly, rather than guessing from which specific event name fired.
-/// If the user ID is genuinely missing, it logs that fact and does
-/// nothing further, since there's no account to link this event to.
-pub async fn handle_subscription_granted(pool: &Pool<Postgres>, parsed: &ParsedSubscription) {
-    match extract_metadata_user_id(parsed) {
-        Some(user_id) => {
-            if let Err(e) = upsert_subscription(pool, user_id, parsed, &parsed.status).await {
-                eprintln!("Failed to upsert subscription: {}", e);
-            }
-        }
-        None => eprintln!(
-            "Subscription event is missing safely_user_id in metadata. It can't link to an account"
-        ),
-    }
+/// It parses the two real date fields Creem sends, quietly treating a
+/// missing or malformed date as None rather than failing outright,
+/// then saves the subscription - creating a new row if this is the
+/// first time we've seen this subscription ID, or updating the
+/// existing one if we have. Every field here is always overwritten
+/// with the latest value from Creem, since this represents the current,
+/// real truth - unlike seller or listing data, there's nothing here
+/// worth preserving over a fresher update.
+pub async fn upsert_subscription(
+    pool: &Pool<Postgres>,
+    user_id: Uuid,
+    parsed: &ParsedSubscription,
+    status: &str,
+) -> Result<(), Error> {
+    let current_period_end = parsed
+        .current_period_end_date
+        .as_ref()
+        .and_then(|s| DateTime::parse_from_rfc3339(s).ok())
+        .map(|dt| dt.with_timezone(&Utc));
+
+    let canceled_at = parsed
+        .canceled_at
+        .as_ref()
+        .and_then(|v| v.as_str())
+        .and_then(|s| DateTime::parse_from_rfc3339(s).ok())
+        .map(|dt| dt.with_timezone(&Utc));
+
+    query(
+        "INSERT INTO subscriptions (
+            id, user_id, creem_subscription_id, creem_customer_id,
+            creem_product_id, plan_name, status, current_period_end,
+            canceled_at, created_at, updated_at
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7::subscription_status, $8, $9, NOW(), NOW())
+        ON CONFLICT (creem_subscription_id) DO UPDATE SET
+            status = EXCLUDED.status,
+            current_period_end = EXCLUDED.current_period_end,
+            canceled_at = EXCLUDED.canceled_at,
+            updated_at = NOW()",
+    )
+    .bind(Uuid::now_v7())
+    .bind(user_id)
+    .bind(&parsed.id)
+    .bind(&parsed.customer.id)
+    .bind(&parsed.product.id)
+    .bind(&parsed.product.name)
+    .bind(status)
+    .bind(current_period_end)
+    .bind(canceled_at)
+    .execute(pool)
+    .await?;
+
+    Ok(())
 }
 
 /// Handles the moment Creem tells us a payment genuinely failed - the
@@ -259,9 +259,11 @@ pub async fn handle_subscription_past_due(pool: &Pool<Postgres>, parsed: &Parsed
         "{}/dashboard/?manage_billing=1",
         var("PUBLIC_BASE_URL").unwrap_or_else(|_| "http://localhost:3000".to_string())
     );
+
     if let Err(e) = send_payment_failed_email(&parsed.customer.email, &portal_url).await {
         eprintln!("Failed to send payment-failed email: {:?}", e);
     }
+
     if let Some(user_id) = extract_metadata_user_id(parsed) {
         if let Err(e) = upsert_subscription(pool, user_id, parsed, "past_due").await {
             eprintln!("Failed to upsert subscription: {}", e);
@@ -324,6 +326,43 @@ pub async fn handle_subscription_update(pool: &Pool<Postgres>, parsed: &ParsedSu
             eprintln!("Failed to sync subscription.update: {}", e);
         }
     }
+}
+
+/// Calls Creem's real subscription-upgrade endpoint - used both for a
+/// genuine immediate upgrade (proration-charge-immediately) and for
+/// actually applying a downgrade that was previously scheduled, once
+/// its period has genuinely ended (proration-none, since nothing new
+/// is being gained mid-cycle at that point).
+pub async fn change_creem_subscription_product(
+    sub_id: &str,
+    new_product_id: &str,
+    update_behavior: &str,
+) -> Result<(), String> {
+    let api_key = var("CREEM_API_KEY").map_err(|_| "CREEM_API_KEY not set".to_string())?;
+    let creem_base_url =
+        var("CREEM_API_BASE_URL").unwrap_or_else(|_| "https://test-api.creem.io".to_string());
+
+    let client = Client::new();
+    let response = client
+        .post(format!(
+            "{}/v1/subscriptions/{}/upgrade",
+            creem_base_url, sub_id
+        ))
+        .header("x-api-key", api_key)
+        .json(&json!({
+            "product_id": new_product_id,
+            "update_behavior": update_behavior,
+        }))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if !response.status().is_success() {
+        let text = response.text().await.unwrap_or_default();
+        return Err(format!("Creem rejected plan change: {}", text));
+    }
+
+    Ok(())
 }
 
 /// It's the one real step that actually talks to Creem — telling them,

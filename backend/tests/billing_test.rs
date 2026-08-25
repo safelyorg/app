@@ -12,27 +12,39 @@ use axum::{
     http::{HeaderMap, HeaderValue},
 };
 use backend::{
-    errors::billing::{BillingError, WebhookError},
+    errors::{
+        auth::AuthError,
+        billing::{BillingError, WebhookError},
+    },
     handlers::billing::{
         ChangePlanBody, CreateCheckoutBody, cancel_subscription_handler, change_plan_handler,
         create_checkout_handler, creem_webhook, get_product_ids, get_subscription_status,
     },
     models::billing::{ParsedCustomer, ParsedMetadata, ParsedProduct, ParsedSubscription},
-    services::billing::{
-        CreateCheckoutError, apply_scheduled_downgrade_if_due, apply_upgrade, cancel_with_creem,
-        create_checkout, extract_metadata_user_id, fetch_subscriber_email,
-        handle_subscription_granted, handle_subscription_lost, handle_subscription_past_due,
-        handle_subscription_update, upsert_subscription, verify_and_parse_webhook,
+    services::{
+        billing::{
+            CreateCheckoutError, apply_scheduled_downgrade_if_due, apply_upgrade,
+            cancel_with_creem, create_checkout, extract_metadata_user_id, extract_subscription,
+            fetch_subscriber_email, handle_subscription_granted, handle_subscription_lost,
+            handle_subscription_past_due, handle_subscription_update, upsert_subscription,
+            verify_and_parse_webhook, verify_creem_signature,
+        },
+        email::{send_payment_failed_email, send_subscription_ended_email},
     },
 };
-use chrono::{Duration, Utc};
+use chrono::{DateTime, Duration, Utc};
+use hmac::{Hmac, KeyInit, Mac};
 use reqwest::StatusCode;
 use serde_json::json;
 use serial_test::serial;
+use sha2::Sha256;
 use sqlx::{query, query_as, query_scalar};
 use std::env::{remove_var, set_var, var};
 use uuid::Uuid;
 
+type HmacSha256 = Hmac<Sha256>;
+
+// Checkout Handler Tests
 #[tokio::test]
 #[serial]
 async fn checkout_handler_success() {
@@ -108,6 +120,7 @@ async fn checkout_handler_creem_rejects_invalid_product() {
     cleanup_test_user(&pool, email).await;
 }
 
+// Create Checkout Tests
 #[tokio::test]
 async fn create_checkout_success() {
     let pool = test_pool().await;
@@ -199,9 +212,153 @@ async fn create_checkout_request_failed() {
     }
 }
 
+// Creem Webhook Tests
 #[tokio::test]
 #[serial]
-async fn creem_webhook_secret_missing() {
+async fn creem_webhook_verification_failure_propagates() {
+    dotenvy::dotenv().ok();
+
+    let pool = test_pool().await;
+
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        "creem-signature",
+        HeaderValue::from_str("clearly-wrong-signature-that-cannot-match")
+            .expect("expected to insert the header value"),
+    );
+
+    let body = Bytes::from(
+        r#"{"id":"evt_test","eventType":"refund.created","created_at":1700000000,"object":{}}"#,
+    );
+
+    let result = creem_webhook(State(pool), headers, body).await;
+
+    match result {
+        Err(WebhookError::InvalidSignature) => {}
+        Err(other) => panic!(
+            "expected InvalidSignature, got a different error: {:?}",
+            other
+        ),
+        Ok(_) => {
+            panic!("expected the whole webhook to be rejected on a bad signature, but it succeeded")
+        }
+    }
+}
+
+#[tokio::test]
+#[serial]
+async fn creem_webhook_success_refund_created() {
+    dotenvy::dotenv().ok();
+
+    let pool = test_pool().await;
+
+    let secret = var("CREEM_WEBHOOK_SECRET")
+        .expect("expected CREEM_WEBHOOK_SECRET to be genuinely set for this test");
+
+    let raw_body = r#"{"id":"evt_refund_test_001","eventType":"refund.created","created_at":1700000000,"object":{}}"#;
+
+    let real_signature = compute_creem_signature(&secret, raw_body);
+
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        "creem-signature",
+        HeaderValue::from_str(&real_signature).expect("expected to insert the header value"),
+    );
+
+    let body = Bytes::from(raw_body);
+
+    let result = creem_webhook(State(pool), headers, body)
+        .await
+        .expect("expected the whole webhook to succeed end-to-end");
+
+    assert_eq!(result, StatusCode::OK);
+}
+
+#[tokio::test]
+#[serial]
+async fn creem_webhook_unrecognized_event_type_still_ok() {
+    dotenvy::dotenv().ok();
+
+    let pool = test_pool().await;
+
+    let secret = var("CREEM_WEBHOOK_SECRET")
+        .expect("expected CREEM_WEBHOOK_SECRET to be genuinely set for this test");
+
+    let raw_body = r#"{"id":"evt_unknown_test_001","eventType":"some.future.event","created_at":1700000000,"object":{}}"#;
+
+    let real_signature = compute_creem_signature(&secret, raw_body);
+
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        "creem-signature",
+        HeaderValue::from_str(&real_signature).expect("expected to insert the header value"),
+    );
+
+    let body = Bytes::from(raw_body);
+
+    let result = creem_webhook(State(pool), headers, body)
+        .await
+        .expect("expected an unrecognized event type to still succeed, not fail");
+
+    assert_eq!(result, StatusCode::OK);
+}
+
+#[tokio::test]
+#[serial]
+async fn creem_webhook_inner_handler_failure_still_returns_ok() {
+    dotenvy::dotenv().ok();
+    let pool = test_pool().await;
+
+    let secret = var("CREEM_WEBHOOK_SECRET")
+        .expect("expected CREEM_WEBHOOK_SECRET to be genuinely set for this test");
+
+    let sub_id = "sub_webhook_inner_failure_001";
+    query("DELETE FROM subscriptions WHERE creem_subscription_id = $1")
+        .bind(sub_id)
+        .execute(&pool)
+        .await
+        .expect("expected cleanup to succeed");
+
+    let fake_user_id = Uuid::new_v4();
+
+    let raw_body = format!(
+        r#"{{"id":"evt_inner_failure_001","eventType":"subscription.paid","created_at":1700000000,"object":{{"id":"{}","status":"active","current_period_end_date":null,"canceled_at":null,"product":{{"id":"prod_test","name":"Team"}},"customer":{{"id":"cust_test","email":"test@example.com"}},"metadata":{{"safely_user_id":"{}"}}}}}}"#,
+        sub_id, fake_user_id
+    );
+
+    let real_signature = compute_creem_signature(&secret, &raw_body);
+
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        "creem-signature",
+        HeaderValue::from_str(&real_signature).expect("expected to insert the header value"),
+    );
+
+    let body = Bytes::from(raw_body);
+
+    let result = creem_webhook(State(pool.clone()), headers, body)
+        .await
+        .expect("expected the whole webhook to still return Ok, despite the inner failure");
+
+    assert_eq!(result, StatusCode::OK);
+
+    let saved_row: Option<String> =
+        query_scalar("SELECT status::text FROM subscriptions WHERE creem_subscription_id = $1")
+            .bind(sub_id)
+            .fetch_optional(&pool)
+            .await
+            .expect("expected the query itself to succeed");
+
+    assert!(
+        saved_row.is_none(),
+        "expected NO subscription row to exist, confirming the inner failure was genuine"
+    );
+}
+
+// Verify and Parse Webhook Tests
+#[tokio::test]
+#[serial]
+async fn verify_and_parse_webhook_secret_missing() {
     dotenvy::dotenv().ok();
 
     let original_secret = var("CREEM_WEBHOOK_SECRET").ok();
@@ -229,7 +386,7 @@ async fn creem_webhook_secret_missing() {
 
 #[tokio::test]
 #[serial]
-async fn creem_webhook_missing_signature() {
+async fn verify_and_parse_webhook_missing_signature() {
     dotenvy::dotenv().ok();
 
     let headers = HeaderMap::new();
@@ -251,7 +408,7 @@ async fn creem_webhook_missing_signature() {
 
 #[tokio::test]
 #[serial]
-async fn creem_webhook_invalid_body() {
+async fn verify_and_parse_webhook_invalid_body() {
     dotenvy::dotenv().ok();
 
     let mut headers = HeaderMap::new();
@@ -264,7 +421,6 @@ async fn creem_webhook_invalid_body() {
     let body = Bytes::from(vec![0xFF, 0xFE, 0xFD]);
 
     let result = verify_and_parse_webhook(&headers, &body).await;
-
     match result {
         Err(WebhookError::InvalidBody) => {}
         Err(other) => panic!("expected InvalidBody, got a different error: {:?}", other),
@@ -274,7 +430,7 @@ async fn creem_webhook_invalid_body() {
 
 #[tokio::test]
 #[serial]
-async fn creem_webhook_invalid_signature() {
+async fn verify_and_parse_webhook_invalid_signature() {
     dotenvy::dotenv().ok();
 
     let mut headers = HeaderMap::new();
@@ -283,8 +439,6 @@ async fn creem_webhook_invalid_signature() {
         HeaderValue::from_str("clearly-wrong-signature-that-cannot-match")
             .expect("expected to insert the header value"),
     );
-
-    // Valid UTF-8, valid-looking JSON
     let body = Bytes::from(r#"{"id":"evt_test","event_type":"test.event","object":{}}"#);
 
     let result = verify_and_parse_webhook(&headers, &body).await;
@@ -302,14 +456,12 @@ async fn creem_webhook_invalid_signature() {
 
 #[tokio::test]
 #[serial]
-async fn creem_webhook_invalid_payload() {
+async fn verify_and_parse_webhook_invalid_payload() {
     dotenvy::dotenv().ok();
 
     let secret = var("CREEM_WEBHOOK_SECRET")
         .expect("expected CREEM_WEBHOOK_SECRET to be genuinely set for this test");
-
     let raw_body = "not valid json{{{";
-
     let real_signature = compute_creem_signature(&secret, raw_body);
 
     let mut headers = HeaderMap::new();
@@ -333,14 +485,12 @@ async fn creem_webhook_invalid_payload() {
 
 #[tokio::test]
 #[serial]
-async fn creem_webhook_success() {
+async fn verify_and_parse_webhook_success() {
     dotenvy::dotenv().ok();
 
     let secret = var("CREEM_WEBHOOK_SECRET")
         .expect("expected CREEM_WEBHOOK_SECRET to be genuinely set for this test");
-
     let raw_body = r#"{"id":"evt_test_success_001","eventType":"checkout.completed","created_at":1700000000,"object":{}}"#;
-
     let real_signature = compute_creem_signature(&secret, raw_body);
 
     let mut headers = HeaderMap::new();
@@ -359,115 +509,177 @@ async fn creem_webhook_success() {
     assert_eq!(event.event_type, "checkout.completed");
 }
 
+// Verify Creem Signature Tests
 #[test]
-fn extract_metadata_user_id_missing_metadata() {
-    let parsed = ParsedSubscription {
-        id: "sub_test_001".to_string(),
-        status: "active".to_string(),
-        current_period_end_date: None,
-        canceled_at: None,
-        product: ParsedProduct {
-            id: "prod_test".to_string(),
-            name: "Team".to_string(),
-        },
-        customer: ParsedCustomer {
-            id: "cust_test".to_string(),
-            email: "test@example.com".to_string(),
-        },
-        metadata: None, // <-- genuinely absent
-    };
+fn verify_creem_signature_genuine_match() {
+    let secret = "test_secret_001";
+    let body = r#"{"id":"evt_test","eventType":"refund.created"}"#;
 
-    let result = extract_metadata_user_id(&parsed);
+    let mut mac = HmacSha256::new_from_slice(secret.as_bytes())
+        .expect("expected to build a real HMAC instance");
 
+    mac.update(body.as_bytes());
+    let real_signature = hex::encode(mac.finalize().into_bytes());
+
+    let result = verify_creem_signature(body, &real_signature, secret);
     assert!(
-        result.is_none(),
-        "expected None when metadata itself is missing"
+        result,
+        "expected a genuinely correct signature to verify successfully"
     );
 }
 
 #[test]
-fn extract_metadata_user_id_missing_safely_user_id() {
-    let parsed = ParsedSubscription {
-        id: "sub_test_001".to_string(),
-        status: "active".to_string(),
-        current_period_end_date: None,
-        canceled_at: None,
-        product: ParsedProduct {
-            id: "prod_test".to_string(),
-            name: "Team".to_string(),
-        },
-        customer: ParsedCustomer {
-            id: "cust_test".to_string(),
-            email: "test@example.com".to_string(),
-        },
-        metadata: Some(ParsedMetadata {
-            safely_user_id: None, // <-- present, but empty
-        }),
-    };
+fn verify_creem_signature_genuine_mismatch() {
+    let secret = "test_secret_001";
+    let body = r#"{"id":"evt_test","eventType":"refund.created"}"#;
 
-    let result = extract_metadata_user_id(&parsed);
+    let result = verify_creem_signature(body, "clearly_wrong_signature_00000", secret);
 
     assert!(
-        result.is_none(),
-        "expected None when safely_user_id itself is missing"
+        !result,
+        "expected a genuinely wrong signature to fail verification"
     );
 }
 
 #[test]
-fn extract_metadata_user_id_invalid_uuid() {
-    let parsed = ParsedSubscription {
-        id: "sub_test_001".to_string(),
-        status: "active".to_string(),
-        current_period_end_date: None,
-        canceled_at: None,
-        product: ParsedProduct {
-            id: "prod_test".to_string(),
-            name: "Team".to_string(),
-        },
-        customer: ParsedCustomer {
-            id: "cust_test".to_string(),
-            email: "test@example.com".to_string(),
-        },
-        metadata: Some(ParsedMetadata {
-            safely_user_id: Some("this-is-genuinely-not-a-uuid".to_string()), // <-- malformed
-        }),
-    };
+fn verify_creem_signature_different_body_fails() {
+    let secret = "test_secret_001";
+    let original_body = r#"{"id":"evt_test","eventType":"refund.created"}"#;
+    let tampered_body = r#"{"id":"evt_test","eventType":"subscription.canceled"}"#;
 
-    let result = extract_metadata_user_id(&parsed);
+    let mut mac = HmacSha256::new_from_slice(secret.as_bytes())
+        .expect("expected to build a real HMAC instance");
 
+    mac.update(original_body.as_bytes());
+    let signature_for_original = hex::encode(mac.finalize().into_bytes());
+
+    let result = verify_creem_signature(tampered_body, &signature_for_original, secret);
     assert!(
-        result.is_none(),
-        "expected None when the string isn't a genuinely valid UUID"
+        !result,
+        "expected a signature computed for one body to fail against a genuinely different body"
     );
 }
 
 #[test]
-fn extract_metadata_user_id_success() {
-    let real_uuid = Uuid::new_v4();
+fn verify_creem_signature_different_secret_fails() {
+    let body = r#"{"id":"evt_test","eventType":"refund.created"}"#;
+    let real_secret = "the_real_secret_001";
+    let wrong_secret = "a_completely_different_secret_002";
 
-    let parsed = ParsedSubscription {
-        id: "sub_test_001".to_string(),
-        status: "active".to_string(),
-        current_period_end_date: None,
-        canceled_at: None,
-        product: ParsedProduct {
-            id: "prod_test".to_string(),
-            name: "Team".to_string(),
-        },
-        customer: ParsedCustomer {
-            id: "cust_test".to_string(),
-            email: "test@example.com".to_string(),
-        },
-        metadata: Some(ParsedMetadata {
-            safely_user_id: Some(real_uuid.to_string()),
-        }),
-    };
+    let mut mac = HmacSha256::new_from_slice(real_secret.as_bytes())
+        .expect("expected to build a real HMAC instance");
 
-    let result = extract_metadata_user_id(&parsed);
+    mac.update(body.as_bytes());
+    let real_signature = hex::encode(mac.finalize().into_bytes());
 
-    assert_eq!(result, Some(real_uuid), "expected the exact same UUID back");
+    let result = verify_creem_signature(body, &real_signature, wrong_secret);
+    assert!(
+        !result,
+        "expected verification to fail when checked against the WRONG secret"
+    );
 }
 
+#[test]
+fn verify_creem_signature_case_sensitive() {
+    let secret = "test_secret_001";
+    let body = r#"{"id":"evt_test","eventType":"refund.created"}"#;
+
+    let mut mac = HmacSha256::new_from_slice(secret.as_bytes())
+        .expect("expected to build a real HMAC instance");
+
+    mac.update(body.as_bytes());
+    let real_signature = hex::encode(mac.finalize().into_bytes());
+    let uppercased_signature = real_signature.to_uppercase();
+
+    let result = verify_creem_signature(body, &uppercased_signature, secret);
+    assert!(
+        !result,
+        "expected an uppercased version of a correct signature to fail, since comparison is case-sensitive"
+    );
+}
+
+// Extract Subscription Tests
+#[test]
+fn extract_subscription_subscription_shape_success() {
+    let object = serde_json::json!({
+        "id": "sub_test_001",
+        "status": "active",
+        "current_period_end_date": null,
+        "canceled_at": null,
+        "product": { "id": "prod_test", "name": "Team" },
+        "customer": { "id": "cust_test", "email": "test@example.com" },
+        "metadata": null
+    });
+
+    let result = extract_subscription("subscription.paid", &object);
+    let parsed = result.expect("expected the subscription to be extracted successfully");
+    assert_eq!(parsed.id, "sub_test_001");
+    assert_eq!(parsed.status, "active");
+}
+
+#[test]
+fn extract_subscription_checkout_completed_shape_success() {
+    let object = json!({
+        "subscription": {
+            "id": "sub_nested_001",
+            "status": "trialing",
+            "current_period_end_date": null,
+            "canceled_at": null,
+            "product": { "id": "prod_test", "name": "Team" },
+            "customer": { "id": "cust_test", "email": "test@example.com" },
+            "metadata": null
+        }
+    });
+
+    let result = extract_subscription("checkout.completed", &object);
+    let parsed = result.expect("expected the NESTED subscription to be extracted successfully");
+
+    assert_eq!(parsed.id, "sub_nested_001");
+    assert_eq!(parsed.status, "trialing");
+}
+
+#[test]
+fn extract_subscription_checkout_completed_missing_nested_field() {
+    let object = serde_json::json!({
+        "id": "evt_test_001"
+    });
+
+    let result = extract_subscription("checkout.completed", &object);
+    assert!(
+        result.is_none(),
+        "expected None when checkout.completed genuinely lacks a nested subscription field"
+    );
+}
+
+#[test]
+fn extract_subscription_unrecognized_event_type() {
+    let object = serde_json::json!({
+        "id": "evt_test_001"
+    });
+
+    let result = extract_subscription("refund.created", &object);
+
+    assert!(
+        result.is_none(),
+        "expected None for an event type that's neither shape"
+    );
+}
+
+#[test]
+fn extract_subscription_malformed_data_returns_none() {
+    let object = json!({
+        "id": "sub_malformed_001",
+        "status": "active"
+    });
+
+    let result = extract_subscription("subscription.paid", &object);
+    assert!(
+        result.is_none(),
+        "expected None when the data doesn't genuinely match ParsedSubscription's real shape"
+    );
+}
+
+// Handle Subscription Granted Tests
 #[tokio::test]
 async fn subscription_granted_success() {
     let pool = test_pool().await;
@@ -496,7 +708,7 @@ async fn subscription_granted_success() {
             email: email.to_string(),
         },
         metadata: Some(ParsedMetadata {
-            safely_user_id: Some(user.id.to_string()), // the REAL user's ID
+            safely_user_id: Some(user.id.to_string()),
         }),
     };
 
@@ -574,7 +786,6 @@ async fn subscription_granted_upsert_fails() {
         .expect("expected cleanup to succeed");
 
     let fake_user_id = Uuid::new_v4();
-
     let parsed = ParsedSubscription {
         id: sub_id.to_string(),
         status: "active".to_string(),
@@ -608,6 +819,370 @@ async fn subscription_granted_upsert_fails() {
     );
 }
 
+// Extract Metadata User ID Tests
+#[test]
+fn extract_metadata_user_id_missing_metadata() {
+    let parsed = ParsedSubscription {
+        id: "sub_test_001".to_string(),
+        status: "active".to_string(),
+        current_period_end_date: None,
+        canceled_at: None,
+        product: ParsedProduct {
+            id: "prod_test".to_string(),
+            name: "Team".to_string(),
+        },
+        customer: ParsedCustomer {
+            id: "cust_test".to_string(),
+            email: "test@example.com".to_string(),
+        },
+        metadata: None,
+    };
+
+    let result = extract_metadata_user_id(&parsed);
+    assert!(
+        result.is_none(),
+        "expected None when metadata itself is missing"
+    );
+}
+
+#[test]
+fn extract_metadata_user_id_missing_safely_user_id() {
+    let parsed = ParsedSubscription {
+        id: "sub_test_001".to_string(),
+        status: "active".to_string(),
+        current_period_end_date: None,
+        canceled_at: None,
+        product: ParsedProduct {
+            id: "prod_test".to_string(),
+            name: "Team".to_string(),
+        },
+        customer: ParsedCustomer {
+            id: "cust_test".to_string(),
+            email: "test@example.com".to_string(),
+        },
+        metadata: Some(ParsedMetadata {
+            safely_user_id: None,
+        }),
+    };
+
+    let result = extract_metadata_user_id(&parsed);
+    assert!(
+        result.is_none(),
+        "expected None when safely_user_id itself is missing"
+    );
+}
+
+#[test]
+fn extract_metadata_user_id_invalid_uuid() {
+    let parsed = ParsedSubscription {
+        id: "sub_test_001".to_string(),
+        status: "active".to_string(),
+        current_period_end_date: None,
+        canceled_at: None,
+        product: ParsedProduct {
+            id: "prod_test".to_string(),
+            name: "Team".to_string(),
+        },
+        customer: ParsedCustomer {
+            id: "cust_test".to_string(),
+            email: "test@example.com".to_string(),
+        },
+        metadata: Some(ParsedMetadata {
+            safely_user_id: Some("this-is-genuinely-not-a-uuid".to_string()),
+        }),
+    };
+
+    let result = extract_metadata_user_id(&parsed);
+    assert!(
+        result.is_none(),
+        "expected None when the string isn't a genuinely valid UUID"
+    );
+}
+
+#[test]
+fn extract_metadata_user_id_success() {
+    let real_uuid = Uuid::new_v4();
+
+    let parsed = ParsedSubscription {
+        id: "sub_test_001".to_string(),
+        status: "active".to_string(),
+        current_period_end_date: None,
+        canceled_at: None,
+        product: ParsedProduct {
+            id: "prod_test".to_string(),
+            name: "Team".to_string(),
+        },
+        customer: ParsedCustomer {
+            id: "cust_test".to_string(),
+            email: "test@example.com".to_string(),
+        },
+        metadata: Some(ParsedMetadata {
+            safely_user_id: Some(real_uuid.to_string()),
+        }),
+    };
+
+    let result = extract_metadata_user_id(&parsed);
+    assert_eq!(result, Some(real_uuid), "expected the exact same UUID back");
+}
+
+// Upsert Subscription
+#[tokio::test]
+async fn upsert_subscription_creates_new_row_with_full_data() {
+    let pool = test_pool().await;
+    let email = "upsert_sub_create_test@example.com";
+    let (user, _) = create_test_user(&pool, email).await;
+
+    let sub_id = "sub_upsert_create_001";
+    query("DELETE FROM subscriptions WHERE creem_subscription_id = $1")
+        .bind(sub_id)
+        .execute(&pool)
+        .await
+        .expect("expected cleanup to succeed");
+
+    let parsed = ParsedSubscription {
+        id: sub_id.to_string(),
+        status: "active".to_string(),
+        current_period_end_date: Some("2026-12-31T23:59:59Z".to_string()),
+        canceled_at: None,
+        product: ParsedProduct {
+            id: "prod_test".to_string(),
+            name: "Team".to_string(),
+        },
+        customer: ParsedCustomer {
+            id: "cust_test".to_string(),
+            email: email.to_string(),
+        },
+        metadata: None,
+    };
+
+    upsert_subscription(&pool, user.id, &parsed, "active")
+        .await
+        .expect("expected the upsert to succeed");
+
+    let (saved_status, saved_period_end): (String, Option<DateTime<Utc>>) = query_as(
+        "SELECT status::text, current_period_end FROM subscriptions WHERE creem_subscription_id = $1",
+    )
+    .bind(sub_id)
+    .fetch_one(&pool)
+    .await
+    .expect("expected the row to exist");
+
+    assert_eq!(saved_status, "active");
+    assert!(
+        saved_period_end.is_some(),
+        "expected the period end to be genuinely parsed and saved"
+    );
+
+    query("DELETE FROM subscriptions WHERE creem_subscription_id = $1")
+        .bind(sub_id)
+        .execute(&pool)
+        .await
+        .ok();
+    cleanup_test_user(&pool, email).await;
+}
+
+#[tokio::test]
+async fn upsert_subscription_update_unconditionally_overwrites() {
+    let pool = test_pool().await;
+    let email = "upsert_sub_overwrite_test@example.com";
+    let (user, _) = create_test_user(&pool, email).await;
+
+    let sub_id = "sub_upsert_overwrite_001";
+    query("DELETE FROM subscriptions WHERE creem_subscription_id = $1")
+        .bind(sub_id)
+        .execute(&pool)
+        .await
+        .expect("expected cleanup to succeed");
+
+    let parsed = ParsedSubscription {
+        id: sub_id.to_string(),
+        status: "active".to_string(),
+        current_period_end_date: None,
+        canceled_at: None,
+        product: ParsedProduct {
+            id: "prod_test".to_string(),
+            name: "Team".to_string(),
+        },
+        customer: ParsedCustomer {
+            id: "cust_test".to_string(),
+            email: email.to_string(),
+        },
+        metadata: None,
+    };
+
+    upsert_subscription(&pool, user.id, &parsed, "active")
+        .await
+        .expect("expected the first upsert to succeed");
+
+    upsert_subscription(&pool, user.id, &parsed, "canceled")
+        .await
+        .expect("expected the second upsert to succeed");
+
+    let saved_status: String =
+        query_scalar("SELECT status::text FROM subscriptions WHERE creem_subscription_id = $1")
+            .bind(sub_id)
+            .fetch_one(&pool)
+            .await
+            .expect("expected the row to exist");
+
+    assert_eq!(
+        saved_status, "canceled",
+        "expected the status to be UNCONDITIONALLY overwritten, with no preservation logic"
+    );
+
+    query("DELETE FROM subscriptions WHERE creem_subscription_id = $1")
+        .bind(sub_id)
+        .execute(&pool)
+        .await
+        .ok();
+
+    cleanup_test_user(&pool, email).await;
+}
+
+#[tokio::test]
+async fn upsert_subscription_missing_period_end_saves_as_null() {
+    let pool = test_pool().await;
+    let email = "upsert_sub_missing_period_test@example.com";
+    let (user, _) = create_test_user(&pool, email).await;
+
+    let sub_id = "sub_upsert_missing_period_001";
+    query("DELETE FROM subscriptions WHERE creem_subscription_id = $1")
+        .bind(sub_id)
+        .execute(&pool)
+        .await
+        .expect("expected cleanup to succeed");
+
+    let parsed = ParsedSubscription {
+        id: sub_id.to_string(),
+        status: "trialing".to_string(),
+        current_period_end_date: None,
+        canceled_at: None,
+        product: ParsedProduct {
+            id: "prod_test".to_string(),
+            name: "Team".to_string(),
+        },
+        customer: ParsedCustomer {
+            id: "cust_test".to_string(),
+            email: email.to_string(),
+        },
+        metadata: None,
+    };
+
+    upsert_subscription(&pool, user.id, &parsed, "trialing")
+        .await
+        .expect("expected the upsert to succeed");
+
+    let saved_period_end: Option<DateTime<Utc>> = query_scalar(
+        "SELECT current_period_end FROM subscriptions WHERE creem_subscription_id = $1",
+    )
+    .bind(sub_id)
+    .fetch_one(&pool)
+    .await
+    .expect("expected the row to exist");
+
+    assert!(
+        saved_period_end.is_none(),
+        "expected NULL when current_period_end_date is None"
+    );
+
+    query("DELETE FROM subscriptions WHERE creem_subscription_id = $1")
+        .bind(sub_id)
+        .execute(&pool)
+        .await
+        .ok();
+
+    cleanup_test_user(&pool, email).await;
+}
+
+#[tokio::test]
+async fn upsert_subscription_malformed_period_end_saves_as_null() {
+    let pool = test_pool().await;
+    let email = "upsert_sub_malformed_period_test@example.com";
+    let (user, _) = create_test_user(&pool, email).await;
+
+    let sub_id = "sub_upsert_malformed_period_001";
+    query("DELETE FROM subscriptions WHERE creem_subscription_id = $1")
+        .bind(sub_id)
+        .execute(&pool)
+        .await
+        .expect("expected cleanup to succeed");
+
+    let parsed = ParsedSubscription {
+        id: sub_id.to_string(),
+        status: "active".to_string(),
+        current_period_end_date: Some("not-a-real-date".to_string()),
+        canceled_at: None,
+        product: ParsedProduct {
+            id: "prod_test".to_string(),
+            name: "Team".to_string(),
+        },
+        customer: ParsedCustomer {
+            id: "cust_test".to_string(),
+            email: email.to_string(),
+        },
+        metadata: None,
+    };
+
+    upsert_subscription(&pool, user.id, &parsed, "active")
+        .await
+        .expect("expected the upsert to succeed DESPITE the malformed date");
+
+    let saved_period_end: Option<DateTime<Utc>> = query_scalar(
+        "SELECT current_period_end FROM subscriptions WHERE creem_subscription_id = $1",
+    )
+    .bind(sub_id)
+    .fetch_one(&pool)
+    .await
+    .expect("expected the row to exist");
+
+    assert!(
+        saved_period_end.is_none(),
+        "expected a malformed date to quietly become NULL, not cause an error"
+    );
+
+    query("DELETE FROM subscriptions WHERE creem_subscription_id = $1")
+        .bind(sub_id)
+        .execute(&pool)
+        .await
+        .ok();
+    cleanup_test_user(&pool, email).await;
+}
+
+#[tokio::test]
+async fn upsert_subscription_fails_for_nonexistent_user() {
+    let pool = test_pool().await;
+    let sub_id = "sub_upsert_fake_user_001";
+    query("DELETE FROM subscriptions WHERE creem_subscription_id = $1")
+        .bind(sub_id)
+        .execute(&pool)
+        .await
+        .expect("expected cleanup to succeed");
+
+    let fake_user_id = Uuid::new_v4();
+    let parsed = ParsedSubscription {
+        id: sub_id.to_string(),
+        status: "active".to_string(),
+        current_period_end_date: None,
+        canceled_at: None,
+        product: ParsedProduct {
+            id: "prod_test".to_string(),
+            name: "Team".to_string(),
+        },
+        customer: ParsedCustomer {
+            id: "cust_test".to_string(),
+            email: "test@example.com".to_string(),
+        },
+        metadata: None,
+    };
+
+    let result = upsert_subscription(&pool, fake_user_id, &parsed, "active").await;
+    assert!(
+        result.is_err(),
+        "expected a genuine foreign-key failure for a user that doesn't exist"
+    );
+}
+
+// Handle Subscription Past Due Tests
 #[tokio::test]
 async fn subscription_past_due_success() {
     let pool = test_pool().await;
@@ -796,6 +1371,80 @@ async fn subscription_past_due_email_fails_but_upsert_still_succeeds() {
     cleanup_test_user(&pool, email).await;
 }
 
+// Send Payment Failed Email Tests
+#[tokio::test]
+#[serial]
+async fn send_payment_failed_email_missing_api_key() {
+    dotenvy::dotenv().ok();
+    let original_key = var("RESEND_API_KEY").ok();
+    unsafe {
+        remove_var("RESEND_API_KEY");
+    }
+
+    let result = send_payment_failed_email(
+        "delivered@resend.dev",
+        "http://localhost:3000/dashboard/?manage_billing=1",
+    )
+    .await;
+
+    match result {
+        Err(AuthError::InternalServerError(_)) => {}
+        Err(other) => panic!(
+            "expected InternalServerError, got a different error: {:?}",
+            other
+        ),
+        Ok(_) => panic!("expected the email to fail without a real API key, but it succeeded"),
+    }
+
+    unsafe {
+        if let Some(key) = original_key {
+            set_var("RESEND_API_KEY", key);
+        }
+    }
+}
+
+#[tokio::test]
+#[serial]
+async fn send_payment_failed_email_succeeds() {
+    dotenvy::dotenv().ok();
+
+    let result = send_payment_failed_email(
+        "delivered@resend.dev",
+        "http://localhost:3000/dashboard/?manage_billing=1",
+    )
+    .await;
+
+    assert!(
+        result.is_ok(),
+        "expected the payment-failed email to send successfully, got: {:?}",
+        result
+    );
+}
+
+#[tokio::test]
+#[serial]
+async fn send_payment_failed_email_fails_for_a_blocked_domain() {
+    dotenvy::dotenv().ok();
+
+    let result = send_payment_failed_email(
+        "test_user@example.com",
+        "http://localhost:3000/dashboard/?manage_billing=1",
+    )
+    .await;
+
+    match result {
+        Err(AuthError::InternalServerError(message)) => {
+            assert!(
+                message.contains("Invalid `to` field"),
+                "expected Resend's specific rejection message, got: {}",
+                message
+            )
+        }
+        other => panic!("expected an InternalServerError, got: {:?}", other),
+    }
+}
+
+// Handle Subscription Lost Tests
 #[tokio::test]
 async fn subscription_lost_paused() {
     let pool = test_pool().await;
@@ -1093,6 +1742,91 @@ async fn subscription_lost_upsert_fails() {
     );
 }
 
+// Send Subscripton Ended Email Tests
+#[tokio::test]
+#[serial]
+async fn send_subscription_ended_email_missing_api_key() {
+    dotenvy::dotenv().ok();
+    let original_key = var("RESEND_API_KEY").ok();
+    unsafe {
+        remove_var("RESEND_API_KEY");
+    }
+
+    let result = send_subscription_ended_email("delivered@resend.dev").await;
+    match result {
+        Err(AuthError::InternalServerError(_)) => {}
+        Err(other) => panic!(
+            "expected InternalServerError, got a different error: {:?}",
+            other
+        ),
+        Ok(_) => panic!("expected the email to fail without a real API key, but it succeeded"),
+    }
+
+    unsafe {
+        if let Some(key) = original_key {
+            set_var("RESEND_API_KEY", key);
+        }
+    }
+}
+
+#[tokio::test]
+#[serial]
+async fn send_subscription_ended_email_missing_base_url() {
+    dotenvy::dotenv().ok();
+    let original_url = var("PUBLIC_BASE_URL").ok();
+    unsafe {
+        remove_var("PUBLIC_BASE_URL");
+    }
+
+    let result = send_subscription_ended_email("delivered@resend.dev").await;
+    match result {
+        Err(AuthError::InternalServerError(_)) => {}
+        Err(other) => panic!(
+            "expected InternalServerError, got a different error: {:?}",
+            other
+        ),
+        Ok(_) => panic!("expected the email to fail without PUBLIC_BASE_URL, but it succeeded"),
+    }
+
+    unsafe {
+        if let Some(url) = original_url {
+            set_var("PUBLIC_BASE_URL", url);
+        }
+    }
+}
+
+#[tokio::test]
+#[serial]
+async fn send_subscription_ended_email_succeeds() {
+    dotenvy::dotenv().ok();
+
+    let result = send_subscription_ended_email("delivered@resend.dev").await;
+    assert!(
+        result.is_ok(),
+        "expected the subscription-ended email to send successfully, got: {:?}",
+        result
+    );
+}
+
+#[tokio::test]
+#[serial]
+async fn send_subscription_ended_email_fails_for_a_blocked_domain() {
+    dotenvy::dotenv().ok();
+
+    let result = send_subscription_ended_email("test_user@example.com").await;
+    match result {
+        Err(AuthError::InternalServerError(message)) => {
+            assert!(
+                message.contains("Invalid `to` field"),
+                "expected Resend's specific rejection message, got: {}",
+                message
+            )
+        }
+        other => panic!("expected an InternalServerError, got: {:?}", other),
+    }
+}
+
+// Handle Subscription Update Tests
 #[tokio::test]
 async fn subscription_update_success() {
     let pool = test_pool().await;
@@ -1229,149 +1963,6 @@ async fn subscription_update_upsert_fails() {
     assert!(
         saved_row.is_none(),
         "expected NO subscription row to exist, since the foreign key genuinely failed"
-    );
-}
-
-#[tokio::test]
-#[serial]
-async fn creem_webhook_verification_failure_propagates() {
-    dotenvy::dotenv().ok();
-
-    let pool = test_pool().await;
-
-    let mut headers = HeaderMap::new();
-    headers.insert(
-        "creem-signature",
-        HeaderValue::from_str("clearly-wrong-signature-that-cannot-match")
-            .expect("expected to insert the header value"),
-    );
-
-    let body = Bytes::from(
-        r#"{"id":"evt_test","eventType":"refund.created","created_at":1700000000,"object":{}}"#,
-    );
-
-    let result = creem_webhook(State(pool), headers, body).await;
-
-    match result {
-        Err(WebhookError::InvalidSignature) => {}
-        Err(other) => panic!(
-            "expected InvalidSignature, got a different error: {:?}",
-            other
-        ),
-        Ok(_) => {
-            panic!("expected the whole webhook to be rejected on a bad signature, but it succeeded")
-        }
-    }
-}
-
-#[tokio::test]
-#[serial]
-async fn creem_webhook_success_refund_created() {
-    dotenvy::dotenv().ok();
-
-    let pool = test_pool().await;
-
-    let secret = var("CREEM_WEBHOOK_SECRET")
-        .expect("expected CREEM_WEBHOOK_SECRET to be genuinely set for this test");
-
-    let raw_body = r#"{"id":"evt_refund_test_001","eventType":"refund.created","created_at":1700000000,"object":{}}"#;
-
-    let real_signature = compute_creem_signature(&secret, raw_body);
-
-    let mut headers = HeaderMap::new();
-    headers.insert(
-        "creem-signature",
-        HeaderValue::from_str(&real_signature).expect("expected to insert the header value"),
-    );
-
-    let body = Bytes::from(raw_body);
-
-    let result = creem_webhook(State(pool), headers, body)
-        .await
-        .expect("expected the whole webhook to succeed end-to-end");
-
-    assert_eq!(result, StatusCode::OK);
-}
-
-#[tokio::test]
-#[serial]
-async fn creem_webhook_unrecognized_event_type_still_ok() {
-    dotenvy::dotenv().ok();
-
-    let pool = test_pool().await;
-
-    let secret = var("CREEM_WEBHOOK_SECRET")
-        .expect("expected CREEM_WEBHOOK_SECRET to be genuinely set for this test");
-
-    let raw_body = r#"{"id":"evt_unknown_test_001","eventType":"some.future.event","created_at":1700000000,"object":{}}"#;
-
-    let real_signature = compute_creem_signature(&secret, raw_body);
-
-    let mut headers = HeaderMap::new();
-    headers.insert(
-        "creem-signature",
-        HeaderValue::from_str(&real_signature).expect("expected to insert the header value"),
-    );
-
-    let body = Bytes::from(raw_body);
-
-    let result = creem_webhook(State(pool), headers, body)
-        .await
-        .expect("expected an unrecognized event type to still succeed, not fail");
-
-    assert_eq!(result, StatusCode::OK);
-}
-
-#[tokio::test]
-#[serial]
-async fn creem_webhook_inner_handler_failure_still_returns_ok() {
-    dotenvy::dotenv().ok();
-
-    let pool = test_pool().await;
-
-    let secret = var("CREEM_WEBHOOK_SECRET")
-        .expect("expected CREEM_WEBHOOK_SECRET to be genuinely set for this test");
-
-    let sub_id = "sub_webhook_inner_failure_001";
-    query("DELETE FROM subscriptions WHERE creem_subscription_id = $1")
-        .bind(sub_id)
-        .execute(&pool)
-        .await
-        .expect("expected cleanup to succeed");
-
-    let fake_user_id = Uuid::new_v4();
-
-    let raw_body = format!(
-        r#"{{"id":"evt_inner_failure_001","eventType":"subscription.paid","created_at":1700000000,"object":{{"id":"{}","status":"active","current_period_end_date":null,"canceled_at":null,"product":{{"id":"prod_test","name":"Team"}},"customer":{{"id":"cust_test","email":"test@example.com"}},"metadata":{{"safely_user_id":"{}"}}}}}}"#,
-        sub_id, fake_user_id
-    );
-
-    let real_signature = compute_creem_signature(&secret, &raw_body);
-
-    let mut headers = HeaderMap::new();
-    headers.insert(
-        "creem-signature",
-        HeaderValue::from_str(&real_signature).expect("expected to insert the header value"),
-    );
-
-    let body = Bytes::from(raw_body);
-
-    let result = creem_webhook(State(pool.clone()), headers, body)
-        .await
-        .expect("expected the whole webhook to still return Ok, despite the inner failure");
-
-    assert_eq!(result, StatusCode::OK);
-
-    let saved_row: Option<String> =
-        query_scalar("SELECT status::text FROM subscriptions WHERE creem_subscription_id = $1")
-            .bind(sub_id)
-            .fetch_optional(&pool)
-            .await
-            .expect("expected the query itself to succeed");
-
-    assert!(
-        saved_row.is_none(),
-        "expected NO subscription row to exist, confirming the inner failure was genuine"
     );
 }
 

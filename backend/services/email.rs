@@ -226,6 +226,7 @@ pub async fn send_payment_failed_email(to_email: &str, portal_url: &str) -> Resu
 
     Ok(())
 }
+
 /// Sent exactly once, the moment a subscription is genuinely and
 /// finally canceled (subscription.canceled) - meaning Creem has
 /// already exhausted its retries. This is the point access actually
@@ -234,9 +235,11 @@ pub async fn send_subscription_ended_email(to_email: &str) -> Result<(), AuthErr
     let api_key = var("RESEND_API_KEY").map_err(|_| {
         AuthError::InternalServerError("RESEND_API_KEY needs to be setup".to_string())
     })?;
+
     let base_url = var("PUBLIC_BASE_URL").map_err(|_| {
         AuthError::InternalServerError("PUBLIC_BASE_URL needs to be configured".to_string())
     })?;
+
     let from_address =
         var("RESEND_FROM_EMAIL").unwrap_or_else(|_| "onboarding@resend.dev".to_string());
 

@@ -1,5 +1,5 @@
 use crate::errors::billing::{BillingError, WebhookError};
-use crate::models::billing::extract_subscription;
+use crate::services::billing::extract_subscription;
 use crate::services::{
     auth::extract_user_id,
     billing::{

@@ -1,5 +1,5 @@
 use serde::Deserialize;
-use serde_json::{Value, from_value};
+use serde_json::Value;
 
 /// The raw shape of any Creem webhook event, before we look at what
 /// kind of event it actually is. `object` is deliberately left as a
@@ -28,11 +28,6 @@ pub struct CreateCheckoutResponse {
     pub checkout_url: String,
 }
 
-/// The handful of fields we actually need from a subscription entity,
-/// regardless of whether it arrived as the event's top-level object
-/// (subscription.* events) or nested inside a checkout object
-/// (checkout.completed). Everything else in Creem's real payload is
-/// ignored - we only pull out what we act on.
 #[derive(Debug, Deserialize)]
 pub struct ParsedSubscription {
     pub id: String,
@@ -59,17 +54,4 @@ pub struct ParsedCustomer {
 #[derive(Debug, Deserialize)]
 pub struct ParsedMetadata {
     pub safely_user_id: Option<String>,
-}
-
-/// Pulls the subscription entity out of a raw event, regardless of
-/// which of the two real shapes it arrived in.
-pub fn extract_subscription(event_type: &str, object: &Value) -> Option<ParsedSubscription> {
-    let subscription_value = if event_type.starts_with("subscription.") {
-        object.clone()
-    } else if event_type == "checkout.completed" {
-        object.get("subscription")?.clone()
-    } else {
-        return None;
-    };
-    from_value(subscription_value).ok()
 }
