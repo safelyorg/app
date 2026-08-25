@@ -24,10 +24,11 @@ use backend::{
     services::{
         billing::{
             CreateCheckoutError, apply_scheduled_downgrade_if_due, apply_upgrade,
-            cancel_with_creem, create_checkout, extract_metadata_user_id, extract_subscription,
-            fetch_subscriber_email, handle_subscription_granted, handle_subscription_lost,
-            handle_subscription_past_due, handle_subscription_update, upsert_subscription,
-            verify_and_parse_webhook, verify_creem_signature,
+            cancel_with_creem, change_creem_subscription_product, create_checkout,
+            extract_metadata_user_id, extract_subscription, fetch_subscriber_email,
+            handle_subscription_granted, handle_subscription_lost, handle_subscription_past_due,
+            handle_subscription_update, upsert_subscription, verify_and_parse_webhook,
+            verify_creem_signature,
         },
         email::{
             send_payment_failed_email, send_subscription_canceled_email,
@@ -2265,6 +2266,7 @@ async fn send_subscription_canceled_email_fails_for_a_blocked_domain() {
     }
 }
 
+// Get Subscription Status
 #[tokio::test]
 async fn get_subscription_status_unauthorized() {
     let pool = test_pool().await;
@@ -2452,6 +2454,7 @@ async fn get_subscription_status_downgrade_due_but_creem_rejects() {
     cleanup_test_user(&pool, email).await;
 }
 
+// Apply Scheduled Downgrade If Due Tests
 #[tokio::test]
 async fn apply_scheduled_downgrade_missing_product_id() {
     let pool = test_pool().await;
@@ -2596,6 +2599,93 @@ async fn apply_scheduled_downgrade_creem_rejects() {
         .expect("expected final cleanup to succeed");
 
     cleanup_test_user(&pool, email).await;
+}
+
+// Change Creem Subscription Product Tests
+#[tokio::test]
+#[serial]
+async fn change_creem_subscription_product_missing_api_key() {
+    dotenvy::dotenv().ok();
+    let original_key = var("CREEM_API_KEY").ok();
+    unsafe {
+        remove_var("CREEM_API_KEY");
+    }
+
+    let result = change_creem_subscription_product(
+        "sub_doesnt_matter",
+        "prod_doesnt_matter",
+        "proration-charge-immediately",
+    )
+    .await;
+
+    assert!(
+        result.is_err(),
+        "expected the request to fail without a real API key"
+    );
+
+    unsafe {
+        if let Some(key) = original_key {
+            set_var("CREEM_API_KEY", key);
+        }
+    }
+}
+
+#[tokio::test]
+#[serial]
+async fn change_creem_subscription_product_request_failed() {
+    dotenvy::dotenv().ok();
+    let original_base_url = var("CREEM_API_BASE_URL").ok();
+    unsafe {
+        set_var(
+            "CREEM_API_BASE_URL",
+            "http://this-domain-genuinely-does-not-exist-12345.invalid",
+        );
+    }
+
+    let result = change_creem_subscription_product(
+        "sub_doesnt_matter",
+        "prod_doesnt_matter",
+        "proration-charge-immediately",
+    )
+    .await;
+
+    assert!(
+        result.is_err(),
+        "expected the request to genuinely fail against an unreachable host"
+    );
+
+    unsafe {
+        match original_base_url {
+            Some(url) => set_var("CREEM_API_BASE_URL", url),
+            None => remove_var("CREEM_API_BASE_URL"),
+        }
+    }
+}
+
+#[tokio::test]
+#[serial]
+async fn change_creem_subscription_product_creem_rejects() {
+    dotenvy::dotenv().ok();
+
+    let result = change_creem_subscription_product(
+        "sub_definitely_does_not_exist_on_creem",
+        "prod_doesnt_matter",
+        "proration-charge-immediately",
+    )
+    .await;
+
+    match result {
+        Err(message) => {
+            assert!(
+                message.contains("Creem rejected plan change"),
+                "expected the specific rejection message, got: {}",
+                message
+            );
+        }
+        Ok(_) => {
+            panic!("expected Creem to genuinely reject a fake subscription ID, but it succeeded")
+        }
+    }
 }
 
 #[tokio::test]

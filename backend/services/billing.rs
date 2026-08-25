@@ -383,43 +383,6 @@ pub async fn fetch_subscriber_email(pool: &Pool<Postgres>, sub_id: &str) -> Opti
     })
 }
 
-/// Calls Creem's real subscription-upgrade endpoint - used both for a
-/// genuine immediate upgrade (proration-charge-immediately) and for
-/// actually applying a downgrade that was previously scheduled, once
-/// its period has genuinely ended (proration-none, since nothing new
-/// is being gained mid-cycle at that point).
-pub async fn change_creem_subscription_product(
-    sub_id: &str,
-    new_product_id: &str,
-    update_behavior: &str,
-) -> Result<(), String> {
-    let api_key = var("CREEM_API_KEY").map_err(|_| "CREEM_API_KEY not set".to_string())?;
-    let creem_base_url =
-        var("CREEM_API_BASE_URL").unwrap_or_else(|_| "https://test-api.creem.io".to_string());
-
-    let client = Client::new();
-    let response = client
-        .post(format!(
-            "{}/v1/subscriptions/{}/upgrade",
-            creem_base_url, sub_id
-        ))
-        .header("x-api-key", api_key)
-        .json(&json!({
-            "product_id": new_product_id,
-            "update_behavior": update_behavior,
-        }))
-        .send()
-        .await
-        .map_err(|e| e.to_string())?;
-
-    if !response.status().is_success() {
-        let text = response.text().await.unwrap_or_default();
-        return Err(format!("Creem rejected plan change: {}", text));
-    }
-
-    Ok(())
-}
-
 /// If a scheduled downgrade's deferred period has genuinely ended by now,
 /// this actually applies it - telling Creem, then updating our own
 /// database - and hands back the new plan name if it did.
@@ -466,6 +429,43 @@ pub async fn apply_scheduled_downgrade_if_due(
     .await;
 
     Some(sched_plan_name.to_string())
+}
+
+/// Tells Creem to change a subscription to a different plan, right now
+/// - used for both immediate upgrades and applying a downgrade once its
+/// deferred period has ended. The two callers decide what "right now"
+/// actually means for their own situation; this just makes the real
+/// API call and reports back whether Creem accepted it.
+pub async fn change_creem_subscription_product(
+    sub_id: &str,
+    new_product_id: &str,
+    update_behavior: &str,
+) -> Result<(), String> {
+    let api_key = var("CREEM_API_KEY").map_err(|_| "CREEM_API_KEY not set".to_string())?;
+    let creem_base_url =
+        var("CREEM_API_BASE_URL").unwrap_or_else(|_| "https://test-api.creem.io".to_string());
+    let client = Client::new();
+
+    let response = client
+        .post(format!(
+            "{}/v1/subscriptions/{}/upgrade",
+            creem_base_url, sub_id
+        ))
+        .header("x-api-key", api_key)
+        .json(&json!({
+            "product_id": new_product_id,
+            "update_behavior": update_behavior,
+        }))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if !response.status().is_success() {
+        let text = response.text().await.unwrap_or_default();
+        return Err(format!("Creem rejected plan change: {}", text));
+    }
+
+    Ok(())
 }
 
 /// Applies an upgrade immediately, both at Creem, and in our own
