@@ -328,6 +328,61 @@ pub async fn handle_subscription_update(pool: &Pool<Postgres>, parsed: &ParsedSu
     }
 }
 
+/// It's the one real step that actually talks to Creem — telling them,
+/// for real, to stop billing this specific subscription.
+///
+/// It builds the real request with the correct API key, sends it to Creem's
+/// real cancellation endpoint, and checks that Creem genuinely accepted it,
+/// rather than just assuming the request going out means it worked.
+pub async fn cancel_with_creem(sub_id: &str) -> Result<(), BillingError> {
+    let api_key = var("CREEM_API_KEY")
+        .map_err(|_| BillingError::InternalError("CREEM_API_KEY not set".to_string()))?;
+    let creem_base_url =
+        var("CREEM_API_BASE_URL").unwrap_or_else(|_| "https://test-api.creem.io".to_string());
+
+    let response = Client::new()
+        .post(format!(
+            "{}/v1/subscriptions/{}/cancel",
+            creem_base_url, sub_id
+        ))
+        .header("x-api-key", api_key)
+        .send()
+        .await
+        .map_err(|_| BillingError::ServiceUnavailable("Could not reach Creem".to_string()))?;
+
+    if !response.status().is_success() {
+        return Err(BillingError::ServiceUnavailable(
+            "Creem rejected the cancellation".to_string(),
+        ));
+    }
+
+    Ok(())
+}
+
+/// Finds the real email address of whoever owns this subscription, so
+/// a cancellation confirmation actually reaches the right person.
+///
+/// It joins the subscription back to its real user and returns their
+/// email if found - returning nothing either way if it wasn't found,
+/// or if a real database error happened, since a missing email should
+/// only ever mean the confirmation gets skipped, never that anything
+/// about the cancellation itself failed. A genuine database error still
+/// gets logged, even though it's not treated as a hard failure here.
+pub async fn fetch_subscriber_email(pool: &Pool<Postgres>, sub_id: &str) -> Option<String> {
+    sqlx::query_scalar(
+        "SELECT u.email FROM users u
+         JOIN subscriptions s ON s.user_id = u.id
+         WHERE s.creem_subscription_id = $1",
+    )
+    .bind(sub_id)
+    .fetch_optional(pool)
+    .await
+    .unwrap_or_else(|e| {
+        eprintln!("Failed to fetch subscriber email: {}", e);
+        None
+    })
+}
+
 /// Calls Creem's real subscription-upgrade endpoint - used both for a
 /// genuine immediate upgrade (proration-charge-immediately) and for
 /// actually applying a downgrade that was previously scheduled, once
@@ -363,56 +418,6 @@ pub async fn change_creem_subscription_product(
     }
 
     Ok(())
-}
-
-/// It's the one real step that actually talks to Creem — telling them,
-/// for real, to stop billing this specific subscription.
-///
-/// It builds the real request with the correct API key, sends it to Creem's
-/// real cancellation endpoint, and checks that Creem genuinely accepted it,
-/// rather than just assuming the request going out means it worked.
-pub async fn cancel_with_creem(sub_id: &str) -> Result<(), BillingError> {
-    let api_key = var("CREEM_API_KEY")
-        .map_err(|_| BillingError::InternalError("CREEM_API_KEY not set".to_string()))?;
-    let creem_base_url =
-        var("CREEM_API_BASE_URL").unwrap_or_else(|_| "https://test-api.creem.io".to_string());
-
-    let response = Client::new()
-        .post(format!(
-            "{}/v1/subscriptions/{}/cancel",
-            creem_base_url, sub_id
-        ))
-        .header("x-api-key", api_key)
-        .send()
-        .await
-        .map_err(|_| BillingError::ServiceUnavailable("Could not reach Creem".to_string()))?;
-
-    if !response.status().is_success() {
-        return Err(BillingError::ServiceUnavailable(
-            "Creem rejected the cancellation".to_string(),
-        ));
-    }
-
-    Ok(())
-}
-
-/// It finds the real email address of whoever owns this subscription, so
-/// the cancellation confirmation actually reaches the right person.
-///
-/// It joins the subscription back to its real user and returns their
-/// email if found — quietly returning nothing if it wasn't, since a
-/// missing email should only mean the confirmation gets skipped, not that
-/// anything about the cancellation itself failed.
-pub async fn fetch_subscriber_email(pool: &Pool<Postgres>, sub_id: &str) -> Option<String> {
-    sqlx::query_scalar(
-        "SELECT u.email FROM users u
-         JOIN subscriptions s ON s.user_id = u.id
-         WHERE s.creem_subscription_id = $1",
-    )
-    .bind(sub_id)
-    .fetch_optional(pool)
-    .await
-    .unwrap_or(None)
 }
 
 /// If a scheduled downgrade's deferred period has genuinely ended by now,

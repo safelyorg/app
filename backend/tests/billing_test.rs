@@ -29,10 +29,14 @@ use backend::{
             handle_subscription_past_due, handle_subscription_update, upsert_subscription,
             verify_and_parse_webhook, verify_creem_signature,
         },
-        email::{send_payment_failed_email, send_subscription_ended_email},
+        email::{
+            send_payment_failed_email, send_subscription_canceled_email,
+            send_subscription_ended_email,
+        },
     },
 };
 use chrono::{DateTime, Duration, Utc};
+use dotenvy::dotenv;
 use hmac::{Hmac, KeyInit, Mac};
 use reqwest::StatusCode;
 use serde_json::json;
@@ -48,7 +52,7 @@ type HmacSha256 = Hmac<Sha256>;
 #[tokio::test]
 #[serial]
 async fn checkout_handler_success() {
-    dotenvy::dotenv().ok();
+    dotenv().ok();
     let pool = test_pool().await;
     let email = "checkout_handler@example.com";
     let (user, _) = create_test_user(&pool, email).await;
@@ -78,7 +82,7 @@ async fn checkout_handler_success() {
 #[tokio::test]
 #[serial]
 async fn checkout_handler_unauthorized() {
-    dotenvy::dotenv().ok();
+    dotenv().ok();
     let pool = test_pool().await;
     let headers = HeaderMap::new();
 
@@ -160,7 +164,7 @@ async fn create_checkout_creem_rejected() {
 #[tokio::test]
 #[serial]
 async fn create_checkout_missing_api_key() {
-    dotenvy::dotenv().ok();
+    dotenv().ok();
     let original_key = var("CREEM_API_KEY").ok();
     unsafe {
         remove_var("CREEM_API_KEY");
@@ -185,7 +189,7 @@ async fn create_checkout_missing_api_key() {
 #[tokio::test]
 #[serial]
 async fn create_checkout_request_failed() {
-    dotenvy::dotenv().ok();
+    dotenv().ok();
     let original_base_url = var("CREEM_API_BASE_URL").ok();
 
     unsafe {
@@ -216,7 +220,7 @@ async fn create_checkout_request_failed() {
 #[tokio::test]
 #[serial]
 async fn creem_webhook_verification_failure_propagates() {
-    dotenvy::dotenv().ok();
+    dotenv().ok();
 
     let pool = test_pool().await;
 
@@ -248,7 +252,7 @@ async fn creem_webhook_verification_failure_propagates() {
 #[tokio::test]
 #[serial]
 async fn creem_webhook_success_refund_created() {
-    dotenvy::dotenv().ok();
+    dotenv().ok();
 
     let pool = test_pool().await;
 
@@ -277,7 +281,7 @@ async fn creem_webhook_success_refund_created() {
 #[tokio::test]
 #[serial]
 async fn creem_webhook_unrecognized_event_type_still_ok() {
-    dotenvy::dotenv().ok();
+    dotenv().ok();
 
     let pool = test_pool().await;
 
@@ -306,7 +310,7 @@ async fn creem_webhook_unrecognized_event_type_still_ok() {
 #[tokio::test]
 #[serial]
 async fn creem_webhook_inner_handler_failure_still_returns_ok() {
-    dotenvy::dotenv().ok();
+    dotenv().ok();
     let pool = test_pool().await;
 
     let secret = var("CREEM_WEBHOOK_SECRET")
@@ -359,7 +363,7 @@ async fn creem_webhook_inner_handler_failure_still_returns_ok() {
 #[tokio::test]
 #[serial]
 async fn verify_and_parse_webhook_secret_missing() {
-    dotenvy::dotenv().ok();
+    dotenv().ok();
 
     let original_secret = var("CREEM_WEBHOOK_SECRET").ok();
     unsafe {
@@ -387,7 +391,7 @@ async fn verify_and_parse_webhook_secret_missing() {
 #[tokio::test]
 #[serial]
 async fn verify_and_parse_webhook_missing_signature() {
-    dotenvy::dotenv().ok();
+    dotenv().ok();
 
     let headers = HeaderMap::new();
     let body = Bytes::from("{}");
@@ -409,7 +413,7 @@ async fn verify_and_parse_webhook_missing_signature() {
 #[tokio::test]
 #[serial]
 async fn verify_and_parse_webhook_invalid_body() {
-    dotenvy::dotenv().ok();
+    dotenv().ok();
 
     let mut headers = HeaderMap::new();
     headers.insert(
@@ -431,7 +435,7 @@ async fn verify_and_parse_webhook_invalid_body() {
 #[tokio::test]
 #[serial]
 async fn verify_and_parse_webhook_invalid_signature() {
-    dotenvy::dotenv().ok();
+    dotenv().ok();
 
     let mut headers = HeaderMap::new();
     headers.insert(
@@ -457,7 +461,7 @@ async fn verify_and_parse_webhook_invalid_signature() {
 #[tokio::test]
 #[serial]
 async fn verify_and_parse_webhook_invalid_payload() {
-    dotenvy::dotenv().ok();
+    dotenv().ok();
 
     let secret = var("CREEM_WEBHOOK_SECRET")
         .expect("expected CREEM_WEBHOOK_SECRET to be genuinely set for this test");
@@ -486,7 +490,7 @@ async fn verify_and_parse_webhook_invalid_payload() {
 #[tokio::test]
 #[serial]
 async fn verify_and_parse_webhook_success() {
-    dotenvy::dotenv().ok();
+    dotenv().ok();
 
     let secret = var("CREEM_WEBHOOK_SECRET")
         .expect("expected CREEM_WEBHOOK_SECRET to be genuinely set for this test");
@@ -1375,7 +1379,7 @@ async fn subscription_past_due_email_fails_but_upsert_still_succeeds() {
 #[tokio::test]
 #[serial]
 async fn send_payment_failed_email_missing_api_key() {
-    dotenvy::dotenv().ok();
+    dotenv().ok();
     let original_key = var("RESEND_API_KEY").ok();
     unsafe {
         remove_var("RESEND_API_KEY");
@@ -1406,7 +1410,7 @@ async fn send_payment_failed_email_missing_api_key() {
 #[tokio::test]
 #[serial]
 async fn send_payment_failed_email_succeeds() {
-    dotenvy::dotenv().ok();
+    dotenv().ok();
 
     let result = send_payment_failed_email(
         "delivered@resend.dev",
@@ -1424,7 +1428,7 @@ async fn send_payment_failed_email_succeeds() {
 #[tokio::test]
 #[serial]
 async fn send_payment_failed_email_fails_for_a_blocked_domain() {
-    dotenvy::dotenv().ok();
+    dotenv().ok();
 
     let result = send_payment_failed_email(
         "test_user@example.com",
@@ -1746,7 +1750,7 @@ async fn subscription_lost_upsert_fails() {
 #[tokio::test]
 #[serial]
 async fn send_subscription_ended_email_missing_api_key() {
-    dotenvy::dotenv().ok();
+    dotenv().ok();
     let original_key = var("RESEND_API_KEY").ok();
     unsafe {
         remove_var("RESEND_API_KEY");
@@ -1772,7 +1776,7 @@ async fn send_subscription_ended_email_missing_api_key() {
 #[tokio::test]
 #[serial]
 async fn send_subscription_ended_email_missing_base_url() {
-    dotenvy::dotenv().ok();
+    dotenv().ok();
     let original_url = var("PUBLIC_BASE_URL").ok();
     unsafe {
         remove_var("PUBLIC_BASE_URL");
@@ -1798,7 +1802,7 @@ async fn send_subscription_ended_email_missing_base_url() {
 #[tokio::test]
 #[serial]
 async fn send_subscription_ended_email_succeeds() {
-    dotenvy::dotenv().ok();
+    dotenv().ok();
 
     let result = send_subscription_ended_email("delivered@resend.dev").await;
     assert!(
@@ -1811,7 +1815,7 @@ async fn send_subscription_ended_email_succeeds() {
 #[tokio::test]
 #[serial]
 async fn send_subscription_ended_email_fails_for_a_blocked_domain() {
-    dotenvy::dotenv().ok();
+    dotenv().ok();
 
     let result = send_subscription_ended_email("test_user@example.com").await;
     match result {
@@ -1966,6 +1970,7 @@ async fn subscription_update_upsert_fails() {
     );
 }
 
+// Cancel Subscription Handler Tests
 #[tokio::test]
 async fn cancel_subscription_unauthorized() {
     let pool = test_pool().await;
@@ -1973,7 +1978,6 @@ async fn cancel_subscription_unauthorized() {
     let headers = HeaderMap::new();
 
     let result = cancel_subscription_handler(State(pool), headers).await;
-
     match result {
         Err(BillingError::Unauthorized) => {}
         Err(other) => panic!("expected Unauthorized, got a different error: {:?}", other),
@@ -2027,7 +2031,6 @@ async fn cancel_subscription_creem_rejects() {
     }
 
     let saved_status = get_subscription_status_text(&pool, sub_id).await;
-
     assert_eq!(
         saved_status,
         Some("active".to_string()),
@@ -2043,10 +2046,11 @@ async fn cancel_subscription_creem_rejects() {
     cleanup_test_user(&pool, email).await;
 }
 
+// Cancel with Creem Tests
 #[tokio::test]
 #[serial]
 async fn cancel_with_creem_missing_api_key() {
-    dotenvy::dotenv().ok();
+    dotenv().ok();
 
     let original_key = var("CREEM_API_KEY").ok();
     unsafe {
@@ -2054,7 +2058,6 @@ async fn cancel_with_creem_missing_api_key() {
     }
 
     let result = cancel_with_creem("sub_does_not_matter_here").await;
-
     match result {
         Err(BillingError::InternalError(_)) => {}
         Err(other) => panic!("expected InternalError, got a different error: {:?}", other),
@@ -2071,7 +2074,7 @@ async fn cancel_with_creem_missing_api_key() {
 #[tokio::test]
 #[serial]
 async fn cancel_with_creem_request_failed() {
-    dotenvy::dotenv().ok();
+    dotenv().ok();
 
     let original_base_url = var("CREEM_API_BASE_URL").ok();
 
@@ -2110,7 +2113,7 @@ async fn cancel_with_creem_request_failed() {
 #[tokio::test]
 #[serial]
 async fn cancel_with_creem_rejected() {
-    dotenvy::dotenv().ok();
+    dotenv().ok();
     let result = cancel_with_creem("sub_definitely_does_not_exist_on_creem").await;
 
     match result {
@@ -2131,51 +2134,34 @@ async fn cancel_with_creem_rejected() {
     }
 }
 
+// Fetch Subscriber Email Tests
 #[tokio::test]
 async fn fetch_subscriber_email_found() {
     let pool = test_pool().await;
-    let email = "fetch_subscriber_email_test@example.com";
+    let email = "fetch_subscriber_email_scenario_test@example.com";
     let (user, _) = create_test_user(&pool, email).await;
-
-    let sub_id = "sub_fetch_email_found_001";
-    query("DELETE FROM subscriptions WHERE creem_subscription_id = $1")
-        .bind(sub_id)
-        .execute(&pool)
-        .await
-        .expect("expected cleanup to succeed");
-
+    let sub_id = "sub_fetch_email_scenario_001";
+    cleanup_test_subscription(&pool, sub_id).await;
     insert_test_subscription(&pool, user.id, sub_id, "Team", "active").await;
 
     let result = fetch_subscriber_email(&pool, sub_id).await;
-
     assert_eq!(
         result,
         Some(email.to_string()),
         "expected the real subscriber's email to be found"
     );
 
-    query("DELETE FROM subscriptions WHERE creem_subscription_id = $1")
-        .bind(sub_id)
-        .execute(&pool)
-        .await
-        .expect("expected final cleanup to succeed");
-
+    cleanup_test_subscription(&pool, sub_id).await;
     cleanup_test_user(&pool, email).await;
 }
 
 #[tokio::test]
 async fn fetch_subscriber_email_not_found() {
     let pool = test_pool().await;
-
-    let sub_id = "sub_fetch_email_not_found_001";
-    query("DELETE FROM subscriptions WHERE creem_subscription_id = $1")
-        .bind(sub_id)
-        .execute(&pool)
-        .await
-        .expect("expected cleanup to succeed");
+    let sub_id = "sub_fetch_email_scenario_not_found_001";
+    cleanup_test_subscription(&pool, sub_id).await;
 
     let result = fetch_subscriber_email(&pool, sub_id).await;
-
     assert!(
         result.is_none(),
         "expected None when no subscription matches this sub_id"
@@ -2183,13 +2169,108 @@ async fn fetch_subscriber_email_not_found() {
 }
 
 #[tokio::test]
+async fn fetch_subscriber_email_database_error_still_returns_none() {
+    let pool = test_pool().await;
+    pool.close().await;
+
+    let result = fetch_subscriber_email(&pool, "doesnt_matter").await;
+    assert!(
+        result.is_none(),
+        "expected None even on a genuine database error, since this function never hard-fails"
+    );
+}
+
+// Send Subscription Cancel Email Tests
+#[tokio::test]
+#[serial]
+async fn send_subscription_canceled_email_missing_api_key() {
+    dotenv().ok();
+    let original_key = var("RESEND_API_KEY").ok();
+    unsafe {
+        remove_var("RESEND_API_KEY");
+    }
+
+    let result = send_subscription_canceled_email("delivered@resend.dev").await;
+    match result {
+        Err(AuthError::InternalServerError(_)) => {}
+        Err(other) => panic!(
+            "expected InternalServerError, got a different error: {:?}",
+            other
+        ),
+        Ok(_) => panic!("expected the email to fail without a real API key, but it succeeded"),
+    }
+
+    unsafe {
+        if let Some(key) = original_key {
+            set_var("RESEND_API_KEY", key);
+        }
+    }
+}
+
+#[tokio::test]
+#[serial]
+async fn send_subscription_canceled_email_missing_base_url() {
+    dotenv().ok();
+
+    let original_url = var("PUBLIC_BASE_URL").ok();
+    unsafe {
+        remove_var("PUBLIC_BASE_URL");
+    }
+
+    let result = send_subscription_canceled_email("delivered@resend.dev").await;
+    match result {
+        Err(AuthError::InternalServerError(_)) => {}
+        Err(other) => panic!(
+            "expected InternalServerError, got a different error: {:?}",
+            other
+        ),
+        Ok(_) => panic!("expected the email to fail without PUBLIC_BASE_URL, but it succeeded"),
+    }
+
+    unsafe {
+        if let Some(url) = original_url {
+            set_var("PUBLIC_BASE_URL", url);
+        }
+    }
+}
+
+#[tokio::test]
+#[serial]
+async fn send_subscription_canceled_email_succeeds() {
+    dotenv().ok();
+
+    let result = send_subscription_canceled_email("delivered@resend.dev").await;
+    assert!(
+        result.is_ok(),
+        "expected the subscription-canceled email to send successfully, got: {:?}",
+        result
+    );
+}
+
+#[tokio::test]
+#[serial]
+async fn send_subscription_canceled_email_fails_for_a_blocked_domain() {
+    dotenv().ok();
+
+    let result = send_subscription_canceled_email("test_user@example.com").await;
+    match result {
+        Err(AuthError::InternalServerError(message)) => {
+            assert!(
+                message.contains("Invalid `to` field"),
+                "expected Resend's specific rejection message, got: {}",
+                message
+            )
+        }
+        other => panic!("expected an InternalServerError, got: {:?}", other),
+    }
+}
+
+#[tokio::test]
 async fn get_subscription_status_unauthorized() {
     let pool = test_pool().await;
-
     let headers = HeaderMap::new();
 
     let result = get_subscription_status(State(pool), headers).await;
-
     match result {
         Err(BillingError::Unauthorized) => {}
         Err(other) => panic!("expected Unauthorized, got a different error: {:?}", other),
@@ -2789,7 +2870,7 @@ async fn apply_upgrade_creem_rejects() {
 #[tokio::test]
 #[serial]
 async fn get_product_ids_success() {
-    dotenvy::dotenv().ok();
+    dotenv().ok();
 
     let expected_team_id = var("CREEM_TEAM_PRODUCT_ID")
         .expect("expected CREEM_TEAM_PRODUCT_ID to be genuinely set for this test");
@@ -2814,7 +2895,7 @@ async fn get_product_ids_success() {
 #[tokio::test]
 #[serial]
 async fn get_product_ids_missing_team_id() {
-    dotenvy::dotenv().ok();
+    dotenv().ok();
 
     let original_team_id = var("CREEM_TEAM_PRODUCT_ID").ok();
     unsafe {
@@ -2841,7 +2922,7 @@ async fn get_product_ids_missing_team_id() {
 #[tokio::test]
 #[serial]
 async fn get_product_ids_missing_enterprise_id() {
-    dotenvy::dotenv().ok();
+    dotenv().ok();
 
     let original_enterprise_id = var("CREEM_ENTERPRISE_PRODUCT_ID").ok();
     unsafe {
