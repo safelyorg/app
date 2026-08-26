@@ -16,7 +16,7 @@ use backend::{
     errors::dashboard::DashboardError,
     handlers::dashboard::{
         UpdateMeRequest, delete_account, disconnect_google, get_avatar, get_history,
-        get_history_html, get_history_item, get_me, get_reports, update_me,
+        get_history_html, get_history_item, get_me, get_reports, get_reports_html, update_me,
     },
     models::fraud_reports::ReportTypes,
     routes::dashboard::dashboard_routes,
@@ -1104,6 +1104,134 @@ async fn get_user_reports_database_error() {
         result.is_err(),
         "expected a genuine database error when the connection pool is closed"
     );
+}
+
+// Get Reports Html Tests
+#[tokio::test]
+async fn get_reports_html_unauthorized() {
+    let pool = test_pool().await;
+    let headers = HeaderMap::new();
+
+    let result = get_reports_html(State(pool), headers).await;
+    match result {
+        Err(DashboardError::Unauthorized) => {}
+        Err(other) => panic!("expected Unauthorized, got a different error: {:?}", other),
+        Ok(_) => panic!("expected an unauthenticated request to be rejected, but it succeeded"),
+    }
+}
+
+#[tokio::test]
+async fn get_reports_html_empty_reports() {
+    let pool = test_pool().await;
+    let email = "get_reports_html_empty_test@example.com";
+    let (user, _) = create_test_user(&pool, email).await;
+    let headers = auth_headers_for(&pool, user.id).await;
+
+    let result = get_reports_html(State(pool.clone()), headers)
+        .await
+        .expect("expected the request to succeed even with no reports");
+
+    let html = result.0;
+
+    assert!(
+        html.contains("You have not filed any reports yet"),
+        "expected the empty-state message to appear in the rendered HTML, got: {}",
+        html
+    );
+
+    cleanup_test_user(&pool, email).await;
+}
+
+#[tokio::test]
+async fn get_reports_html_success_with_real_data() {
+    let pool = test_pool().await;
+    let email = "get_reports_html_success_test@example.com";
+    let (user, _) = create_test_user(&pool, email).await;
+    let headers = auth_headers_for(&pool, user.id).await;
+
+    let platform = "olx";
+    let platform_id = "reports_html_success_001";
+    cleanup_test_seller_with_reports(&pool, platform, platform_id).await;
+
+    let seller_id = Uuid::now_v7();
+    query(
+        "INSERT INTO sellers (id, platform, platform_id, name, verification, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, 'unknown'::seller_verification, NOW(), NOW())",
+    )
+    .bind(seller_id)
+    .bind(platform)
+    .bind(platform_id)
+    .bind("HTML Rendering Test Seller")
+    .execute(&pool)
+    .await
+    .expect("expected to create the seller");
+
+    let listing_url = "https://olx.com/item/reports-html-test-listing";
+    query(
+        "INSERT INTO fraud_reports (id, seller_id, user_id, platform, platform_id, report_type, listing_url, reported_at)
+         VALUES ($1, $2, $3, $4, $5, $6::report_types, $7, NOW())",
+    )
+    .bind(Uuid::now_v7())
+    .bind(seller_id)
+    .bind(user.id)
+    .bind(platform)
+    .bind(platform_id)
+    .bind("scam")
+    .bind(listing_url)
+    .execute(&pool)
+    .await
+    .expect("expected to create the fraud report");
+
+    let result = get_reports_html(State(pool.clone()), headers)
+        .await
+        .expect("expected the request to succeed");
+
+    let html = result.0;
+
+    assert!(
+        html.contains("<tr"),
+        "expected a genuine, real <tr> tag to appear, got: {}",
+        html
+    );
+    assert!(
+        html.contains("HTML Rendering Test Seller"),
+        "expected the real seller name to appear in the rendered HTML"
+    );
+    assert!(
+        html.contains("scam"),
+        "expected the real report type to appear in the rendered HTML"
+    );
+    assert!(
+        html.contains(listing_url),
+        "expected the real listing url to appear as the link href"
+    );
+
+    query("DELETE FROM fraud_reports WHERE seller_id = $1")
+        .bind(seller_id)
+        .execute(&pool)
+        .await
+        .ok();
+
+    cleanup_test_seller_with_reports(&pool, platform, platform_id).await;
+    cleanup_test_user(&pool, email).await;
+}
+
+#[tokio::test]
+async fn get_reports_html_database_error() {
+    let pool = test_pool().await;
+    let email = "get_reports_html_db_error_test@example.com";
+    let (user, _) = create_test_user(&pool, email).await;
+    let headers = auth_headers_for(&pool, user.id).await;
+
+    cleanup_test_user(&pool, email).await;
+    pool.close().await;
+
+    let result = get_reports_html(State(pool), headers).await;
+    match result {
+        Err(DashboardError::InternalError(_)) => {}
+        Err(other) => panic!("expected InternalError, got a different error: {:?}", other),
+        Ok(_) => panic!("expected a genuine database error, but the request succeeded"),
+    }
 }
 
 // Get Me Tests
