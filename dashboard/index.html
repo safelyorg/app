@@ -16,6 +16,7 @@
         <link rel="apple-touch-icon" sizes="180x180" href="images/apple-touch-icon.png" />
         <link rel="stylesheet" href="css/dashboard.css" />
         <script src="https://cdn.tailwindcss.com"></script>
+        <script src="https://cdn.jsdelivr.net/npm/htmx.org@2.0.10/dist/htmx.js" integrity="sha384-Q+Dky3iHVJOr6wUjQ4ulh6uQ76an/t+ak1+PjMVaxRjbZamFLAG+u9InkfjbsEQf" crossorigin="anonymous"></script>
         <script>
             tailwind.config = {
                 theme: {
@@ -352,7 +353,13 @@
                                     <th class="px-4 py-3">Reported</th>
                                 </tr>
                             </thead>
-                            <tbody id="history-rows"></tbody>
+                            <tbody
+                                id="history-rows"
+                                hx-get="/api/v1/history/html"
+                                hx-trigger="load"
+                                hx-swap="innerHTML"
+                            >
+                            </tbody>
                         </table>
                     </div>
                 </div>
@@ -503,7 +510,6 @@
                             </div>
                         </div>
 
-                        <!-- Design-only for now, not wired up yet -->
                         <div class="text-[10px] font-extrabold uppercase tracking-wider text-muted mb-2 mt-7">
                             Plan &amp; Billing
                         </div>
@@ -596,7 +602,6 @@
                             </div>
                         </div>
 
-                        <!-- Design-only for now, not wired up yet -->
                         <div class="text-[10px] font-extrabold uppercase tracking-wider text-muted mb-2 mt-7">
                             Connected Accounts
                         </div>
@@ -627,7 +632,6 @@
                             ></div>
                         </div>
 
-                        <!-- Design-only for now, not wired up yet -->
                         <div class="text-[10px] font-extrabold uppercase tracking-wider text-muted mb-2 mt-7">
                             About Safely
                         </div>
@@ -642,7 +646,6 @@
                             </div>
                         </div>
 
-                        <!-- Design-only for now, not wired up yet -->
                         <div class="text-[10px] font-extrabold uppercase tracking-wider text-coral mb-2 mt-7">
                             Danger Zone
                         </div>

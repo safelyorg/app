@@ -112,6 +112,14 @@
       window.location.href = "/";
     },
   };
+  // Attaches the real session token to every HTMX request automatically.
+  document.body.addEventListener("htmx:configRequest", function (event) {
+    var token = getToken();
+    if (token) {
+      event.detail.headers["Authorization"] = "Bearer " + token;
+    }
+  });
+
   captureSessionFromUrl();
   renderAuthState();
   checkForAuthErrorInUrl();

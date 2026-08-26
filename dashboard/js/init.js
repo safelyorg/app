@@ -5,6 +5,26 @@ document.addEventListener("DOMContentLoaded", async function () {
     loadDashboardData();
   }
 
+  // Event delegation for history row clicks - works correctly whether
+  // rows were inserted by HTMX or by the older JS-based rendering,
+  // since the listener lives on the parent, not on each individual row.
+  var historyRowsBody = document.getElementById("history-rows");
+  if (historyRowsBody) {
+    historyRowsBody.addEventListener("click", function (e) {
+      var row = e.target.closest(".history-row");
+      if (row) openDetail(row.dataset.id);
+    });
+  }
+
+  // Updates the "Checked" stat count right after HTMX finishes
+  // inserting the real history rows - runs here, not on page load
+  // directly, since the rows don't exist yet until HTMX delivers them.
+  document.body.addEventListener("htmx:afterSwap", function (event) {
+    if (event.target.id === "history-rows") {
+      renderStats();
+    }
+  });
+
   var closeBtn = document.getElementById("detail-close");
   if (closeBtn) {
     closeBtn.addEventListener("click", closeDetailPanel);

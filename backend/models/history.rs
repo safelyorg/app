@@ -29,8 +29,6 @@ pub struct ReportItem {
     pub listing_url: Option<String>,
 }
 
-/// Raw shape of the first query in get_history_detail - just enough to
-/// then look up the full seller and this listing's reports separately.
 #[derive(Debug, FromRow)]
 pub struct AnalysisDetailRow {
     pub id: Uuid,
@@ -44,10 +42,6 @@ pub struct AnalysisDetailRow {
     pub seller_id: Uuid,
 }
 
-/// One filed report, as shown inside a single listing's detail view -
-/// there can be more than one of these for the same listing, since
-/// nothing stops a person from reporting the same ad twice with
-/// different reasons.
 #[derive(Debug, FromRow, Serialize)]
 pub struct ReportSummary {
     pub report_type: ReportTypes,

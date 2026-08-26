@@ -31,11 +31,12 @@ use backend::{
             get_user_from_token, handle_google_connect, insert_magic_link, set_login_method,
             validate_email_format, validate_magic_link,
         },
-        email::{get_tera, send_magic_link_email, send_welcome_email},
+        email::{send_magic_link_email, send_welcome_email},
         google_oauth::{
             build_google_authorize_url, exchange_code_for_user, find_or_create_user_by_google,
             find_user_by_google_id, link_google_account,
         },
+        templates::get_tera,
     },
 };
 use chrono::{DateTime, Duration as chrono_duration, Utc};

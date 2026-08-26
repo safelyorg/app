@@ -1,25 +1,41 @@
 use crate::{
     errors::dashboard::DashboardError,
+    models::analysis::RiskLevel,
     services::{
         auth::{extract_user_id, find_user_by_id, set_login_method},
         dashboard::{delete_user_account, unlink_google_account},
         history::{get_history_detail, get_user_history, get_user_reports},
+        templates::get_tera,
     },
 };
 use axum::{
     Json,
     extract::{Multipart, Path, State},
     http::{HeaderMap, header::CONTENT_TYPE},
-    response::IntoResponse,
+    response::{Html, IntoResponse},
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json, to_value};
 use sqlx::{Pool, Postgres, Row, query};
+use tera::Context;
 use uuid::Uuid;
 
 #[derive(Debug, Deserialize)]
 pub struct UpdateMeRequest {
     pub name: String,
+}
+
+#[derive(Serialize)]
+struct HistoryRow {
+    id: Uuid,
+    created_at_formatted: String,
+    risk_level: RiskLevel,
+    risk_score: i16,
+    listing_title: Option<String>,
+    listing_url: String,
+    seller_name: Option<String>,
+    reported: bool,
+    search_text: String,
 }
 
 /// GET /api/v1/history
@@ -45,6 +61,64 @@ pub async fn get_history(
         .map_err(|e| DashboardError::InternalError(e.to_string()))?;
 
     Ok(Json(json!({ "history": items })))
+}
+
+/// GET /api/v1/history/html
+///
+/// Same real history data as get_history, but rendered directly into
+/// ready-to-use HTML table rows, for HTMX to drop straight into the
+/// page - no separate JavaScript step needed to build the rows.
+///
+/// It confirms who's signed in, fetches the same real history, and
+/// renders it through the shared history_rows template - Tera
+/// auto-escapes every value, so a listing title or seller name can
+/// never break out of the HTML it's placed into.
+pub async fn get_history_html(
+    State(pool): State<Pool<Postgres>>,
+    headers: HeaderMap,
+) -> Result<Html<String>, DashboardError> {
+    let user_id = extract_user_id(&headers, &pool)
+        .await
+        .map_err(|_| DashboardError::InternalError("Failed to verify session".to_string()))?
+        .ok_or(DashboardError::Unauthorized)?;
+
+    let items = get_user_history(&pool, user_id)
+        .await
+        .map_err(|e| DashboardError::InternalError(e.to_string()))?;
+
+    let rows: Vec<HistoryRow> = items
+        .into_iter()
+        .map(|item| {
+            let search_text = format!(
+                "{} {}",
+                item.listing_title.as_deref().unwrap_or(""),
+                item.seller_name.as_deref().unwrap_or("")
+            )
+            .to_lowercase();
+
+            HistoryRow {
+                id: item.id,
+                created_at_formatted: item.created_at.format("%Y-%m-%d").to_string(),
+                risk_level: item.risk_level,
+                risk_score: item.risk_score,
+                listing_title: item.listing_title,
+                listing_url: item.listing_url,
+                seller_name: item.seller_name,
+                reported: item.reported,
+                search_text,
+            }
+        })
+        .collect();
+
+    let tera = get_tera();
+    let mut context = Context::new();
+    context.insert("items", &rows);
+
+    let html = tera
+        .render("history_rows.html", &context)
+        .map_err(|e| DashboardError::InternalError(e.to_string()))?;
+
+    Ok(Html(html))
 }
 
 /// GET /api/v1/history/{id}

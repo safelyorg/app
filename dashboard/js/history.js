@@ -2,22 +2,16 @@ async function loadDashboardData() {
   var headers = window.safelyAuth.authHeader();
 
   try {
-    var historyRes = await fetch(API_BASE + "/history", { headers: headers });
     var reportsRes = await fetch(API_BASE + "/reports", { headers: headers });
 
-    if (historyRes.status === 401 || reportsRes.status === 401) {
+    if (reportsRes.status === 401) {
       window.safelyAuth.logout();
       return;
     }
 
-    var historyData = await historyRes.json();
     var reportsData = await reportsRes.json();
-
-    currentHistory = historyData.history || [];
     currentReports = reportsData.reports || [];
 
-    renderStats();
-    renderHistoryRows();
     renderReportRows();
   } catch (e) {
     console.error("Safely: failed to load dashboard data", e);
@@ -38,7 +32,9 @@ async function loadDashboardData() {
 function renderStats() {
   var checked = document.getElementById("stat-checked-num");
   var reported = document.getElementById("stat-reported-num");
-  if (checked) checked.textContent = currentHistory.length;
+  if (checked) {
+    checked.textContent = document.querySelectorAll("#history-rows tr[data-id]").length;
+  }
   if (reported) reported.textContent = currentReports.length;
 }
 
@@ -100,12 +96,6 @@ function renderHistoryRows() {
       );
     })
     .join("");
-
-  tbody.querySelectorAll(".history-row").forEach(function (tr) {
-    tr.addEventListener("click", function () {
-      openDetail(tr.dataset.id);
-    });
-  });
 }
 
 function renderReportRows() {

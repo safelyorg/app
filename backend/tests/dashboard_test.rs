@@ -16,7 +16,7 @@ use backend::{
     errors::dashboard::DashboardError,
     handlers::dashboard::{
         UpdateMeRequest, delete_account, disconnect_google, get_avatar, get_history,
-        get_history_item, get_me, get_reports, update_me,
+        get_history_html, get_history_item, get_me, get_reports, update_me,
     },
     models::fraud_reports::ReportTypes,
     routes::dashboard::dashboard_routes,
@@ -415,6 +415,111 @@ async fn get_user_history_database_error() {
         result.is_err(),
         "expected a genuine database error when the connection pool is closed"
     );
+}
+
+// Get History Html Tests
+#[tokio::test]
+async fn get_history_html_unauthorized() {
+    let pool = test_pool().await;
+    let headers = HeaderMap::new();
+
+    let result = get_history_html(State(pool), headers).await;
+    match result {
+        Err(DashboardError::Unauthorized) => {}
+        Err(other) => panic!("expected Unauthorized, got a different error: {:?}", other),
+        Ok(_) => panic!("expected an unauthenticated request to be rejected, but it succeeded"),
+    }
+}
+
+#[tokio::test]
+async fn get_history_html_empty_history() {
+    let pool = test_pool().await;
+    let email = "get_history_html_empty_test@example.com";
+    let (user, _) = create_test_user(&pool, email).await;
+    let headers = auth_headers_for(&pool, user.id).await;
+
+    let result = get_history_html(State(pool.clone()), headers)
+        .await
+        .expect("expected the request to succeed even with no history");
+
+    let html = result.0;
+
+    assert!(
+        html.contains("No listings analyzed yet"),
+        "expected the empty-state message to appear in the rendered HTML, got: {}",
+        html
+    );
+
+    cleanup_test_user(&pool, email).await;
+}
+
+#[tokio::test]
+async fn get_history_html_success_with_real_data() {
+    let pool = test_pool().await;
+    let email = "get_history_html_success_test@example.com";
+    let (user, _) = create_test_user(&pool, email).await;
+    let headers = auth_headers_for(&pool, user.id).await;
+
+    let platform = "olx";
+    let platform_id = "history_html_success_001";
+    cleanup_test_seller_chain(&pool, platform, platform_id).await;
+    let (_listing_id, _seller_id) = insert_test_history_chain(
+        &pool,
+        user.id,
+        platform,
+        platform_id,
+        "HTML Rendering Test Listing",
+    )
+    .await;
+
+    let result = get_history_html(State(pool.clone()), headers)
+        .await
+        .expect("expected the request to succeed");
+
+    let html = result.0;
+
+    // Confirm the real, actual data genuinely appears in the rendered
+    // HTML output, and that auto-escaping produced real HTML tags, not
+    // literal escaped text like "&lt;tr&gt;".
+    assert!(
+        html.contains("<tr"),
+        "expected a genuine, real <tr> tag to appear, got: {}",
+        html
+    );
+    assert!(
+        html.contains("HTML Rendering Test Listing"),
+        "expected the real listing title to appear in the rendered HTML"
+    );
+    assert!(
+        html.contains("data-risk=\"low\""),
+        "expected the correct risk level to appear as a real data attribute"
+    );
+    assert!(
+        html.contains(">15<"),
+        "expected the real risk score to appear in the rendered HTML"
+    );
+
+    cleanup_test_seller_chain(&pool, platform, platform_id).await;
+    cleanup_test_user(&pool, email).await;
+}
+
+#[tokio::test]
+async fn get_history_html_database_error() {
+    let pool = test_pool().await;
+    let email = "get_history_html_db_error_test@example.com";
+    let (user, _) = create_test_user(&pool, email).await;
+    let headers = auth_headers_for(&pool, user.id).await;
+
+    cleanup_test_user(&pool, email).await;
+    pool.close().await;
+
+    let result = get_history_html(State(pool), headers).await;
+
+    match result {
+        Err(DashboardError::InternalError(_)) => {}
+        Err(other) => panic!("expected InternalError, got a different error: {:?}", other),
+        Ok(_) => panic!("expected a genuine database error, but the request succeeded"),
+    }
 }
 
 // Get History Item Tests

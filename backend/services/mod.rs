@@ -11,3 +11,4 @@ pub mod listings;
 pub mod scoring;
 pub mod sellers;
 pub mod signals;
+pub mod templates;
