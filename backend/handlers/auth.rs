@@ -6,12 +6,13 @@ use crate::{
     },
     services::{
         auth::{
-            delete_session, extract_user_id, find_or_create_user_by_email,
-            find_or_create_user_by_google, finish_sign_in, handle_google_connect,
-            insert_magic_link, validate_email_format, validate_magic_link,
+            delete_session, extract_user_id, find_or_create_user_by_email, finish_sign_in,
+            handle_google_connect, insert_magic_link, validate_email_format, validate_magic_link,
         },
         email::send_magic_link_email,
-        google_oauth::{build_google_authorize_url, exchange_code_for_user},
+        google_oauth::{
+            build_google_authorize_url, exchange_code_for_user, find_or_create_user_by_google,
+        },
     },
 };
 use axum::{

@@ -27,13 +27,15 @@ use backend::{
     services::{
         auth::{
             check_last_login, create_session, delete_session, extract_user_id,
-            find_or_create_user_by_email, find_or_create_user_by_google, find_user_by_email,
-            find_user_by_google_id, find_user_by_id, finish_sign_in, get_user_from_token,
-            handle_google_connect, insert_magic_link, link_google_account, set_login_method,
+            find_or_create_user_by_email, find_user_by_email, find_user_by_id, finish_sign_in,
+            get_user_from_token, handle_google_connect, insert_magic_link, set_login_method,
             validate_email_format, validate_magic_link,
         },
         email::{get_tera, send_magic_link_email, send_welcome_email},
-        google_oauth::{build_google_authorize_url, exchange_code_for_user},
+        google_oauth::{
+            build_google_authorize_url, exchange_code_for_user, find_or_create_user_by_google,
+            find_user_by_google_id, link_google_account,
+        },
     },
 };
 use chrono::{DateTime, Duration as chrono_duration, Utc};

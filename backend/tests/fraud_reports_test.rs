@@ -17,7 +17,6 @@ use uuid::Uuid;
 #[tokio::test]
 async fn create_fraud_report_unauthorized() {
     let pool = test_pool().await;
-
     let headers = HeaderMap::new();
 
     let request = FraudReportsRequest {
@@ -29,7 +28,6 @@ async fn create_fraud_report_unauthorized() {
     };
 
     let result = create_fraud_report(State(pool), headers, Json(request)).await;
-
     match result {
         Err(FraudReportError::Unauthorized) => {}
         Err(other) => panic!("expected Unauthorized, got a different error: {:?}", other),
@@ -53,7 +51,6 @@ async fn create_fraud_report_not_found() {
     };
 
     let result = create_fraud_report(State(pool.clone()), headers, Json(request)).await;
-
     match result {
         Err(FraudReportError::NotFound(_)) => {}
         Err(other) => panic!("expected NotFound, got a different error: {:?}", other),
@@ -158,7 +155,6 @@ async fn create_fraud_report_database_error() {
     };
 
     let result = create_fraud_report(State(pool), headers, Json(request)).await;
-
     match result {
         Err(FraudReportError::InternalError(_)) => {}
         Err(other) => panic!("expected InternalError, got a different error: {:?}", other),

@@ -2,7 +2,10 @@ use crate::{
     errors::auth::{AuthError, AuthServiceError},
     handlers::auth::{DASHBOARD_PATH, OAUTH_LINK_USER_COOKIE, OAUTH_STATE_COOKIE},
     models::users::{GoogleUserInfoEndpoint, MagicLink, User},
-    services::email::send_welcome_email,
+    services::{
+        email::send_welcome_email,
+        google_oauth::{find_user_by_google_id, link_google_account},
+    },
 };
 use axum::{http::HeaderMap, response::Redirect};
 use axum_extra::extract::{CookieJar, cookie::Cookie};
@@ -222,6 +225,56 @@ pub async fn extract_user_id(
     Ok(user.map(|u| u.id))
 }
 
+/// It looks up who a session token belongs to, and quietly extends that session's
+/// expiration if it's getting close to running out — so an actively-used account
+/// never gets logged out just from the passage of time.
+///
+/// It looks up the session, but only if it hasn't already expired. If nothing
+/// was found, quietly return "no one" — not an error. Pulls the two real values
+/// out of the found row and finally deciding whether to extend the session.
+pub async fn get_user_from_token(
+    pool: &Pool<Postgres>,
+    token: &str,
+) -> Result<Option<User>, Error> {
+    let row = query(
+        "SELECT user_id, expires_at FROM sessions WHERE token = $1 AND expires_at > NOW() LIMIT 1",
+    )
+    .bind(token)
+    .fetch_optional(pool)
+    .await?;
+
+    let Some(row) = row else {
+        return Ok(None);
+    };
+
+    let user_id: Uuid = row.get("user_id");
+    let expires_at: DateTime<Utc> = row.get("expires_at");
+
+    let refresh_threshold = Utc::now() + Duration::days(25);
+    if expires_at < refresh_threshold {
+        let _ =
+            query("UPDATE sessions SET expires_at = NOW() + INTERVAL '30 days' WHERE token = $1")
+                .bind(token)
+                .execute(pool)
+                .await;
+    }
+
+    find_user_by_id(pool, user_id).await
+}
+
+/// It looks up a user by their exact ID, and returns them if
+/// found or nothing, if no such user exists.
+///
+/// It runs the actual lookup query and returns whatever was found.
+pub async fn find_user_by_id(pool: &Pool<Postgres>, id: Uuid) -> Result<Option<User>, Error> {
+    let result = query_as::<_, User>("SELECT * FROM users WHERE id = $1 LIMIT 1")
+        .bind(id)
+        .fetch_optional(pool)
+        .await?;
+
+    Ok(result)
+}
+
 /// It runs when someone who's already logged into Safely finishes
 /// connecting their Google account and it makes sure Google gets
 /// attached to their specific account.
@@ -292,140 +345,12 @@ pub async fn handle_google_connect(
     ))
 }
 
-/// It looks up who a session token belongs to, and quietly extends that session's
-/// expiration if it's getting close to running out — so an actively-used account
-/// never gets logged out just from the passage of time.
-///
-/// It looks up the session, but only if it hasn't already expired. If nothing
-/// was found, quietly return "no one" — not an error. Pulls the two real values
-/// out of the found row and finally deciding whether to extend the session.
-pub async fn get_user_from_token(
-    pool: &Pool<Postgres>,
-    token: &str,
-) -> Result<Option<User>, Error> {
-    let row = query(
-        "SELECT user_id, expires_at FROM sessions WHERE token = $1 AND expires_at > NOW() LIMIT 1",
-    )
-    .bind(token)
-    .fetch_optional(pool)
-    .await?;
-
-    let Some(row) = row else {
-        return Ok(None);
-    };
-
-    let user_id: Uuid = row.get("user_id");
-    let expires_at: DateTime<Utc> = row.get("expires_at");
-
-    let refresh_threshold = Utc::now() + Duration::days(25);
-    if expires_at < refresh_threshold {
-        let _ =
-            query("UPDATE sessions SET expires_at = NOW() + INTERVAL '30 days' WHERE token = $1")
-                .bind(token)
-                .execute(pool)
-                .await;
-    }
-
-    find_user_by_id(pool, user_id).await
-}
-
-/// It looks up a user by their exact ID, and returns them if
-/// found or nothing, if no such user exists.
-///
-/// It runs the actual lookup query and returns whatever was found.
-pub async fn find_user_by_id(pool: &Pool<Postgres>, id: Uuid) -> Result<Option<User>, Error> {
-    let result = query_as::<_, User>("SELECT * FROM users WHERE id = $1 LIMIT 1")
-        .bind(id)
-        .fetch_optional(pool)
-        .await?;
-
-    Ok(result)
-}
-
 /// It deletes a specific session from the database, using its token to find it.
 ///
 /// It runs the deletion query and returns success, with nothing meaningful inside it
 pub async fn delete_session(pool: &Pool<Postgres>, token: &str) -> Result<(), Error> {
     query("DELETE FROM sessions WHERE token = $1")
         .bind(token)
-        .execute(pool)
-        .await?;
-
-    Ok(())
-}
-
-/// It figures out who is someone when they sign in with Google, using three checks in order
-/// checking if this exact Google account is already known,
-/// then checking if their email matches an existing account,
-/// and only creating a brand-new account if neither of those find anyone.
-///
-/// First check — has this exact Google account been seen before?
-/// Second check — does their email match an existing account, even if Google's never
-/// been connected before? Neither check found anyone then it genuinely created a brand-new account.
-pub async fn find_or_create_user_by_google(
-    pool: &Pool<Postgres>,
-    google_id: &str,
-    email: &str,
-    name: Option<&str>,
-) -> Result<(User, bool), AuthServiceError> {
-    if let Some(user) = find_user_by_google_id(pool, google_id).await? {
-        return Ok((user, false));
-    }
-
-    if let Some(existing) = find_user_by_email(pool, email).await? {
-        let user = query_as::<_, User>(
-            "UPDATE users SET google_id = $1, name = COALESCE(name, $2) WHERE id = $3 RETURNING *",
-        )
-        .bind(google_id)
-        .bind(name)
-        .bind(existing.id)
-        .fetch_one(pool)
-        .await?;
-        return Ok((user, false));
-    }
-
-    let id = Uuid::now_v7();
-    let user = query_as::<_, User>(
-        "INSERT INTO users (id, email, google_id, name) VALUES ($1, $2, $3, $4) RETURNING *",
-    )
-    .bind(id)
-    .bind(email)
-    .bind(google_id)
-    .bind(name)
-    .fetch_one(pool)
-    .await?;
-
-    Ok((user, true))
-}
-
-/// It looks up a user by their linked Google account ID,
-/// and returns them if found or nothing, if no user has that Google ID connected.
-///
-/// It runs the lookup query, and returns its result directly
-pub async fn find_user_by_google_id(
-    pool: &Pool<Postgres>,
-    google_id: &str,
-) -> Result<Option<User>, Error> {
-    let result = query_as::<_, User>("SELECT * FROM users WHERE google_id = $1 LIMIT 1")
-        .bind(google_id)
-        .fetch_optional(pool)
-        .await?;
-
-    Ok(result)
-}
-
-/// It actually attaches a Google account to a specific existing Safely user,
-/// by writing their Google ID into that user's row.
-///
-/// It runs the update and returns success, with nothing meaningful inside it.
-pub async fn link_google_account(
-    pool: &Pool<Postgres>,
-    user_id: Uuid,
-    google_id: &str,
-) -> Result<(), Error> {
-    query("UPDATE users SET google_id = $1 WHERE id = $2")
-        .bind(google_id)
-        .bind(user_id)
         .execute(pool)
         .await?;
 

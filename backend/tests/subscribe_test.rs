@@ -4,11 +4,12 @@ use backend::{
     handlers::subscribe::{NewsletterSubscribeRequest, newsletter_subscribe},
     services::email::subscribe_to_newsletter,
 };
-use dotenvy::var;
+use dotenvy::{dotenv, var};
 use serde_json::json;
 use serial_test::serial;
 use std::env::{remove_var, set_var};
 
+// Newsletter Subscribe Tests
 #[tokio::test]
 async fn newsletter_subscribe_bad_request_invalid_email() {
     let request = NewsletterSubscribeRequest {
@@ -26,7 +27,7 @@ async fn newsletter_subscribe_bad_request_invalid_email() {
 
 #[tokio::test]
 async fn newsletter_subscribe_success() {
-    dotenvy::dotenv().ok();
+    dotenv().ok();
     let request = NewsletterSubscribeRequest {
         email: "newsletter_test_user@example.com".to_string(),
     };
@@ -43,10 +44,11 @@ async fn newsletter_subscribe_success() {
     );
 }
 
+// Subscribe to Newsletter Tests
 #[tokio::test]
 #[serial]
 async fn subscribe_to_newsletter_missing_api_key() {
-    dotenvy::dotenv().ok();
+    dotenv().ok();
     let original_key = var("KIT_API_KEY").ok();
     unsafe {
         remove_var("KIT_API_KEY");
@@ -74,7 +76,7 @@ async fn subscribe_to_newsletter_missing_api_key() {
 #[tokio::test]
 #[serial]
 async fn subscribe_to_newsletter_kit_rejects_wrong_key() {
-    dotenvy::dotenv().ok();
+    dotenv().ok();
     let original_key = var("KIT_API_KEY").ok();
     unsafe {
         set_var("KIT_API_KEY", "genuinely_wrong_api_key_00000");
@@ -101,7 +103,7 @@ async fn subscribe_to_newsletter_kit_rejects_wrong_key() {
 #[tokio::test]
 #[serial]
 async fn subscribe_to_newsletter_success() {
-    dotenvy::dotenv().ok();
+    dotenv().ok();
     let result = subscribe_to_newsletter("newsletter_test_service_success@example.com").await;
 
     assert!(

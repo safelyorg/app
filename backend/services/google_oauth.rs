@@ -1,9 +1,12 @@
 use crate::{
-    errors::google_oauth::GoogleOauthConfigError,
-    models::users::{GoogleTokenEndpoint, GoogleUserInfoEndpoint},
+    errors::{auth::AuthServiceError, google_oauth::GoogleOauthConfigError},
+    models::users::{GoogleTokenEndpoint, GoogleUserInfoEndpoint, User},
+    services::auth::find_user_by_email,
 };
+use sqlx::{Error, Pool, Postgres, query, query_as};
 use std::env::var;
 use urlencoding::encode;
+use uuid::Uuid;
 
 /// It builds the actual, complete web address that sends someone to Google's real sign-in page.
 ///
@@ -86,4 +89,82 @@ pub async fn exchange_code_for_user(
         .json::<GoogleUserInfoEndpoint>()
         .await
         .map_err(|e| GoogleOauthConfigError::UserInfoResponseParseFailed(e.to_string()))
+}
+
+/// It looks up a user by their linked Google account ID,
+/// and returns them if found or nothing, if no user has that Google ID connected.
+///
+/// It runs the lookup query, and returns its result directly
+pub async fn find_user_by_google_id(
+    pool: &Pool<Postgres>,
+    google_id: &str,
+) -> Result<Option<User>, Error> {
+    let result = query_as::<_, User>("SELECT * FROM users WHERE google_id = $1 LIMIT 1")
+        .bind(google_id)
+        .fetch_optional(pool)
+        .await?;
+
+    Ok(result)
+}
+
+/// It actually attaches a Google account to a specific existing Safely user,
+/// by writing their Google ID into that user's row.
+///
+/// It runs the update and returns success, with nothing meaningful inside it.
+pub async fn link_google_account(
+    pool: &Pool<Postgres>,
+    user_id: Uuid,
+    google_id: &str,
+) -> Result<(), Error> {
+    query("UPDATE users SET google_id = $1 WHERE id = $2")
+        .bind(google_id)
+        .bind(user_id)
+        .execute(pool)
+        .await?;
+
+    Ok(())
+}
+
+/// It figures out who is someone when they sign in with Google, using three checks in order
+/// checking if this exact Google account is already known,
+/// then checking if their email matches an existing account,
+/// and only creating a brand-new account if neither of those find anyone.
+///
+/// First check — has this exact Google account been seen before?
+/// Second check — does their email match an existing account, even if Google's never
+/// been connected before? Neither check found anyone then it genuinely created a brand-new account.
+pub async fn find_or_create_user_by_google(
+    pool: &Pool<Postgres>,
+    google_id: &str,
+    email: &str,
+    name: Option<&str>,
+) -> Result<(User, bool), AuthServiceError> {
+    if let Some(user) = find_user_by_google_id(pool, google_id).await? {
+        return Ok((user, false));
+    }
+
+    if let Some(existing) = find_user_by_email(pool, email).await? {
+        let user = query_as::<_, User>(
+            "UPDATE users SET google_id = $1, name = COALESCE(name, $2) WHERE id = $3 RETURNING *",
+        )
+        .bind(google_id)
+        .bind(name)
+        .bind(existing.id)
+        .fetch_one(pool)
+        .await?;
+        return Ok((user, false));
+    }
+
+    let id = Uuid::now_v7();
+    let user = query_as::<_, User>(
+        "INSERT INTO users (id, email, google_id, name) VALUES ($1, $2, $3, $4) RETURNING *",
+    )
+    .bind(id)
+    .bind(email)
+    .bind(google_id)
+    .bind(name)
+    .fetch_one(pool)
+    .await?;
+
+    Ok((user, true))
 }
