@@ -1,24 +1,42 @@
 use axum::http::{HeaderValue, Method, header};
+use axum::serve;
 use axum::{Router, response::Redirect, routing::get};
 use backend::db::{bootstrap::run_grants, connection::load_pool};
 use backend::routes::{analyze, auth, billing, dashboard, fraud_reports, subscribe};
+use sqlx::{Pool, Postgres};
+use tokio::net::TcpListener;
 use tower_http::{
     cors::{Any, CorsLayer},
     services::{ServeDir, ServeFile},
     set_header::SetResponseHeaderLayer,
 };
 
-#[tokio::main]
-async fn main() {
-    dotenvy::dotenv().ok();
+async fn setup_database() -> Pool<Postgres> {
     let admin_pool = load_pool("ADMIN_URL").await;
     let app_pool = load_pool("APP_URL").await;
+
     sqlx::migrate!("../migrations")
         .run(&admin_pool)
         .await
         .expect("migration expected");
+
     run_grants(&admin_pool).await;
-    let app = Router::new()
+
+    app_pool
+}
+
+/// Builds the CORS rules. It lets the requests come from any site (needed
+/// for the browser extension), but only allows the specific methods
+/// and headers this app actually uses.
+fn build_cors_layer() -> CorsLayer {
+    CorsLayer::new()
+        .allow_origin(Any)
+        .allow_methods([Method::GET, Method::POST, Method::PATCH, Method::DELETE])
+        .allow_headers([header::CONTENT_TYPE, header::AUTHORIZATION])
+}
+
+fn build_router(app_pool: Pool<Postgres>) -> Router {
+    Router::new()
         .merge(analyze::analyze_routes())
         .merge(fraud_reports::fraud_reports_routes())
         .merge(auth::auth_routes())
@@ -67,22 +85,23 @@ async fn main() {
             header::CACHE_CONTROL,
             HeaderValue::from_static("no-cache, no-store, must-revalidate"),
         ))
-        .layer(
-            // Origin stays open (Any) since content scripts send requests
-            // using the origin of whatever website they're running on
-            // (OLX, or any site the domain-check runs on) - not
-            // safely.sh itself, so restricting origin here would break
-            // the extension's own analyze calls. Methods and headers are
-            // narrowed to exactly what this app actually uses, so
-            // anything else gets refused automatically rather than
-            // reaching a handler at all.
-            CorsLayer::new()
-                .allow_origin(Any)
-                .allow_methods([Method::GET, Method::POST, Method::PATCH, Method::DELETE])
-                .allow_headers([header::CONTENT_TYPE, header::AUTHORIZATION]),
-        )
-        .with_state(app_pool);
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
+        .layer(build_cors_layer())
+        .with_state(app_pool)
+}
+
+async fn run_server(app: Router) {
+    let listener = TcpListener::bind("0.0.0.0:3000")
+        .await
+        .expect("should have a tcp listener binding");
+
     println!("Server running on port: 3000");
-    axum::serve(listener, app).await.unwrap();
+    serve(listener, app).await.expect("expected to serve");
+}
+
+#[tokio::main]
+async fn main() {
+    dotenvy::dotenv().ok();
+    let app_pool = setup_database().await;
+    let app = build_router(app_pool);
+    run_server(app).await;
 }
