@@ -1,0 +1,14 @@
+{% if items | length == 0 %}
+<tr><td colspan="4" class="px-4 py-14 text-center text-muted text-[13px]">You have not filed any reports yet.</td></tr>
+{% else %}
+{% for item in items %}
+<tr class="border-b border-line last:border-b-0">
+    <td class="hidden sm:table-cell px-4 py-3.5 text-muted num text-[12px]">{{ item.reported_at_formatted }}</td>
+    <td class="px-4 py-3.5 font-semibold">{{ item.report_type }}</td>
+    <td class="hidden sm:table-cell px-4 py-3.5 text-muted capitalize">{{ item.platform }}</td>
+    <td class="px-4 py-3.5 truncate">
+        {% if item.listing_url %}<a href="{{ item.listing_url }}" target="_blank" rel="noopener noreferrer" class="hover:underline hover:text-brand">{{ item.seller_name | default(value="Unknown seller") }} &#8599;</a>{% else %}{{ item.seller_name | default(value="Unknown seller") }}{% endif %}
+    </td>
+</tr>
+{% endfor %}
+{% endif %}

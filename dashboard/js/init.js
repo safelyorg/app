@@ -20,7 +20,7 @@ document.addEventListener("DOMContentLoaded", async function () {
   // inserting the real history rows - runs here, not on page load
   // directly, since the rows don't exist yet until HTMX delivers them.
   document.body.addEventListener("htmx:afterSwap", function (event) {
-    if (event.target.id === "history-rows") {
+    if (event.target.id === "history-rows" || event.target.id === "report-rows") {
       renderStats();
     }
   });

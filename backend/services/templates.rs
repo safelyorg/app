@@ -11,6 +11,7 @@ const SUBSCRIPTION_CANCELED_TEMPLATE: &str =
 const SUBSCRIPTION_ENDED_TEMPLATE: &str =
     include_str!("../templates/subscription_ended_email.html");
 const HISTORY_ROWS_TEMPLATE: &str = include_str!("../templates/history_rows.html");
+const REPORT_ROWS_TEMPLATE: &str = include_str!("../templates/report_rows.html");
 
 /// It builds one shared "template engine" containing every real
 /// template this app uses - both real email templates, and HTML
@@ -42,6 +43,8 @@ pub fn get_tera() -> &'static Tera {
         .expect("tera should add the subscription canceled raw template");
         tera.add_raw_template("history_rows.html", HISTORY_ROWS_TEMPLATE)
             .expect("tera should add the history rows raw template");
+        tera.add_raw_template("report_rows.html", REPORT_ROWS_TEMPLATE)
+            .expect("tera should add the report rows raw template");
 
         tera
     })

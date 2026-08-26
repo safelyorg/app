@@ -1,6 +1,6 @@
 use crate::{
     errors::dashboard::DashboardError,
-    models::analysis::RiskLevel,
+    models::{analysis::RiskLevel, fraud_reports::ReportTypes},
     services::{
         auth::{extract_user_id, find_user_by_id, set_login_method},
         dashboard::{delete_user_account, unlink_google_account},
@@ -36,6 +36,15 @@ struct HistoryRow {
     seller_name: Option<String>,
     reported: bool,
     search_text: String,
+}
+
+#[derive(Serialize)]
+struct ReportRow {
+    reported_at_formatted: String,
+    report_type: ReportTypes,
+    platform: String,
+    seller_name: Option<String>,
+    listing_url: Option<String>,
 }
 
 /// GET /api/v1/history
@@ -179,6 +188,49 @@ pub async fn get_reports(
         .map_err(|e| DashboardError::InternalError(e.to_string()))?;
 
     Ok(Json(json!({ "reports": items })))
+}
+
+/// GET /api/v1/reports/html
+///
+/// Same real report data as get_reports, but rendered directly into
+/// ready-to-use HTML table rows, for HTMX to drop straight into the
+/// page.
+///
+/// It confirms who's signed in, fetches the same real reports, and
+/// renders them through the shared report_rows template.
+pub async fn get_reports_html(
+    State(pool): State<Pool<Postgres>>,
+    headers: HeaderMap,
+) -> Result<Html<String>, DashboardError> {
+    let user_id = extract_user_id(&headers, &pool)
+        .await
+        .map_err(|_| DashboardError::InternalError("Failed to verify session".to_string()))?
+        .ok_or(DashboardError::Unauthorized)?;
+
+    let items = get_user_reports(&pool, user_id)
+        .await
+        .map_err(|e| DashboardError::InternalError(e.to_string()))?;
+
+    let rows: Vec<ReportRow> = items
+        .into_iter()
+        .map(|item| ReportRow {
+            reported_at_formatted: item.reported_at.format("%Y-%m-%d").to_string(),
+            report_type: item.report_type,
+            platform: item.platform,
+            seller_name: item.seller_name,
+            listing_url: item.listing_url,
+        })
+        .collect();
+
+    let tera = get_tera();
+    let mut context = Context::new();
+    context.insert("items", &rows);
+
+    let html = tera
+        .render("report_rows.html", &context)
+        .map_err(|e| DashboardError::InternalError(e.to_string()))?;
+
+    Ok(Html(html))
 }
 
 /// GET /api/v1/me

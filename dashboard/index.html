@@ -392,7 +392,13 @@
                                     <th class="px-4 py-3">Seller</th>
                                 </tr>
                             </thead>
-                            <tbody></tbody>
+                            <tbody
+                                id="report-rows"
+                                hx-get="/api/v1/reports/html"
+                                hx-trigger="load"
+                                hx-swap="innerHTML"
+                            >
+                            </tbody>
                         </table>
                     </div>
                 </div>
