@@ -1,20 +1,6 @@
 use sqlx::{Error, Pool, Postgres, query, query_scalar};
 use uuid::Uuid;
 
-/// It disconnects a user's Google account from their Safely account
-/// the exact opposite of link_google_account.
-///
-/// It updates the user's row, clearing their Google connection and returns success,
-/// with nothing meaningful inside it
-pub async fn unlink_google_account(pool: &Pool<Postgres>, user_id: Uuid) -> Result<(), Error> {
-    query("UPDATE users SET google_id = NULL WHERE id = $1")
-        .bind(user_id)
-        .execute(pool)
-        .await?;
-
-    Ok(())
-}
-
 /// When someone deletes their account, this removes everything that's genuinely,
 /// only theirs — but keeps their fraud reports and analyses around (just disconnected from their name),
 /// so deleting your account doesn't quietly weaken protection for everyone else.
@@ -59,6 +45,20 @@ pub async fn delete_user_account(pool: &Pool<Postgres>, user_id: Uuid) -> Result
         .await?;
 
     tx.commit().await?;
+
+    Ok(())
+}
+
+/// It disconnects a user's Google account from their Safely account
+/// the exact opposite of link_google_account.
+///
+/// It updates the user's row, clearing their Google connection and returns success,
+/// with nothing meaningful inside it
+pub async fn unlink_google_account(pool: &Pool<Postgres>, user_id: Uuid) -> Result<(), Error> {
+    query("UPDATE users SET google_id = NULL WHERE id = $1")
+        .bind(user_id)
+        .execute(pool)
+        .await?;
 
     Ok(())
 }

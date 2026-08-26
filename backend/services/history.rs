@@ -125,7 +125,6 @@ pub async fn get_history_detail(
     .await?;
 
     let reported = !reports.is_empty();
-
     let mut seller_response = SellersResponse::from(seller);
     seller_response.network_summary = network_summary;
     seller_response.monthly_activity = monthly_activity;

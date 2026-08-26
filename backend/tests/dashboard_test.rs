@@ -33,14 +33,13 @@ use sqlx::{query, query_scalar};
 use tower::ServiceExt;
 use uuid::Uuid;
 
+// Get History Tests
 #[tokio::test]
 async fn get_history_unauthorized() {
     let pool = test_pool().await;
-
     let headers = HeaderMap::new();
 
     let result = get_history(State(pool), headers).await;
-
     match result {
         Err(DashboardError::Unauthorized) => {}
         Err(other) => panic!("expected Unauthorized, got a different error: {:?}", other),
@@ -95,7 +94,6 @@ async fn get_history_database_error() {
     pool.close().await;
 
     let result = get_history(State(pool), headers).await;
-
     match result {
         Err(DashboardError::InternalError(_)) => {}
         Err(other) => panic!("expected InternalError, got a different error: {:?}", other),
@@ -103,6 +101,7 @@ async fn get_history_database_error() {
     }
 }
 
+// Get User History Tests
 #[tokio::test]
 async fn get_user_history_empty_when_no_history() {
     let pool = test_pool().await;
@@ -167,7 +166,6 @@ async fn get_user_history_deduplicates_same_listing() {
     let pool = test_pool().await;
     let email = "get_user_history_dedup_test@example.com";
     let (user, _) = create_test_user(&pool, email).await;
-
     cleanup_test_seller_chain(&pool, "olx", "history_dedup_001").await;
 
     let (listing_id, _seller_id) = insert_test_history_chain(
@@ -179,9 +177,6 @@ async fn get_user_history_deduplicates_same_listing() {
     )
     .await;
 
-    // A SECOND, genuinely later analysis of the SAME listing - a
-    // deliberately different risk_score (99) lets us confirm exactly
-    // which row survives deduplication.
     query(
         "INSERT INTO analysis (id, listing_id, risk_score, risk_level, signals, user_id, created_at)
          VALUES ($1, $2, $3, 'low'::risk_level_type, $4, $5, NOW() + INTERVAL '1 second')",
@@ -222,7 +217,6 @@ async fn get_user_history_reported_scoped_per_listing() {
     let platform = "olx";
     let platform_id = "history_scoped_seller_001";
 
-    // Clean up any leftovers - fraud_reports first, then the usual chain.
     query("DELETE FROM fraud_reports WHERE seller_id IN (SELECT id FROM sellers WHERE platform = $1 AND platform_id = $2)")
         .bind(platform)
         .bind(platform_id)
@@ -291,7 +285,6 @@ async fn get_user_history_reported_scoped_per_listing() {
         .expect("expected to create the analysis");
     }
 
-    // A fraud report, filed by THIS user, against ONLY the first listing.
     query(
         "INSERT INTO fraud_reports (id, seller_id, user_id, platform, platform_id, report_type, listing_url, reported_at)
          VALUES ($1, $2, $3, $4, $5, $6::report_types, $7, NOW())",
@@ -359,6 +352,7 @@ async fn get_user_history_orders_newest_first() {
         "Oldest Listing",
     )
     .await;
+
     let (listing_middle, _) = insert_test_history_chain(
         &pool,
         user.id,
@@ -367,6 +361,7 @@ async fn get_user_history_orders_newest_first() {
         "Middle Listing",
     )
     .await;
+
     let (listing_newest, _) = insert_test_history_chain(
         &pool,
         user.id,
@@ -422,6 +417,7 @@ async fn get_user_history_database_error() {
     );
 }
 
+// Get History Item Tests
 #[tokio::test]
 async fn get_history_item_unauthorized() {
     let pool = test_pool().await;
@@ -520,7 +516,6 @@ async fn get_history_item_not_found_belongs_to_another_user() {
         .expect("expected to find the real analysis id");
 
     let result = get_history_item(State(pool.clone()), headers_b, Path(analysis_id)).await;
-
     match result {
         Err(DashboardError::NotFound(_)) => {}
         Err(other) => panic!("expected NotFound, got a different error: {:?}", other),
@@ -534,6 +529,7 @@ async fn get_history_item_not_found_belongs_to_another_user() {
     cleanup_test_user(&pool, email_b).await;
 }
 
+// Get History Detail Tests
 #[tokio::test]
 async fn get_history_detail_not_found_nonexistent() {
     let pool = test_pool().await;
@@ -726,6 +722,81 @@ async fn get_history_detail_database_error() {
     );
 }
 
+// Get Reports Tests
+#[tokio::test]
+async fn get_reports_unauthorized() {
+    let pool = test_pool().await;
+    let headers = HeaderMap::new();
+
+    let result = get_reports(State(pool), headers).await;
+    match result {
+        Err(DashboardError::Unauthorized) => {}
+        Err(other) => panic!("expected Unauthorized, got a different error: {:?}", other),
+        Ok(_) => panic!("expected an unauthenticated request to be rejected, but it succeeded"),
+    }
+}
+
+#[tokio::test]
+async fn get_reports_success() {
+    let pool = test_pool().await;
+    let email = "get_reports_success_test@example.com";
+    let (user, _) = create_test_user(&pool, email).await;
+    let headers = auth_headers_for(&pool, user.id).await;
+
+    let platform = "olx";
+    let platform_id = "get_reports_seller_001";
+
+    cleanup_test_seller_with_reports(&pool, platform, platform_id).await;
+
+    let seller_id = Uuid::now_v7();
+    query(
+        "INSERT INTO sellers (id, platform, platform_id, name, verification, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, 'unknown'::seller_verification, NOW(), NOW())",
+    )
+    .bind(seller_id)
+    .bind(platform)
+    .bind(platform_id)
+    .bind("Reported Seller")
+    .execute(&pool)
+    .await
+    .expect("expected to create the seller");
+
+    let listing_url = "https://olx.com.pk/item/get-reports-test-listing";
+    query(
+        "INSERT INTO fraud_reports (id, seller_id, user_id, platform, platform_id, report_type, listing_url, reported_at)
+         VALUES ($1, $2, $3, $4, $5, $6::report_types, $7, NOW())",
+    )
+    .bind(Uuid::now_v7())
+    .bind(seller_id)
+    .bind(user.id)
+    .bind(platform)
+    .bind(platform_id)
+    .bind("scam")
+    .bind(listing_url)
+    .execute(&pool)
+    .await
+    .expect("expected to create the fraud report");
+
+    let result = get_reports(State(pool.clone()), headers)
+        .await
+        .expect("expected the request to succeed")
+        .0;
+
+    let reports = result["reports"]
+        .as_array()
+        .expect("expected reports to be a real array");
+
+    assert_eq!(reports.len(), 1, "expected exactly one report");
+    assert_eq!(reports[0]["seller_name"], json!("Reported Seller"));
+    assert_eq!(reports[0]["platform"], json!("olx"));
+    assert_eq!(reports[0]["listing_url"], json!(listing_url));
+    assert_eq!(reports[0]["report_type"], json!("scam"));
+
+    cleanup_test_seller_with_reports(&pool, platform, platform_id).await;
+    cleanup_test_user(&pool, email).await;
+}
+
+// Get User Report Tests
 #[tokio::test]
 async fn get_user_reports_empty_when_no_reports() {
     let pool = test_pool().await;
@@ -930,79 +1001,7 @@ async fn get_user_reports_database_error() {
     );
 }
 
-#[tokio::test]
-async fn get_reports_unauthorized() {
-    let pool = test_pool().await;
-    let headers = HeaderMap::new();
-
-    let result = get_reports(State(pool), headers).await;
-    match result {
-        Err(DashboardError::Unauthorized) => {}
-        Err(other) => panic!("expected Unauthorized, got a different error: {:?}", other),
-        Ok(_) => panic!("expected an unauthenticated request to be rejected, but it succeeded"),
-    }
-}
-
-#[tokio::test]
-async fn get_reports_success() {
-    let pool = test_pool().await;
-    let email = "get_reports_success_test@example.com";
-    let (user, _) = create_test_user(&pool, email).await;
-    let headers = auth_headers_for(&pool, user.id).await;
-
-    let platform = "olx";
-    let platform_id = "get_reports_seller_001";
-
-    cleanup_test_seller_with_reports(&pool, platform, platform_id).await;
-
-    let seller_id = Uuid::now_v7();
-    query(
-        "INSERT INTO sellers (id, platform, platform_id, name, verification, created_at, updated_at)
-         VALUES ($1, $2, $3, $4, 'unknown'::seller_verification, NOW(), NOW())",
-    )
-    .bind(seller_id)
-    .bind(platform)
-    .bind(platform_id)
-    .bind("Reported Seller")
-    .execute(&pool)
-    .await
-    .expect("expected to create the seller");
-
-    let listing_url = "https://olx.com.pk/item/get-reports-test-listing";
-    query(
-        "INSERT INTO fraud_reports (id, seller_id, user_id, platform, platform_id, report_type, listing_url, reported_at)
-         VALUES ($1, $2, $3, $4, $5, $6::report_types, $7, NOW())",
-    )
-    .bind(Uuid::now_v7())
-    .bind(seller_id)
-    .bind(user.id)
-    .bind(platform)
-    .bind(platform_id)
-    .bind("scam")
-    .bind(listing_url)
-    .execute(&pool)
-    .await
-    .expect("expected to create the fraud report");
-
-    let result = get_reports(State(pool.clone()), headers)
-        .await
-        .expect("expected the request to succeed")
-        .0;
-
-    let reports = result["reports"]
-        .as_array()
-        .expect("expected reports to be a real array");
-
-    assert_eq!(reports.len(), 1, "expected exactly one report");
-    assert_eq!(reports[0]["seller_name"], json!("Reported Seller"));
-    assert_eq!(reports[0]["platform"], json!("olx"));
-    assert_eq!(reports[0]["listing_url"], json!(listing_url));
-    assert_eq!(reports[0]["report_type"], json!("scam"));
-
-    cleanup_test_seller_with_reports(&pool, platform, platform_id).await;
-    cleanup_test_user(&pool, email).await;
-}
-
+// Get Me Tests
 #[tokio::test]
 async fn get_me_unauthorized() {
     let pool = test_pool().await;
@@ -1049,8 +1048,6 @@ async fn get_me_success_fallback_google_linked() {
     let (user, _) = create_test_user(&pool, email).await;
     let headers = auth_headers_for(&pool, user.id).await;
 
-    // Genuinely link a Google ID directly, WITHOUT ever calling
-    // set_login_method - this leaves last_login_method NULL.
     query("UPDATE users SET google_id = $1 WHERE id = $2")
         .bind("fallback_test_google_id_001")
         .bind(user.id)
@@ -1102,8 +1099,6 @@ async fn get_me_success_has_avatar() {
     let (user, _) = create_test_user(&pool, email).await;
     let headers = auth_headers_for(&pool, user.id).await;
 
-    // Genuinely real bytes stored - the actual content doesn't matter
-    // here, only that avatar_data is NOT NULL.
     let fake_image_bytes: Vec<u8> = vec![0xFF, 0xD8, 0xFF, 0xE0];
     query("UPDATE users SET avatar_data = $1, avatar_content_type = $2 WHERE id = $3")
         .bind(&fake_image_bytes)
@@ -1127,9 +1122,6 @@ async fn get_me_success_has_avatar() {
     cleanup_test_user(&pool, email).await;
 }
 
-// Deliberately no setup here - a brand-new test user genuinely has
-// no avatar_data set at all, which is exactly what this scenario
-// needs.
 #[tokio::test]
 async fn get_me_success_no_avatar() {
     let pool = test_pool().await;
@@ -1151,6 +1143,7 @@ async fn get_me_success_no_avatar() {
     cleanup_test_user(&pool, email).await;
 }
 
+// Update Me Tests
 #[tokio::test]
 async fn update_me_unauthorized() {
     let pool = test_pool().await;
@@ -1161,7 +1154,6 @@ async fn update_me_unauthorized() {
     };
 
     let result = update_me(State(pool), headers, Json(body)).await;
-
     match result {
         Err(DashboardError::Unauthorized) => {}
         Err(other) => panic!("expected Unauthorized, got a different error: {:?}", other),
@@ -1181,7 +1173,6 @@ async fn update_me_bad_request_empty_name() {
     };
 
     let result = update_me(State(pool.clone()), headers, Json(body)).await;
-
     match result {
         Err(DashboardError::BadRequest(_)) => {}
         Err(other) => panic!("expected BadRequest, got a different error: {:?}", other),
@@ -1259,7 +1250,6 @@ async fn update_me_success_exactly_100_characters() {
     let headers = auth_headers_for(&pool, user.id).await;
 
     let exactly_100_name = "a".repeat(100);
-
     let body = UpdateMeRequest {
         name: exactly_100_name.clone(),
     };
@@ -1278,7 +1268,6 @@ async fn update_me_database_error() {
     let pool = test_pool().await;
     let email = "update_me_db_error_test@example.com";
     let (user, _) = create_test_user(&pool, email).await;
-
     let headers = auth_headers_for(&pool, user.id).await;
 
     cleanup_test_user(&pool, email).await;
@@ -1296,6 +1285,7 @@ async fn update_me_database_error() {
     }
 }
 
+// Delete Account Tests
 #[tokio::test]
 async fn delete_account_unauthorized() {
     let pool = test_pool().await;
@@ -1439,7 +1429,6 @@ async fn delete_account_database_error() {
     pool.close().await;
 
     let result = delete_account(State(pool), headers).await;
-
     match result {
         Err(DashboardError::InternalError(_)) => {}
         Err(other) => panic!("expected InternalError, got a different error: {:?}", other),
@@ -1447,6 +1436,7 @@ async fn delete_account_database_error() {
     }
 }
 
+// Get User Account Tests
 #[tokio::test]
 async fn delete_user_account_success_verifies_every_effect() {
     let pool = test_pool().await;
@@ -1592,12 +1582,11 @@ async fn delete_user_account_database_error() {
     );
 }
 
+// Get Avatart Tests
 #[tokio::test]
 async fn get_avatar_unauthorized() {
     let pool = test_pool().await;
-
     let headers = HeaderMap::new();
-
     let result = get_avatar(State(pool), headers).await;
 
     match result {
@@ -1632,8 +1621,6 @@ async fn get_avatar_success() {
     let (user, _) = create_test_user(&pool, email).await;
     let headers = auth_headers_for(&pool, user.id).await;
 
-    // Real, deliberately arbitrary bytes - matching a genuine JPEG file
-    // signature, though the exact content doesn't matter here.
     let real_bytes: Vec<u8> = vec![0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10];
     query("UPDATE users SET avatar_data = $1, avatar_content_type = $2 WHERE id = $3")
         .bind(&real_bytes)
@@ -1690,6 +1677,7 @@ async fn get_avatar_database_error() {
     }
 }
 
+// Upload Avatar Tests
 #[tokio::test]
 async fn upload_avatar_unauthorized() {
     let pool = test_pool().await;
@@ -1782,9 +1770,6 @@ async fn upload_avatar_bad_request_file_too_large() {
         .expect("expected to create a real session");
 
     let app = dashboard_routes().with_state(pool.clone());
-
-    // Genuinely over 2MB - deliberately 2MB + 1 byte, to test right at
-    // the actual boundary, not just "obviously huge."
     let oversized_bytes = vec![0u8; (2 * 1024 * 1024) + 1];
 
     let boundary = "----test_boundary_too_large";
@@ -1832,9 +1817,6 @@ async fn upload_avatar_bad_request_unsupported_type() {
         .expect("expected to create a real session");
 
     let app = dashboard_routes().with_state(pool.clone());
-
-    // A genuinely real, small file - but with an unsupported content
-    // type, not PNG/JPEG/WEBP.
     let fake_bytes: &[u8] = b"just some plain text content";
 
     let boundary = "----test_boundary_wrong_type";
@@ -1940,6 +1922,7 @@ async fn upload_avatar_success() {
     cleanup_test_user(&pool, email).await;
 }
 
+// Disconnect Google Tests
 #[tokio::test]
 async fn disconnect_google_unauthorized() {
     let pool = test_pool().await;
@@ -2022,6 +2005,7 @@ async fn disconnect_google_success_even_without_google_linked() {
         .fetch_one(&pool)
         .await
         .expect("expected the query to succeed");
+
     assert!(
         google_id.is_none(),
         "expected google_id to remain None, genuinely unaffected either way"
@@ -2048,6 +2032,7 @@ async fn disconnect_google_database_error() {
     }
 }
 
+// Unlink Google Account Tests
 #[tokio::test]
 async fn unlink_google_account_success_clears_existing_link() {
     let pool = test_pool().await;
@@ -2085,8 +2070,6 @@ async fn unlink_google_account_success_even_without_a_link() {
     let email = "unlink_google_no_link_test@example.com";
     let (user, _) = create_test_user(&pool, email).await;
 
-    // Deliberately no setup - google_id is genuinely NULL from the
-    // start, since this account was never connected to Google.
     unlink_google_account(&pool, user.id)
         .await
         .expect("expected the unlink to succeed even without a prior link");
