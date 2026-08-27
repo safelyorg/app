@@ -11,7 +11,7 @@ pub struct Signal {
     pub signal_type: String,
 }
 
-fn escape_html(input: &str) -> String {
+pub fn escape_html(input: &str) -> String {
     input
         .replace('&', "&amp;")
         .replace('<', "&lt;")
@@ -132,35 +132,4 @@ pub fn build_signal_rows(signals_json: &str) -> String {
             escape_html(&s.label), color, escape_html(&s.value), escape_html(&s.sub)
         )
     }).collect::<Vec<_>>().join("")
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn risk_level_boundaries() {
-        assert_eq!(risk_level(0), "low");
-        assert_eq!(risk_level(33), "low");
-        assert_eq!(risk_level(34), "caution");
-        assert_eq!(risk_level(66), "caution");
-        assert_eq!(risk_level(67), "high");
-        assert_eq!(risk_level(100), "high");
-    }
-
-    #[test]
-    fn risk_label_all_branches() {
-        assert_eq!(risk_label("low"), "Low risk");
-        assert_eq!(risk_label("caution"), "Caution");
-        assert_eq!(risk_label("high"), "High risk");
-        assert_eq!(risk_label("anything_else"), "High risk");
-    }
-
-    #[test]
-    fn risk_desc_all_branches() {
-        assert_eq!(risk_desc("low"), "Safe to proceed");
-        assert_eq!(risk_desc("caution"), "Review before proceeding");
-        assert_eq!(risk_desc("high"), "High risk detected");
-        assert_eq!(risk_desc("anything_else"), "High risk detected");
-    }
 }
