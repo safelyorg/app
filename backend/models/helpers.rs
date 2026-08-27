@@ -12,12 +12,12 @@ pub fn format_account_age(join_date: NaiveDate) -> String {
     };
 
     match (final_years, final_months) {
+        (0, 0) => "This month".to_string(),
         (0, m) => format!("{} months", m),
         (y, 0) => format!("{} years", y),
         (y, m) => format!("{} years {} months", y, m),
     }
 }
-
 pub fn format_last_active(last_seen: DateTime<Utc>) -> String {
     let now = Utc::now();
     let diff = now.signed_duration_since(last_seen);

@@ -26,6 +26,7 @@ interface ReportSubmission {
     await wasm.default();
   } catch (e) {
     console.warn("Safely: WASM blocked, using JS fallback");
+    console.error("Safely: real WASM loading error was:", e);
     wasm = {
       default: async () => {},
       risk_level: (s: number): string => (s <= 33 ? "low" : s <= 66 ? "caution" : "high"),
@@ -38,24 +39,32 @@ interface ReportSubmission {
             ? "Review before proceeding"
             : "High risk detected",
       build_activity_bars: (a: Uint8Array): string => {
-        const max = Math.max(...Array.from(a)) || 1;
-        return Array.from(a)
+        const values = Array.from(a);
+        const rawMax = values.length > 0 ? Math.max(...values) : 1;
+        const max = rawMax === 0 ? 1 : rawMax;
+
+        return values
           .map((v) => {
-            const heightPx = Math.max(3, Math.round((v / max) * 44));
+            const pct = Math.round((v / max) * 100);
+            const heightPx = Math.max(2, Math.round((pct / 100) * 44));
+            const opacity = v === 0 ? 0.15 : 0.3 + (pct / 100) * 0.7;
+
             return (
-              '<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;position:relative;">' +
-              '<span style="font-size:9px;color:#f2f1ed;font-weight:700;position:absolute;top:0;">' +
-              v +
-              "</span>" +
-              '<div style="width:100%;background:rgba(111,179,239,0.7);border-radius:4px 4px 0 0;height:' +
+              '<div style="flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;height:100%;position:relative;">' +
+              '<div class="safely-activity-bar" style="height:' +
               heightPx +
-              'px"></div></div>'
+              "px;opacity:" +
+              opacity.toFixed(2) +
+              ';width:100%;"></div>' +
+              '<span style="position:absolute;top:6px;font-size:9px;color:#ffffff;line-height:1;">' +
+              v +
+              "</span></div>"
             );
           })
           .join("");
       },
       verification_badge: (s: string): string =>
-        '<span class="safely-verified-badge">' + s + "</span>",
+        '<span class="safely-verified-badge">' + escapeHtml(s) + "</span>",
     };
   }
 

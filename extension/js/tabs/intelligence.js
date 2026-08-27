@@ -1,47 +1,15 @@
 "use strict";
-var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    var desc = Object.getOwnPropertyDescriptor(m, k);
-    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
-      desc = { enumerable: true, get: function() { return m[k]; } };
-    }
-    Object.defineProperty(o, k2, desc);
-}) : (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    o[k2] = m[k];
-}));
-var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
-    Object.defineProperty(o, "default", { enumerable: true, value: v });
-}) : function(o, v) {
-    o["default"] = v;
-});
-var __importStar = (this && this.__importStar) || (function () {
-    var ownKeys = function(o) {
-        ownKeys = Object.getOwnPropertyNames || function (o) {
-            var ar = [];
-            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
-            return ar;
-        };
-        return ownKeys(o);
-    };
-    return function (mod) {
-        if (mod && mod.__esModule) return mod;
-        var result = {};
-        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
-        __setModuleDefault(result, mod);
-        return result;
-    };
-})();
 (async function () {
     "use strict";
     let wasm;
     try {
         const wasmUrl = chrome.runtime.getURL("pkg/wasm.js");
-        wasm = await Promise.resolve(`${wasmUrl}`).then(s => __importStar(require(s)));
+        wasm = await import(wasmUrl);
         await wasm.default();
     }
     catch (e) {
         console.warn("Safely: WASM blocked, using JS fallback");
+        console.error("Safely: real WASM loading error was:", e);
         wasm = {
             default: async () => { },
             analyze_signals: (j) => {
@@ -62,7 +30,7 @@ var __importStar = (this && this.__importStar) || (function () {
                 const COLORS = {
                     good: "#35d0a6",
                     caution: "#f2b84c",
-                    info: "#8e8e93",
+                    info: "#6fb3ef",
                 };
                 return signals
                     .map((s) => {
@@ -70,15 +38,15 @@ var __importStar = (this && this.__importStar) || (function () {
                     return ('<div class="safely-check-card">' +
                         '<div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;">' +
                         '<div class="safely-check-title">' +
-                        s.label +
+                        escapeHtml(s.label) +
                         "</div>" +
                         '<div style="font-weight:700;white-space:nowrap;font-size:13px;color:' +
                         color +
                         ';">' +
-                        s.value +
+                        escapeHtml(s.value) +
                         "</div></div>" +
                         '<div class="safely-check-body">' +
-                        (s.sub || "") +
+                        escapeHtml(s.sub || "") +
                         "</div></div>");
                 })
                     .join("");

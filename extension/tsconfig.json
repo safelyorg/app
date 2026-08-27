@@ -2,7 +2,7 @@
   "compilerOptions": {
     "target": "ES2020",
     "lib": ["ES2020", "DOM"],
-    "module": "commonjs",
+    "module": "es2020",
     "outDir": "js",
     "rootDir": "ts",
     "strict": true,

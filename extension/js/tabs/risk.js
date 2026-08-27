@@ -1,47 +1,15 @@
 "use strict";
-var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    var desc = Object.getOwnPropertyDescriptor(m, k);
-    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
-      desc = { enumerable: true, get: function() { return m[k]; } };
-    }
-    Object.defineProperty(o, k2, desc);
-}) : (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    o[k2] = m[k];
-}));
-var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
-    Object.defineProperty(o, "default", { enumerable: true, value: v });
-}) : function(o, v) {
-    o["default"] = v;
-});
-var __importStar = (this && this.__importStar) || (function () {
-    var ownKeys = function(o) {
-        ownKeys = Object.getOwnPropertyNames || function (o) {
-            var ar = [];
-            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
-            return ar;
-        };
-        return ownKeys(o);
-    };
-    return function (mod) {
-        if (mod && mod.__esModule) return mod;
-        var result = {};
-        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
-        __setModuleDefault(result, mod);
-        return result;
-    };
-})();
 (async function () {
     "use strict";
     let wasm;
     try {
         const wasmUrl = chrome.runtime.getURL("pkg/wasm.js");
-        wasm = await Promise.resolve(`${wasmUrl}`).then(s => __importStar(require(s)));
+        wasm = await import(wasmUrl);
         await wasm.default();
     }
     catch (e) {
         console.warn("Safely: WASM blocked, using JS fallback");
+        console.error("Safely: real WASM loading error was:", e);
         wasm = {
             default: async () => { },
             risk_level: (s) => (s <= 33 ? "low" : s <= 66 ? "caution" : "high"),
@@ -52,21 +20,27 @@ var __importStar = (this && this.__importStar) || (function () {
                     ? "Review before proceeding"
                     : "High risk detected",
             build_activity_bars: (a) => {
-                const max = Math.max(...Array.from(a)) || 1;
-                return Array.from(a)
+                const values = Array.from(a);
+                const rawMax = values.length > 0 ? Math.max(...values) : 1;
+                const max = rawMax === 0 ? 1 : rawMax;
+                return values
                     .map((v) => {
-                    const heightPx = Math.max(3, Math.round((v / max) * 44));
-                    return ('<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;position:relative;">' +
-                        '<span style="font-size:9px;color:#f2f1ed;font-weight:700;position:absolute;top:0;">' +
-                        v +
-                        "</span>" +
-                        '<div style="width:100%;background:rgba(111,179,239,0.7);border-radius:4px 4px 0 0;height:' +
+                    const pct = Math.round((v / max) * 100);
+                    const heightPx = Math.max(2, Math.round((pct / 100) * 44));
+                    const opacity = v === 0 ? 0.15 : 0.3 + (pct / 100) * 0.7;
+                    return ('<div style="flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;height:100%;position:relative;">' +
+                        '<div class="safely-activity-bar" style="height:' +
                         heightPx +
-                        'px"></div></div>');
+                        "px;opacity:" +
+                        opacity.toFixed(2) +
+                        ';width:100%;"></div>' +
+                        '<span style="position:absolute;top:6px;font-size:9px;color:#ffffff;line-height:1;">' +
+                        v +
+                        "</span></div>");
                 })
                     .join("");
             },
-            verification_badge: (s) => '<span class="safely-verified-badge">' + s + "</span>",
+            verification_badge: (s) => '<span class="safely-verified-badge">' + escapeHtml(s) + "</span>",
         };
     }
     if (!window.__safelyAddTab)

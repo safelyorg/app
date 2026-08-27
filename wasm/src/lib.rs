@@ -1,6 +1,15 @@
 use serde::Deserialize;
 use wasm_bindgen::prelude::*;
 
+fn escape_html(input: &str) -> String {
+    input
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&#39;")
+}
+
 #[derive(Deserialize)]
 pub struct Signal {
     pub label: String,
@@ -115,12 +124,12 @@ pub fn build_signal_rows(signals_json: &str) -> String {
         let color = match s.signal_type.as_str() {
             "good" => "#35d0a6",
             "caution" => "#f2b84c",
-            "info" => "#8e8e93",
+            "info" => "#6fb3ef",
             _ => "#ff5d5d",
         };
         format!(
             r#"<div class="safely-check-card"><div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;"><div class="safely-check-title">{}</div><div style="font-weight:700;white-space:nowrap;font-size:13px;color:{};">{}</div></div><div class="safely-check-body">{}</div></div>"#,
-            s.label, color, s.value, s.sub
+            escape_html(&s.label), color, escape_html(&s.value), escape_html(&s.sub)
         )
     }).collect::<Vec<_>>().join("")
 }

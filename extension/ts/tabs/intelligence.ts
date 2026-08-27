@@ -27,6 +27,7 @@ interface SignalAnalysisResult {
     await wasm.default();
   } catch (e) {
     console.warn("Safely: WASM blocked, using JS fallback");
+    console.error("Safely: real WASM loading error was:", e);
     wasm = {
       default: async () => {},
       analyze_signals: (j: string): string => {
@@ -48,7 +49,7 @@ interface SignalAnalysisResult {
         const COLORS: Record<string, string> = {
           good: "#35d0a6",
           caution: "#f2b84c",
-          info: "#8e8e93",
+          info: "#6fb3ef",
         };
         return signals
           .map((s) => {
@@ -57,15 +58,15 @@ interface SignalAnalysisResult {
               '<div class="safely-check-card">' +
               '<div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;">' +
               '<div class="safely-check-title">' +
-              s.label +
+              escapeHtml(s.label) +
               "</div>" +
               '<div style="font-weight:700;white-space:nowrap;font-size:13px;color:' +
               color +
               ';">' +
-              s.value +
+              escapeHtml(s.value) +
               "</div></div>" +
               '<div class="safely-check-body">' +
-              (s.sub || "") +
+              escapeHtml(s.sub || "") +
               "</div></div>"
             );
           })
