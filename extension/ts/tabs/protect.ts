@@ -1,16 +1,17 @@
-"use strict";
 (function () {
-    "use strict";
-    // tabs/protect.js — paused for now, tied to the not-yet-built escrow feature.
+  "use strict";
+  // tabs/protect.js — paused for now, tied to the not-yet-built escrow feature.
 })();
 // (function () {
 //   "use strict";
 //   if (!window.__safelyAddTab) return;
+
 //   var root = window.__safelyRoot;
 //   var protectSubTab = "orders";
 //   var formStep = 1;
 //   var sellerStep = 1;
 //   var sellerMethod = "handle";
+
 //   var sellerTabHTML =
 //     '<div class="step-indicator-row" id="safely-sel-step-row">' +
 //     '<div class="safely-sel-step safely-sel-active" data-sstep="1"><div class="safely-sel-step-dot safely-sel-dot-active" id="safely-sel-dot-1">1</div>Lookup</div>' +
@@ -23,6 +24,7 @@
 //     '<div class="sub" id="safely-sel-order"><button type="button" class="back-link" id="safely-sel-back-lookup">\u2190 Back to Lookup</button><div class="safely-order-num">COV-A3BX-7KPQ</div><div class="card"><div class="safely-product-img-placeholder"><svg width="36" height="36" fill="none" stroke="#636366" stroke-width="1.2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg><span class="safely-pill-status safely-s-paid">Paid</span></div><div class="card-inner"><div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px"><div><h3 style="font-size:17px;font-weight:700;color:var(--text);margin:0">iPhone 15 Pro</h3><p class="mono" style="font-size:11px;color:#a0a0a0;margin:4px 0 0">https://olx.com/ad/123456</p></div></div><div class="brow"><span style="color:#a0a0a0">Product Amount</span><span class="mono">PKR 250,000</span></div><div class="brow"><span style="color:#a0a0a0">Delivery Charges</span><span class="mono">PKR 500</span></div><div class="brow brow-total"><span>You Receive</span><span class="mono">PKR 250,500</span></div></div></div><div class="card"><div class="card-inner"><div class="section-label" style="margin-bottom:12px">Buyer Payment Proof</div><div class="safely-proof-row"><span class="safely-proof-key">Buyer Name</span><span class="safely-proof-val">Ahmed Khan</span></div><div class="safely-proof-row"><span class="safely-proof-key">Method</span><span class="safely-proof-val">JazzCash</span></div><div class="safely-proof-row"><span class="safely-proof-key">Transaction ID</span><span class="safely-proof-val mono" style="font-size:12px">TXN-987654321</span></div><div class="safely-proof-row"><span class="safely-proof-key">Buyer Phone</span><span class="safely-proof-val mono">+92 300 1234567</span></div><div class="safely-proof-row"><span class="safely-proof-key">Delivery Address</span><span class="safely-proof-val" style="font-size:12px">House 12, G-9/2, Islamabad</span></div></div></div><div class="banner banner-blue">Buyer has submitted payment. Review the proof above and accept or reject the order.</div><div class="safely-seller-actions"><button type="button" class="btn btn-ghost" id="safely-sel-reject">Reject</button><button type="button" class="btn btn-black" id="safely-sel-accept">Accept Order</button></div></div>' +
 //     '<div class="sub" id="safely-sel-ship"><button type="button" class="back-link" id="safely-sel-back-order">\u2190 Back to Order</button><div><h3 class="safely-ship-header-title">Mark as Shipped</h3><p class="safely-ship-header-sub">COV-A3BX-7KPQ \u00b7 iPhone 15 Pro</p></div><div class="banner banner-green">Payout of <strong class="mono">PKR 250,500</strong> will be sent to your Easypaisa account ending in \u00b7\u00b7\u00b77890 after delivery is confirmed.</div><div class="card"><div class="card-inner" style="display:flex;flex-direction:column;gap:12px"><div><label class="field-label">Tracking ID *</label><input type="text" placeholder="e.g. TCS-123456789" class="field"/></div><div><label class="field-label">Courier Service</label><select class="field"><option>TCS</option><option>Leopards</option><option>M&P</option><option>DHL</option><option>FedEx</option><option>By Hand</option></select></div><div><label class="field-label">Handover Video (recommended)</label><label class="upload-zone" style="height:90px"><svg width="22" height="22" fill="none" stroke="#636366" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg><span style="font-size:12px;color:#636366">Upload handover video \u00b7 max 50MB</span><input type="file" accept="video/*"/></label></div></div></div><div class="card" style="overflow:hidden"><div class="card-inner" style="display:flex;flex-direction:column;gap:16px"><div><div class="section-label" style="margin-bottom:5px">Delivery Confirmation QR</div><p class="safely-qr-desc">Print this QR and seal it on the parcel. The buyer scans it on delivery to instantly confirm receipt and release your payout.</p></div><div class="safely-qr-section"><div class="safely-qr-box"><svg width="90" height="90" fill="none" stroke="#000000" stroke-width="1.5" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="9" y="9" width="6" height="6" rx="0.5"/></svg></div><div style="text-align:center"><div class="safely-qr-order-id">COV-A3BX-7KPQ</div><div class="safely-qr-hint">Scan to confirm delivery \u00b7 safely.sh/verify</div></div></div><div class="safely-qr-actions"><button type="button" class="btn btn-black" style="font-size:13px;padding:11px 16px"><svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>Download</button><button type="button" class="btn btn-ghost" style="font-size:13px;padding:11px 16px"><svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/></svg>Print</button></div><p class="safely-qr-footer">Affix to the sealed flap of the parcel \u00b7 Do not cover with tape</p></div></div><button type="button" class="btn btn-black" id="safely-sel-confirm-ship"><svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>Confirm Shipped</button></div>' +
 //     '<div class="sub" id="safely-sel-shipped"><div class="safely-order-num">COV-A3BX-7KPQ</div><div class="card"><div class="safely-product-img-placeholder"><svg width="36" height="36" fill="none" stroke="#636366" stroke-width="1.2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg><span class="safely-pill-status safely-s-shipped" style="font-size:10px">Shipped</span></div><div class="card-inner"><h3 style="font-size:17px;font-weight:700;color:var(--text);margin:0 0 14px">iPhone 15 Pro</h3><div class="brow"><span style="color:#a0a0a0">Product Price</span><span class="mono">PKR 250,000</span></div><div class="brow"><span style="color:#a0a0a0">Delivery Charges</span><span class="mono">PKR 500</span></div><div class="brow brow-total"><span>You Receive</span><span class="mono">PKR 250,500</span></div></div></div><div class="card"><div class="card-inner"><div class="section-label" style="margin-bottom:12px">Shipment Details</div><div class="safely-proof-row"><span class="safely-proof-key">Tracking ID</span><span class="safely-proof-val mono" style="font-size:12px">TCS-123456789</span></div><div class="safely-proof-row"><span class="safely-proof-key">Courier</span><span class="safely-proof-val">TCS</span></div><div class="safely-proof-row"><span class="safely-proof-key">Shipped</span><span class="safely-proof-val mono">May 28 \u00b7 3:45 PM</span></div></div></div><div class="safely-waiting-card"><div class="safely-waiting-icon"><svg width="22" height="22" fill="none" stroke="#a0a0a0" stroke-width="1.8" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg></div><div><div class="safely-waiting-title">Waiting for Buyer</div><p class="safely-waiting-desc">The buyer needs to confirm delivery before<br/>your payout of <strong style="color:#f2f1ed;font-family:var(--mono)">PKR 250,500</strong> is released.</p></div><div class="safely-payout-row"><span style="font-size:12px;color:#a0a0a0">Payout to</span><span style="font-size:12px;font-weight:600;color:var(--text)">Easypaisa \u00b7 \u00b7\u00b77890</span></div></div></div>';
+
 //   var protectTabHTML =
 //     '<div class="safely-sub-tabs" id="safely-protect-subs">' +
 //     '<button class="safely-sub-tab safely-active" data-sub="orders">Orders</button>' +
@@ -38,6 +40,7 @@
 //     '<div id="safely-sub-seller" style="display:none;">' +
 //     sellerTabHTML +
 //     "</div>";
+
 //   window.__safelyAddTab(
 //     "protect",
 //     "Protect",
@@ -68,6 +71,7 @@
 //             switchProtectSub(btn.dataset.sub);
 //           });
 //         });
+
 //       function updateStepIndicator(step) {
 //         for (var i = 1; i <= 3; i++) {
 //           var dot = document.getElementById("safely-dot-" + i);
@@ -125,6 +129,7 @@
 //             if (!isNaN(s) && s <= formStep) goStep(s);
 //           });
 //         });
+
 //       var pillHandle = document.getElementById("safely-pill-handle");
 //       var pillWhatsapp = document.getElementById("safely-pill-whatsapp");
 //       var blockHandle = document.getElementById("safely-block-handle");
@@ -153,6 +158,7 @@
 //           e.stopPropagation();
 //           switchSellerMethod("whatsapp");
 //         });
+
 //       var selViews = [
 //         "safely-sel-lookup",
 //         "safely-sel-order",
@@ -237,6 +243,7 @@
 //             if (!isNaN(s) && s <= sellerStep) goSellerStep(s);
 //           });
 //         });
+
 //       if (window.__safelyPreventInputBubbling)
 //         window.__safelyPreventInputBubbling();
 //     },

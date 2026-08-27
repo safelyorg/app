@@ -1,0 +1,39 @@
+// auth-bridge.js
+//
+// This content script is special: it does NOT run on OLX or Facebook. It
+// only runs on Safely's own website (the dashboard/landing page). Its one
+// job is to peek at this page's localStorage, grab the login token if one
+// exists, and hand it to the extension's background script.
+//
+// Why this is needed: content scripts on OLX cannot see localStorage that
+// belongs to a completely different website (localhost:3000). Storage is
+// locked to whichever origin created it. This script is the only piece of
+// the extension that is ever "inside" the website's own origin, so it is
+// the only piece that can legally read this value and pass it along.
+(function () {
+  "use strict";
+
+  const STORAGE_KEY = "safely_session_token";
+  let lastSent: string | null | undefined = undefined; // undefined so the very first check always sends, even if the token is null
+
+  function relayToken(): void {
+    let token: string | null = null;
+    try {
+      token = window.localStorage.getItem(STORAGE_KEY);
+    } catch (e) {
+      // localStorage can throw in rare restricted contexts (e.g. some
+      // privacy modes) - fail quietly rather than break the page.
+    }
+
+    if (token === lastSent) return;
+    lastSent = token;
+
+    chrome.runtime.sendMessage({
+      type: "SAFELY_SESSION_UPDATE",
+      token, // null here means "logged out" - the background script clears its copy too
+    });
+  }
+
+  relayToken();
+  setInterval(relayToken, 2000);
+})();
