@@ -347,6 +347,7 @@
         const seconds = totalSeconds % 60;
         return minutes + ":" + (seconds < 10 ? "0" : "") + seconds;
     }
+    globalThis.__safelyFormatCountdown = formatCountdown;
     function startRateLimitCountdown(seconds) {
         if (rateLimitCountdownTimer)
             clearInterval(rateLimitCountdownTimer);

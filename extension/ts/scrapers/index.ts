@@ -191,4 +191,8 @@ interface HighlightDiffResult {
   (window as any).__safelyScrapers.detectPlatform = detectPlatform;
   (window as any).__safelyScrapers.isListingPage = isListingPage;
   (window as any).__safelyScrapers.checkDomain = checkDomain;
+  (window as any).__safelyScrapers.normalize = normalize;
+  (window as any).__safelyScrapers.editDistance = editDistance;
+  (window as any).__safelyScrapers.highlightDiff = highlightDiff;
+  (window as any).__safelyScrapers.isGenuineDomain = isGenuineDomain;
 })();

@@ -379,6 +379,8 @@ interface PendingTabRegistration {
     return minutes + ":" + (seconds < 10 ? "0" : "") + seconds;
   }
 
+  (globalThis as any).__safelyFormatCountdown = formatCountdown;
+
   function startRateLimitCountdown(seconds: number): void {
     if (rateLimitCountdownTimer) clearInterval(rateLimitCountdownTimer);
     let remaining = seconds;

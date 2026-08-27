@@ -157,4 +157,8 @@
     window.__safelyScrapers.detectPlatform = detectPlatform;
     window.__safelyScrapers.isListingPage = isListingPage;
     window.__safelyScrapers.checkDomain = checkDomain;
+    window.__safelyScrapers.normalize = normalize;
+    window.__safelyScrapers.editDistance = editDistance;
+    window.__safelyScrapers.highlightDiff = highlightDiff;
+    window.__safelyScrapers.isGenuineDomain = isGenuineDomain;
 })();

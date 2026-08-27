@@ -14,24 +14,25 @@
 (function () {
     "use strict";
     const STORAGE_KEY = "safely_session_token";
-    let lastSent = undefined; // undefined so the very first check always sends, even if the token is null
+    let lastSent = undefined;
     function relayToken() {
         let token = null;
         try {
             token = window.localStorage.getItem(STORAGE_KEY);
         }
-        catch (e) {
-            // localStorage can throw in rare restricted contexts (e.g. some
-            // privacy modes) - fail quietly rather than break the page.
-        }
+        catch (e) { }
         if (token === lastSent)
             return;
         lastSent = token;
         chrome.runtime.sendMessage({
             type: "SAFELY_SESSION_UPDATE",
-            token, // null here means "logged out" - the background script clears its copy too
+            token,
         });
     }
+    globalThis.__safelyRelayToken = relayToken;
+    globalThis.__safelyResetLastSent = () => {
+        lastSent = undefined;
+    };
     relayToken();
     setInterval(relayToken, 2000);
 })();

@@ -12,8 +12,6 @@ interface OlxScrapedData {
   seller_last_active: string | null;
 }
 
-// scrapers/olx.js — scrapeOLX — all OLX selectors
-// Returns normalized data object matching the standard shape
 (function () {
   "use strict";
 

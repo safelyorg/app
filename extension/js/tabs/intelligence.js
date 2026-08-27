@@ -30,7 +30,7 @@
                 const COLORS = {
                     good: "#35d0a6",
                     caution: "#f2b84c",
-                    info: "#6fb3ef",
+                    info: "#8e8e93",
                 };
                 return signals
                     .map((s) => {
@@ -38,15 +38,15 @@
                     return ('<div class="safely-check-card">' +
                         '<div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;">' +
                         '<div class="safely-check-title">' +
-                        escapeHtml(s.label) +
+                        window.escapeHtml(s.label) +
                         "</div>" +
                         '<div style="font-weight:700;white-space:nowrap;font-size:13px;color:' +
                         color +
                         ';">' +
-                        escapeHtml(s.value) +
+                        window.escapeHtml(s.value) +
                         "</div></div>" +
                         '<div class="safely-check-body">' +
-                        escapeHtml(s.sub || "") +
+                        window.escapeHtml(s.sub || "") +
                         "</div></div>");
                 })
                     .join("");
