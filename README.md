@@ -1,6 +1,6 @@
 # Safely
 
-Safely is a Chrome extension (plus a small backend and dashboard) that warns people about fraud *before* they send money to a scammer on an online marketplace. It reads a listing's details, checks the seller's history, and uses AI to flag common fraud patterns — urgency language, suspicious pricing, recycled images, and more — showing a plain 0-100 risk score right in the browser.
+Safely is a Chrome extension that warns people about fraud *before* they send money to a scammer on an online marketplace. It reads a listing's details, checks the seller's history, and uses AI to flag common fraud patterns — urgency language, suspicious pricing, recycled images, and more — showing a plain 0-100 risk score right in the browser.
 
 It also checks the current website's address against a list of known marketplaces, to catch lookalike/phishing domains pretending to be the real thing.
 
