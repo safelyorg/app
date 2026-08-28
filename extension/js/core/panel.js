@@ -1,5 +1,4 @@
 "use strict";
-// panel.js — toolbar, panel shell, tab registration — the DOM/UI engine
 (async function () {
     "use strict";
     if (document.getElementById("safely-root"))
@@ -40,6 +39,14 @@
             window.__safelyAPI.SITE_BASE +
             '" target="_blank" class="safely-signin-required-btn">Sign in to Safely</a>' +
             "</div>" +
+            '<div class="safely-tab-content" id="safely-tab-subscription-required" style="display:none; padding: 20px; text-align: center;">' +
+            '<div style="font-size:13px; line-height:1.6; color:#8a8a93; margin-bottom:16px;">' +
+            "Subscribe to Safely to analyze this listing." +
+            "</div>" +
+            '<a href="' +
+            window.__safelyAPI.SITE_BASE +
+            '/dashboard/?manage_billing=1" target="_blank" class="safely-signin-required-btn">Subscribe to Safely</a>' +
+            "</div>" +
             '<div class="safely-tab-content" id="safely-tab-analysis-failed" style="display:none; padding: 20px; text-align: center;">' +
             '<div class="safely-failed-icon">&#9888;</div>' +
             '<div class="safely-failed-message" id="safely-failed-message" style="font-size:13px; line-height:1.6; color:#8a8a93; margin-top:10px;"></div>' +
@@ -67,6 +74,7 @@
     const unsupportedContent = document.getElementById("safely-tab-unsupported");
     const signinRequiredContent = document.getElementById("safely-tab-signin-required");
     const analysisFailedContent = document.getElementById("safely-tab-analysis-failed");
+    const subscriptionRequiredContent = document.getElementById("safely-tab-subscription-required");
     const failedMessage = document.getElementById("safely-failed-message");
     const retryBtn = document.getElementById("safely-retry-btn");
     if (retryBtn) {
@@ -117,6 +125,18 @@
         e.stopPropagation();
         togglePanel("signin-required");
     });
+    const subscriptionRequiredIcon = document.createElement("div");
+    subscriptionRequiredIcon.className = "safely-toolbar-icon";
+    subscriptionRequiredIcon.dataset.open = "subscription-required";
+    subscriptionRequiredIcon.title = "Subscription required";
+    subscriptionRequiredIcon.style.display = "none";
+    subscriptionRequiredIcon.innerHTML =
+        '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="4" width="22" height="16" rx="2"></rect><line x1="1" y1="10" x2="23" y2="10"></line></svg>';
+    toolbarInner.insertBefore(subscriptionRequiredIcon, collapseBtn);
+    subscriptionRequiredIcon.addEventListener("click", (e) => {
+        e.stopPropagation();
+        togglePanel("subscription-required");
+    });
     const analysisFailedIcon = document.createElement("div");
     analysisFailedIcon.className = "safely-toolbar-icon";
     analysisFailedIcon.dataset.open = "analysis-failed";
@@ -131,7 +151,12 @@
     });
     function switchTab(tab) {
         currentTab = tab;
-        const specialStates = ["unsupported", "signin-required", "analysis-failed"];
+        const specialStates = [
+            "unsupported",
+            "signin-required",
+            "subscription-required",
+            "analysis-failed",
+        ];
         if (specialStates.indexOf(tab) !== -1) {
             panelTitle.textContent = "Safely";
             tabIds.forEach((id) => {
@@ -141,6 +166,8 @@
             });
             unsupportedContent.style.display = tab === "unsupported" ? "block" : "none";
             signinRequiredContent.style.display = tab === "signin-required" ? "block" : "none";
+            subscriptionRequiredContent.style.display =
+                tab === "subscription-required" ? "block" : "none";
             analysisFailedContent.style.display = tab === "analysis-failed" ? "block" : "none";
         }
         else {
@@ -236,10 +263,22 @@
             // Real, chargeable AI analysis only ever runs for a signed-in
             // person - checking this here means an anonymous visitor never
             // triggers a real Claude API call at all.
-            chrome.storage.local.get("safely_session_token", (result) => {
+            chrome.storage.local.get("safely_session_token", async (result) => {
                 if (result.safely_session_token) {
                     signinRequiredIcon.style.display = "none";
                     analysisFailedIcon.style.display = "none";
+                    subscriptionRequiredIcon.style.display = "none";
+                    const subscriptionStatus = await window.__safelyAPI.checkSubscriptionStatus();
+                    const isSubscribed = isSubscriptionActive(subscriptionStatus);
+                    if (!isSubscribed) {
+                        TAB_ORDER.forEach((id) => {
+                            if (iconSlots[id])
+                                iconSlots[id].style.display = "none";
+                        });
+                        subscriptionRequiredIcon.style.display = "flex";
+                        switchTab("subscription-required");
+                        return;
+                    }
                     buildQueuedTabsIfNeeded();
                     TAB_ORDER.forEach((id) => {
                         if (iconSlots[id] && tabTitles[id]) {
@@ -262,6 +301,7 @@
                     });
                     signinRequiredIcon.style.display = "flex";
                     analysisFailedIcon.style.display = "none";
+                    subscriptionRequiredIcon.style.display = "none";
                     switchTab("signin-required");
                 }
             });
@@ -273,6 +313,7 @@
             });
             signinRequiredIcon.style.display = "none";
             analysisFailedIcon.style.display = "none";
+            subscriptionRequiredIcon.style.display = "none";
             unsupportedIcon.style.display = "flex";
             switchTab("unsupported");
         }

@@ -106,6 +106,21 @@ interface AnalyzeResponse {
       }
     },
 
+    checkSubscriptionStatus: async function (): Promise<string | null> {
+      try {
+        const authHeaders = await getAuthHeaders();
+        const response = await fetch(API_BASE + "/billing/subscription-status", {
+          headers: authHeaders,
+        });
+        if (!response.ok) return null;
+        const data = await response.json();
+        return data.status || null;
+      } catch (error) {
+        console.error("Safely: failed to check subscription status", error);
+        return null;
+      }
+    },
+
     submitReport: async function (reportData: Record<string, unknown>): Promise<any> {
       try {
         const authHeaders = await getAuthHeaders();
