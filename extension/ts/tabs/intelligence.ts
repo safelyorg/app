@@ -121,7 +121,57 @@ interface SignalAnalysisResult {
       '<div class="safely-section-label" style="margin-top:18px">Recommended checks</div><div style="display:flex;flex-direction:column;gap:8px">' +
       '<div class="safely-check-card"><div class="safely-check-title">Ask for a live video call</div><div class="safely-check-body">Verify the item is physically in the seller\'s hands before sending any payment.</div></div>' +
       '<div class="safely-check-card"><div class="safely-check-title">Check IMEI on delivery</div><div class="safely-check-body">Dial *#06# on the device and confirm the number matches what the seller declared at deal creation.</div></div>' +
-      '<div class="safely-check-card"><div class="safely-check-title">Do not pay to number in listing</div><div class="safely-check-body">A phone number in the listing could route your payment outside Safely escrow protection.</div></div></div>'
+      '<div class="safely-check-card"><div class="safely-check-title">Do not pay to number in listing</div><div class="safely-check-body">A phone number in the listing could route your payment outside Safely escrow protection.</div></div></div>' +
+      buildRiskFactorsSection(pageData.riskFactors)
+    );
+  }
+
+  const SEVERITY_COLORS: Record<string, string> = {
+    hard: "#ff5d5d",
+    compound: "#f2b84c",
+    soft: "#8e8e93",
+  };
+
+  const SEVERITY_LABELS: Record<string, string> = {
+    hard: "Confirmed",
+    compound: "Pattern match",
+    soft: "Worth noting",
+  };
+
+  function capitalizeFirst(str: string): string {
+    if (!str) return str;
+    return str.charAt(0).toUpperCase() + str.slice(1);
+  }
+
+  function buildRiskFactorsSection(riskFactors: any[]): string {
+    if (!riskFactors || riskFactors.length === 0) return "";
+
+    const rows = riskFactors
+      .map((factor) => {
+        const color = SEVERITY_COLORS[factor.severity] || "#8e8e93";
+        const severityLabel = SEVERITY_LABELS[factor.severity] || factor.severity;
+        return (
+          '<div class="safely-check-card">' +
+          '<div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;">' +
+          '<div class="safely-check-title">' +
+          (window as any).escapeHtml(capitalizeFirst(factor.name.replace(/_/g, " "))) +
+          "</div>" +
+          '<div style="font-weight:700;white-space:nowrap;font-size:11px;color:' +
+          color +
+          ';">' +
+          (window as any).escapeHtml(severityLabel) +
+          "</div></div>" +
+          '<div class="safely-check-body">' +
+          (window as any).escapeHtml(factor.description) +
+          "</div></div>"
+        );
+      })
+      .join("");
+
+    return (
+      '<div class="safely-section-label" style="margin-top:18px">Risk Factors</div><div style="display:flex;flex-direction:column;gap:8px">' +
+      rows +
+      "</div>"
     );
   }
 

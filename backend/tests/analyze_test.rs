@@ -11,6 +11,7 @@ use backend::{
     models::{
         analysis::{AnalyzeRequest, RiskLevel, Signal},
         listings::{ListingCategory, Listings, ListingsRequest},
+        risk_factors::RiskFactor,
         sellers::{SellerVerification, Sellers, SellersRequest},
     },
     services::{
@@ -24,8 +25,13 @@ use backend::{
             CallClaudeArguments, ClaudeAnalysis, Finding, ImageAssessment, PriceAssessment,
             call_claude, content,
         },
+        confidence::calculate_confidence,
+        entity_detection::classify_entity,
+        evidence::{record_evidence, record_risk_factors},
         fraud_reports::{build_network_summary, count_fraud_reports},
         listings::{create_listing, get_monthly_visit_activity},
+        network_memory::build_network_memory_signal,
+        risk_factors::{derive_risk_factors, find_signal, is_new_account},
         scoring::calculate_risk_score,
         sellers::{create_seller, find_seller},
         signals::{build_domain_signal, build_signals},
@@ -35,7 +41,7 @@ use chrono::{Datelike, Duration as chrono_duration, NaiveDate, Utc};
 use common::{cleanup_test_seller, cleanup_test_user, test_pool};
 use serde_json::json;
 use serial_test::serial;
-use sqlx::query;
+use sqlx::{query, query_as};
 use std::{
     collections::HashMap,
     env::{remove_var, set_var, var},
@@ -45,7 +51,9 @@ use std::{
 use uuid::Uuid;
 
 use crate::common::{
-    cleanup_test_seller_chain, create_test_user, insert_test_history_chain, set_analysis_created_at,
+    admin_pool, cleanup_seller_and_analysis, cleanup_test_seller_chain, create_test_user,
+    insert_raw_evidence_row, insert_test_analysis_for_outcomes, insert_test_history_chain,
+    make_signal, make_signals, set_analysis_created_at, setup_real_seller_and_analysis,
 };
 
 // Analyze Test
@@ -73,6 +81,10 @@ async fn analyze_unauthorized_request() {
         seller_join_date: Some("2021".to_string()),
         seller_location: Some("Lahore".to_string()),
         seller_last_active: Some("Today".to_string()),
+        seller_website: None,
+        seller_verified: None,
+        seller_rating: None,
+        seller_total_products: None,
         domain_check_status: None,
         domain_check_real_name: None,
         domain_check_real_domain: None,
@@ -142,6 +154,10 @@ async fn analyze_success() {
         seller_join_date: Some("2021".to_string()),
         seller_location: Some("Lahore".to_string()),
         seller_last_active: Some("Today".to_string()),
+        seller_website: None,
+        seller_verified: None,
+        seller_rating: None,
+        seller_total_products: None,
         domain_check_status: None,
         domain_check_real_name: None,
         domain_check_real_domain: None,
@@ -164,6 +180,13 @@ async fn analyze_success() {
         "expected at least one real signal to be present"
     );
     assert_eq!(result.fraud_report_count, 0);
+
+    let admin = admin_pool().await;
+    query("DELETE FROM evidence WHERE analysis_id IN (SELECT id FROM analysis WHERE user_id = $1)")
+        .bind(user.id)
+        .execute(&admin)
+        .await
+        .expect("expected evidence cleanup to succeed");
 
     query("DELETE FROM analysis WHERE user_id = $1")
         .bind(user.id)
@@ -357,6 +380,10 @@ fn build_requests_correctly_splits_seller_and_listing_data() {
         seller_join_date: Some("2021".to_string()),
         seller_location: Some("Lahore".to_string()),
         seller_last_active: Some("Today".to_string()),
+        seller_website: None,
+        seller_verified: None,
+        seller_rating: None,
+        seller_total_products: None,
         domain_check_status: None,
         domain_check_real_name: None,
         domain_check_real_domain: None,
@@ -376,7 +403,6 @@ fn build_requests_correctly_splits_seller_and_listing_data() {
         listing_req.listing_url,
         "https://olx.com.pk/item/test-listing"
     );
-
     assert_eq!(seller_req.platform, "olx");
     assert_eq!(listing_req.platform, "olx");
 }
@@ -402,6 +428,10 @@ fn build_requests_none_values_stay_none() {
         seller_join_date: None,
         seller_location: None,
         seller_last_active: None,
+        seller_website: None,
+        seller_verified: None,
+        seller_rating: None,
+        seller_total_products: None,
         domain_check_status: None,
         domain_check_real_name: None,
         domain_check_real_domain: None,
@@ -444,6 +474,10 @@ fn build_requests_seller_id_lands_only_on_listing_request() {
         seller_join_date: Some("2021".to_string()),
         seller_location: Some("Lahore".to_string()),
         seller_last_active: Some("Today".to_string()),
+        seller_website: None,
+        seller_verified: None,
+        seller_rating: None,
+        seller_total_products: None,
         domain_check_status: None,
         domain_check_real_name: None,
         domain_check_real_domain: None,
@@ -1672,9 +1706,9 @@ fn content_never_includes_image_urls() {
     );
 }
 
-// Build All Signals Test
-#[test]
-fn build_all_signals_without_domain_check() {
+// Build All Signals Tests
+#[tokio::test]
+async fn build_all_signals_without_domain_check() {
     let finding = Finding {
         found: true,
         evidence: "evidence".to_string(),
@@ -1736,7 +1770,10 @@ fn build_all_signals_without_domain_check() {
         seller_join_date: Some("2021".to_string()),
         seller_location: Some("Lahore".to_string()),
         seller_last_active: Some("Today".to_string()),
-
+        seller_website: None,
+        seller_verified: None,
+        seller_rating: None,
+        seller_total_products: None,
         domain_check_status: None,
         domain_check_real_name: None,
         domain_check_real_domain: None,
@@ -1745,14 +1782,15 @@ fn build_all_signals_without_domain_check() {
         domain_check_real_html: None,
     };
 
+    let pool = test_pool().await;
     let signals_without_domain = build_signals(&claude_analysis, &seller);
-    let all_signals = build_all_signals(&claude_analysis, &seller, &analyze_request);
+    let all_signals = build_all_signals(&pool, &claude_analysis, &seller, &analyze_request).await;
 
     assert_eq!(all_signals.len(), signals_without_domain.len());
 }
 
-#[test]
-fn build_all_signals_with_domain_check() {
+#[tokio::test]
+async fn build_all_signals_with_domain_check() {
     let finding = Finding {
         found: true,
         evidence: "evidence".to_string(),
@@ -1814,6 +1852,10 @@ fn build_all_signals_with_domain_check() {
         seller_join_date: Some("2021".to_string()),
         seller_location: Some("Lahore".to_string()),
         seller_last_active: Some("Today".to_string()),
+        seller_website: None,
+        seller_verified: None,
+        seller_rating: None,
+        seller_total_products: None,
         domain_check_status: Some("suspicious".to_string()),
         domain_check_real_name: None,
         domain_check_real_domain: None,
@@ -1822,11 +1864,160 @@ fn build_all_signals_with_domain_check() {
         domain_check_real_html: None,
     };
 
+    let pool = test_pool().await;
     let signals_without_domain = build_signals(&claude_analysis, &seller);
-    let all_signals = build_all_signals(&claude_analysis, &seller, &analyze_request);
+    let all_signals = build_all_signals(&pool, &claude_analysis, &seller, &analyze_request).await;
 
     assert_eq!(all_signals.len(), signals_without_domain.len() + 1);
     assert_eq!(all_signals[0].label, "Domain check");
+}
+
+// Build Network Memory Signal
+#[tokio::test]
+async fn build_network_memory_signal_uses_singular_phrasing_for_exactly_one_prior_check() {
+    let pool = admin_pool().await;
+    let platform_id = "network_memory_singular_001";
+    let (analysis_id, seller_id) = setup_real_seller_and_analysis(&pool, platform_id).await;
+
+    insert_raw_evidence_row(&pool, analysis_id, seller_id, "50").await;
+
+    let result = build_network_memory_signal(&pool, seller_id).await;
+
+    assert!(result.is_some());
+    let signal = result.unwrap();
+    assert_eq!(signal.value, "1 prior checks");
+    assert!(signal.sub.contains("1 time before"));
+
+    cleanup_seller_and_analysis(&pool, platform_id).await;
+}
+
+#[tokio::test]
+async fn build_network_memory_signal_uses_plural_phrasing_for_multiple_prior_checks() {
+    let pool = admin_pool().await;
+    let platform_id = "network_memory_plural_001";
+    let (analysis_id, seller_id) = setup_real_seller_and_analysis(&pool, platform_id).await;
+
+    insert_raw_evidence_row(&pool, analysis_id, seller_id, "20").await;
+    insert_raw_evidence_row(&pool, analysis_id, seller_id, "40").await;
+    insert_raw_evidence_row(&pool, analysis_id, seller_id, "60").await;
+
+    let result = build_network_memory_signal(&pool, seller_id).await;
+
+    assert!(result.is_some());
+    let signal = result.unwrap();
+    assert_eq!(signal.value, "3 prior checks");
+    assert!(signal.sub.contains("3 times before"));
+
+    cleanup_seller_and_analysis(&pool, platform_id).await;
+}
+
+#[tokio::test]
+async fn build_network_memory_signal_calculates_the_real_correct_average() {
+    let pool = admin_pool().await;
+    let platform_id = "network_memory_average_001";
+    let (analysis_id, seller_id) = setup_real_seller_and_analysis(&pool, platform_id).await;
+
+    insert_raw_evidence_row(&pool, analysis_id, seller_id, "10").await;
+    insert_raw_evidence_row(&pool, analysis_id, seller_id, "20").await;
+    insert_raw_evidence_row(&pool, analysis_id, seller_id, "30").await;
+
+    let result = build_network_memory_signal(&pool, seller_id).await;
+
+    assert!(result.is_some());
+    assert!(result.unwrap().sub.contains("Average risk score: 20."));
+
+    cleanup_seller_and_analysis(&pool, platform_id).await;
+}
+
+#[tokio::test]
+async fn build_network_memory_signal_marks_high_average_as_bad() {
+    let pool = admin_pool().await;
+    let platform_id = "network_memory_bad_001";
+    let (analysis_id, seller_id) = setup_real_seller_and_analysis(&pool, platform_id).await;
+
+    insert_raw_evidence_row(&pool, analysis_id, seller_id, "67").await;
+
+    let result = build_network_memory_signal(&pool, seller_id).await;
+    assert_eq!(result.unwrap().signal_type, "bad");
+
+    cleanup_seller_and_analysis(&pool, platform_id).await;
+}
+
+#[tokio::test]
+async fn build_network_memory_signal_marks_exactly_66_as_caution_not_bad() {
+    let pool = admin_pool().await;
+    let platform_id = "network_memory_66_001";
+    let (analysis_id, seller_id) = setup_real_seller_and_analysis(&pool, platform_id).await;
+
+    insert_raw_evidence_row(&pool, analysis_id, seller_id, "66").await;
+
+    let result = build_network_memory_signal(&pool, seller_id).await;
+    assert_eq!(result.unwrap().signal_type, "caution");
+
+    cleanup_seller_and_analysis(&pool, platform_id).await;
+}
+
+#[tokio::test]
+async fn build_network_memory_signal_marks_exactly_34_as_caution() {
+    let pool = admin_pool().await;
+    let platform_id = "network_memory_34_001";
+    let (analysis_id, seller_id) = setup_real_seller_and_analysis(&pool, platform_id).await;
+
+    insert_raw_evidence_row(&pool, analysis_id, seller_id, "34").await;
+
+    let result = build_network_memory_signal(&pool, seller_id).await;
+    assert_eq!(result.unwrap().signal_type, "caution");
+
+    cleanup_seller_and_analysis(&pool, platform_id).await;
+}
+
+#[tokio::test]
+async fn build_network_memory_signal_marks_33_as_good_not_caution() {
+    let pool = admin_pool().await;
+    let platform_id = "network_memory_33_001";
+    let (analysis_id, seller_id) = setup_real_seller_and_analysis(&pool, platform_id).await;
+
+    insert_raw_evidence_row(&pool, analysis_id, seller_id, "33").await;
+
+    let result = build_network_memory_signal(&pool, seller_id).await;
+    assert_eq!(result.unwrap().signal_type, "good");
+
+    cleanup_seller_and_analysis(&pool, platform_id).await;
+}
+
+#[tokio::test]
+async fn build_network_memory_signal_correctly_scopes_to_only_this_specific_seller() {
+    let pool = admin_pool().await;
+    let platform_id_a = "network_memory_scope_a_001";
+    let platform_id_b = "network_memory_scope_b_001";
+    let (analysis_a, seller_a) = setup_real_seller_and_analysis(&pool, platform_id_a).await;
+    let (analysis_b, seller_b) = setup_real_seller_and_analysis(&pool, platform_id_b).await;
+
+    insert_raw_evidence_row(&pool, analysis_a, seller_a, "10").await;
+    insert_raw_evidence_row(&pool, analysis_b, seller_b, "99").await;
+
+    let result = build_network_memory_signal(&pool, seller_a).await;
+    assert_eq!(result.unwrap().value, "1 prior checks");
+
+    cleanup_seller_and_analysis(&pool, platform_id_a).await;
+    cleanup_seller_and_analysis(&pool, platform_id_b).await;
+}
+
+#[tokio::test]
+async fn build_network_memory_signal_ignores_a_genuinely_malformed_value_without_crashing() {
+    let pool = admin_pool().await;
+    let platform_id = "network_memory_malformed_001";
+    let (analysis_id, seller_id) = setup_real_seller_and_analysis(&pool, platform_id).await;
+
+    insert_raw_evidence_row(&pool, analysis_id, seller_id, "not_a_real_number").await;
+    insert_raw_evidence_row(&pool, analysis_id, seller_id, "50").await;
+
+    let result = build_network_memory_signal(&pool, seller_id).await;
+
+    assert!(result.is_some());
+    assert_eq!(result.unwrap().value, "1 prior checks");
+
+    cleanup_seller_and_analysis(&pool, platform_id).await;
 }
 
 // Build Domain Signal Test
@@ -2321,6 +2512,7 @@ async fn save_and_build_response_success() {
         image_urls: None,
         posted_date: None,
     };
+
     let listing = create_listing(&pool, &listing_request, seller.id)
         .await
         .expect("expected to create the listing");
@@ -2362,6 +2554,8 @@ async fn save_and_build_response_success() {
         sub: "Price looks normal for this category.".to_string(),
         value: "Normal".to_string(),
         signal_type: "good".to_string(),
+        category: "listing".to_string(),
+        check_type: "anomaly".to_string(),
     }];
 
     let data = BuildResponseData {
@@ -2449,6 +2643,8 @@ async fn save_and_build_response_database_failure() {
         sub: "Price looks normal for this category.".to_string(),
         value: "Normal".to_string(),
         signal_type: "good".to_string(),
+        category: "listing".to_string(),
+        check_type: "anomaly".to_string(),
     }];
 
     let data = BuildResponseData {
@@ -2471,7 +2667,322 @@ async fn save_and_build_response_database_failure() {
     );
 }
 
-// Create Analysis Test
+// Classify Entity Tests
+#[test]
+fn name_containing_a_business_keyword_is_classified_as_business() {
+    assert_eq!(classify_entity(Some("Ahmed Motors"), false), "business");
+    assert_eq!(classify_entity(Some("Sunshine Traders"), false), "business");
+    assert_eq!(classify_entity(Some("Tech Enterprises"), false), "business");
+    assert_eq!(classify_entity(Some("Downtown Store"), false), "business");
+    assert_eq!(classify_entity(Some("Khan & Co."), false), "business");
+}
+
+#[test]
+fn keyword_matching_is_genuinely_case_insensitive() {
+    assert_eq!(classify_entity(Some("AHMED MOTORS"), false), "business");
+    assert_eq!(classify_entity(Some("ahmed motors"), false), "business");
+    assert_eq!(classify_entity(Some("AhMeD MoToRs"), false), "business");
+}
+
+#[test]
+fn keyword_matches_anywhere_in_the_name_not_just_as_a_whole_word() {
+    assert_eq!(
+        classify_entity(Some("Storefront Cleaners"), false),
+        "business"
+    );
+}
+
+#[test]
+fn ordinary_individual_name_with_no_keywords_is_classified_as_individual() {
+    assert_eq!(classify_entity(Some("Ali Khan"), false), "individual");
+    assert_eq!(classify_entity(Some("M Usman"), false), "individual");
+}
+
+#[test]
+fn no_seller_name_at_all_is_classified_as_unknown() {
+    assert_eq!(classify_entity(None, false), "unknown");
+}
+
+#[test]
+fn no_name_but_a_fully_confirmed_website_still_returns_business() {
+    assert_eq!(classify_entity(None, true), "business");
+}
+
+#[test]
+fn fully_confirmed_website_alone_is_enough_for_an_otherwise_ordinary_name() {
+    assert_eq!(classify_entity(Some("Ali Khan"), true), "business");
+}
+
+#[test]
+fn both_name_keyword_and_confirmed_website_together_still_returns_business() {
+    assert_eq!(classify_entity(Some("Ahmed Motors"), true), "business");
+}
+
+#[test]
+fn the_real_security_case_an_unconfirmed_website_never_triggers_business_on_its_own() {
+    assert_eq!(classify_entity(Some("Ali Khan"), false), "individual");
+}
+
+#[test]
+fn empty_string_name_is_treated_the_same_as_an_ordinary_individual_name() {
+    assert_eq!(classify_entity(Some(""), false), "individual");
+}
+
+// Calculate Confidence Tests
+#[test]
+fn eight_or_more_meaningful_signals_gives_high_confidence() {
+    let signals: Vec<Signal> = (0..8)
+        .map(|i| make_signal(&format!("Value{}", i)))
+        .collect();
+    let (level, _) = calculate_confidence(&signals);
+    assert_eq!(level, "high");
+}
+
+#[test]
+fn seven_meaningful_signals_is_still_medium_not_high() {
+    let signals: Vec<Signal> = (0..7)
+        .map(|i| make_signal(&format!("Value{}", i)))
+        .collect();
+
+    let (level, _) = calculate_confidence(&signals);
+
+    assert_eq!(level, "medium");
+}
+
+#[test]
+fn five_meaningful_signals_gives_medium_confidence() {
+    let signals: Vec<Signal> = (0..5)
+        .map(|i| make_signal(&format!("Value{}", i)))
+        .collect();
+
+    let (level, _) = calculate_confidence(&signals);
+
+    assert_eq!(level, "medium");
+}
+
+#[test]
+fn four_meaningful_signals_drops_to_low_not_medium() {
+    let signals: Vec<Signal> = (0..4)
+        .map(|i| make_signal(&format!("Value{}", i)))
+        .collect();
+
+    let (level, _) = calculate_confidence(&signals);
+
+    assert_eq!(level, "low");
+}
+
+#[test]
+fn zero_meaningful_signals_gives_low_confidence() {
+    let signals = vec![make_signal("Unknown"), make_signal("Unknown")];
+    let (level, _) = calculate_confidence(&signals);
+    assert_eq!(level, "low");
+}
+
+#[test]
+fn genuinely_empty_signal_list_does_not_panic_and_gives_low() {
+    let signals: Vec<Signal> = vec![];
+    let (level, reasoning) = calculate_confidence(&signals);
+
+    assert_eq!(level, "low");
+    assert_eq!(
+        reasoning,
+        "Based on 0 of 0 signals returning real, usable data."
+    );
+}
+
+#[test]
+fn unknown_value_signals_are_correctly_excluded_from_the_meaningful_count() {
+    let signals = vec![
+        make_signal("Detected"),
+        make_signal("Unknown"),
+        make_signal("Normal"),
+        make_signal("Unknown"),
+        make_signal("Verified"),
+    ];
+
+    let (level, reasoning) = calculate_confidence(&signals);
+    assert_eq!(level, "low");
+    assert_eq!(
+        reasoning,
+        "Based on 3 of 5 signals returning real, usable data."
+    );
+}
+
+#[test]
+fn reasoning_sentence_includes_the_real_correct_numbers() {
+    let signals: Vec<Signal> = (0..9)
+        .map(|i| make_signal(&format!("Value{}", i)))
+        .collect();
+    let (_, reasoning) = calculate_confidence(&signals);
+
+    assert_eq!(
+        reasoning,
+        "Based on 9 of 9 signals returning real, usable data."
+    );
+}
+
+// Is new_account Tests
+#[test]
+fn is_new_account_recognizes_this_month_as_new() {
+    assert!(is_new_account("This month"));
+}
+
+#[test]
+fn is_new_account_recognizes_a_plain_months_value_as_new() {
+    assert!(is_new_account("7 months"));
+}
+
+#[test]
+fn is_new_account_treats_anything_containing_year_as_not_new() {
+    assert!(!is_new_account("1 years 8 months"));
+    assert!(!is_new_account("6 years"));
+}
+
+#[test]
+fn is_new_account_treats_unknown_as_not_new() {
+    assert!(!is_new_account("Unknown"));
+}
+
+// Find Signal Tests
+#[test]
+fn find_signal_returns_the_matching_signal_when_present() {
+    let signals = vec![
+        make_signals("Price analysis", "normal", "good"),
+        make_signals("Fraud pattern match", "Detected", "caution"),
+    ];
+
+    let found = find_signal(&signals, "Fraud pattern match");
+    assert!(found.is_some());
+    assert_eq!(found.unwrap().value, "Detected");
+}
+
+#[test]
+fn find_signal_returns_none_when_the_label_is_genuinely_absent() {
+    let signals = vec![make_signals("Price analysis", "normal", "good")];
+    assert!(find_signal(&signals, "Fraud pattern match").is_none());
+}
+
+// Derive Risk Factors Tests
+#[test]
+fn derive_risk_factors_flags_a_confirmed_fraud_pattern_as_hard() {
+    let signals = vec![make_signals("Fraud pattern match", "Detected", "caution")];
+    let factors = derive_risk_factors(&signals);
+    assert_eq!(factors.len(), 1);
+    assert_eq!(factors[0].severity, "hard");
+    assert_eq!(factors[0].name, "confirmed_fraud_pattern");
+}
+
+#[test]
+fn derive_risk_factors_flags_a_bad_safely_history_as_hard() {
+    let signals = vec![make_signals("Safely history", "3 prior checks", "bad")];
+    let factors = derive_risk_factors(&signals);
+    assert_eq!(factors.len(), 1);
+    assert_eq!(factors[0].severity, "hard");
+    assert_eq!(factors[0].name, "network_confirmed_high_risk_seller");
+}
+
+#[test]
+fn derive_risk_factors_does_not_flag_safely_history_when_it_is_not_bad() {
+    let signals = vec![make_signals("Safely history", "1 prior checks", "good")];
+    let factors = derive_risk_factors(&signals);
+    assert_eq!(factors.len(), 0);
+}
+
+#[test]
+fn derive_risk_factors_flags_duplicate_plus_unverifiable_images_as_compound() {
+    let signals = vec![
+        make_signals("Duplicate listing", "Detected", "caution"),
+        make_signals("Image authenticity", "unverifiable", "caution"),
+    ];
+    let factors = derive_risk_factors(&signals);
+    assert_eq!(factors.len(), 1);
+    assert_eq!(factors[0].severity, "compound");
+    assert_eq!(factors[0].name, "likely_counterfeit_or_nonexistent_product");
+}
+
+#[test]
+fn derive_risk_factors_flags_urgency_plus_advance_payment_as_compound() {
+    let signals = vec![
+        make_signals("Urgency language", "Detected", "caution"),
+        make_signals("Advance payment request", "Detected", "caution"),
+    ];
+    let factors = derive_risk_factors(&signals);
+    assert_eq!(factors.len(), 1);
+    assert_eq!(factors[0].severity, "compound");
+    assert_eq!(factors[0].name, "advance_fee_scam_pattern");
+}
+
+#[test]
+fn derive_risk_factors_flags_new_account_plus_fraud_match_as_compound() {
+    let signals = vec![
+        make_signals("Account age", "This month", "info"),
+        make_signals("Fraud pattern match", "Detected", "caution"),
+    ];
+    let factors = derive_risk_factors(&signals);
+    let compound = factors
+        .iter()
+        .find(|f| f.name == "newly_created_high_risk_account");
+
+    assert!(
+        compound.is_none(),
+        "expected the compound rule to be correctly skipped, since Fraud pattern match was already claimed by the hard rule"
+    );
+}
+
+#[test]
+fn derive_risk_factors_hard_fraud_factor_correctly_blocks_the_redundant_compound_version() {
+    let signals = vec![
+        make_signals("Account age", "This month", "info"),
+        make_signals("Fraud pattern match", "Detected", "caution"),
+    ];
+
+    let factors = derive_risk_factors(&signals);
+    assert_eq!(factors.len(), 1);
+    assert_eq!(factors[0].name, "confirmed_fraud_pattern");
+}
+
+#[test]
+fn derive_risk_factors_treats_an_uncovered_caution_signal_as_soft() {
+    let signals = vec![make_signals(
+        "Contact info in listing",
+        "Detected",
+        "caution",
+    )];
+    let factors = derive_risk_factors(&signals);
+
+    assert_eq!(factors.len(), 1);
+    assert_eq!(factors[0].severity, "soft");
+    assert_eq!(factors[0].name, "contact_info_in_listing_flagged");
+}
+
+#[test]
+fn derive_risk_factors_does_not_double_count_signals_already_claimed_by_a_compound_factor() {
+    let signals = vec![
+        make_signals("Duplicate listing", "Detected", "caution"),
+        make_signals("Image authenticity", "unverifiable", "caution"),
+    ];
+    let factors = derive_risk_factors(&signals);
+
+    assert_eq!(factors.len(), 1);
+}
+
+#[test]
+fn derive_risk_factors_ignores_good_and_info_type_signals_entirely() {
+    let signals = vec![
+        make_signals("Price analysis", "normal", "good"),
+        make_signals("Account age", "6 years", "info"),
+    ];
+    let factors = derive_risk_factors(&signals);
+    assert_eq!(factors.len(), 0);
+}
+
+#[test]
+fn derive_risk_factors_returns_genuinely_empty_for_an_empty_signal_list() {
+    let factors = derive_risk_factors(&[]);
+    assert_eq!(factors.len(), 0);
+}
+
+// Create Analysis Tests
 #[tokio::test]
 async fn create_analysis_success() {
     let pool = test_pool().await;
@@ -2533,6 +3044,9 @@ async fn create_analysis_success() {
         network_summary: "Clean record on Safely network. No fraud reports found.".to_string(),
         claude_raw: String::new(),
         user_id: user.id,
+        confidence_level: "high".to_string(),
+        confidence_reasoning: "Based on 1 of 1 signals returning real, usable data.".to_string(),
+        risk_factors: json!([]),
     };
 
     let analysis = create_analysis(data)
@@ -2585,6 +3099,9 @@ async fn create_analysis_database_failure() {
         network_summary: "Clean record on Safely network. No fraud reports found.".to_string(),
         claude_raw: String::new(),
         user_id: fake_user_id,
+        confidence_level: "high".to_string(),
+        confidence_reasoning: "Based on 1 of 1 signals returning real, usable data.".to_string(),
+        risk_factors: json!([]),
     };
 
     let result = create_analysis(data).await;
@@ -2595,7 +3112,264 @@ async fn create_analysis_database_failure() {
     );
 }
 
-// Get Monthly Visit Activity Test
+// Record Evidence Tests
+#[tokio::test]
+async fn record_evidence_writes_one_row_per_signal_plus_one_for_the_score() {
+    let pool = admin_pool().await;
+    let email = "record_evidence_success_test@example.com";
+    cleanup_test_user(&pool, email).await;
+    let (user, _) = create_test_user(&pool, email).await;
+
+    let platform = "olx";
+    let platform_id = "record_evidence_seller_001";
+    cleanup_test_seller_chain(&pool, platform, platform_id).await;
+    let analysis_id =
+        insert_test_analysis_for_outcomes(&pool, user.id, platform, platform_id).await;
+
+    let analysis: (Uuid,) = query_as(
+        "SELECT seller_id FROM listings WHERE id = (SELECT listing_id FROM analysis WHERE id = $1)",
+    )
+    .bind(analysis_id)
+    .fetch_one(&pool)
+    .await
+    .expect("expected to find the real seller_id for this analysis");
+    let seller_id = analysis.0;
+
+    let signals = vec![
+        Signal {
+            label: "Price analysis".to_string(),
+            sub: "normal".to_string(),
+            value: "normal".to_string(),
+            signal_type: "good".to_string(),
+            category: "listing".to_string(),
+            check_type: "anomaly".to_string(),
+        },
+        Signal {
+            label: "Urgency language".to_string(),
+            sub: "none".to_string(),
+            value: "None found".to_string(),
+            signal_type: "good".to_string(),
+            category: "communication".to_string(),
+            check_type: "pattern".to_string(),
+        },
+    ];
+
+    record_evidence(&pool, analysis_id, seller_id, &signals, 25).await;
+
+    let rows: Vec<(String, String, String)> = query_as(
+        "SELECT label, value, source FROM evidence WHERE analysis_id = $1 ORDER BY found_at",
+    )
+    .bind(analysis_id)
+    .fetch_all(&pool)
+    .await
+    .expect("expected the query itself to succeed");
+
+    assert_eq!(rows.len(), 3, "expected 2 signal rows plus 1 score row");
+    assert_eq!(
+        rows[0],
+        (
+            "Price analysis".to_string(),
+            "normal".to_string(),
+            "signal_pipeline".to_string()
+        )
+    );
+    assert_eq!(
+        rows[1],
+        (
+            "Urgency language".to_string(),
+            "None found".to_string(),
+            "signal_pipeline".to_string()
+        )
+    );
+    assert_eq!(
+        rows[2],
+        (
+            "risk_score".to_string(),
+            "25".to_string(),
+            "scoring_engine".to_string()
+        )
+    );
+
+    query("DELETE FROM evidence WHERE analysis_id = $1")
+        .bind(analysis_id)
+        .execute(&pool)
+        .await
+        .ok();
+    cleanup_test_seller_chain(&pool, platform, platform_id).await;
+    cleanup_test_user(&pool, email).await;
+}
+
+#[tokio::test]
+async fn record_evidence_with_zero_signals_still_writes_the_score_row() {
+    let pool = admin_pool().await;
+    let email = "record_evidence_empty_test@example.com";
+    cleanup_test_user(&pool, email).await;
+    let (user, _) = create_test_user(&pool, email).await;
+
+    let platform = "olx";
+    let platform_id = "record_evidence_empty_seller_001";
+    cleanup_test_seller_chain(&pool, platform, platform_id).await;
+    let analysis_id =
+        insert_test_analysis_for_outcomes(&pool, user.id, platform, platform_id).await;
+
+    let seller_id: (Uuid,) = query_as(
+        "SELECT seller_id FROM listings WHERE id = (SELECT listing_id FROM analysis WHERE id = $1)",
+    )
+    .bind(analysis_id)
+    .fetch_one(&pool)
+    .await
+    .expect("expected to find the real seller_id");
+
+    record_evidence(&pool, analysis_id, seller_id.0, &[], 0).await;
+
+    let rows: Vec<(String,)> = query_as("SELECT label FROM evidence WHERE analysis_id = $1")
+        .bind(analysis_id)
+        .fetch_all(&pool)
+        .await
+        .expect("expected the query itself to succeed");
+
+    assert_eq!(
+        rows.len(),
+        1,
+        "expected only the single score row, with zero signals"
+    );
+    assert_eq!(rows[0].0, "risk_score");
+
+    query("DELETE FROM evidence WHERE analysis_id = $1")
+        .bind(analysis_id)
+        .execute(&pool)
+        .await
+        .ok();
+
+    cleanup_test_seller_chain(&pool, platform, platform_id).await;
+    cleanup_test_user(&pool, email).await;
+}
+
+#[tokio::test]
+async fn record_evidence_never_panics_even_with_a_genuinely_invalid_foreign_key() {
+    let pool = admin_pool().await;
+    let fake_analysis_id = Uuid::new_v4();
+    let fake_seller_id = Uuid::new_v4();
+    let signals = vec![Signal {
+        label: "Price analysis".to_string(),
+        sub: "normal".to_string(),
+        value: "normal".to_string(),
+        signal_type: "good".to_string(),
+        category: "listing".to_string(),
+        check_type: "anomaly".to_string(),
+    }];
+
+    record_evidence(&pool, fake_analysis_id, fake_seller_id, &signals, 50).await;
+}
+
+// Record Risk Factors Tests
+#[tokio::test]
+async fn record_risk_factors_writes_one_row_per_factor() {
+    let pool = admin_pool().await;
+    let email = "record_risk_factors_success_test@example.com";
+    cleanup_test_user(&pool, email).await;
+    let (user, _) = create_test_user(&pool, email).await;
+
+    let platform = "olx";
+    let platform_id = "record_risk_factors_seller_001";
+    cleanup_test_seller_chain(&pool, platform, platform_id).await;
+    let analysis_id =
+        insert_test_analysis_for_outcomes(&pool, user.id, platform, platform_id).await;
+
+    let seller_id: (Uuid,) = query_as(
+        "SELECT seller_id FROM listings WHERE id = (SELECT listing_id FROM analysis WHERE id = $1)",
+    )
+    .bind(analysis_id)
+    .fetch_one(&pool)
+    .await
+    .expect("expected to find the real seller_id");
+
+    let risk_factors = vec![RiskFactor {
+        severity: "hard".to_string(),
+        name: "confirmed_fraud_pattern".to_string(),
+        description: "test description".to_string(),
+        contributing_signals: vec!["Fraud pattern match".to_string()],
+    }];
+
+    record_risk_factors(&pool, analysis_id, seller_id.0, &risk_factors).await;
+
+    let rows: Vec<(String, String, String)> =
+        query_as("SELECT label, value, source FROM evidence WHERE analysis_id = $1")
+            .bind(analysis_id)
+            .fetch_all(&pool)
+            .await
+            .expect("expected the query itself to succeed");
+
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].0, "risk_factor:hard");
+    assert_eq!(rows[0].1, "confirmed_fraud_pattern");
+    assert_eq!(rows[0].2, "risk_factor_engine");
+
+    query("DELETE FROM evidence WHERE analysis_id = $1")
+        .bind(analysis_id)
+        .execute(&pool)
+        .await
+        .ok();
+
+    cleanup_test_seller_chain(&pool, platform, platform_id).await;
+    cleanup_test_user(&pool, email).await;
+}
+
+#[tokio::test]
+async fn record_risk_factors_with_zero_factors_writes_nothing() {
+    let pool = admin_pool().await;
+    let email = "record_risk_factors_empty_test@example.com";
+    cleanup_test_user(&pool, email).await;
+    let (user, _) = create_test_user(&pool, email).await;
+
+    let platform = "olx";
+    let platform_id = "record_risk_factors_empty_seller_001";
+    cleanup_test_seller_chain(&pool, platform, platform_id).await;
+    let analysis_id =
+        insert_test_analysis_for_outcomes(&pool, user.id, platform, platform_id).await;
+
+    let seller_id: (Uuid,) = query_as(
+        "SELECT seller_id FROM listings WHERE id = (SELECT listing_id FROM analysis WHERE id = $1)",
+    )
+    .bind(analysis_id)
+    .fetch_one(&pool)
+    .await
+    .expect("expected to find the real seller_id");
+
+    record_risk_factors(&pool, analysis_id, seller_id.0, &[]).await;
+
+    let rows: Vec<(String,)> = query_as("SELECT label FROM evidence WHERE analysis_id = $1")
+        .bind(analysis_id)
+        .fetch_all(&pool)
+        .await
+        .expect("expected the query itself to succeed");
+
+    assert_eq!(
+        rows.len(),
+        0,
+        "expected genuinely zero evidence rows when there are no risk factors"
+    );
+
+    cleanup_test_seller_chain(&pool, platform, platform_id).await;
+    cleanup_test_user(&pool, email).await;
+}
+
+#[tokio::test]
+async fn record_risk_factors_never_panics_even_with_a_genuinely_invalid_foreign_key() {
+    let pool = admin_pool().await;
+    let fake_analysis_id = Uuid::new_v4();
+    let fake_seller_id = Uuid::new_v4();
+    let risk_factors = vec![RiskFactor {
+        severity: "soft".to_string(),
+        name: "test_factor".to_string(),
+        description: "test".to_string(),
+        contributing_signals: vec![],
+    }];
+
+    record_risk_factors(&pool, fake_analysis_id, fake_seller_id, &risk_factors).await;
+}
+
+// Get Monthly Visit Activity Tests
 #[tokio::test]
 #[serial]
 async fn get_monthly_visit_activity_database_error() {

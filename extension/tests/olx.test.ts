@@ -194,3 +194,138 @@ describe("scrapeOLX - seller_location and seller_last_active", () => {
     expect(data.seller_last_active).toBeNull();
   });
 });
+
+describe("scrapeOLX - verified seller ('Sold by') card", () => {
+  it("extracts the seller name and profile URL from the Sold-by link", () => {
+    document.body.innerHTML = `
+      <div id="soldBy">
+        <a href="/seller/instant-goodss-B1211104282357">
+          <h4>Instant Goodss</h4>
+        </a>
+      </div>
+    `;
+    const data = scrapeOLX();
+    expect(data.seller_name).toBe("Instant Goodss");
+    expect(data.seller_profile_url).toBe(
+      "https://www.olx.com.pk/seller/instant-goodss-B1211104282357",
+    );
+  });
+
+  it("detects the verified badge when present", () => {
+    document.body.innerHTML = `
+      <div id="soldBy">
+        <a href="/seller/test-B123">
+          <h4>Test Shop</h4>
+          <div class="sellerCard_verified__MB760">Verified</div>
+        </a>
+      </div>
+    `;
+    const data = scrapeOLX();
+    expect(data.seller_verified).toBe(true);
+  });
+
+  it("defaults seller_verified to false when the badge is genuinely absent", () => {
+    document.body.innerHTML = `
+      <div id="soldBy">
+        <a href="/seller/test-B123">
+          <h4>Test Shop</h4>
+        </a>
+      </div>
+    `;
+    const data = scrapeOLX();
+    expect(data.seller_verified).toBe(false);
+  });
+
+  it("extracts total products and rating from the stat blocks", () => {
+    document.body.innerHTML = `
+      <div id="soldBy">
+        <a href="/seller/test-B123">
+          <h4>Test Shop</h4>
+          <div class="group_grid_x"><div class="text-light">Total Products</div><strong>101</strong></div>
+          <div class="group_grid_x"><div class="text-light">Rating</div><strong>3.3 (3)</strong></div>
+        </a>
+      </div>
+    `;
+    const data = scrapeOLX();
+    expect(data.seller_total_products).toBe(101);
+    expect(data.seller_rating).toBe(3.3);
+  });
+
+  it("extracts the month+year join date from the Sold-by card", () => {
+    document.body.innerHTML = `
+      <div id="soldBy">
+        <a href="/seller/test-B123">
+          <h4>Test Shop</h4>
+          <div class="group_grid_x"><div class="text-light">Member since</div><strong>Nov 2025</strong></div>
+        </a>
+      </div>
+    `;
+    const data = scrapeOLX();
+    expect(data.seller_join_date).toBe("Member since Nov 2025");
+  });
+
+  it("does NOT let the old Posted-by fallback overwrite a join date the Sold-by card already found", () => {
+    document.body.innerHTML = `
+      <div id="soldBy">
+        <a href="/seller/test-B123">
+          <h4>Test Shop</h4>
+          <div class="group_grid_x"><div class="text-light">Member since</div><strong>Nov 2025</strong></div>
+        </a>
+      </div>
+    `;
+    const data = scrapeOLX();
+    expect(data.seller_join_date).toBe("Member since Nov 2025");
+  });
+});
+
+describe("scrapeOLX - verified-seller fallback selectors", () => {
+  it("finds the title via the verified-seller class when the original class is absent", () => {
+    document.body.innerHTML = `<h1 class="heading_h1__0cOM_">Solid State Relay DA-40</h1>`;
+    const data = scrapeOLX();
+    expect(data.title).toBe("Solid State Relay DA-40");
+  });
+
+  it("finds the price via the verified-seller class when the original class is absent", () => {
+    document.body.innerHTML = `
+      <div class="product-price_productPrice__0jCEE"><span>Rs 990</span></div>
+    `;
+    const data = scrapeOLX();
+    expect(data.price).toBe(990);
+  });
+
+  it("finds the description via the verified-seller selector when the original class is absent", () => {
+    document.body.innerHTML = `
+      <div id="description">
+        <div class="overview_collapsed__mve6Q">A genuine, real product description.</div>
+      </div>
+    `;
+    const data = scrapeOLX();
+    expect(data.description).toBe("A genuine, real product description.");
+  });
+});
+
+describe("scrapeOLX - seller_website extraction", () => {
+  it("finds a website genuinely introduced with self-reference language", () => {
+    document.body.innerHTML = `<div class="_7a99ad24"><span>Visit our website electronicshub.com for more deals!</span></div>`;
+    const data = scrapeOLX();
+    expect(data.seller_website).toBe("electronicshub.com");
+  });
+
+  it("extracts ANY domain-shaped text in the description, not just self-referenced ones - this is Tier 1's real, current, simpler behavior", () => {
+    document.body.innerHTML = `<div class="_7a99ad24"><span>Check samsung.com for real specs.</span></div>`;
+    const data = scrapeOLX();
+    expect(data.seller_website).toBe("samsung.com");
+  });
+
+  it("never extracts olx.com itself, even if self-reference language is present", () => {
+    document.body.innerHTML = `<div class="_7a99ad24"><span>Visit our store at olx.com.pk for more.</span></div>`;
+    const data = scrapeOLX();
+    expect(data.seller_website).toBeNull();
+  });
+
+  it("returns null when there is no description at all", () => {
+    document.body.innerHTML = `<div>nothing here</div>`;
+    const data = scrapeOLX();
+    expect(data.seller_website).toBeNull();
+  });
+});

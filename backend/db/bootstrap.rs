@@ -37,4 +37,13 @@ pub async fn run_grants(pool: &PgPool) {
     .execute(pool)
     .await
     .expect("new tables should automatically grant privileges to safely role");
+
+    query(
+        r#"
+            REVOKE UPDATE, DELETE ON evidence FROM safely;
+        "#,
+    )
+    .execute(pool)
+    .await
+    .expect("evidence table should be insert/select-only for the safely role");
 }

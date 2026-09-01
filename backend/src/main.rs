@@ -2,7 +2,8 @@ use axum::http::{HeaderValue, Method, header};
 use axum::serve;
 use axum::{Router, response::Redirect, routing::get};
 use backend::db::{bootstrap::run_grants, connection::load_pool};
-use backend::routes::{analyze, auth, billing, dashboard, fraud_reports, subscribe};
+use backend::routes::{analyze, auth, billing, dashboard, fraud_reports, outcomes, subscribe};
+use dotenvy::dotenv;
 use sqlx::{Pool, Postgres};
 use tokio::net::TcpListener;
 use tower_http::{
@@ -43,6 +44,7 @@ fn build_router(app_pool: Pool<Postgres>) -> Router {
         .merge(dashboard::dashboard_routes())
         .merge(billing::billing_routes())
         .merge(subscribe::subscribe_routes())
+        .merge(outcomes::outcomes_routes())
         .route(
             "/dashboard",
             get(|| async { Redirect::permanent("/dashboard/") }),
@@ -100,7 +102,7 @@ async fn run_server(app: Router) {
 
 #[tokio::main]
 async fn main() {
-    dotenvy::dotenv().ok();
+    dotenv().ok();
     let app_pool = setup_database().await;
     let app = build_router(app_pool);
     run_server(app).await;

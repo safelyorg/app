@@ -1,6 +1,7 @@
 use crate::models::{analysis::RiskLevel, fraud_reports::ReportTypes, sellers::SellersResponse};
 use chrono::{DateTime, Utc};
 use serde::Serialize;
+use serde_json::Value;
 use sqlx::prelude::FromRow;
 use uuid::Uuid;
 
@@ -35,7 +36,8 @@ pub struct AnalysisDetailRow {
     pub created_at: DateTime<Utc>,
     pub risk_score: i16,
     pub risk_level: RiskLevel,
-    pub signals: serde_json::Value,
+    pub signals: Value,
+    pub risk_factors: Option<Value>,
     pub listing_title: Option<String>,
     pub listing_url: String,
     pub platform: String,
@@ -57,7 +59,8 @@ pub struct HistoryDetailResponse {
     pub platform: String,
     pub risk_score: i16,
     pub risk_level: RiskLevel,
-    pub signals: serde_json::Value,
+    pub signals: Value,
+    pub risk_factors: Option<Value>,
     pub seller: SellersResponse,
     pub fraud_report_count: i64,
     pub reported: bool,

@@ -10,6 +10,31 @@ interface OlxScrapedData {
   platform_id: string | null;
   seller_location: string | null;
   seller_last_active: string | null;
+  seller_website: string | null;
+  seller_verified: boolean;
+  seller_rating: number | null;
+  seller_total_products: number | null;
+}
+
+// Tier 1: checks the currently-loaded listing page itself for a
+// mentioned website
+type WebsiteExtractor = (description: string | null) => string | null;
+
+function extractWebsiteFromDescription(description: string | null): string | null {
+  if (!description) return null;
+  const urlPattern = /(https?:\/\/)?(www\.)?[a-zA-Z0-9-]+\.[a-zA-Z]{2,}(\.[a-zA-Z]{2,})?/g;
+  const matches = description.match(urlPattern);
+  return matches?.find((m) => !m.includes("olx.com")) || null;
+}
+
+const websiteExtractors: WebsiteExtractor[] = [extractWebsiteFromDescription];
+
+function findSellerWebsite(description: string | null): string | null {
+  for (const extractor of websiteExtractors) {
+    const result = extractor(description);
+    if (result) return result;
+  }
+  return null;
 }
 
 (function () {
@@ -32,6 +57,10 @@ interface OlxScrapedData {
       platform_id: null,
       seller_location: null,
       seller_last_active: null,
+      seller_website: null,
+      seller_verified: false,
+      seller_rating: null,
+      seller_total_products: null,
     };
 
     // listing_id — extract from URL (e.g., /iid-123456789)
@@ -39,13 +68,15 @@ interface OlxScrapedData {
     data.listing_id = urlMatch ? urlMatch[1] : null;
 
     // title
-    const titleEl = document.querySelector("h1._75bce902") as HTMLElement | null;
+    const titleEl = (document.querySelector("h1._75bce902") ||
+      document.querySelector("h1.heading_h1__0cOM_")) as HTMLElement | null;
     data.title = titleEl ? titleEl.innerText.trim() : null;
 
     // price — strip "Rs" and commas, convert to paisas
-    const priceEl = document.querySelector("span._24469da7") as HTMLElement | null;
+    const priceEl = (document.querySelector("span._24469da7") ||
+      document.querySelector('[class*="product-price_productPrice"] span:first-child')) as HTMLElement | null;
     if (priceEl) {
-      let priceText = priceEl.innerText.trim();
+      let priceText = (priceEl.innerText || priceEl.textContent || "").trim();
       priceText = priceText.replace(/Rs\s*/i, "").replace(/,/g, "").trim();
 
       if (priceText.toLowerCase().includes("crore")) {
@@ -63,7 +94,8 @@ interface OlxScrapedData {
     }
 
     // description
-    const descEl = document.querySelector("div._7a99ad24 span") as HTMLElement | null;
+    const descEl = (document.querySelector("div._7a99ad24 span") ||
+      document.querySelector("#description .overview_collapsed__mve6Q")) as HTMLElement | null;
     data.description = descEl ? descEl.innerText.trim() : null;
 
     // image urls — take first 3 images
@@ -87,21 +119,71 @@ interface OlxScrapedData {
       data.seller_name = null;
     }
 
-    // member since — try multiple approaches
-    const memberSinceLabel = Array.from(
-      document.querySelectorAll<HTMLElement>("span._9083bec6._1fcb6673"),
-    ).find((el) => el.innerText.trim() === "Member Since");
-    if (memberSinceLabel) {
-      let yearEl = memberSinceLabel.parentElement?.querySelector(
-        "span._8206696c.b7af14b4",
-      ) as HTMLElement | null;
-      if (!yearEl) yearEl = memberSinceLabel.nextElementSibling as HTMLElement | null;
-      data.seller_join_date = yearEl ? "Member since " + yearEl.innerText.trim() : null;
-    } else {
-      // fallback — search all text on page for "Member since YYYY" pattern
-      const allText = document.body.innerText;
-      const memberMatch = allText.match(/Member [Ss]ince\s+(\d{4})/);
-      data.seller_join_date = memberMatch ? "Member since " + memberMatch[1] : null;
+    // Verified sellers use a completely different card structure ("Sold
+    // by," not "Posted by"), with genuinely richer, real trust data
+    // sitting directly on the listing page itself - free, Tier 1 data
+    // worth capturing before ever considering a slower, Tier 2 visit to
+    // the actual store page.
+    const soldByLink = document.querySelector("#soldBy a") as HTMLAnchorElement | null;
+    if (soldByLink) {
+      const href = soldByLink.getAttribute("href");
+      if (href) {
+        data.seller_profile_url = "https://www.olx.com.pk" + href;
+      }
+
+      const nameEl = soldByLink.querySelector("h4") as HTMLElement | null;
+      if (nameEl) data.seller_name = nameEl.innerText.trim();
+
+      data.seller_verified = !!soldByLink.querySelector('[class*="verified"]');
+
+      const statBlocks = Array.from(soldByLink.querySelectorAll('[class*="group_grid"]')).filter(
+        (el) => el.querySelector("strong"),
+      );
+
+      for (const block of statBlocks) {
+        const labelEl = block.querySelector('[class*="text-light"]') as HTMLElement | null;
+        const valueEl = block.querySelector("strong") as HTMLElement | null;
+        if (!labelEl || !valueEl) continue;
+
+        const label = labelEl.innerText.trim().toLowerCase();
+        const value = valueEl.innerText.trim();
+
+        if (label.includes("total products")) {
+          data.seller_total_products = parseInt(value, 10) || null;
+        } else if (label.includes("rating")) {
+          const ratingMatch = value.match(/^([\d.]+)/);
+          data.seller_rating = ratingMatch ? parseFloat(ratingMatch[1]) : null;
+        } else if (label.includes("member since")) {
+          // Sold-by cards show "Nov 2025" (month + year), genuinely
+          // different from Posted-by's plain year - only overwrite
+          // seller_join_date if it wasn't already found some other way.
+          if (!data.seller_join_date) {
+            data.seller_join_date = "Member since " + value;
+          }
+        }
+      }
+    }
+
+    // member since — try multiple approaches, but only if the
+    // "Sold by" (verified seller) block above hasn't already found a
+    // real join date - otherwise this always-running fallback
+    // silently overwrites a correct value with null.
+    if (!data.seller_join_date) {
+      const memberSinceLabel = Array.from(
+        document.querySelectorAll<HTMLElement>("span._9083bec6._1fcb6673"),
+      ).find((el) => el.innerText.trim() === "Member Since");
+      if (memberSinceLabel) {
+        let yearEl = memberSinceLabel.parentElement?.querySelector(
+          "span._8206696c.b7af14b4",
+        ) as HTMLElement | null;
+        if (!yearEl) yearEl = memberSinceLabel.nextElementSibling as HTMLElement | null;
+        data.seller_join_date = yearEl ? "Member since " + yearEl.innerText.trim() : null;
+      } else {
+        // fallback — search all text on page for "Member since YYYY" pattern
+        const allText = document.body.innerText;
+        const memberMatch = allText.match(/Member [Ss]ince\s+(\d{4})/);
+        data.seller_join_date = memberMatch ? "Member since " + memberMatch[1] : null;
+      }
     }
 
     // seller profile url and platform id
@@ -133,6 +215,7 @@ interface OlxScrapedData {
       "span[aria-label='Creation date']",
     ) as HTMLElement | null;
     data.seller_last_active = lastActiveEl ? lastActiveEl.innerText.trim() : null;
+    data.seller_website = findSellerWebsite(data.description);
 
     return data;
   }

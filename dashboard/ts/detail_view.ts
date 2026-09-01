@@ -20,6 +20,13 @@ interface DetailReport {
   reported_at: string;
 }
 
+interface DetailRiskFactor {
+  severity: string;
+  name: string;
+  description: string;
+  contributing_signals: string[];
+}
+
 interface DetailResponse {
   listing_title: string | null;
   listing_url: string | null;
@@ -29,6 +36,7 @@ interface DetailResponse {
   platform: string;
   seller: DetailSeller;
   signals: DetailSignal[] | null;
+  risk_factors: DetailRiskFactor[] | null;
   reports: DetailReport[] | null;
 }
 
@@ -212,6 +220,30 @@ function renderDetailBody(data: DetailResponse): void {
       " signals need your attention.</span>";
   }
 
+  const priceSignal = signals.find((s) => s.label === "Price analysis");
+  const priceSection = document.getElementById("detail-price-vs-market");
+  if (priceSection) {
+    if (priceSignal) {
+      const verdict = priceSignal.value || "unknown";
+      const verdictClass = verdict === "normal" ? "text-mint" : "text-amber";
+      priceSection.classList.remove("hidden");
+      priceSection.innerHTML =
+        '<div class="text-[10px] font-extrabold uppercase tracking-wider text-muted mb-1.5">Price vs market</div>' +
+        '<div class="bg-surface border border-line rounded-xl p-4">' +
+        '<div class="text-[14px] font-bold ' +
+        verdictClass +
+        '">' +
+        verdict.charAt(0).toUpperCase() +
+        verdict.slice(1) +
+        "</div>" +
+        '<div class="text-[12px] text-muted mt-1.5">' +
+        (priceSignal.sub || "") +
+        "</div></div>";
+    } else {
+      priceSection.classList.add("hidden");
+    }
+  }
+
   const signalsList = document.getElementById("detail-signals-list") as HTMLElement;
   signalsList.innerHTML = signals
     .map(
@@ -231,6 +263,53 @@ function renderDetailBody(data: DetailResponse): void {
         "</div></div>",
     )
     .join("");
+
+  const riskFactorsSection = document.getElementById("detail-risk-factors");
+  const riskFactors = data.risk_factors || [];
+  if (riskFactorsSection) {
+    if (riskFactors.length > 0) {
+      const severityColors: Record<string, string> = {
+        hard: "text-coral",
+        compound: "text-amber",
+        soft: "text-muted",
+      };
+      const severityLabels: Record<string, string> = {
+        hard: "Confirmed",
+        compound: "Pattern match",
+        soft: "Worth noting",
+      };
+      const capitalizeFirst = (str: string): string =>
+        str ? str.charAt(0).toUpperCase() + str.slice(1) : str;
+
+      riskFactorsSection.classList.remove("hidden");
+      riskFactorsSection.innerHTML =
+        '<div class="text-[10px] font-extrabold uppercase tracking-wider text-muted mb-2">Risk factors</div>' +
+        riskFactors
+          .map((f) => {
+            const colorClass = severityColors[f.severity] || "text-muted";
+            const severityLabel = severityLabels[f.severity] || f.severity;
+            return (
+              '<div class="bg-surface border border-line rounded-xl p-4 mb-2.5 last:mb-0">' +
+              '<div class="flex justify-between items-baseline gap-3">' +
+              '<div class="font-semibold text-[13px]">' +
+              capitalizeFirst(f.name.replace(/_/g, " ")) +
+              "</div>" +
+              '<div class="text-[13px] font-bold whitespace-nowrap ' +
+              colorClass +
+              '">' +
+              severityLabel +
+              "</div></div>" +
+              '<div class="text-[12px] text-muted mt-1.5">' +
+              f.description +
+              "</div></div>"
+            );
+          })
+          .join("");
+    } else {
+      riskFactorsSection.classList.add("hidden");
+      riskFactorsSection.innerHTML = "";
+    }
+  }
 
   const filedBlock = document.getElementById("detail-report-filed") as HTMLElement;
   const emptyBlock = document.getElementById("detail-report-empty") as HTMLElement;

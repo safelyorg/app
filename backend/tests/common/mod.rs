@@ -1,11 +1,13 @@
 use axum::http::{HeaderMap, HeaderValue};
 use backend::{
-    models::users::User,
+    models::{analysis::Signal, users::User},
     services::auth::{create_session, find_or_create_user_by_email},
 };
 use chrono::{DateTime, Utc};
+use dotenvy::dotenv;
 use hex::encode;
 use hmac::{Hmac, KeyInit, Mac};
+use serde_json::json;
 use sha2::Sha256;
 use sqlx::{Pool, Postgres, query, query_as, query_scalar};
 use std::env::var;
@@ -20,8 +22,18 @@ pub struct TestSubscriptionOptions {
     pub scheduled_plan_name: Option<&'static str>,
 }
 
+#[allow(dead_code)]
+pub async fn admin_pool() -> Pool<Postgres> {
+    dotenv().ok();
+    let url = var("DATABASE_URL").expect("admin database URL needed for test cleanup");
+    Pool::<Postgres>::connect(&url)
+        .await
+        .expect("failed to connect with admin privileges")
+}
+
+#[allow(dead_code)]
 pub async fn test_pool() -> Pool<Postgres> {
-    dotenvy::dotenv().ok();
+    dotenv().ok();
     let url = var("APP_URL").expect("the url needs to set in the .env file");
     Pool::<Postgres>::connect(&url)
         .await
@@ -33,6 +45,30 @@ pub async fn cleanup_test_user(pool: &Pool<Postgres>, email: &str) {
         .bind(email)
         .execute(pool)
         .await;
+}
+
+#[allow(dead_code)]
+pub fn make_signal(value: &str) -> Signal {
+    Signal {
+        label: "Test signal".to_string(),
+        sub: "".to_string(),
+        value: value.to_string(),
+        signal_type: "good".to_string(),
+        category: "listing".to_string(),
+        check_type: "existence".to_string(),
+    }
+}
+
+#[allow(dead_code)]
+pub fn make_signals(label: &str, value: &str, signal_type: &str) -> Signal {
+    Signal {
+        label: label.to_string(),
+        sub: format!("{} explanation", label),
+        value: value.to_string(),
+        signal_type: signal_type.to_string(),
+        category: "listing".to_string(),
+        check_type: "pattern".to_string(),
+    }
 }
 
 #[allow(dead_code)]
@@ -186,12 +222,26 @@ pub async fn magic_link_exists_for_email(pool: &Pool<Postgres>, email: &str) -> 
     row.is_some()
 }
 
-/// Deletes a seller and everything genuinely depending on it - analysis
-/// rows, then listings, then the seller itself - in the correct order,
-/// so foreign keys never block the cleanup. Safe to call before a test
-/// too, as a guard against leftover data from a previous failed run.
+// Outcomes now has its own real foreign key to analysis, added
+// today - it must be cleaned up FIRST, or the analysis delete
+// below silently fails, leaving orphaned seller/listing rows
+// behind for the next test run to collide with.
 #[allow(dead_code)]
 pub async fn cleanup_test_seller_chain(pool: &Pool<Postgres>, platform: &str, platform_id: &str) {
+    let _ = query(
+        "DELETE FROM outcomes WHERE analysis_id IN (
+            SELECT id FROM analysis WHERE listing_id IN (
+                SELECT id FROM listings WHERE seller_id IN (
+                    SELECT id FROM sellers WHERE platform = $1 AND platform_id = $2
+                )
+            )
+        )",
+    )
+    .bind(platform)
+    .bind(platform_id)
+    .execute(pool)
+    .await;
+
     let _ = query(
         "DELETE FROM analysis WHERE listing_id IN (
             SELECT id FROM listings WHERE seller_id IN (
@@ -323,4 +373,110 @@ pub async fn set_analysis_created_at(
         .bind(listing_id)
         .execute(pool)
         .await;
+}
+
+#[allow(dead_code)]
+pub async fn insert_test_analysis_for_outcomes(
+    pool: &Pool<Postgres>,
+    user_id: Uuid,
+    platform: &str,
+    platform_id: &str,
+) -> Uuid {
+    let seller_id = Uuid::now_v7();
+    query(
+        "INSERT INTO sellers (id, platform, platform_id, name, verification, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, 'unknown'::seller_verification, NOW(), NOW())",
+    )
+    .bind(seller_id)
+    .bind(platform)
+    .bind(platform_id)
+    .bind("Test Seller")
+    .execute(pool)
+    .await
+    .expect("expected to create the test seller");
+
+    let listing_id = Uuid::now_v7();
+    let listing_url = format!("https://{}.com/item/{}", platform, platform_id);
+    query(
+        "INSERT INTO listings (id, seller_id, platform, listing_url, listing_id, title, first_seen_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())",
+    )
+    .bind(listing_id)
+    .bind(seller_id)
+    .bind(platform)
+    .bind(&listing_url)
+    .bind(platform_id)
+    .bind("Test Listing")
+    .execute(pool)
+    .await
+    .expect("expected to create the test listing");
+
+    let analysis_id = Uuid::now_v7();
+    query(
+        "INSERT INTO analysis (id, listing_id, risk_score, risk_level, signals, user_id, created_at)
+         VALUES ($1, $2, $3, 'low'::risk_level_type, $4, $5, NOW())",
+    )
+    .bind(analysis_id)
+    .bind(listing_id)
+    .bind(15_i16)
+    .bind(json!([]))
+    .bind(user_id)
+    .execute(pool)
+    .await
+    .expect("expected to create the test analysis");
+
+    analysis_id
+}
+
+#[allow(dead_code)]
+pub async fn insert_raw_evidence_row(
+    pool: &Pool<Postgres>,
+    analysis_id: Uuid,
+    seller_id: Uuid,
+    value: &str,
+) {
+    let _ = query(
+        "INSERT INTO evidence (id, analysis_id, seller_id, evidence_type, label, value, source, found_at)
+         VALUES ($1, $2, $3, 'check', 'risk_score', $4, 'scoring_engine', NOW())",
+    )
+    .bind(Uuid::now_v7())
+    .bind(analysis_id)
+    .bind(seller_id)
+    .bind(value)
+    .execute(pool)
+    .await;
+}
+
+#[allow(dead_code)]
+pub async fn setup_real_seller_and_analysis(
+    pool: &Pool<Postgres>,
+    platform_id: &str,
+) -> (Uuid, Uuid) {
+    let email = format!("{}@example.com", platform_id);
+    cleanup_test_user(pool, &email).await;
+    let (user, _) = create_test_user(pool, &email).await;
+
+    cleanup_test_seller_chain(pool, "olx", platform_id).await;
+    let analysis_id = insert_test_analysis_for_outcomes(pool, user.id, "olx", platform_id).await;
+
+    let seller_row: (Uuid,) = query_as(
+        "SELECT seller_id FROM listings WHERE id = (SELECT listing_id FROM analysis WHERE id = $1)",
+    )
+    .bind(analysis_id)
+    .fetch_one(pool)
+    .await
+    .expect("expected to find the real seller_id for this analysis");
+
+    (analysis_id, seller_row.0)
+}
+
+#[allow(dead_code)]
+pub async fn cleanup_seller_and_analysis(pool: &Pool<Postgres>, platform_id: &str) {
+    let _ = query(
+        "DELETE FROM evidence WHERE seller_id IN (SELECT id FROM sellers WHERE platform_id = $1)",
+    )
+    .bind(platform_id)
+    .execute(pool)
+    .await;
+    cleanup_test_seller_chain(pool, "olx", platform_id).await;
 }

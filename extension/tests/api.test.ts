@@ -141,3 +141,78 @@ describe("submitReport", () => {
     expect(result).toBeNull();
   });
 });
+
+describe("checkSubscriptionStatus", () => {
+  it("returns the real status string on success", async () => {
+    (globalThis as any).fetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({ status: "active" }),
+    });
+    const result = await api.checkSubscriptionStatus();
+    expect(result).toBe("active");
+  });
+
+  it("returns null when the response has no status field at all", async () => {
+    (globalThis as any).fetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({}),
+    });
+    const result = await api.checkSubscriptionStatus();
+    expect(result).toBeNull();
+  });
+
+  it("returns null when the response is not ok", async () => {
+    (globalThis as any).fetch.mockResolvedValue({
+      ok: false,
+      json: async () => ({ status: "active" }),
+    });
+    const result = await api.checkSubscriptionStatus();
+    expect(result).toBeNull();
+  });
+
+  it("returns null when the fetch call itself throws", async () => {
+    (globalThis as any).fetch.mockRejectedValue(new Error("network down"));
+    const result = await api.checkSubscriptionStatus();
+    expect(result).toBeNull();
+  });
+});
+
+describe("submitOutcome", () => {
+  it("returns true on a genuine, successful response", async () => {
+    (globalThis as any).fetch.mockResolvedValue({ ok: true });
+    const result = await api.submitOutcome("analysis-123", "proceeded");
+    expect(result).toBe(true);
+  });
+
+  it("returns false when the response is not ok", async () => {
+    (globalThis as any).fetch.mockResolvedValue({ ok: false });
+    const result = await api.submitOutcome("analysis-123", "aborted");
+    expect(result).toBe(false);
+  });
+
+  it("returns false when the fetch call itself throws", async () => {
+    (globalThis as any).fetch.mockRejectedValue(new Error("network down"));
+    const result = await api.submitOutcome("analysis-123", "proceeded");
+    expect(result).toBe(false);
+  });
+
+  it("sends the real analysis_id and action in the request body", async () => {
+    (globalThis as any).fetch.mockResolvedValue({ ok: true });
+    await api.submitOutcome("real-analysis-id-456", "aborted");
+
+    const callArgs = (globalThis as any).fetch.mock.calls[0];
+    const sentBody = JSON.parse(callArgs[1].body);
+    expect(sentBody).toEqual({ analysis_id: "real-analysis-id-456", action: "aborted" });
+  });
+
+  it("attaches the real Authorization header when a session token exists", async () => {
+    fakeChrome.storage.local.get = vi.fn().mockResolvedValue({
+      safely_session_token: "real-token-789",
+    });
+    (globalThis as any).fetch.mockResolvedValue({ ok: true });
+    await api.submitOutcome("analysis-123", "proceeded");
+
+    const callArgs = (globalThis as any).fetch.mock.calls[0];
+    expect(callArgs[1].headers.Authorization).toBe("Bearer real-token-789");
+  });
+});

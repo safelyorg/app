@@ -159,7 +159,12 @@
             '" style="margin-top:14px"><span>&#9679;</span><span>' +
             pageData.seller.networkSummary +
             "</span></div>";
-        return circleHTML + sellerCardHTML + activityHTML + networkHTML;
+        const outcomeButtonsHTML = '<div style="display:flex;gap:8px;margin-top:14px;">' +
+            '<button id="safely-outcome-proceed" style="flex:1;padding:10px;border-radius:8px;border:1px solid #35d0a6;background:transparent;color:#35d0a6;font-size:12px;font-weight:600;cursor:pointer;">I\'m proceeding</button>' +
+            '<button id="safely-outcome-abort" style="flex:1;padding:10px;border-radius:8px;border:1px solid #ff5d5d;background:transparent;color:#ff5d5d;font-size:12px;font-weight:600;cursor:pointer;">I\'m backing out</button>' +
+            "</div>" +
+            '<div id="safely-outcome-confirmed" style="display:none;text-align:center;margin-top:10px;font-size:12px;color:#8a8a93;">Thanks - your response has been recorded.</div>';
+        return circleHTML + sellerCardHTML + activityHTML + networkHTML + outcomeButtonsHTML;
     }
     function buildReportSection() {
         return ('<div class="safely-report-section">' +
@@ -291,6 +296,39 @@
                 if (sellerContentEl)
                     sellerContentEl.innerHTML = buildSellerSection();
             });
+        }
+        const proceedBtn = root.querySelector("#safely-outcome-proceed");
+        const abortBtn = root.querySelector("#safely-outcome-abort");
+        const outcomeConfirmed = root.querySelector("#safely-outcome-confirmed");
+        async function handleOutcomeClick(action) {
+            const pageData = window.__safelyData;
+            if (!pageData.analysisId)
+                return;
+            if (proceedBtn)
+                proceedBtn.disabled = true;
+            if (abortBtn)
+                abortBtn.disabled = true;
+            const success = await window.__safelyAPI.submitOutcome(pageData.analysisId, action);
+            if (success) {
+                if (proceedBtn)
+                    proceedBtn.style.display = "none";
+                if (abortBtn)
+                    abortBtn.style.display = "none";
+                if (outcomeConfirmed)
+                    outcomeConfirmed.style.display = "block";
+            }
+            else {
+                if (proceedBtn)
+                    proceedBtn.disabled = false;
+                if (abortBtn)
+                    abortBtn.disabled = false;
+            }
+        }
+        if (proceedBtn) {
+            proceedBtn.addEventListener("click", () => handleOutcomeClick("proceeded"));
+        }
+        if (abortBtn) {
+            abortBtn.addEventListener("click", () => handleOutcomeClick("aborted"));
         }
     }
     window.__safelyAddTab("risk", "Risk", buildRiskTab(), '<svg viewBox="0 0 24 24" fill="none" stroke="#8a8a93" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="9 12 11 14 15 10"/></svg>', () => {

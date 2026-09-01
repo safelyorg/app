@@ -9,10 +9,20 @@ use crate::{
     services::{
         auth::extract_user_id,
         claude::{CallClaudeArguments, ClaudeAnalysis, call_claude},
+        confidence::calculate_confidence,
+        entity_detection::classify_entity,
+        evidence::{record_evidence, record_risk_factors},
         fraud_reports::{build_network_summary, count_fraud_reports},
         listings::get_monthly_visit_activity,
+        network_memory::build_network_memory_signal,
+        risk_factors::derive_risk_factors,
         sellers::{create_seller, find_seller},
-        signals::{build_domain_signal, build_signals},
+        signals::{
+            build_domain_signal, build_seller_verification_signals, build_signals,
+            build_store_page_signal, build_whois_signal,
+        },
+        store_scrapers::check_store_page,
+        whois::check_domain_whois,
     },
 };
 use axum::{Json, http::HeaderMap};
@@ -34,6 +44,9 @@ pub struct CreateAnalysisData<'a> {
     pub network_summary: String,
     pub claude_raw: String,
     pub user_id: Uuid,
+    pub confidence_level: String,
+    pub confidence_reasoning: String,
+    pub risk_factors: Value,
 }
 
 pub struct ResolvedSeller {
@@ -236,7 +249,8 @@ pub async fn run_claude_analysis(
 ///
 /// It builds the main signal list from Claude's analysis, checks if a domain
 /// mismatch was detected and returns the complete list.
-pub fn build_all_signals(
+pub async fn build_all_signals(
+    pool: &Pool<Postgres>,
     claude_analysis: &ClaudeAnalysis,
     seller: &Sellers,
     request: &AnalyzeRequest,
@@ -252,6 +266,46 @@ pub fn build_all_signals(
         request.domain_check_real_html.as_deref(),
     ) {
         signals.insert(0, domain_signal);
+    }
+
+    if let Some(memory_signal) = build_network_memory_signal(pool, seller.id).await {
+        signals.push(memory_signal);
+    }
+
+    // Layer 3, Active collection - if the seller mentioned a real
+    // website, check its genuine registration via WHOIS. Most
+    // listings won't have one at all, so this only fires when Tier
+    // 1's extraction actually found something real.
+    if let Some(website) = request.seller_website.as_deref() {
+        let whois_result = check_domain_whois(website).await;
+        if let Some(whois_signal) = build_whois_signal(whois_result.as_ref()) {
+            signals.push(whois_signal);
+        }
+    }
+
+    // Genuinely free, real trust data for OLX's verified-seller
+    // accounts - member duration, listing count, real rating -
+    // already present on the listing page for these sellers.
+    signals.extend(build_seller_verification_signals(
+        request.seller_verified.unwrap_or(false),
+        request.seller_rating,
+        request.seller_total_products,
+    ));
+
+    // Tier 2 - visits the seller's own, separate store/profile page,
+    // confirming whether their real name genuinely appears there, and
+    // checking for any self-referenced website mentioned on that page.
+    if let Some(profile_url) = request.seller_profile_url.as_deref() {
+        let seller_name = request.seller_name.as_deref().unwrap_or("");
+        if let Some(store_result) =
+            check_store_page(&request.platform, profile_url, seller_name).await
+        {
+            if let Some(store_signal) =
+                build_store_page_signal(&store_result, request.seller_website.as_deref())
+            {
+                signals.push(store_signal);
+            }
+        }
     }
 
     signals
@@ -271,6 +325,22 @@ pub async fn save_and_build_response(
     let signals_json =
         to_value(&data.signals).map_err(|e| AnalyzeError::SerializationFailed(e.to_string()))?;
 
+    let website_fully_confirmed = data
+        .signals
+        .iter()
+        .any(|s| s.label == "Store page check" && s.value == "Fully confirmed");
+
+    let entity_type = classify_entity(data.seller.name.as_deref(), website_fully_confirmed);
+    let (confidence_level, confidence_reasoning) = calculate_confidence(&data.signals);
+
+    // Layer 7 - translates this analysis's signals into named,
+    // human-readable risk factor conclusions. Computed before saving,
+    // so it can be stored directly on the analysis row itself -
+    // otherwise,
+    let risk_factors = derive_risk_factors(&data.signals);
+    let risk_factors_json =
+        to_value(&risk_factors).map_err(|e| AnalyzeError::SerializationFailed(e.to_string()))?;
+
     let saved_analysis = create_analysis(CreateAnalysisData {
         pool: data.pool,
         listing_id: data.listing_id,
@@ -280,9 +350,23 @@ pub async fn save_and_build_response(
         network_summary: data.claude_analysis.overall_risk_notes.clone(),
         claude_raw: String::new(),
         user_id: data.user_id,
+        confidence_level: confidence_level.clone(),
+        confidence_reasoning: confidence_reasoning.clone(),
+        risk_factors: risk_factors_json,
     })
     .await
     .map_err(|e| AnalyzeError::Database(e.to_string()))?;
+
+    record_evidence(
+        data.pool,
+        saved_analysis.id,
+        data.seller.id,
+        &data.signals,
+        data.risk_score,
+    )
+    .await;
+
+    record_risk_factors(data.pool, saved_analysis.id, data.seller.id, &risk_factors).await;
 
     let monthly_activity = get_monthly_visit_activity(data.pool, data.seller.id)
         .await
@@ -293,12 +377,17 @@ pub async fn save_and_build_response(
     seller_response.monthly_activity = monthly_activity;
 
     Ok(Json(AnalyzeResponse {
+        analysis_id: saved_analysis.id,
         risk_score: saved_analysis.risk_score,
         risk_level: saved_analysis.risk_level,
         seller: seller_response,
         signals: data.signals,
         network_summary: data.claude_analysis.overall_risk_notes,
         fraud_report_count: data.fraud_count,
+        entity_type,
+        confidence_level,
+        confidence_reasoning,
+        risk_factors,
     }))
 }
 
@@ -318,11 +407,14 @@ pub async fn create_analysis(data: CreateAnalysisData<'_>) -> Result<Analysis, E
             network_summary,
             claude_raw,
             user_id,
+            confidence_level,
+            confidence_reasoning,
+            risk_factors,
             created_at
         )
         VALUES (
             $1,  $2,  $3,  $4,   $5,
-            $6,  $7,  $8,  NOW()
+            $6,  $7,  $8,  $9,   $10, $11, NOW()
         )
         RETURNING *
         ",
@@ -335,7 +427,11 @@ pub async fn create_analysis(data: CreateAnalysisData<'_>) -> Result<Analysis, E
     .bind(&data.network_summary)
     .bind(&data.claude_raw)
     .bind(&data.user_id)
+    .bind(&data.confidence_level)
+    .bind(&data.confidence_reasoning)
+    .bind(&data.risk_factors)
     .fetch_one(data.pool)
     .await?;
+
     Ok(analysis)
 }

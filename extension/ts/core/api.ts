@@ -17,6 +17,10 @@ interface AnalyzePayload {
   seller_join_date: string | null;
   seller_location: string | null;
   seller_last_active: string | null;
+  seller_website: string | null;
+  seller_verified: boolean;
+  seller_rating: number | null;
+  seller_total_products: number | null;
   domain_check_status: string | null;
   domain_check_real_name: string | null;
   domain_check_real_domain: string | null;
@@ -28,8 +32,15 @@ interface AnalyzePayload {
 interface AnalyzeResponse {
   error?: string;
   retryAfterSeconds?: number | null;
+  analysis_id: string;
   risk_score: number;
   fraud_report_count: number;
+  risk_factors: Array<{
+    severity: string;
+    name: string;
+    description: string;
+    contributing_signals: string[];
+  }>;
   seller: {
     name: string | null;
     platform: string | null;
@@ -121,6 +132,21 @@ interface AnalyzeResponse {
       }
     },
 
+    submitOutcome: async function (analysisId: string, action: "proceeded" | "aborted"): Promise<boolean> {
+      try {
+        const authHeaders = await getAuthHeaders();
+        const response = await fetch(API_BASE + "/outcomes", {
+          method: "POST",
+          headers: Object.assign({ "Content-Type": "application/json" }, authHeaders),
+          body: JSON.stringify({ analysis_id: analysisId, action }),
+        });
+        return response.ok;
+      } catch (error) {
+        console.error("Safely: failed to record outcome", error);
+        return false;
+      }
+    },
+
     submitReport: async function (reportData: Record<string, unknown>): Promise<any> {
       try {
         const authHeaders = await getAuthHeaders();
@@ -184,6 +210,10 @@ interface AnalyzeResponse {
         seller_join_date: scraped.seller_join_date || null,
         seller_location: scraped.seller_location || null,
         seller_last_active: scraped.seller_last_active || null,
+        seller_website: scraped.seller_website || null,
+        seller_verified: scraped.seller_verified || false,
+        seller_rating: scraped.seller_rating || null,
+        seller_total_products: scraped.seller_total_products || null,
         domain_check_status: domainCheck ? domainCheck.status : null,
         domain_check_real_name: domainCheck ? domainCheck.realName : null,
         domain_check_real_domain: domainCheck ? domainCheck.realDomain : null,
@@ -209,8 +239,10 @@ interface AnalyzeResponse {
       }
 
       (window as any).__safelyData = {
+        analysisId: data.analysis_id,
         riskScore: data.risk_score,
         fraudReportCount: data.fraud_report_count,
+        riskFactors: data.risk_factors || [],
         seller: {
           name: data.seller.name || "Unknown",
           platform: data.seller.platform || scraped.platform || "unknown",

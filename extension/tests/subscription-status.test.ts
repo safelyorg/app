@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { fakeChrome } from "./setup-chrome";
-
 import "../ts/core/panel-subscription-logic";
 import "../ts/core/api";
 

@@ -92,7 +92,49 @@
             '<div class="safely-section-label" style="margin-top:18px">Recommended checks</div><div style="display:flex;flex-direction:column;gap:8px">' +
             '<div class="safely-check-card"><div class="safely-check-title">Ask for a live video call</div><div class="safely-check-body">Verify the item is physically in the seller\'s hands before sending any payment.</div></div>' +
             '<div class="safely-check-card"><div class="safely-check-title">Check IMEI on delivery</div><div class="safely-check-body">Dial *#06# on the device and confirm the number matches what the seller declared at deal creation.</div></div>' +
-            '<div class="safely-check-card"><div class="safely-check-title">Do not pay to number in listing</div><div class="safely-check-body">A phone number in the listing could route your payment outside Safely escrow protection.</div></div></div>');
+            '<div class="safely-check-card"><div class="safely-check-title">Do not pay to number in listing</div><div class="safely-check-body">A phone number in the listing could route your payment outside Safely escrow protection.</div></div></div>' +
+            buildRiskFactorsSection(pageData.riskFactors));
+    }
+    const SEVERITY_COLORS = {
+        hard: "#ff5d5d",
+        compound: "#f2b84c",
+        soft: "#8e8e93",
+    };
+    const SEVERITY_LABELS = {
+        hard: "Confirmed",
+        compound: "Pattern match",
+        soft: "Worth noting",
+    };
+    function capitalizeFirst(str) {
+        if (!str)
+            return str;
+        return str.charAt(0).toUpperCase() + str.slice(1);
+    }
+    function buildRiskFactorsSection(riskFactors) {
+        if (!riskFactors || riskFactors.length === 0)
+            return "";
+        const rows = riskFactors
+            .map((factor) => {
+            const color = SEVERITY_COLORS[factor.severity] || "#8e8e93";
+            const severityLabel = SEVERITY_LABELS[factor.severity] || factor.severity;
+            return ('<div class="safely-check-card">' +
+                '<div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;">' +
+                '<div class="safely-check-title">' +
+                window.escapeHtml(capitalizeFirst(factor.name.replace(/_/g, " "))) +
+                "</div>" +
+                '<div style="font-weight:700;white-space:nowrap;font-size:11px;color:' +
+                color +
+                ';">' +
+                window.escapeHtml(severityLabel) +
+                "</div></div>" +
+                '<div class="safely-check-body">' +
+                window.escapeHtml(factor.description) +
+                "</div></div>");
+        })
+            .join("");
+        return ('<div class="safely-section-label" style="margin-top:18px">Risk Factors</div><div style="display:flex;flex-direction:column;gap:8px">' +
+            rows +
+            "</div>");
     }
     window.__safelyAddTab("intelligence", "Intelligence", buildIntelligenceTab(), '<svg viewBox="0 0 24 24" fill="none" stroke="#8e8e93" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="2"/><path d="M16.24 7.76a6 6 0 010 8.48"/><path d="M19.07 4.93a10 10 0 010 14.14"/><path d="M7.76 16.24a6 6 0 010-8.48"/><path d="M4.93 19.07a10 10 0 010-14.14"/></svg>', null);
     window.addEventListener("safely-data-ready", () => {

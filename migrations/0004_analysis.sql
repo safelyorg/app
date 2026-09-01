@@ -7,6 +7,9 @@ CREATE TABLE IF NOT EXISTS analysis (
     signals JSONB NOT NULL,
     network_summary TEXT,
     claude_raw TEXT,
+    confidence_level TEXT,
+    confidence_reasoning TEXT,
+    risk_factors JSONB,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 

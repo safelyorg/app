@@ -18,10 +18,12 @@ interface SafelySeller {
 }
 
 interface SafelyData {
+  analysisId: string | null;
   riskScore: number;
   fraudReportCount: number;
   seller: SafelySeller;
   signals: unknown[];
+  riskFactors: unknown[];
 }
 
 (function () {
@@ -29,8 +31,10 @@ interface SafelyData {
 
   function defaultData(): SafelyData {
     return {
+      analysisId: null,
       riskScore: 0,
       fraudReportCount: 0,
+      riskFactors: [],
       seller: {
         name: "Unknown",
         handle: "",

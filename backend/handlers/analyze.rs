@@ -41,7 +41,7 @@ pub async fn analyze(
         .map_err(|e| AnalyzeError::Database(e.to_string()))?;
 
     let claude_analysis = run_claude_analysis(&listing, &resolved.seller).await?;
-    let signals = build_all_signals(&claude_analysis, &resolved.seller, &request);
+    let signals = build_all_signals(&pool, &claude_analysis, &resolved.seller, &request).await;
 
     let risk_score = calculate_risk_score(&claude_analysis, resolved.fraud_count);
     let risk_level = match risk_score {

@@ -1,4 +1,6 @@
-use crate::models::{listings::ListingCategory, sellers::SellersResponse};
+use crate::models::{
+    listings::ListingCategory, risk_factors::RiskFactor, sellers::SellersResponse,
+};
 use chrono::{DateTime, NaiveDate, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -24,6 +26,9 @@ pub struct Analysis {
     pub network_summary: Option<String>,
     pub claude_raw: Option<String>,
     pub user_id: Uuid,
+    pub confidence_level: Option<String>,
+    pub confidence_reasoning: Option<String>,
+    pub risk_factors: Option<Value>,
     pub created_at: DateTime<Utc>,
 }
 
@@ -52,6 +57,14 @@ pub struct AnalyzeRequest {
     pub seller_last_active: Option<String>,
 
     #[serde(default)]
+    pub seller_website: Option<String>,
+    #[serde(default)]
+    pub seller_verified: Option<bool>,
+    #[serde(default)]
+    pub seller_rating: Option<f64>,
+    #[serde(default)]
+    pub seller_total_products: Option<i32>,
+    #[serde(default)]
     pub domain_check_status: Option<String>,
     #[serde(default)]
     pub domain_check_real_name: Option<String>,
@@ -67,12 +80,17 @@ pub struct AnalyzeRequest {
 
 #[derive(Debug, Serialize)]
 pub struct AnalyzeResponse {
+    pub analysis_id: Uuid,
     pub risk_score: i16,
     pub risk_level: RiskLevel,
     pub seller: SellersResponse,
     pub signals: Vec<Signal>,
     pub network_summary: String,
     pub fraud_report_count: i64,
+    pub entity_type: String,
+    pub confidence_level: String,
+    pub confidence_reasoning: String,
+    pub risk_factors: Vec<RiskFactor>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -82,4 +100,6 @@ pub struct Signal {
     pub value: String,
     #[serde(rename = "type")]
     pub signal_type: String,
+    pub category: String,
+    pub check_type: String,
 }

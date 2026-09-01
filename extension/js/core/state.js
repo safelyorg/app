@@ -8,8 +8,10 @@ function escapeHtml(str) {
     "use strict";
     function defaultData() {
         return {
+            analysisId: null,
             riskScore: 0,
             fraudReportCount: 0,
+            riskFactors: [],
             seller: {
                 name: "Unknown",
                 handle: "",
