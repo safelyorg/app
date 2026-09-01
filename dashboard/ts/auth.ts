@@ -38,7 +38,11 @@
       session_expired: "Your session had expired. Please sign in again.",
     };
 
-    showToast(messages[error] || "Something didn't go as expected. Please try again.", 5000);
+    if ((window as any).showToast) {
+      (window as any).showToast(messages[error] || "Something didn't go as expected. Please try again.", 5000);
+    } else {
+      console.warn("Safely: showToast not yet available:", messages[error] || error);
+    }
 
     // Clean the URL right after reading it, so a refresh doesn't show
     // this same message again.
@@ -53,14 +57,31 @@
     localStorage.removeItem(STORAGE_KEY);
   }
 
-  function renderAuthState(): void {
+  async function renderAuthState(): Promise<void> {
     const token = getToken();
     const app = document.getElementById("app");
     const gate = document.getElementById("login-gate");
-    if (token) {
-      if (app) app.classList.remove("hidden");
-      if (gate) gate.classList.add("hidden");
-    } else {
+
+    if (!token) {
+      if (app) app.classList.add("hidden");
+      if (gate) gate.classList.remove("hidden");
+      return;
+    }
+
+    try {
+      const response = await fetch("/api/v1/me", {
+        headers: { Authorization: "Bearer " + token },
+      });
+      if (response.ok) {
+        if (app) app.classList.remove("hidden");
+        if (gate) gate.classList.add("hidden");
+      } else {
+        clearToken();
+        if (app) app.classList.add("hidden");
+        if (gate) gate.classList.remove("hidden");
+      }
+    } catch (e) {
+      clearToken();
       if (app) app.classList.add("hidden");
       if (gate) gate.classList.remove("hidden");
     }
@@ -99,8 +120,9 @@
   });
 
   captureSessionFromUrl();
-  renderAuthState();
-  checkForAuthErrorInUrl();
+  renderAuthState().then(() => {
+    checkForAuthErrorInUrl();
+  });
 
   const logoutBtn = document.getElementById("btnLogout");
   if (logoutBtn) {

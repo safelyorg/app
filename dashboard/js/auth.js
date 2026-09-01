@@ -42,17 +42,37 @@
     function clearToken() {
         localStorage.removeItem(STORAGE_KEY);
     }
-    function renderAuthState() {
+    async function renderAuthState() {
         const token = getToken();
         const app = document.getElementById("app");
         const gate = document.getElementById("login-gate");
-        if (token) {
+        if (!token) {
             if (app)
-                app.classList.remove("hidden");
+                app.classList.add("hidden");
             if (gate)
-                gate.classList.add("hidden");
+                gate.classList.remove("hidden");
+            return;
         }
-        else {
+        try {
+            const response = await fetch("/api/v1/me", {
+                headers: { Authorization: "Bearer " + token },
+            });
+            if (response.ok) {
+                if (app)
+                    app.classList.remove("hidden");
+                if (gate)
+                    gate.classList.add("hidden");
+            }
+            else {
+                clearToken();
+                if (app)
+                    app.classList.add("hidden");
+                if (gate)
+                    gate.classList.remove("hidden");
+            }
+        }
+        catch (e) {
+            clearToken();
             if (app)
                 app.classList.add("hidden");
             if (gate)
@@ -91,8 +111,9 @@
         }
     });
     captureSessionFromUrl();
-    renderAuthState();
-    checkForAuthErrorInUrl();
+    renderAuthState().then(() => {
+        checkForAuthErrorInUrl();
+    });
     const logoutBtn = document.getElementById("btnLogout");
     if (logoutBtn) {
         logoutBtn.addEventListener("click", (e) => {
