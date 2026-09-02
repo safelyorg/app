@@ -8,7 +8,12 @@ use crate::{
     },
     services::{
         auth::extract_user_id,
-        claude::{CallClaudeArguments, ClaudeAnalysis, call_claude},
+        b2b_scrapers::{B2bSupplierProfile, check_b2b_page},
+        b2c_scrapers::check_store_page,
+        claude::{
+            CallB2bClaudeArguments, CallClaudeArguments, ClaudeAnalysis, call_b2b_claude,
+            call_claude,
+        },
         confidence::calculate_confidence,
         entity_detection::classify_entity,
         evidence::{record_evidence, record_risk_factors},
@@ -18,10 +23,11 @@ use crate::{
         risk_factors::derive_risk_factors,
         sellers::{create_seller, find_seller},
         signals::{
-            build_domain_signal, build_seller_verification_signals, build_signals,
-            build_store_page_signal, build_whois_signal,
+            build_b2b_claude_signals, build_b2b_company_age_signal,
+            build_b2b_listing_completeness_signal, build_b2b_transparency_signal,
+            build_b2b_verification_signal, build_domain_signal, build_seller_verification_signals,
+            build_signals, build_store_page_signal, build_whois_signal,
         },
-        store_scrapers::check_store_page,
         whois::check_domain_whois,
     },
 };
@@ -61,11 +67,12 @@ pub struct BuildResponseData<'a> {
     pub risk_score: i16,
     pub risk_level: RiskLevel,
     pub signals: Vec<Signal>,
-    pub claude_analysis: ClaudeAnalysis,
+    pub overall_risk_notes: String,
     pub user_id: Uuid,
     pub seller: Sellers,
     pub fraud_count: i64,
     pub network_summary: String,
+    pub is_b2b: bool,
 }
 
 // This stops any one person from calling the /analyze endpoint more than 10 times within any 5-minute stretch.
@@ -325,12 +332,15 @@ pub async fn save_and_build_response(
     let signals_json =
         to_value(&data.signals).map_err(|e| AnalyzeError::SerializationFailed(e.to_string()))?;
 
-    let website_fully_confirmed = data
-        .signals
-        .iter()
-        .any(|s| s.label == "Store page check" && s.value == "Fully confirmed");
-
-    let entity_type = classify_entity(data.seller.name.as_deref(), website_fully_confirmed);
+    let entity_type = if data.is_b2b {
+        "business".to_string()
+    } else {
+        let website_fully_confirmed = data
+            .signals
+            .iter()
+            .any(|s| s.label == "Store page check" && s.value == "Fully confirmed");
+        classify_entity(data.seller.name.as_deref(), website_fully_confirmed)
+    };
     let (confidence_level, confidence_reasoning) = calculate_confidence(&data.signals);
 
     // Layer 7 - translates this analysis's signals into named,
@@ -347,7 +357,7 @@ pub async fn save_and_build_response(
         risk_score: data.risk_score,
         risk_level: data.risk_level,
         signals: signals_json,
-        network_summary: data.claude_analysis.overall_risk_notes.clone(),
+        network_summary: data.overall_risk_notes.clone(),
         claude_raw: String::new(),
         user_id: data.user_id,
         confidence_level: confidence_level.clone(),
@@ -382,7 +392,7 @@ pub async fn save_and_build_response(
         risk_level: saved_analysis.risk_level,
         seller: seller_response,
         signals: data.signals,
-        network_summary: data.claude_analysis.overall_risk_notes,
+        network_summary: data.overall_risk_notes,
         fraud_report_count: data.fraud_count,
         entity_type,
         confidence_level,
@@ -434,4 +444,54 @@ pub async fn create_analysis(data: CreateAnalysisData<'_>) -> Result<Analysis, E
     .await?;
 
     Ok(analysis)
+}
+
+/// The complete, separate B2B analysis path - fetches the real
+/// supplier page, calls Claude with B2B-specific due-diligence
+/// questions, and builds an entirely separate set of signals. This
+/// never touches build_signals or ClaudeAnalysis at all, since B2B
+/// due diligence asks fundamentally different questions than
+/// consumer-marketplace fraud detection.
+pub async fn build_b2b_analysis_path(
+    _pool: &Pool<Postgres>,
+    request: &AnalyzeRequest,
+    fraud_count: i64,
+) -> Result<(Vec<Signal>, i16, String, B2bSupplierProfile), AnalyzeError> {
+    let mut signals = Vec::new();
+
+    let (supplier, listing) = check_b2b_page(&request.platform, &request.listing_url)
+        .await
+        .ok_or_else(|| {
+            AnalyzeError::ClaudeAnalysisFailed("Could not fetch B2B supplier page".to_string())
+        })?;
+
+    let claude_result = call_b2b_claude(CallB2bClaudeArguments {
+        platform: &request.platform,
+        company_name: supplier.company_name.as_deref().unwrap_or("Unknown"),
+        year_established: supplier.year_established.as_deref().unwrap_or("Unknown"),
+        platform_verified: supplier.platform_verified_badge,
+        employee_count: supplier.employee_count.as_deref().unwrap_or("Unknown"),
+        product_title: listing.title.as_deref().unwrap_or("Unknown"),
+        product_description: listing.description.as_deref().unwrap_or("None provided"),
+    })
+    .await
+    .map_err(|e| AnalyzeError::ClaudeAnalysisFailed(e.to_string()))?;
+
+    signals.extend(build_b2b_claude_signals(&claude_result));
+    signals.push(build_b2b_verification_signal(&supplier));
+    if let Some(age_signal) = build_b2b_company_age_signal(&supplier) {
+        signals.push(age_signal);
+    }
+
+    signals.push(build_b2b_transparency_signal(&supplier));
+    signals.push(build_b2b_listing_completeness_signal(&listing));
+
+    let caution_count = signals
+        .iter()
+        .filter(|s| s.signal_type == "caution")
+        .count();
+    let risk_score = ((caution_count as i16) * 15).min(100) + (fraud_count as i16 * 5).min(20);
+
+    let overall_risk_notes = claude_result.overall_risk_notes.clone();
+    Ok((signals, risk_score.min(100), overall_risk_notes, supplier))
 }

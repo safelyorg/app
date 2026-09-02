@@ -1,0 +1,580 @@
+warning: profiles for the non root package will be ignored, specify profiles at the workspace root:
+package:   /mnt/c/Users/Bilal Khan/Documents/projects/Rust/app/wasm/Cargo.toml
+workspace: /mnt/c/Users/Bilal Khan/Documents/projects/Rust/app/Cargo.toml
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 7.62s
+     Running unittests src/lib.rs (target/debug/deps/backend-ec8094c7bc24c128)
+
+running 2 tests
+test services::b2b_scrapers::b2brazil::tests::parse_listing_filters_out_not_informed_but_keeps_real_values ... ok
+test services::b2b_scrapers::b2brazil::tests::parse_supplier_extracts_real_company_data ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running unittests src/main.rs (target/debug/deps/backend-c54e480a73954232)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/analyze_test.rs (target/debug/deps/analyze_test-7a9564b04602a08b)
+
+running 128 tests
+test build_domain_signal_with_something_else_status ... ok
+test build_domain_signal_with_suspicious_status ... ok
+test build_domain_signal_with_legitimate_status ... ok
+test both_name_keyword_and_confirmed_website_together_still_returns_business ... ok
+test build_domain_signal_prefers_highlighted_html_over_plain_text ... ok
+test build_network_first_summary ... ok
+test all_four_identifiers_matching_still_correctly_reports_strong ... ok
+test analyze_unauthorized_request ... ok
+test authorize_request_failure ... ok
+test authorize_request_success ... ok
+test authorize_request_rate_limit_passed ... ok
+test build_network_memory_signal_ignores_a_genuinely_malformed_value_without_crashing ... ok
+test build_network_second_summary ... ok
+test build_network_third_summary ... ok
+test build_requests_correctly_splits_seller_and_listing_data ... ok
+test build_requests_none_values_stay_none ... ok
+test build_requests_seller_id_lands_only_on_listing_request ... ok
+test calculate_risk_score_advance_payment_request ... ok
+test calculate_risk_score_baseline_zero ... ok
+test calculate_risk_score_contact_info_in_listing ... ok
+test calculate_risk_score_duplicate_listing ... ok
+test calculate_risk_score_fraud_pattern_match ... ok
+test calculate_risk_score_image_authenticity_not_original ... ok
+test calculate_risk_score_price_assessment_not_normal ... ok
+test calculate_risk_score_urgency_language ... ok
+test build_network_memory_signal_marks_33_as_good_not_caution ... ok
+test build_network_memory_signal_marks_exactly_34_as_caution ... ok
+test build_network_memory_signal_correctly_scopes_to_only_this_specific_seller ... ok
+test call_claude_missing_api_key ... ok
+test check_rate_limit_blocks_the_eleventh_call_within_the_window ... ok
+test check_rate_limit_resets_after_the_window_expires ... ok
+test checking_rate_limit_five_times ... ok
+test checking_rate_limit_one_time ... ok
+test build_network_memory_signal_calculates_the_real_correct_average ... ok
+test call_claude_request_failed ... ok
+test build_network_memory_signal_marks_exactly_66_as_caution_not_bad ... ok
+test content_includes_all_real_values ... ok
+test content_never_includes_image_urls ... ok
+test build_network_memory_signal_marks_high_average_as_bad ... ok
+test build_network_memory_signal_uses_singular_phrasing_for_exactly_one_prior_check ... ok
+test build_network_memory_signal_uses_plural_phrasing_for_multiple_prior_checks ... ok
+test create_analysis_database_failure ... ok
+test create_listing_database_error ... ok
+test create_listing_creates_brand_new ... ok
+test create_analysis_success ... ok
+test create_listing_last_analyzed_at_set_on_update ... ok
+test create_listing_never_overwrites_good_data_with_blanks ... ok
+test build_all_signals_without_domain_check ... ok
+test create_seller_database_error ... ok
+test create_listing_updates_and_fills_in_new_data ... ok
+test create_seller_creates_brand_new ... ok
+test build_all_signals_with_domain_check ... ok
+test derive_risk_factors_does_not_double_count_signals_already_claimed_by_a_compound_factor ... ok
+test derive_risk_factors_does_not_flag_safely_history_when_it_is_not_bad ... ok
+test derive_risk_factors_flags_a_bad_safely_history_as_hard ... ok
+test derive_risk_factors_flags_a_confirmed_fraud_pattern_as_hard ... ok
+test derive_risk_factors_flags_duplicate_plus_unverifiable_images_as_compound ... ok
+test derive_risk_factors_flags_new_account_plus_fraud_match_as_compound ... ok
+test derive_risk_factors_flags_urgency_plus_advance_payment_as_compound ... ok
+test derive_risk_factors_hard_fraud_factor_correctly_blocks_the_redundant_compound_version ... ok
+test derive_risk_factors_ignores_good_and_info_type_signals_entirely ... ok
+test derive_risk_factors_returns_genuinely_empty_for_an_empty_signal_list ... ok
+test derive_risk_factors_treats_an_uncovered_caution_signal_as_soft ... ok
+test eight_or_more_meaningful_signals_gives_high_confidence ... ok
+test empty_string_identifiers_are_treated_as_genuinely_absent ... ok
+test empty_string_name_is_treated_the_same_as_an_ordinary_individual_name ... ok
+test create_seller_join_date_malformed_becomes_none ... ok
+test create_seller_join_date_parses_successfully ... ok
+test create_seller_never_overwrites_good_data_with_blanks ... ok
+test find_signal_returns_none_when_the_label_is_genuinely_absent ... ok
+test find_signal_returns_the_matching_signal_when_present ... ok
+test five_meaningful_signals_gives_medium_confidence ... ok
+test four_meaningful_signals_drops_to_low_not_medium ... ok
+test fully_confirmed_website_alone_is_enough_for_an_otherwise_ordinary_name ... ok
+test genuinely_empty_signal_list_does_not_panic_and_gives_low ... ok
+test find_seller_database_error ... ok
+test create_seller_updates_and_fills_in_new_data ... ok
+test create_seller_verification_always_updates ... ok
+test find_seller_exists ... ok
+test find_seller_not_exists ... ok
+test get_monthly_visit_activity_excludes_old_activity ... ok
+test get_monthly_visit_activity_isolated_between_sellers ... ok
+test is_new_account_recognizes_a_plain_months_value_as_new ... ok
+test is_new_account_recognizes_this_month_as_new ... ok
+test is_new_account_treats_anything_containing_year_as_not_new ... ok
+test is_new_account_treats_unknown_as_not_new ... ok
+test keyword_matches_anywhere_in_the_name_not_just_as_a_whole_word ... ok
+test keyword_matching_is_genuinely_case_insensitive ... ok
+test matching_is_case_insensitive_for_name ... ok
+test name_containing_a_business_keyword_is_classified_as_business ... ok
+test no_name_but_a_fully_confirmed_website_still_returns_business ... ok
+test no_seller_name_at_all_is_classified_as_unknown ... ok
+test only_one_matching_identifier_gives_weak_confidence ... ok
+test ordinary_individual_name_with_no_keywords_is_classified_as_individual ... ok
+test phone_matching_ignores_formatting_differences ... ok
+test reasoning_sentence_includes_the_real_correct_numbers ... ok
+test get_monthly_visit_activity_multiple_in_same_month ... ok
+test get_monthly_visit_activity_single_month_correctly_placed ... ok
+test get_monthly_visit_activity_no_activity ... ok
+test having_fraud_reports ... ok
+test record_evidence_never_panics_even_with_a_genuinely_invalid_foreign_key ... ok
+test record_risk_factors_never_panics_even_with_a_genuinely_invalid_foreign_key ... ok
+test record_evidence_with_zero_signals_still_writes_the_score_row ... ok
+test record_evidence_writes_one_row_per_signal_plus_one_for_the_score ... ok
+test record_risk_factors_with_zero_factors_writes_nothing ... ok
+test record_risk_factors_writes_one_row_per_factor ... ok
+test resolve_existing_seller_have_no_reports ... ok
+test resolve_existing_seller_with_real_fraud_report ... ok
+test save_and_build_response_database_failure ... ok
+test seller_with_no_identifiers_at_all_never_matches_anything ... ok
+test seven_meaningful_signals_is_still_medium_not_high ... ok
+test the_real_security_case_an_unconfirmed_website_never_triggers_business_on_its_own ... ok
+test two_matching_identifiers_gives_strong_confidence ... ok
+test unknown_value_signals_are_correctly_excluded_from_the_meaningful_count ... ok
+test resolve_new_seller ... ok
+test zero_matching_identifiers_gives_none_confidence ... ok
+test zero_meaningful_signals_gives_low_confidence ... ok
+test zero_fraud_reports ... ok
+test save_and_build_response_forces_business_entity_type_when_is_b2b_is_true ... ok
+test save_and_build_response_runs_normal_name_logic_when_is_b2b_is_false ... ok
+test save_and_build_response_success ... ok
+test call_claude_success_complete_data ... ok
+test analyze_success ... ok
+test call_claude_success_with_minimal_data ... ok
+test get_monthly_visit_activity_database_error ... ok
+test claude_analysis_failure ... ok
+test claude_analysis_success ... ok
+test claude_analysis_with_missing_fields_uses_defaults ... ok
+
+test result: ok. 128 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 45.90s
+
+     Running tests/auth_test.rs (target/debug/deps/auth_test-73700ba39f32bdee)
+
+running 102 tests
+test exchange_code_for_user_missing_client_id ... ok
+test exchange_code_for_user_missing_client_secret ... ok
+test exchange_code_for_user_missing_redirect_uri ... ok
+test delete_session_success_even_for_nonexistent_token ... ok
+test extract_user_db_error ... ok
+test create_session_fails_for_nonexistent_user ... ok
+test check_last_login_database_error ... ok
+test delete_session_database_error ... ok
+test delete_session_success_genuinely_deletes ... ok
+test check_last_login_success ... ok
+test extract_user_id_malformed_authorization ... ok
+test extract_user_id_missing_authorization ... ok
+test extract_user_id_token_mismatch ... ok
+test checking_magic_link_insertion ... ok
+test create_session_success_correct_shape_and_expiry ... ok
+test find_user_by_email_database_error ... ok
+test find_or_create_user_by_email_creates_a_new_user_when_none_exists ... ok
+test find_or_create_user_by_google_database_error ... ok
+test extract_user_id_token_match ... ok
+test create_session_produces_unique_tokens ... ok
+test find_user_by_email_invalid_email ... ok
+test exchange_code_for_user_token_exchange_genuinely_rejected ... ok
+test find_user_by_google_id_database_error ... ok
+test find_or_create_user_by_email_returns_the_existing_user_when_one_already_exists ... ok
+test find_user_by_id_database_error ... ok
+test find_user_by_google_id_not_found ... ok
+test get_tera_returns_the_same_singleton_instance ... ok
+test get_tera_loads_all_five_email_templates ... ok
+test find_user_by_email_returns_none_for_a_nonexistent_user ... ok
+test find_user_by_id_not_found ... ok
+test find_user_by_email_finds_an_existing_user ... ok
+test get_user_from_token_no_match ... ok
+test find_user_by_google_id_found ... ok
+test get_user_from_token_database_error ... ok
+test find_user_by_id_found ... ok
+test get_user_from_token_success_no_unnecessary_extension ... ok
+test get_user_from_token_expired_session ... ok
+test get_user_from_token_success_extends_when_near_expiry ... ok
+test finish_sign_in_with_new_user ... ok
+test google_authorize_url_contains_correct_fixed_parameters ... ok
+test google_authorize_url_encodes_special_characters_correctly ... ok
+test google_authorize_url_failure_on_client_id_missing ... ok
+test checking_email_link_verification ... ok
+test google_connect_redirect_database_error ... ok
+test google_callback_error_reported ... ok
+test finish_sign_in_with_old_user ... ok
+test google_connect_redirect_fails_when_google_config_missing ... ok
+test google_authorize_url_success ... ok
+test google_callback_code_missing ... ok
+test google_connect_redirect_succeeds_with_a_valid_session ... ok
+test fresh_google_signin_creates_account_and_session ... ok
+test google_redirect_success ... ok
+test google_callback_exchange_fails_for_a_fake_code ... ok
+test google_redirect_success_url_contains_real_values ... ok
+test google_signin_finds_existing_google_id_immediately ... ok
+test google_callback_state_present_but_mismatched ... ok
+test handle_google_connect_rejects_a_malformed_link_cookie ... ok
+test google_callback_state_mismatch ... ok
+test handle_google_connect_rejects_a_google_account_already_linked_elsewhere ... ok
+test insert_magic_link_database_error ... ok
+test google_redirect_failure ... ok
+test handle_google_connect_rejects_a_mismatched_email ... ok
+test handle_google_connect_succeeds_when_emails_match ... ok
+test insert_magic_link_invalid_email ... ok
+test google_connect_redirect_fails_with_an_invalid_session ... ok
+test google_authorize_url_failure_on_redirect_uri_missing ... ok
+test link_google_account_database_error ... ok
+test insert_magic_link_success_direct_verification ... ok
+test requesting_a_magic_link_rejects_an_invalid_email ... ok
+test link_google_account_success ... ok
+test google_connect_redirect_success_sets_state_cookie_correctly ... ok
+test google_authorize_url_specific_error_variants ... ok
+test google_redirect_failure_missing_redirect_uri ... ok
+test logout_with_fake_token ... ok
+test google_redirect_produces_unique_state_codes ... ok
+test google_signin_links_onto_an_existing_email_match ... ok
+test google_signin_preserves_existing_name_when_linking_by_email ... ok
+test send_welcome_email_fails_for_a_blocked_domain ... ok
+test sending_magic_link_email_missing_base_url ... ok
+test requesting_a_magic_link_succeeds_for_a_valid_email ... ok
+test requesting_magic_link ... ok
+test validate_email_format_already_clean ... ok
+test validate_email_format_lowercases_uppercase ... ok
+test validate_email_format_rejects_empty_string ... ok
+test validate_email_format_rejects_missing_at_symbol ... ok
+test validate_email_format_rejects_whitespace_only ... ok
+test validate_email_format_trims_and_lowercases_together ... ok
+test validate_email_format_trims_whitespace ... ok
+test set_login_method_database_error ... ok
+test verify_magic_link_rejects_a_token_that_was_never_inserted ... ok
+test set_login_method_success_email ... ok
+test logout_with_no_header ... ok
+test send_welcome_email_missing_base_url ... ok
+test send_welcome_email_missing_api_key ... ok
+test set_login_method_success_google ... ok
+test send_welcome_email_succeeds ... ok
+test verify_magic_link_rejects_a_token_that_was_already_used ... ok
+test verify_magic_link_succeeds_with_a_real_token ... ok
+test logout_with_session_present ... ok
+test sending_magic_link_email_fails_for_a_blocked_domain ... ok
+test sending_magic_link_email_missing_api_key ... ok
+test sending_magic_link_email_succeeds ... ok
+
+test result: ok. 102 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 11.69s
+
+     Running tests/b2b_claude_signals_test.rs (target/debug/deps/b2b_claude_signals_test-ddc941467497468c)
+
+running 6 tests
+test each_signal_carries_the_real_evidence_text ... ok
+test produces_exactly_four_signals ... ok
+test found_false_maps_to_caution_not_bad ... ok
+test mixed_results_are_each_scored_independently ... ok
+test found_true_maps_to_good_not_caution ... ok
+test each_signal_has_the_correct_real_category_and_check_type ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/b2b_content_test.rs (target/debug/deps/b2b_content_test-95c6a34d686b1ae0)
+
+running 5 tests
+test b2b_content_includes_the_real_company_name ... ok
+test b2b_content_includes_the_real_year_and_employee_count ... ok
+test b2b_content_includes_the_real_product_details ... ok
+test b2b_content_produces_genuinely_different_text_for_different_inputs ... ok
+test b2b_content_explicitly_tells_claude_not_to_apply_consumer_fraud_patterns ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/b2b_scrapers_test.rs (target/debug/deps/b2b_scrapers_test-df054d7203a57976)
+
+running 5 tests
+test check_b2b_page_returns_none_for_a_genuinely_unrecognized_platform ... ok
+test check_b2b_page_returns_none_for_a_genuinely_broken_url ... ok
+test build_b2b_analysis_path_fails_gracefully_for_a_genuinely_broken_url ... ok
+test check_b2b_page_fetches_and_parses_a_real_live_b2brazil_page ... ok
+test build_b2b_analysis_path_produces_a_real_complete_result_from_the_live_site ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 17.72s
+
+     Running tests/b2b_signals_test.rs (target/debug/deps/b2b_signals_test-3c3a0b12ea8b85a1)
+
+running 10 tests
+test established_company_gets_good ... ok
+test genuinely_new_company_gets_caution ... ok
+test at_least_one_filled_listing_gives_info_not_caution ... ok
+test low_transparency_gives_info_not_caution ... ok
+test no_year_established_returns_none ... ok
+test high_transparency_gives_good ... ok
+test malformed_year_returns_none_not_a_crash ... ok
+test unverified_badge_produces_caution_signal ... ok
+test verified_badge_produces_good_signal ... ok
+test zero_filled_listing_gives_caution ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/billing_test.rs (target/debug/deps/billing_test-e3fdde3d7b1b7f2e)
+
+running 95 tests
+test cancel_with_creem_request_failed ... ok
+test apply_scheduled_downgrade_missing_period_end ... ok
+test cancel_subscription_unauthorized ... ok
+test apply_scheduled_downgrade_missing_plan_name ... ok
+test apply_scheduled_downgrade_not_yet_due ... ok
+test apply_scheduled_downgrade_missing_product_id ... ok
+test cancel_subscription_not_found ... ok
+test change_plan_conflict_while_trialing ... ok
+test change_plan_downgrade_success ... ok
+test change_plan_invalid_request ... ok
+test change_plan_unauthorized ... ok
+test change_plan_not_found ... ok
+test apply_scheduled_downgrade_creem_rejects ... ok
+test cancel_with_creem_rejected ... ok
+test cancel_subscription_creem_rejects ... ok
+test apply_upgrade_creem_rejects ... ok
+test checkout_handler_unauthorized ... ok
+test checkout_handler_creem_rejects_invalid_product ... ok
+test change_plan_upgrade_creem_rejects ... ok
+test create_checkout_creem_rejected ... ok
+test change_creem_subscription_product_creem_rejects ... ok
+test extract_metadata_user_id_invalid_uuid ... ok
+test extract_metadata_user_id_missing_metadata ... ok
+test extract_metadata_user_id_missing_safely_user_id ... ok
+test extract_metadata_user_id_success ... ok
+test extract_subscription_checkout_completed_missing_nested_field ... ok
+test extract_subscription_checkout_completed_shape_success ... ok
+test extract_subscription_malformed_data_returns_none ... ok
+test extract_subscription_subscription_shape_success ... ok
+test extract_subscription_unrecognized_event_type ... ok
+test creem_webhook_unrecognized_event_type_still_ok ... ok
+test fetch_subscriber_email_database_error_still_returns_none ... ok
+test create_checkout_success ... ok
+test fetch_subscriber_email_found ... ok
+test fetch_subscriber_email_not_found ... ok
+test checkout_handler_success ... ok
+test creem_webhook_verification_failure_propagates ... ok
+test get_product_ids_missing_enterprise_id ... ok
+test create_checkout_missing_api_key ... ok
+test create_checkout_request_failed ... ok
+test get_product_ids_missing_team_id ... ok
+test get_product_ids_success ... ok
+test cancel_with_creem_missing_api_key ... ok
+test get_subscription_status_unauthorized ... ok
+test get_subscription_status_downgrade_not_yet_due ... ok
+test get_subscription_status_no_subscription ... ok
+test get_subscription_status_no_scheduled_downgrade ... ok
+test creem_webhook_inner_handler_failure_still_returns_ok ... ok
+test change_creem_subscription_product_missing_api_key ... ok
+test change_creem_subscription_product_request_failed ... ok
+test creem_webhook_success_refund_created ... ok
+test send_payment_failed_email_fails_for_a_blocked_domain ... ok
+test send_subscription_canceled_email_missing_base_url ... ok
+test subscription_granted_missing_user_id ... ok
+test subscription_granted_success ... ok
+test get_subscription_status_downgrade_due_but_creem_rejects ... ok
+test subscription_granted_upsert_fails ... ok
+test send_subscription_ended_email_fails_for_a_blocked_domain ... ok
+test send_payment_failed_email_missing_api_key ... ok
+test subscription_lost_canceled_already_canceled ... ok
+test subscription_lost_expired ... ok
+test subscription_lost_missing_user_id ... ok
+test subscription_lost_paused ... ok
+test subscription_lost_upsert_fails ... ok
+test send_payment_failed_email_succeeds ... ok
+test send_subscription_ended_email_missing_base_url ... ok
+test subscription_lost_canceled_genuinely_new ... ok
+test subscription_update_missing_user_id ... ok
+test subscription_update_success ... ok
+test subscription_update_upsert_fails ... ok
+test subscription_past_due_missing_user_id ... ok
+test send_subscription_ended_email_succeeds ... ok
+test upsert_subscription_creates_new_row_with_full_data ... ok
+test upsert_subscription_fails_for_nonexistent_user ... ok
+test subscription_past_due_upsert_fails ... ok
+test subscription_past_due_email_fails_but_upsert_still_succeeds ... ok
+test subscription_past_due_success ... ok
+test upsert_subscription_malformed_period_end_saves_as_null ... ok
+test upsert_subscription_missing_period_end_saves_as_null ... ok
+test verify_creem_signature_case_sensitive ... ok
+test verify_creem_signature_different_body_fails ... ok
+test verify_creem_signature_different_secret_fails ... ok
+test verify_creem_signature_genuine_match ... ok
+test verify_creem_signature_genuine_mismatch ... ok
+test upsert_subscription_update_unconditionally_overwrites ... ok
+test send_subscription_canceled_email_fails_for_a_blocked_domain ... ok
+test verify_and_parse_webhook_invalid_body ... ok
+test verify_and_parse_webhook_invalid_payload ... ok
+test verify_and_parse_webhook_invalid_signature ... ok
+test verify_and_parse_webhook_missing_signature ... ok
+test verify_and_parse_webhook_secret_missing ... ok
+test verify_and_parse_webhook_success ... ok
+test send_subscription_canceled_email_missing_api_key ... ok
+test send_subscription_canceled_email_succeeds ... ok
+test send_subscription_ended_email_missing_api_key ... ok
+
+test result: ok. 95 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 9.93s
+
+     Running tests/dashboard_test.rs (target/debug/deps/dashboard_test-e8dfc93c12f5153b)
+
+running 66 tests
+test delete_user_account_database_error ... ok
+test delete_account_unauthorized ... ok
+test delete_user_account_nonexistent_user ... ok
+test disconnect_google_unauthorized ... ok
+test get_avatar_unauthorized ... ok
+test get_history_detail_database_error ... ok
+test delete_account_database_error ... ok
+test disconnect_google_database_error ... ok
+test get_avatar_database_error ... ok
+test disconnect_google_success_even_without_google_linked ... ok
+test delete_user_account_success_verifies_every_effect ... ok
+test delete_account_success_verifies_every_effect ... ok
+test disconnect_google_success_genuinely_clears_it ... ok
+test get_avatar_not_found_no_avatar_set ... ok
+test get_history_database_error ... ok
+test get_history_html_unauthorized ... ok
+test get_avatar_success ... ok
+test get_history_detail_not_found_nonexistent ... ok
+test get_history_html_database_error ... ok
+test get_history_item_unauthorized ... ok
+test get_history_detail_success_with_multiple_reports ... ok
+test get_history_unauthorized ... ok
+test get_history_html_success_with_real_data ... ok
+test get_history_item_not_found_nonexistent ... ok
+test get_history_detail_not_found_belongs_to_another_user ... ok
+test get_history_detail_success_no_reports ... ok
+test get_history_html_empty_history ... ok
+test get_me_unauthorized ... ok
+test get_history_item_not_found_belongs_to_another_user ... ok
+test get_history_success ... ok
+test get_me_success_fallback_no_google_link ... ok
+test get_reports_html_unauthorized ... ok
+test get_me_success_has_avatar ... ok
+test get_me_success_fallback_google_linked ... ok
+test get_reports_html_database_error ... ok
+test get_reports_html_empty_reports ... ok
+test get_reports_unauthorized ... ok
+test get_history_item_success ... ok
+test get_user_history_database_error ... ok
+test get_me_success_no_avatar ... ok
+test get_me_success_with_explicit_login_method ... ok
+test get_reports_html_success_with_real_data ... ok
+test get_user_reports_database_error ... ok
+test unlink_google_account_database_error ... ok
+test get_reports_success ... ok
+test get_user_history_empty_when_no_history ... ok
+test get_user_reports_empty_when_no_reports ... ok
+test get_user_reports_orders_newest_first ... ok
+test get_user_history_deduplicates_same_listing ... ok
+test get_user_history_reported_scoped_per_listing ... ok
+test get_user_history_success_single_item ... ok
+test update_me_bad_request_empty_name ... ok
+test update_me_bad_request_name_too_long ... ok
+test get_user_reports_success_across_multiple_sellers ... ok
+test unlink_google_account_success_clears_existing_link ... ok
+test get_user_history_orders_newest_first ... ok
+test update_me_unauthorized ... ok
+test update_me_database_error ... ok
+test update_me_success_exactly_100_characters ... ok
+test unlink_google_account_success_even_without_a_link ... ok
+test update_me_success_trims_whitespace ... ok
+test upload_avatar_unauthorized ... ok
+test upload_avatar_bad_request_file_too_large ... ok
+test upload_avatar_bad_request_no_file ... ok
+test upload_avatar_bad_request_unsupported_type ... ok
+test upload_avatar_success ... ok
+
+test result: ok. 66 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.57s
+
+     Running tests/fraud_reports_test.rs (target/debug/deps/fraud_reports_test-5cc2256a7447764e)
+
+running 4 tests
+test create_fraud_report_unauthorized ... ok
+test create_fraud_report_database_error ... ok
+test create_fraud_report_not_found ... ok
+test create_fraud_report_success ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.43s
+
+     Running tests/outcomes_test.rs (target/debug/deps/outcomes_test-aa196363f9c04370)
+
+running 9 tests
+test create_outcome_unauthorized_request ... ok
+test record_outcome_nonexistent_analysis_fails ... ok
+test create_outcome_nonexistent_analysis_fails ... ok
+test record_outcome_nonexistent_user_fails ... ok
+test record_outcome_sets_a_real_recent_timestamp ... ok
+test record_outcome_aborted_success ... ok
+test create_outcome_aborted_success ... ok
+test record_outcome_proceeded_success ... ok
+test create_outcome_proceeded_success ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.57s
+
+     Running tests/sellers_b2b_test.rs (target/debug/deps/sellers_b2b_test-56d69c8c84590615)
+
+running 2 tests
+test update_seller_from_b2b_writes_the_real_name_and_location ... ok
+test update_seller_from_b2b_preserves_existing_data_when_new_values_are_none ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.34s
+
+     Running tests/subscribe_test.rs (target/debug/deps/subscribe_test-f1b594ba8032614b)
+
+running 5 tests
+test newsletter_subscribe_bad_request_invalid_email ... ok
+test subscribe_to_newsletter_success ... ok
+test newsletter_subscribe_success ... ok
+test subscribe_to_newsletter_kit_rejects_wrong_key ... ok
+test subscribe_to_newsletter_missing_api_key ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.58s
+
+     Running unittests src/lib.rs (target/debug/deps/wasm-003bf5abd14c74aa)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/lib_test.rs (target/debug/deps/lib_test-19ed42a213fb0ddc)
+
+running 29 tests
+test build_activity_bars_all_zeros_uses_minimum_height_and_low_opacity ... ok
+test build_activity_bars_handles_empty_input_without_panicking ... ok
+test analyze_signals_zero_bad_returns_low ... ok
+test build_signal_rows_escapes_dangerous_label_value_and_sub ... ok
+test build_activity_bars_single_nonzero_value_becomes_the_max ... ok
+test analyze_signals_malformed_json_falls_back_to_empty ... ok
+test build_activity_bars_max_value_reaches_full_height_and_opacity ... ok
+test analyze_signals_one_bad_returns_caution ... ok
+test analyze_signals_caution_type_counts_as_bad_too ... ok
+test analyze_signals_two_or_more_bad_returns_high ... ok
+test build_activity_bars_includes_the_real_visit_count_in_each_bar ... ok
+test analyze_signals_output_is_genuinely_valid_json ... ok
+test build_signal_rows_handles_empty_input ... ok
+test build_signal_rows_joins_multiple_signals_together ... ok
+test build_signal_rows_malformed_json_falls_back_to_empty ... ok
+test build_signal_rows_uses_correct_color_per_type ... ok
+test escape_html_does_not_double_escape_ampersand_from_other_replacements ... ok
+test escape_html_escapes_ampersand ... ok
+test escape_html_escapes_angle_brackets ... ok
+test escape_html_escapes_quotes ... ok
+test escape_html_handles_empty_string ... ok
+test escape_html_leaves_normal_text_unchanged ... ok
+test risk_desc_all_branches ... ok
+test risk_label_all_branches ... ok
+test risk_level_boundaries ... ok
+test verification_badge_never_echoes_the_raw_input_directly ... ok
+test verification_badge_reported ... ok
+test verification_badge_unknown_fallback ... ok
+test verification_badge_verified ... ok
+
+test result: ok. 29 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+   Doc-tests backend
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests wasm
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

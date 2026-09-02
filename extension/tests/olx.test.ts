@@ -56,7 +56,7 @@ describe("scrapeOLX - price parsing", () => {
 describe("scrapeOLX - listing_id", () => {
   it("extracts the listing ID from a real OLX URL", () => {
     Object.defineProperty(window, "location", {
-      value: { href: "https://www.olx.com.pk/item/some-title-iid-1118276677" },
+      value: { href: "https://www.olx.com.pk/item/some-title-iid-1118276677", hostname: "www.olx.com.pk" },
       writable: true,
     });
     const data = scrapeOLX();
@@ -65,7 +65,7 @@ describe("scrapeOLX - listing_id", () => {
 
   it("returns null when the URL has no iid- pattern", () => {
     Object.defineProperty(window, "location", {
-      value: { href: "https://www.olx.com.pk/" },
+      value: { href: "https://www.olx.com.pk/", hostname: "www.olx.com.pk" },
       writable: true,
     });
     const data = scrapeOLX();

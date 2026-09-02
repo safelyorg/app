@@ -115,9 +115,11 @@
             }
             const listing_url = window.location.href;
             let scraped = {};
-            if (platform === "olx") {
+            if (window.__safelyScrapers.requiresClientSideScraping(platform)) {
                 await new Promise((resolve) => setTimeout(resolve, 1500));
-                scraped = window.__safelyScrapers.scrapeOLX();
+                if (platform === "olx") {
+                    scraped = window.__safelyScrapers.scrapeOLX();
+                }
             }
             const domainCheck = window.__safelyScrapers.checkDomain();
             const payload = {

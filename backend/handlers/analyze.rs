@@ -3,11 +3,13 @@ use crate::{
     models::analysis::{AnalyzeRequest, AnalyzeResponse, RiskLevel},
     services::{
         analysis::{
-            BuildResponseData, authorize_request, build_all_signals, build_requests,
-            resolve_seller, run_claude_analysis, save_and_build_response,
+            BuildResponseData, authorize_request, build_all_signals, build_b2b_analysis_path,
+            build_requests, resolve_seller, run_claude_analysis, save_and_build_response,
         },
+        b2b_scrapers::get_scraper_for_platform,
         listings::create_listing,
         scoring::calculate_risk_score,
+        sellers::update_seller_from_b2b,
     },
 };
 use axum::{Json, extract::State, http::HeaderMap};
@@ -40,10 +42,37 @@ pub async fn analyze(
         .await
         .map_err(|e| AnalyzeError::Database(e.to_string()))?;
 
-    let claude_analysis = run_claude_analysis(&listing, &resolved.seller).await?;
-    let signals = build_all_signals(&pool, &claude_analysis, &resolved.seller, &request).await;
+    let is_b2b = get_scraper_for_platform(&request.platform).is_some();
 
-    let risk_score = calculate_risk_score(&claude_analysis, resolved.fraud_count);
+    let mut resolved = resolved;
+
+    let (signals, risk_score, overall_risk_notes) = if is_b2b {
+        let (signals, risk_score, notes, supplier) =
+            build_b2b_analysis_path(&pool, &request, resolved.fraud_count).await?;
+
+        let _ = update_seller_from_b2b(
+            &pool,
+            resolved.seller.id,
+            supplier.company_name.as_deref(),
+            supplier.country.as_deref(),
+        )
+        .await;
+        if supplier.company_name.is_some() {
+            resolved.seller.name = supplier.company_name.clone();
+        }
+        if supplier.country.is_some() {
+            resolved.seller.location = supplier.country.clone();
+        }
+
+        (signals, risk_score, notes)
+    } else {
+        let claude_analysis = run_claude_analysis(&listing, &resolved.seller).await?;
+        let signals = build_all_signals(&pool, &claude_analysis, &resolved.seller, &request).await;
+        let risk_score = calculate_risk_score(&claude_analysis, resolved.fraud_count);
+        let notes = claude_analysis.overall_risk_notes.clone();
+        (signals, risk_score, notes)
+    };
+
     let risk_level = match risk_score {
         0..=33 => RiskLevel::Low,
         34..=66 => RiskLevel::Caution,
@@ -56,11 +85,12 @@ pub async fn analyze(
         risk_score,
         risk_level,
         signals,
-        claude_analysis,
+        overall_risk_notes,
         user_id,
         seller: resolved.seller,
         fraud_count: resolved.fraud_count,
         network_summary: resolved.network_summary,
+        is_b2b,
     };
 
     save_and_build_response(data).await

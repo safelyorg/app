@@ -1,6 +1,6 @@
 use crate::models::sellers::{SellerVerification, Sellers, SellersRequest};
 use chrono::NaiveDate;
-use sqlx::{Error, Pool, Postgres, query_as};
+use sqlx::{Error, Pool, Postgres, query, query_as};
 use uuid::Uuid;
 
 /// It looks up a seller by which marketplace they're on, and their specific ID
@@ -94,4 +94,31 @@ pub async fn create_seller(
     .await?;
 
     Ok(seller)
+}
+
+/// Updates a seller's real, known name and location once B2B scraping
+/// discovers them - since resolve_seller runs BEFORE the B2B fetch
+/// happens (the extension never sends a name for B2B platforms at
+/// all), the seller record starts genuinely empty and needs this
+/// follow-up update once the real data becomes available.
+pub async fn update_seller_from_b2b(
+    pool: &Pool<Postgres>,
+    seller_id: Uuid,
+    company_name: Option<&str>,
+    location: Option<&str>,
+) -> Result<(), Error> {
+    query(
+        "UPDATE sellers SET
+            name = COALESCE($1, name),
+            location = COALESCE($2, location),
+            updated_at = NOW()
+         WHERE id = $3",
+    )
+    .bind(company_name)
+    .bind(location)
+    .bind(seller_id)
+    .execute(pool)
+    .await?;
+
+    Ok(())
 }

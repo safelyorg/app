@@ -1,6 +1,4 @@
 "use strict";
-// scrapers/index.js — detectPlatform + routes to correct scraper +
-// domain legitimacy checking
 (function () {
     "use strict";
     const PROTECTED_DOMAINS = [
@@ -36,13 +34,6 @@
         }
         return dp[m][n];
     }
-    // Standard Levenshtein alignment, but instead of just returning a
-    // number, this walks back through the comparison to identify EXACTLY
-    // which characters differ - a substitution, an extra character, or a
-    // missing one. Characters like "l" and "I", or "0" and "o", are
-    // deliberately designed to look near-identical, so marking the
-    // specific character is what actually helps someone spot the
-    // difference.
     function highlightDiff(a, b) {
         const m = a.length;
         const n = b.length;
@@ -100,13 +91,6 @@
     function isGenuineDomain(hostname, realDomain) {
         return hostname === realDomain || hostname.endsWith("." + realDomain);
     }
-    /**
-     * Checks the CURRENT page's domain against the protected marketplace
-     * list. Returns one of three shapes:
-     *  - { status: "legitimate", ... } - genuinely the real site.
-     *  - { status: "suspicious", ... } - a lookalike/typosquat.
-     *  - null - not close to any protected site, nothing to report.
-     */
     function checkDomain() {
         const hostname = window.location.hostname;
         for (const entry of PROTECTED_DOMAINS) {
@@ -135,27 +119,38 @@
         }
         return null;
     }
-    /**
-     * Detects which platform the current page belongs to. Currently
-     * only OLX is genuinely supported - other marketplaces are on the
-     * roadmap, per the project README.
-     */
+    const platformRegistry = [
+        {
+            name: "olx",
+            matchesHostname: (hostname) => hostname.includes("olx.com"),
+            requiresClientSideScraping: true,
+            isListingUrl: (url) => url.includes("iid-"),
+        },
+        {
+            name: "b2brazil",
+            matchesHostname: (hostname) => hostname.includes("b2brazil.com"),
+            requiresClientSideScraping: false,
+            isListingUrl: (url) => url.includes("/hotsite/"),
+        },
+    ];
     function detectPlatform() {
-        const url = window.location.href;
-        if (url.includes("olx.com.pk"))
-            return "olx";
-        return "unknown";
+        const hostname = window.location.hostname;
+        const match = platformRegistry.find((p) => p.matchesHostname(hostname));
+        return match ? match.name : "unknown";
+    }
+    function requiresClientSideScraping(platform) {
+        return platformRegistry.find((p) => p.name === platform)?.requiresClientSideScraping ?? true;
     }
     function isListingPage() {
         const url = window.location.href;
         const platform = detectPlatform();
-        if (platform === "olx")
-            return url.includes("iid-");
-        return false;
+        const config = platformRegistry.find((p) => p.name === platform);
+        return config ? config.isListingUrl(url) : false;
     }
     window.__safelyScrapers = window.__safelyScrapers || {};
     window.__safelyScrapers.detectPlatform = detectPlatform;
     window.__safelyScrapers.isListingPage = isListingPage;
+    window.__safelyScrapers.requiresClientSideScraping = requiresClientSideScraping;
     window.__safelyScrapers.checkDomain = checkDomain;
     window.__safelyScrapers.normalize = normalize;
     window.__safelyScrapers.editDistance = editDistance;

@@ -1,8 +1,11 @@
+use chrono::{Datelike, Utc};
+
 use crate::{
     models::{analysis::Signal, helpers::format_account_age, sellers::Sellers},
     services::{
-        claude::{ClaudeAnalysis, Finding},
-        store_scrapers::StorePageResult,
+        b2b_scrapers::{B2bListingProfile, B2bSupplierProfile},
+        b2c_scrapers::B2cProfileResult,
+        claude::{B2bClaudeAnalysis, ClaudeAnalysis, Finding},
         whois::WhoisResult,
     },
 };
@@ -269,7 +272,7 @@ pub fn build_seller_verification_signals(
 /// consistency, genuinely stronger than anything Tier 1 alone could
 /// confirm.
 pub fn build_store_page_signal(
-    result: &StorePageResult,
+    result: &B2cProfileResult,
     claimed_website: Option<&str>,
 ) -> Option<Signal> {
     let website_cross_confirmed = match (claimed_website, &result.website) {
@@ -305,4 +308,184 @@ pub fn build_store_page_signal(
         category: "identity".to_string(),
         check_type: "consistency".to_string(),
     })
+}
+
+/// Builds a signal from B2Brazil's own "Verified company" badge - a
+/// real, direct trust indicator, since the platform's own disclaimer
+/// text says an unverified company's info isn't guaranteed accurate.
+pub fn build_b2b_verification_signal(supplier: &B2bSupplierProfile) -> Signal {
+    if supplier.platform_verified_badge {
+        Signal {
+            label: "Platform verification".to_string(),
+            sub: format!(
+                "{} has a verified badge on {}.",
+                supplier.company_name.as_deref().unwrap_or("This company"),
+                supplier.source_platform
+            ),
+            value: "Verified".to_string(),
+            signal_type: "good".to_string(),
+            category: "identity".to_string(),
+            check_type: "existence".to_string(),
+        }
+    } else {
+        Signal {
+            label: "Platform verification".to_string(),
+            sub: format!(
+                "{} does not have a verified badge - the platform itself states unverified company info is not guaranteed accurate.",
+                supplier.company_name.as_deref().unwrap_or("This company")
+            ),
+            value: "Unverified".to_string(),
+            signal_type: "caution".to_string(),
+            category: "identity".to_string(),
+            check_type: "existence".to_string(),
+        }
+    }
+}
+
+/// Checks how long ago this company claims to have been established -
+/// a genuinely new company is not inherently fraudulent, but it's a
+/// real, honest anomaly worth noting, the same logic already applied
+/// to OLX account age.
+pub fn build_b2b_company_age_signal(supplier: &B2bSupplierProfile) -> Option<Signal> {
+    let year_str = supplier.year_established.as_deref()?;
+    let established_year: i32 = year_str.trim().parse().ok()?;
+    let current_year = Utc::now().year();
+    let age = current_year - established_year;
+
+    let (value, signal_type) = if age < 0 {
+        ("Invalid date".to_string(), "caution".to_string())
+    } else if age <= 1 {
+        (format!("{} years", age), "caution".to_string())
+    } else {
+        (format!("{} years", age), "good".to_string())
+    };
+
+    Some(Signal {
+        label: "Company age".to_string(),
+        sub: format!(
+            "This company states it was established in {}.",
+            established_year
+        ),
+        value,
+        signal_type,
+        category: "company".to_string(),
+        check_type: "anomaly".to_string(),
+    })
+}
+
+/// Checks whether the company has genuinely filled in transparency
+/// fields (employee count, sales revenue, export percentage). Missing
+/// these isn't inherently suspicious - many legitimate businesses
+/// leave them blank for privacy - so this stays a mild, informational
+/// signal, not a harsh one.
+pub fn build_b2b_transparency_signal(supplier: &B2bSupplierProfile) -> Signal {
+    let filled_count = [
+        supplier.employee_count.is_some(),
+        supplier.sales_revenue.is_some(),
+        supplier.export_percentage.is_some(),
+    ]
+    .iter()
+    .filter(|&&present| present)
+    .count();
+
+    let signal_type = if filled_count >= 2 { "good" } else { "info" };
+
+    Signal {
+        label: "Company profile completeness".to_string(),
+        sub: format!(
+            "{} of 3 transparency fields (employees, sales volume, export percentage) are filled in.",
+            filled_count
+        ),
+        value: format!("{}/3 fields provided", filled_count),
+        signal_type: signal_type.to_string(),
+        category: "company".to_string(),
+        check_type: "existence".to_string(),
+    }
+}
+
+/// Checks how many of the real, listing-specific fields (price, MOQ,
+/// Incoterms, etc.) were genuinely filled in versus left as "Not
+/// informed." Incomplete listings are common in B2B and not
+/// inherently suspicious, so this stays a mild pattern check, not a
+/// harsh red flag.
+pub fn build_b2b_listing_completeness_signal(listing: &B2bListingProfile) -> Signal {
+    let fields = [
+        &listing.unit_price,
+        &listing.fob_price,
+        &listing.minimum_order_quantity,
+        &listing.payment_type,
+        &listing.preferred_port,
+        &listing.production_capacity,
+        &listing.delivery_timeframe,
+        &listing.incoterms,
+        &listing.packaging_details,
+    ];
+    let filled_count = fields.iter().filter(|f| f.is_some()).count();
+    let total = fields.len();
+    let signal_type = if filled_count == 0 { "caution" } else { "info" };
+
+    Signal {
+        label: "Listing completeness".to_string(),
+        sub: format!(
+            "{} of {} listing details (price, MOQ, Incoterms, etc.) were provided by the supplier.",
+            filled_count, total
+        ),
+        value: format!("{}/{} fields provided", filled_count, total),
+        signal_type: signal_type.to_string(),
+        category: "listing".to_string(),
+        check_type: "pattern".to_string(),
+    }
+}
+
+fn b2b_finding_to_signal(
+    label: &str,
+    category: &str,
+    check_type: &str,
+    finding: &Finding,
+) -> Signal {
+    Signal {
+        label: label.to_string(),
+        sub: finding.evidence.clone(),
+        value: if finding.found {
+            "Confirmed".to_string()
+        } else {
+            "Not confirmed".to_string()
+        },
+        signal_type: if finding.found {
+            "good".to_string()
+        } else {
+            "caution".to_string()
+        },
+        category: category.to_string(),
+        check_type: check_type.to_string(),
+    }
+}
+
+pub fn build_b2b_claude_signals(analysis: &B2bClaudeAnalysis) -> Vec<Signal> {
+    vec![
+        b2b_finding_to_signal(
+            "Business legitimacy",
+            "company",
+            "existence",
+            &analysis.business_legitimacy,
+        ),
+        b2b_finding_to_signal(
+            "Registration consistency",
+            "company",
+            "consistency",
+            &analysis.registration_consistency,
+        ),
+        b2b_finding_to_signal(
+            "Listing specificity",
+            "listing",
+            "pattern",
+            &analysis.listing_specificity,
+        ),
+        b2b_finding_to_signal(
+            "Contact verifiability",
+            "identity",
+            "existence",
+            &analysis.contact_verifiability,
+        ),
+    ]
 }

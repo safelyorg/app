@@ -1,7 +1,11 @@
 use axum::http::{HeaderMap, HeaderValue};
 use backend::{
     models::{analysis::Signal, users::User},
-    services::auth::{create_session, find_or_create_user_by_email},
+    services::{
+        auth::{create_session, find_or_create_user_by_email},
+        b2b_scrapers::{B2bListingProfile, B2bSupplierProfile},
+        osint::SellerIdentifiers,
+    },
 };
 use chrono::{DateTime, Utc};
 use dotenvy::dotenv;
@@ -479,4 +483,59 @@ pub async fn cleanup_seller_and_analysis(pool: &Pool<Postgres>, platform_id: &st
     .execute(pool)
     .await;
     cleanup_test_seller_chain(pool, "olx", platform_id).await;
+}
+
+#[allow(dead_code)]
+pub fn make_seller(
+    name: Option<&str>,
+    phone: Option<&str>,
+    email: Option<&str>,
+    website: Option<&str>,
+) -> SellerIdentifiers {
+    SellerIdentifiers {
+        name: name.map(|s| s.to_string()),
+        phone: phone.map(|s| s.to_string()),
+        email: email.map(|s| s.to_string()),
+        website: website.map(|s| s.to_string()),
+    }
+}
+
+#[allow(dead_code)]
+pub fn make_supplier(
+    verified: bool,
+    year: Option<&str>,
+    employees: Option<&str>,
+    revenue: Option<&str>,
+    export: Option<&str>,
+) -> B2bSupplierProfile {
+    B2bSupplierProfile {
+        company_name: Some("Test Co".to_string()),
+        platform_verified_badge: verified,
+        year_established: year.map(|s| s.to_string()),
+        employee_count: employees.map(|s| s.to_string()),
+        sales_revenue: revenue.map(|s| s.to_string()),
+        export_percentage: export.map(|s| s.to_string()),
+        source_platform: "b2brazil".to_string(),
+        ..Default::default()
+    }
+}
+
+#[allow(dead_code)]
+pub fn make_listing(filled_count: usize) -> B2bListingProfile {
+    let mut listing = B2bListingProfile {
+        source_platform: "b2brazil".to_string(),
+        ..Default::default()
+    };
+    let value = Some("some value".to_string());
+    if filled_count >= 1 {
+        listing.unit_price = value.clone();
+    }
+    if filled_count >= 2 {
+        listing.fob_price = value.clone();
+    }
+    if filled_count >= 3 {
+        listing.minimum_order_quantity = value.clone();
+    }
+
+    listing
 }

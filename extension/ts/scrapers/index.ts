@@ -19,15 +19,20 @@ interface SuspiciousDomainResult {
   realDomainHtml: string;
 }
 
-type DomainCheckResult = LegitimateDomainResult | SuspiciousDomainResult | null;
-
 interface HighlightDiffResult {
   currentHtml: string;
   realHtml: string;
 }
 
-// scrapers/index.js — detectPlatform + routes to correct scraper +
-// domain legitimacy checking
+interface PlatformConfig {
+  name: string;
+  matchesHostname: (hostname: string) => boolean;
+  requiresClientSideScraping: boolean;
+  isListingUrl: (url: string) => boolean;
+}
+
+type DomainCheckResult = LegitimateDomainResult | SuspiciousDomainResult | null;
+
 (function () {
   "use strict";
 
@@ -66,13 +71,6 @@ interface HighlightDiffResult {
     return dp[m][n];
   }
 
-  // Standard Levenshtein alignment, but instead of just returning a
-  // number, this walks back through the comparison to identify EXACTLY
-  // which characters differ - a substitution, an extra character, or a
-  // missing one. Characters like "l" and "I", or "0" and "o", are
-  // deliberately designed to look near-identical, so marking the
-  // specific character is what actually helps someone spot the
-  // difference.
   function highlightDiff(a: string, b: string): HighlightDiffResult {
     const m = a.length;
     const n = b.length;
@@ -130,13 +128,6 @@ interface HighlightDiffResult {
     return hostname === realDomain || hostname.endsWith("." + realDomain);
   }
 
-  /**
-   * Checks the CURRENT page's domain against the protected marketplace
-   * list. Returns one of three shapes:
-   *  - { status: "legitimate", ... } - genuinely the real site.
-   *  - { status: "suspicious", ... } - a lookalike/typosquat.
-   *  - null - not close to any protected site, nothing to report.
-   */
   function checkDomain(): DomainCheckResult {
     const hostname = window.location.hostname;
 
@@ -169,27 +160,42 @@ interface HighlightDiffResult {
     return null;
   }
 
-  /**
-   * Detects which platform the current page belongs to. Currently
-   * only OLX is genuinely supported - other marketplaces are on the
-   * roadmap, per the project README.
-   */
-  function detectPlatform(): "olx" | "unknown" {
-    const url = window.location.href;
-    if (url.includes("olx.com.pk")) return "olx";
-    return "unknown";
+  const platformRegistry: PlatformConfig[] = [
+    {
+      name: "olx",
+      matchesHostname: (hostname) => hostname.includes("olx.com"),
+      requiresClientSideScraping: true,
+      isListingUrl: (url) => url.includes("iid-"),
+    },
+    {
+      name: "b2brazil",
+      matchesHostname: (hostname) => hostname.includes("b2brazil.com"),
+      requiresClientSideScraping: false,
+      isListingUrl: (url) => url.includes("/hotsite/"),
+    },
+  ];
+
+  function detectPlatform(): string {
+    const hostname = window.location.hostname;
+    const match = platformRegistry.find((p) => p.matchesHostname(hostname));
+    return match ? match.name : "unknown";
+  }
+
+  function requiresClientSideScraping(platform: string): boolean {
+    return platformRegistry.find((p) => p.name === platform)?.requiresClientSideScraping ?? true;
   }
 
   function isListingPage(): boolean {
     const url = window.location.href;
     const platform = detectPlatform();
-    if (platform === "olx") return url.includes("iid-");
-    return false;
+    const config = platformRegistry.find((p) => p.name === platform);
+    return config ? config.isListingUrl(url) : false;
   }
 
   (window as any).__safelyScrapers = (window as any).__safelyScrapers || {};
   (window as any).__safelyScrapers.detectPlatform = detectPlatform;
   (window as any).__safelyScrapers.isListingPage = isListingPage;
+  (window as any).__safelyScrapers.requiresClientSideScraping = requiresClientSideScraping;
   (window as any).__safelyScrapers.checkDomain = checkDomain;
   (window as any).__safelyScrapers.normalize = normalize;
   (window as any).__safelyScrapers.editDistance = editDistance;

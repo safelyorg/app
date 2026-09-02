@@ -81,14 +81,21 @@ describe("highlightDiff", () => {
 describe("detectPlatform", () => {
   it("returns 'olx' for a real olx.com.pk URL", () => {
     Object.defineProperty(window, "location", {
-      value: { href: "https://www.olx.com.pk/item/some-listing-iid-123" },
+      value: {
+        href: "https://www.olx.com.pk/item/some-listing-iid-123",
+        hostname: "www.olx.com.pk",
+      },
       writable: true,
     });
     expect(scrapers.detectPlatform()).toBe("olx");
   });
+
   it("returns 'unknown' for any other URL", () => {
     Object.defineProperty(window, "location", {
-      value: { href: "https://www.facebook.com/marketplace/item/123" },
+      value: {
+        href: "https://www.facebook.com/marketplace/item/123",
+        hostname: "www.facebook.com",
+      },
       writable: true,
     });
     expect(scrapers.detectPlatform()).toBe("unknown");
@@ -98,21 +105,32 @@ describe("detectPlatform", () => {
 describe("isListingPage", () => {
   it("returns true for a real OLX listing URL containing iid-", () => {
     Object.defineProperty(window, "location", {
-      value: { href: "https://www.olx.com.pk/item/some-listing-iid-123" },
+      value: {
+        href: "https://www.olx.com.pk/item/some-listing-iid-123",
+        hostname: "www.olx.com.pk",
+      },
       writable: true,
     });
     expect(scrapers.isListingPage()).toBe(true);
   });
+
   it("returns false for an OLX URL that is not a specific listing", () => {
     Object.defineProperty(window, "location", {
-      value: { href: "https://www.olx.com.pk/" },
+      value: {
+        href: "https://www.olx.com.pk/",
+        hostname: "www.olx.com.pk",
+      },
       writable: true,
     });
     expect(scrapers.isListingPage()).toBe(false);
   });
+
   it("returns false for a non-OLX URL", () => {
     Object.defineProperty(window, "location", {
-      value: { href: "https://www.facebook.com/" },
+      value: {
+        href: "https://www.facebook.com/",
+        hostname: "www.facebook.com",
+      },
       writable: true,
     });
     expect(scrapers.isListingPage()).toBe(false);

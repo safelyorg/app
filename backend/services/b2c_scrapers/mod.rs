@@ -1,17 +1,17 @@
 pub mod olx;
 
-pub struct StorePageResult {
+pub struct B2cProfileResult {
     pub website: Option<String>,
     pub seller_name_confirmed: bool,
 }
 
-pub trait StorePageScraper: Send + Sync {
+pub trait B2cScraper: Send + Sync {
     fn matches_platform(&self, platform: &str) -> bool;
-    fn parse(&self, html: &str, expected_seller_name: &str) -> StorePageResult;
+    fn parse(&self, html: &str, expected_seller_name: &str) -> B2cProfileResult;
 }
 
-pub fn get_scraper_for_platform(platform: &str) -> Option<Box<dyn StorePageScraper>> {
-    let scrapers: Vec<Box<dyn StorePageScraper>> = vec![Box::new(olx::OlxStoreScraper)];
+pub fn get_scraper_for_platform(platform: &str) -> Option<Box<dyn B2cScraper>> {
+    let scrapers: Vec<Box<dyn B2cScraper>> = vec![Box::new(olx::OlxScraper)];
     scrapers.into_iter().find(|s| s.matches_platform(platform))
 }
 
@@ -23,9 +23,8 @@ pub async fn check_store_page(
     platform: &str,
     profile_url: &str,
     expected_seller_name: &str,
-) -> Option<StorePageResult> {
+) -> Option<B2cProfileResult> {
     let scraper = get_scraper_for_platform(platform)?;
-
     let client = reqwest::Client::new();
     let response = client.get(profile_url).send().await.ok()?;
 

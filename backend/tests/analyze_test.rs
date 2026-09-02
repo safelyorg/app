@@ -31,6 +31,7 @@ use backend::{
         fraud_reports::{build_network_summary, count_fraud_reports},
         listings::{create_listing, get_monthly_visit_activity},
         network_memory::build_network_memory_signal,
+        osint::score_identifier_match,
         risk_factors::{derive_risk_factors, find_signal, is_new_account},
         scoring::calculate_risk_score,
         sellers::{create_seller, find_seller},
@@ -53,7 +54,8 @@ use uuid::Uuid;
 use crate::common::{
     admin_pool, cleanup_seller_and_analysis, cleanup_test_seller_chain, create_test_user,
     insert_raw_evidence_row, insert_test_analysis_for_outcomes, insert_test_history_chain,
-    make_signal, make_signals, set_analysis_created_at, setup_real_seller_and_analysis,
+    make_seller, make_signal, make_signals, set_analysis_created_at,
+    setup_real_seller_and_analysis,
 };
 
 // Analyze Test
@@ -2516,39 +2518,6 @@ async fn save_and_build_response_success() {
     let listing = create_listing(&pool, &listing_request, seller.id)
         .await
         .expect("expected to create the listing");
-
-    let claude_analysis = ClaudeAnalysis {
-        urgency_language: Finding {
-            found: false,
-            evidence: "".to_string(),
-        },
-        advance_payment_request: Finding {
-            found: false,
-            evidence: "".to_string(),
-        },
-        duplicate_listing: Finding {
-            found: false,
-            evidence: "".to_string(),
-        },
-        image_authenticity: ImageAssessment {
-            verdict: "original".to_string(),
-            reasoning: "".to_string(),
-        },
-        fraud_pattern_match: Finding {
-            found: false,
-            evidence: "".to_string(),
-        },
-        contact_info_in_listing: Finding {
-            found: false,
-            evidence: "".to_string(),
-        },
-        price_assessment: PriceAssessment {
-            verdict: "normal".to_string(),
-            reasoning: "".to_string(),
-        },
-        overall_risk_notes: "No significant risk detected.".to_string(),
-    };
-
     let signals = vec![Signal {
         label: "Price analysis".to_string(),
         sub: "Price looks normal for this category.".to_string(),
@@ -2564,13 +2533,13 @@ async fn save_and_build_response_success() {
         risk_score: 10,
         risk_level: RiskLevel::Low,
         signals: signals.clone(),
-        claude_analysis,
+        overall_risk_notes: "No significant risk detected.".to_string(),
         user_id: user.id,
         seller,
         fraud_count: 0,
         network_summary: "Clean record on Safely network. No fraud reports found.".to_string(),
+        is_b2b: false,
     };
-
     let result = save_and_build_response(data)
         .await
         .expect("expected the response to be built successfully");
@@ -2579,6 +2548,7 @@ async fn save_and_build_response_success() {
     assert_eq!(result.risk_level, RiskLevel::Low);
     assert_eq!(result.fraud_report_count, 0);
     assert_eq!(result.signals.len(), 1);
+    assert_eq!(result.entity_type, "individual");
 
     cleanup_test_user(&pool, email).await;
 }
@@ -2606,38 +2576,6 @@ async fn save_and_build_response_database_failure() {
         updated_at: Utc::now(),
     };
 
-    let claude_analysis = ClaudeAnalysis {
-        urgency_language: Finding {
-            found: false,
-            evidence: "".to_string(),
-        },
-        advance_payment_request: Finding {
-            found: false,
-            evidence: "".to_string(),
-        },
-        duplicate_listing: Finding {
-            found: false,
-            evidence: "".to_string(),
-        },
-        image_authenticity: ImageAssessment {
-            verdict: "original".to_string(),
-            reasoning: "".to_string(),
-        },
-        fraud_pattern_match: Finding {
-            found: false,
-            evidence: "".to_string(),
-        },
-        contact_info_in_listing: Finding {
-            found: false,
-            evidence: "".to_string(),
-        },
-        price_assessment: PriceAssessment {
-            verdict: "normal".to_string(),
-            reasoning: "".to_string(),
-        },
-        overall_risk_notes: "No significant risk detected.".to_string(),
-    };
-
     let signals = vec![Signal {
         label: "Price analysis".to_string(),
         sub: "Price looks normal for this category.".to_string(),
@@ -2653,11 +2591,12 @@ async fn save_and_build_response_database_failure() {
         risk_score: 10,
         risk_level: RiskLevel::Low,
         signals,
-        claude_analysis,
+        overall_risk_notes: "No significant risk detected.".to_string(),
         user_id: fake_user_id,
         seller,
         fraud_count: 0,
         network_summary: "Clean record on Safely network. No fraud reports found.".to_string(),
+        is_b2b: false,
     };
 
     let result = save_and_build_response(data).await;
@@ -3594,5 +3533,200 @@ async fn get_monthly_visit_activity_isolated_between_sellers() {
 
     cleanup_test_seller_chain(&pool, platform, platform_id_a).await;
     cleanup_test_seller(&pool, platform, platform_id_b).await;
+    cleanup_test_user(&pool, email).await;
+}
+
+// Score Identifier Match Tests
+#[test]
+fn two_matching_identifiers_gives_strong_confidence() {
+    let seller = make_seller(Some("Ahmed Khan"), Some("03001234567"), None, None);
+    let result = score_identifier_match(&seller, "Ahmed Khan scammed me, contact 03001234567");
+    assert_eq!(result.confidence, "strong");
+    assert_eq!(result.matched_identifiers.len(), 2);
+}
+
+#[test]
+fn only_one_matching_identifier_gives_weak_confidence() {
+    let seller = make_seller(Some("Ahmed Khan"), Some("03001234567"), None, None);
+    let result = score_identifier_match(&seller, "Ahmed Khan is a common name, nothing else here");
+    assert_eq!(result.confidence, "weak");
+}
+
+#[test]
+fn zero_matching_identifiers_gives_none_confidence() {
+    let seller = make_seller(Some("Ahmed Khan"), Some("03001234567"), None, None);
+    let result = score_identifier_match(&seller, "completely unrelated text about something else");
+    assert_eq!(result.confidence, "none");
+}
+
+#[test]
+fn matching_is_case_insensitive_for_name() {
+    let seller = make_seller(Some("Ahmed Khan"), None, None, None);
+    let result = score_identifier_match(&seller, "AHMED KHAN posted this");
+    assert_eq!(result.matched_identifiers, vec!["name"]);
+}
+
+#[test]
+fn phone_matching_ignores_formatting_differences() {
+    let seller = make_seller(None, Some("0300-1234-567"), None, None);
+    let result = score_identifier_match(&seller, "call this guy 03001234567 he's a scammer");
+    assert_eq!(result.matched_identifiers, vec!["phone"]);
+}
+
+#[test]
+fn all_four_identifiers_matching_still_correctly_reports_strong() {
+    let seller = make_seller(
+        Some("Ahmed Khan"),
+        Some("03001234567"),
+        Some("ahmed@example.com"),
+        Some("ahmedstore.com"),
+    );
+    let result = score_identifier_match(
+        &seller,
+        "Ahmed Khan, 03001234567, ahmed@example.com, ahmedstore.com - all confirmed scam",
+    );
+    assert_eq!(result.confidence, "strong");
+    assert_eq!(result.matched_identifiers.len(), 4);
+}
+
+#[test]
+fn seller_with_no_identifiers_at_all_never_matches_anything() {
+    let seller = make_seller(None, None, None, None);
+    let result = score_identifier_match(&seller, "any text at all, doesn't matter what");
+    assert_eq!(result.confidence, "none");
+    assert_eq!(result.matched_identifiers.len(), 0);
+}
+
+#[test]
+fn empty_string_identifiers_are_treated_as_genuinely_absent() {
+    let seller = make_seller(Some(""), Some(""), None, None);
+    let result = score_identifier_match(&seller, "some text here");
+    assert_eq!(result.confidence, "none");
+}
+
+// Is B2b Tests
+#[tokio::test]
+async fn save_and_build_response_forces_business_entity_type_when_is_b2b_is_true() {
+    let pool = test_pool().await;
+    let email = "b2b_entity_type_test@example.com";
+    cleanup_test_user(&pool, email).await;
+    let (user, _) = find_or_create_user_by_email(&pool, email)
+        .await
+        .expect("expected to create the user");
+
+    let seller_request = SellersRequest {
+        platform: "b2brazil".to_string(),
+        platform_id: Some("b2b_entity_type_seller".to_string()),
+        name: Some("Random Name".to_string()),
+        handle: None,
+        phone: None,
+        profile_url: None,
+        join_date: None,
+        location: None,
+        last_active: None,
+    };
+    let seller = create_seller(&pool, &seller_request, SellerVerification::Unknown)
+        .await
+        .expect("expected to create the seller");
+
+    let listing_request = ListingsRequest {
+        seller_id: Some(seller.id),
+        platform: "b2brazil".to_string(),
+        listing_url: "https://b2brazil.com/hotsite/entity-type-test".to_string(),
+        listing_id: Some("b2b_entity_type_listing".to_string()),
+        title: None,
+        price: None,
+        description: None,
+        category: None,
+        image_urls: None,
+        posted_date: None,
+    };
+    let listing = create_listing(&pool, &listing_request, seller.id)
+        .await
+        .expect("expected to create the listing");
+
+    let data = BuildResponseData {
+        pool: &pool,
+        listing_id: listing.id,
+        risk_score: 10,
+        risk_level: RiskLevel::Low,
+        signals: vec![],
+        overall_risk_notes: "test".to_string(),
+        user_id: user.id,
+        seller,
+        fraud_count: 0,
+        network_summary: "test".to_string(),
+        is_b2b: true,
+    };
+
+    let result = save_and_build_response(data)
+        .await
+        .expect("expected the response to be built successfully");
+
+    assert_eq!(result.entity_type, "business");
+
+    cleanup_test_user(&pool, email).await;
+}
+
+#[tokio::test]
+async fn save_and_build_response_runs_normal_name_logic_when_is_b2b_is_false() {
+    let pool = test_pool().await;
+    let email = "b2c_entity_type_test@example.com";
+    cleanup_test_user(&pool, email).await;
+    let (user, _) = find_or_create_user_by_email(&pool, email)
+        .await
+        .expect("expected to create the user");
+
+    let seller_request = SellersRequest {
+        platform: "olx".to_string(),
+        platform_id: Some("b2c_entity_type_seller".to_string()),
+        name: Some("Ordinary Individual".to_string()),
+        handle: None,
+        phone: None,
+        profile_url: None,
+        join_date: None,
+        location: None,
+        last_active: None,
+    };
+    let seller = create_seller(&pool, &seller_request, SellerVerification::Unknown)
+        .await
+        .expect("expected to create the seller");
+
+    let listing_request = ListingsRequest {
+        seller_id: Some(seller.id),
+        platform: "olx".to_string(),
+        listing_url: "https://olx.com.pk/item/entity-type-test".to_string(),
+        listing_id: Some("b2c_entity_type_listing".to_string()),
+        title: None,
+        price: None,
+        description: None,
+        category: None,
+        image_urls: None,
+        posted_date: None,
+    };
+    let listing = create_listing(&pool, &listing_request, seller.id)
+        .await
+        .expect("expected to create the listing");
+
+    let data = BuildResponseData {
+        pool: &pool,
+        listing_id: listing.id,
+        risk_score: 10,
+        risk_level: RiskLevel::Low,
+        signals: vec![],
+        overall_risk_notes: "test".to_string(),
+        user_id: user.id,
+        seller,
+        fraud_count: 0,
+        network_summary: "test".to_string(),
+        is_b2b: false,
+    };
+
+    let result = save_and_build_response(data)
+        .await
+        .expect("expected the response to be built successfully");
+
+    assert_eq!(result.entity_type, "individual");
+
     cleanup_test_user(&pool, email).await;
 }

@@ -85,6 +85,28 @@ pub struct CallClaudeArguments<'a> {
     pub image_urls: &'a [String],
 }
 
+// B2B analysis structs
+#[derive(Debug, Deserialize)]
+pub struct B2bClaudeAnalysis {
+    pub business_legitimacy: Finding,
+    pub registration_consistency: Finding,
+    pub listing_specificity: Finding,
+    pub pricing_transparency: PriceAssessment,
+    pub contact_verifiability: Finding,
+    pub overall_risk_notes: String,
+}
+
+#[derive(Debug)]
+pub struct CallB2bClaudeArguments<'a> {
+    pub platform: &'a str,
+    pub company_name: &'a str,
+    pub year_established: &'a str,
+    pub platform_verified: bool,
+    pub employee_count: &'a str,
+    pub product_title: &'a str,
+    pub product_description: &'a str,
+}
+
 pub async fn call_claude(args: CallClaudeArguments<'_>) -> Result<ClaudeAnalysis, ClaudeError> {
     let client = Client::new();
     let api_key = var("ANTHROPIC_API_KEY").map_err(|_| ClaudeError::MissingApiKey)?;
@@ -127,6 +149,48 @@ pub async fn call_claude(args: CallClaudeArguments<'_>) -> Result<ClaudeAnalysis
     let envelope: ClaudeEnvelope =
         from_str(&body_text).map_err(|e| ClaudeError::ParseFailed(e.to_string()))?;
 
+    let inner_json = &envelope.content[0].text;
+    let cleaned = inner_json
+        .trim()
+        .trim_start_matches("```json")
+        .trim_start_matches("```")
+        .trim_end_matches("```")
+        .trim();
+
+    from_str(cleaned).map_err(|e| ClaudeError::ParseFailed(e.to_string()))
+}
+
+pub async fn call_b2b_claude(
+    args: CallB2bClaudeArguments<'_>,
+) -> Result<B2bClaudeAnalysis, ClaudeError> {
+    let client = Client::new();
+    let api_key = var("ANTHROPIC_API_KEY").map_err(|_| ClaudeError::MissingApiKey)?;
+    let prompt = b2b_content(&args);
+    let content_blocks: Vec<ContentItem> = vec![ContentItem::Text { text: prompt }];
+    let payload = ClaudeRequest {
+        model: String::from("claude-sonnet-4-6"),
+        max_tokens: 2048,
+        messages: vec![Message {
+            role: "user".to_string(),
+            content: content_blocks,
+        }],
+    };
+
+    let response = client
+        .post("https://api.anthropic.com/v1/messages")
+        .header("x-api-key", api_key)
+        .header("anthropic-version", "2023-06-01")
+        .json(&payload)
+        .send()
+        .await
+        .map_err(|e| ClaudeError::RequestFailed(e.to_string()))?;
+    let body_text = response
+        .text()
+        .await
+        .map_err(|e| ClaudeError::RequestFailed(e.to_string()))?;
+
+    let envelope: ClaudeEnvelope =
+        from_str(&body_text).map_err(|e| ClaudeError::ParseFailed(e.to_string()))?;
     let inner_json = &envelope.content[0].text;
     let cleaned = inner_json
         .trim()
@@ -193,5 +257,70 @@ pub fn content(arg: &CallClaudeArguments) -> String {
         title = arg.title,
         price = arg.price,
         description = arg.description,
+    )
+}
+
+pub fn b2b_content(arg: &CallB2bClaudeArguments) -> String {
+    format!(
+        r#"
+        You are a B2B supplier due-diligence assistant helping a procurement
+        team evaluate a potential vendor. This is NOT a consumer marketplace -
+        do not apply consumer fraud patterns like "urgency language" or
+        "advance payment scams." B2B listings routinely omit pricing, MOQ,
+        and shipping terms (these are typically negotiated privately after
+        an inquiry) - this is completely normal and must NOT be treated as
+        suspicious on its own.
+
+        Analyze this supplier and product listing, then return ONLY a raw
+        JSON object with no markdown, no code fences, no backticks, no
+        explanation. Start your response with {{ and end with }}.
+
+        Platform: {platform}
+        Company name: {company_name}
+        Year established: {year_established}
+        Platform-verified badge: {platform_verified}
+        Employee count: {employee_count}
+        Product title: {product_title}
+        Product description: {product_description}
+
+        For business_legitimacy: does this look like a genuine, established
+        business with real operational details, or does it show signs of
+        being a shell, front, or fabricated entity (e.g. no real company
+        details, generic or nonsensical company name, inconsistent
+        information)?
+
+        For registration_consistency: does the company's stated information
+        (name, founding year, scale) hang together coherently, or are there
+        real, concrete inconsistencies?
+
+        For listing_specificity: does the product listing describe a real,
+        specific product with genuine, plausible details, or is it
+        template-like, vague, or nonsensical for the stated industry?
+
+        For pricing_transparency: assess ONLY whether provided pricing
+        information (if any) seems plausible for this product type -
+        missing pricing/MOQ/Incoterms is NORMAL in B2B and should verdict
+        as "normal" unless something provided is actually implausible.
+
+        For contact_verifiability: does the company provide genuine,
+        checkable contact information?
+
+        Return JSON in exactly this shape:
+        {{
+        "business_legitimacy": {{ "found": false, "evidence": "" }},
+        "registration_consistency": {{ "found": false, "evidence": "" }},
+        "listing_specificity": {{ "found": false, "evidence": "" }},
+        "pricing_transparency": {{ "verdict": "normal", "reasoning": "" }},
+        "contact_verifiability": {{ "found": false, "evidence": "" }},
+        "overall_risk_notes": ""
+        }}
+        "#,
+        platform = arg.platform,
+        company_name = arg.company_name,
+        year_established = arg.year_established,
+        platform_verified = arg.platform_verified,
+        employee_count = arg.employee_count,
+        product_title = arg.product_title,
+        product_description = arg.product_description,
     )
 }

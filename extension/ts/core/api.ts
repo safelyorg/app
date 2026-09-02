@@ -184,13 +184,14 @@ interface AnalyzeResponse {
       const listing_url = window.location.href;
 
       let scraped: any = {};
-      if (platform === "olx") {
+      if ((window as any).__safelyScrapers.requiresClientSideScraping(platform)) {
         await new Promise((resolve) => setTimeout(resolve, 1500));
-        scraped = (window as any).__safelyScrapers.scrapeOLX();
+        if (platform === "olx") {
+          scraped = (window as any).__safelyScrapers.scrapeOLX();
+        }
       }
 
       const domainCheck = (window as any).__safelyScrapers.checkDomain();
-
       const payload: AnalyzePayload = {
         platform,
         listing_url,
