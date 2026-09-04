@@ -6,6 +6,7 @@
         const wasmUrl = chrome.runtime.getURL("pkg/wasm.js");
         wasm = await import(wasmUrl);
         await wasm.default();
+        console.log("Safely: real WASM module loaded successfully");
     }
     catch (e) {
         console.warn("Safely: WASM blocked, using JS fallback");
@@ -38,15 +39,15 @@
                     return ('<div class="safely-check-card">' +
                         '<div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;">' +
                         '<div class="safely-check-title">' +
-                        window.escapeHtml(s.label) +
+                        window.escapeHtml(capitalizeFirst(s.label)) +
                         "</div>" +
                         '<div style="font-weight:700;white-space:nowrap;font-size:13px;color:' +
                         color +
                         ';">' +
-                        window.escapeHtml(s.value) +
+                        window.escapeHtml(capitalizeFirst(s.value)) +
                         "</div></div>" +
                         '<div class="safely-check-body">' +
-                        window.escapeHtml(s.sub || "") +
+                        window.escapeHtml(capitalizeFirst(s.sub) || "") +
                         "</div></div>");
                 })
                     .join("");
@@ -117,10 +118,13 @@
             .map((factor) => {
             const color = SEVERITY_COLORS[factor.severity] || "#8e8e93";
             const severityLabel = SEVERITY_LABELS[factor.severity] || factor.severity;
+            const shortTitle = factor.contributing_signals && factor.contributing_signals.length > 0
+                ? factor.contributing_signals.join(" + ")
+                : capitalizeFirst(factor.name.replace(/_/g, " "));
             return ('<div class="safely-check-card">' +
                 '<div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;">' +
                 '<div class="safely-check-title">' +
-                window.escapeHtml(capitalizeFirst(factor.name.replace(/_/g, " "))) +
+                window.escapeHtml(shortTitle) +
                 "</div>" +
                 '<div style="font-weight:700;white-space:nowrap;font-size:11px;color:' +
                 color +

@@ -1,12 +1,38 @@
 "use strict";
 (function () {
     "use strict";
-    const PROTECTED_DOMAINS = [
-        { name: "OLX Pakistan", domain: "olx.com.pk" },
-        { name: "Facebook", domain: "facebook.com" },
-        { name: "Amazon", domain: "amazon.com" },
-        { name: "eBay", domain: "ebay.com" },
-    ];
+    let PROTECTED_DOMAINS = [];
+    const DOMAINS_CACHE_KEY = "safely_protected_domains_cache";
+    const DOMAINS_CACHE_TIMESTAMP_KEY = "safely_protected_domains_cached_at";
+    const CACHE_LIFETIME_MS = 24 * 60 * 60 * 1000; // 24 hours
+    async function loadProtectedDomains() {
+        try {
+            const cached = (await chrome.storage.local.get([
+                DOMAINS_CACHE_KEY,
+                DOMAINS_CACHE_TIMESTAMP_KEY,
+            ]));
+            const cachedAt = cached[DOMAINS_CACHE_TIMESTAMP_KEY] || 0;
+            const isFresh = Date.now() - cachedAt < CACHE_LIFETIME_MS;
+            if (isFresh && cached[DOMAINS_CACHE_KEY]) {
+                PROTECTED_DOMAINS = cached[DOMAINS_CACHE_KEY];
+                return;
+            }
+            const apiBase = window.__safelyAPI?.SITE_BASE || "http://localhost:3000";
+            const response = await fetch(apiBase + "/api/v1/platform-domains");
+            const data = await response.json();
+            PROTECTED_DOMAINS = Object.entries(data).map(([name, domain]) => ({
+                name,
+                domain: domain,
+            }));
+            await chrome.storage.local.set({
+                [DOMAINS_CACHE_KEY]: PROTECTED_DOMAINS,
+                [DOMAINS_CACHE_TIMESTAMP_KEY]: Date.now(),
+            });
+        }
+        catch (e) {
+            console.error("Safely: failed to load protected domains list", e);
+        }
+    }
     function normalize(hostname) {
         return hostname
             .toLowerCase()
@@ -123,7 +149,7 @@
         {
             name: "olx",
             matchesHostname: (hostname) => hostname.includes("olx.com"),
-            requiresClientSideScraping: true,
+            requiresClientSideScraping: false,
             isListingUrl: (url) => url.includes("iid-"),
         },
         {
@@ -149,6 +175,7 @@
     }
     window.__safelyScrapers = window.__safelyScrapers || {};
     window.__safelyScrapers.detectPlatform = detectPlatform;
+    window.__safelyScrapers.loadProtectedDomains = loadProtectedDomains;
     window.__safelyScrapers.isListingPage = isListingPage;
     window.__safelyScrapers.requiresClientSideScraping = requiresClientSideScraping;
     window.__safelyScrapers.checkDomain = checkDomain;

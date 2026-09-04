@@ -20,6 +20,14 @@ pub fn escape_html(input: &str) -> String {
         .replace('\'', "&#39;")
 }
 
+pub fn capitalize_first(input: &str) -> String {
+    let mut chars = input.chars();
+    match chars.next() {
+        Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
+        None => String::new(),
+    }
+}
+
 #[wasm_bindgen]
 pub fn risk_level(score: u8) -> String {
     if score <= 33 {
@@ -129,7 +137,7 @@ pub fn build_signal_rows(signals_json: &str) -> String {
         };
         format!(
             r#"<div class="safely-check-card"><div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;"><div class="safely-check-title">{}</div><div style="font-weight:700;white-space:nowrap;font-size:13px;color:{};">{}</div></div><div class="safely-check-body">{}</div></div>"#,
-            escape_html(&s.label), color, escape_html(&s.value), escape_html(&s.sub)
+            escape_html(&capitalize_first(&s.label)), color, escape_html(&capitalize_first(&s.value)), escape_html(&capitalize_first(&s.sub))
         )
     }).collect::<Vec<_>>().join("")
 }

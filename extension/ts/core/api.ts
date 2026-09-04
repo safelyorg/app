@@ -168,6 +168,7 @@ interface AnalyzeResponse {
     },
 
     fetchAnalysis: async function (): Promise<void> {
+      await (window as any).__safelyScrapers.loadProtectedDomains();
       const platform = (window as any).__safelyScrapers.detectPlatform();
       if (platform === "unknown") {
         window.dispatchEvent(new CustomEvent("safely-analysis-finished"));
@@ -186,9 +187,6 @@ interface AnalyzeResponse {
       let scraped: any = {};
       if ((window as any).__safelyScrapers.requiresClientSideScraping(platform)) {
         await new Promise((resolve) => setTimeout(resolve, 1500));
-        if (platform === "olx") {
-          scraped = (window as any).__safelyScrapers.scrapeOLX();
-        }
       }
 
       const domainCheck = (window as any).__safelyScrapers.checkDomain();

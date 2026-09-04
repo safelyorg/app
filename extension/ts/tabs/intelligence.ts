@@ -25,6 +25,7 @@ interface SignalAnalysisResult {
     const wasmUrl = chrome.runtime.getURL("pkg/wasm.js");
     wasm = await import(wasmUrl);
     await wasm.default();
+    console.log("Safely: real WASM module loaded successfully");
   } catch (e) {
     console.warn("Safely: WASM blocked, using JS fallback");
     console.error("Safely: real WASM loading error was:", e);
@@ -58,15 +59,15 @@ interface SignalAnalysisResult {
               '<div class="safely-check-card">' +
               '<div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;">' +
               '<div class="safely-check-title">' +
-              (window as any).escapeHtml(s.label) +
+              (window as any).escapeHtml(capitalizeFirst(s.label)) +
               "</div>" +
               '<div style="font-weight:700;white-space:nowrap;font-size:13px;color:' +
               color +
               ';">' +
-              (window as any).escapeHtml(s.value) +
+              (window as any).escapeHtml(capitalizeFirst(s.value)) +
               "</div></div>" +
               '<div class="safely-check-body">' +
-              (window as any).escapeHtml(s.sub || "") +
+              (window as any).escapeHtml(capitalizeFirst(s.sub) || "") +
               "</div></div>"
             );
           })
@@ -150,11 +151,15 @@ interface SignalAnalysisResult {
       .map((factor) => {
         const color = SEVERITY_COLORS[factor.severity] || "#8e8e93";
         const severityLabel = SEVERITY_LABELS[factor.severity] || factor.severity;
+        const shortTitle =
+          factor.contributing_signals && factor.contributing_signals.length > 0
+            ? factor.contributing_signals.join(" + ")
+            : capitalizeFirst(factor.name.replace(/_/g, " "));
         return (
           '<div class="safely-check-card">' +
           '<div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;">' +
           '<div class="safely-check-title">' +
-          (window as any).escapeHtml(capitalizeFirst(factor.name.replace(/_/g, " "))) +
+          (window as any).escapeHtml(shortTitle) +
           "</div>" +
           '<div style="font-weight:700;white-space:nowrap;font-size:11px;color:' +
           color +

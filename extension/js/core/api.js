@@ -102,6 +102,7 @@
             }
         },
         fetchAnalysis: async function () {
+            await window.__safelyScrapers.loadProtectedDomains();
             const platform = window.__safelyScrapers.detectPlatform();
             if (platform === "unknown") {
                 window.dispatchEvent(new CustomEvent("safely-analysis-finished"));
@@ -117,9 +118,6 @@
             let scraped = {};
             if (window.__safelyScrapers.requiresClientSideScraping(platform)) {
                 await new Promise((resolve) => setTimeout(resolve, 1500));
-                if (platform === "olx") {
-                    scraped = window.__safelyScrapers.scrapeOLX();
-                }
             }
             const domainCheck = window.__safelyScrapers.checkDomain();
             const payload = {

@@ -202,7 +202,7 @@ fn build_signal_rows_escapes_dangerous_label_value_and_sub() {
     assert!(result.contains("&lt;script&gt;bad&lt;/script&gt;"));
     assert!(!result.contains("<img>"));
     assert!(result.contains("&lt;img&gt;"));
-    assert!(result.contains("a &amp; b"));
+    assert!(result.contains("A &amp; b"));
 }
 
 #[test]
@@ -212,8 +212,8 @@ fn build_signal_rows_joins_multiple_signals_together() {
         {"label":"second","value":"v2","type":"bad"}
     ]"#;
     let result = build_signal_rows(json);
-    assert!(result.contains("first"));
-    assert!(result.contains("second"));
+    assert!(result.contains("First"));
+    assert!(result.contains("Second"));
     assert_eq!(result.matches("safely-check-card").count(), 2);
 }
 

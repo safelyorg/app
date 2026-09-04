@@ -57,7 +57,6 @@
       ],
       "js": [
         "js/core/state.js",
-        "js/scrapers/olx.js",
         "js/scrapers/index.js",
         "js/core/api.js",
         "js/core/panel-subscription-logic.js",

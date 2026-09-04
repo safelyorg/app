@@ -93,6 +93,9 @@ pub struct B2bClaudeAnalysis {
     pub listing_specificity: Finding,
     pub pricing_transparency: PriceAssessment,
     pub contact_verifiability: Finding,
+    pub urgency_language: Finding,
+    pub advance_payment_request: Finding,
+    pub image_authenticity: ImageAssessment,
     pub overall_risk_notes: String,
 }
 
@@ -105,16 +108,19 @@ pub struct CallB2bClaudeArguments<'a> {
     pub employee_count: &'a str,
     pub product_title: &'a str,
     pub product_description: &'a str,
+    pub image_urls: &'a [String],
 }
 
-pub async fn call_claude(args: CallClaudeArguments<'_>) -> Result<ClaudeAnalysis, ClaudeError> {
-    let client = Client::new();
-    let api_key = var("ANTHROPIC_API_KEY").map_err(|_| ClaudeError::MissingApiKey)?;
-    let prompt = content(&args);
-
-    // Commenting to prevent image detection because it takes a lot of tokens
+/// The ONE, shared place that builds the real content blocks sent to
+/// Claude - genuinely unified for both B2C and B2B, so a future
+/// decision to re-enable image analysis only ever needs to happen in
+/// one spot, not two separate, duplicated copies.
+fn build_content_blocks(prompt: String, _image_urls: &[String]) -> Vec<ContentItem> {
     let content_blocks: Vec<ContentItem> = vec![ContentItem::Text { text: prompt }];
-    // for url in args.image_urls.iter().take(3) {
+
+    // Image sending disabled for cost reasons, for both B2C and B2B -
+    // commented out here.
+    // for url in _image_urls.iter().take(3) {
     //     content_blocks.push(ContentItem::Image {
     //         source: ImageSource {
     //             source_type: "url".to_string(),
@@ -122,6 +128,15 @@ pub async fn call_claude(args: CallClaudeArguments<'_>) -> Result<ClaudeAnalysis
     //         },
     //     });
     // }
+
+    content_blocks
+}
+
+pub async fn call_b2c_claude(args: CallClaudeArguments<'_>) -> Result<ClaudeAnalysis, ClaudeError> {
+    let client = Client::new();
+    let api_key = var("ANTHROPIC_API_KEY").map_err(|_| ClaudeError::MissingApiKey)?;
+    let prompt = b2c_content(&args);
+    let content_blocks = build_content_blocks(prompt, args.image_urls);
 
     let payload = ClaudeRequest {
         model: String::from("claude-sonnet-4-6"),
@@ -166,7 +181,8 @@ pub async fn call_b2b_claude(
     let client = Client::new();
     let api_key = var("ANTHROPIC_API_KEY").map_err(|_| ClaudeError::MissingApiKey)?;
     let prompt = b2b_content(&args);
-    let content_blocks: Vec<ContentItem> = vec![ContentItem::Text { text: prompt }];
+    let content_blocks = build_content_blocks(prompt, args.image_urls);
+
     let payload = ClaudeRequest {
         model: String::from("claude-sonnet-4-6"),
         max_tokens: 2048,
@@ -184,6 +200,7 @@ pub async fn call_b2b_claude(
         .send()
         .await
         .map_err(|e| ClaudeError::RequestFailed(e.to_string()))?;
+
     let body_text = response
         .text()
         .await
@@ -202,7 +219,7 @@ pub async fn call_b2b_claude(
     from_str(cleaned).map_err(|e| ClaudeError::ParseFailed(e.to_string()))
 }
 
-pub fn content(arg: &CallClaudeArguments) -> String {
+pub fn b2c_content(arg: &CallClaudeArguments) -> String {
     format!(
         r#"
         You are a fraud detection assistant for an online marketplace.
@@ -216,7 +233,9 @@ pub fn content(arg: &CallClaudeArguments) -> String {
         Listing description: {description}
 
         For the duplicate_listing field: check if the description appears generic, templated, or copy-pasted. Look for mismatched details between title and description, no item-specific information like serial numbers or condition details, language that could apply to any listing of this type rather than this specific item. Set found to true if the listing appears to be a template or copy rather than an original genuine listing.
-
+        For image_authenticity: verdict must be exactly "original" or
+        "not verified" - no other words. Use "not verified" whenever no
+        images were provided or authenticity cannot genuinely be assessed.
         Return JSON in exactly this shape:
 
         {{
@@ -305,6 +324,26 @@ pub fn b2b_content(arg: &CallB2bClaudeArguments) -> String {
         For contact_verifiability: does the company provide genuine,
         checkable contact information?
 
+        For urgency_language: does the listing or company description use
+        artificial pressure tactics inconsistent with normal B2B
+        relationship-building - e.g. "deal expires today," "must decide
+        now," discouraging normal due diligence or sample requests? Note
+        that reasonable business urgency (limited stock, seasonal demand)
+        is normal and should NOT be flagged.
+
+        For advance_payment_request: does the listing demand full,
+        100% upfront payment before any samples, verification, or
+        standard partial-deposit terms - genuinely unusual for
+        legitimate B2B trade, where partial deposits and post-inspection
+        payment terms are standard?
+
+        For image_authenticity: no actual product images are provided
+        in this analysis (image sending is disabled for cost reasons,
+        matching the same limitation applied to consumer listings).
+        Verdict must be exactly "original" or "not verified" - no other
+        words. Use "not verified" whenever no images were provided or
+        authenticity cannot genuinely be assessed.
+
         Return JSON in exactly this shape:
         {{
         "business_legitimacy": {{ "found": false, "evidence": "" }},
@@ -312,6 +351,9 @@ pub fn b2b_content(arg: &CallB2bClaudeArguments) -> String {
         "listing_specificity": {{ "found": false, "evidence": "" }},
         "pricing_transparency": {{ "verdict": "normal", "reasoning": "" }},
         "contact_verifiability": {{ "found": false, "evidence": "" }},
+        "urgency_language": {{ "found": false, "evidence": "" }},
+        "advance_payment_request": {{ "found": false, "evidence": "" }},
+        "image_authenticity": {{ "verdict": "not verified", "reasoning": "" }},
         "overall_risk_notes": ""
         }}
         "#,

@@ -36,12 +36,42 @@ type DomainCheckResult = LegitimateDomainResult | SuspiciousDomainResult | null;
 (function () {
   "use strict";
 
-  const PROTECTED_DOMAINS: ProtectedDomain[] = [
-    { name: "OLX Pakistan", domain: "olx.com.pk" },
-    { name: "Facebook", domain: "facebook.com" },
-    { name: "Amazon", domain: "amazon.com" },
-    { name: "eBay", domain: "ebay.com" },
-  ];
+  let PROTECTED_DOMAINS: ProtectedDomain[] = [];
+  const DOMAINS_CACHE_KEY = "safely_protected_domains_cache";
+  const DOMAINS_CACHE_TIMESTAMP_KEY = "safely_protected_domains_cached_at";
+  const CACHE_LIFETIME_MS = 24 * 60 * 60 * 1000; // 24 hours
+
+  async function loadProtectedDomains(): Promise<void> {
+    try {
+      const cached = (await chrome.storage.local.get([
+        DOMAINS_CACHE_KEY,
+        DOMAINS_CACHE_TIMESTAMP_KEY,
+      ])) as Record<string, any>;
+
+      const cachedAt: number = cached[DOMAINS_CACHE_TIMESTAMP_KEY] || 0;
+      const isFresh = Date.now() - cachedAt < CACHE_LIFETIME_MS;
+
+      if (isFresh && cached[DOMAINS_CACHE_KEY]) {
+        PROTECTED_DOMAINS = cached[DOMAINS_CACHE_KEY] as ProtectedDomain[];
+        return;
+      }
+
+      const apiBase = (window as any).__safelyAPI?.SITE_BASE || "http://localhost:3000";
+      const response = await fetch(apiBase + "/api/v1/platform-domains");
+      const data = await response.json();
+      PROTECTED_DOMAINS = Object.entries(data).map(([name, domain]) => ({
+        name,
+        domain: domain as string,
+      }));
+
+      await chrome.storage.local.set({
+        [DOMAINS_CACHE_KEY]: PROTECTED_DOMAINS,
+        [DOMAINS_CACHE_TIMESTAMP_KEY]: Date.now(),
+      });
+    } catch (e) {
+      console.error("Safely: failed to load protected domains list", e);
+    }
+  }
 
   function normalize(hostname: string): string {
     return hostname
@@ -164,7 +194,7 @@ type DomainCheckResult = LegitimateDomainResult | SuspiciousDomainResult | null;
     {
       name: "olx",
       matchesHostname: (hostname) => hostname.includes("olx.com"),
-      requiresClientSideScraping: true,
+      requiresClientSideScraping: false,
       isListingUrl: (url) => url.includes("iid-"),
     },
     {
@@ -194,6 +224,7 @@ type DomainCheckResult = LegitimateDomainResult | SuspiciousDomainResult | null;
 
   (window as any).__safelyScrapers = (window as any).__safelyScrapers || {};
   (window as any).__safelyScrapers.detectPlatform = detectPlatform;
+  (window as any).__safelyScrapers.loadProtectedDomains = loadProtectedDomains;
   (window as any).__safelyScrapers.isListingPage = isListingPage;
   (window as any).__safelyScrapers.requiresClientSideScraping = requiresClientSideScraping;
   (window as any).__safelyScrapers.checkDomain = checkDomain;

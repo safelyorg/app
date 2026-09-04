@@ -3,8 +3,8 @@ use backend::{
     models::analysis::AnalyzeRequest,
     services::{analysis::build_b2b_analysis_path, b2b_scrapers::check_b2b_page},
 };
-
 use crate::common::test_pool;
+use uuid::Uuid;
 
 #[tokio::test]
 async fn check_b2b_page_fetches_and_parses_a_real_live_b2brazil_page() {
@@ -78,7 +78,7 @@ async fn build_b2b_analysis_path_produces_a_real_complete_result_from_the_live_s
         domain_check_real_html: None,
     };
 
-    let result = build_b2b_analysis_path(&pool, &request, 0).await;
+    let result = build_b2b_analysis_path(&pool, &request, 0, Uuid::new_v4()).await;
 
     assert!(
         result.is_ok(),
@@ -87,7 +87,7 @@ async fn build_b2b_analysis_path_produces_a_real_complete_result_from_the_live_s
 
     let (signals, risk_score, notes, supplier) = result.unwrap();
 
-    assert_eq!(signals.len(), 8);
+    assert_eq!(signals.len(), 13);
     assert!(risk_score >= 0 && risk_score <= 100);
     assert!(!notes.is_empty());
     assert_eq!(
@@ -130,7 +130,7 @@ async fn build_b2b_analysis_path_fails_gracefully_for_a_genuinely_broken_url() {
         domain_check_real_html: None,
     };
 
-    let result = build_b2b_analysis_path(&pool, &request, 0).await;
+    let result = build_b2b_analysis_path(&pool, &request, 0, Uuid::new_v4()).await;
     assert!(
         result.is_err(),
         "expected a genuinely broken URL to fail cleanly, not panic"

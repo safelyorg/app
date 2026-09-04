@@ -12,7 +12,7 @@ use crate::{
         b2c_scrapers::check_store_page,
         claude::{
             CallB2bClaudeArguments, CallClaudeArguments, ClaudeAnalysis, call_b2b_claude,
-            call_claude,
+            call_b2c_claude,
         },
         confidence::calculate_confidence,
         entity_detection::classify_entity,
@@ -40,6 +40,12 @@ use std::{
     time::{Duration, Instant},
 };
 use uuid::Uuid;
+
+// This stops any one person from calling the /analyze endpoint more than 10 times within any 5-minute stretch.
+// It sets up a way to track how many times each logged-in user has called the expensive /analyze endpoint recently.
+pub static RATE_LIMITS: OnceLock<Mutex<HashMap<Uuid, (u32, Instant)>>> = OnceLock::new();
+const RATE_LIMIT_WINDOW: Duration = Duration::from_secs(300);
+const RATE_LIMIT_MAX_REQUESTS: u32 = 10;
 
 pub struct CreateAnalysisData<'a> {
     pub pool: &'a Pool<Postgres>,
@@ -74,12 +80,6 @@ pub struct BuildResponseData<'a> {
     pub network_summary: String,
     pub is_b2b: bool,
 }
-
-// This stops any one person from calling the /analyze endpoint more than 10 times within any 5-minute stretch.
-// It sets up a way to track how many times each logged-in user has called the expensive /analyze endpoint recently.
-pub static RATE_LIMITS: OnceLock<Mutex<HashMap<Uuid, (u32, Instant)>>> = OnceLock::new();
-const RATE_LIMIT_WINDOW: Duration = Duration::from_secs(300);
-const RATE_LIMIT_MAX_REQUESTS: u32 = 10;
 
 /// Confirms the caller is genuinely signed in, then checks they haven't
 /// exceeded their request rate limit. Real analysis costs real Claude
@@ -237,7 +237,7 @@ pub async fn run_claude_analysis(
 
     let image_urls = listing.image_urls.as_deref().unwrap_or(&[]);
 
-    call_claude(CallClaudeArguments {
+    call_b2c_claude(CallClaudeArguments {
         platform: &listing.platform,
         seller_name: seller.name.as_deref().unwrap_or("Unknown"),
         seller_account_age: &account_age,
@@ -288,6 +288,15 @@ pub async fn build_all_signals(
         if let Some(whois_signal) = build_whois_signal(whois_result.as_ref()) {
             signals.push(whois_signal);
         }
+    } else {
+        signals.push(Signal {
+            label: "Seller website check".to_string(),
+            sub: "No website was mentioned or claimed by this seller.".to_string(),
+            value: "No website found".to_string(),
+            signal_type: "info".to_string(),
+            category: "website".to_string(),
+            check_type: "existence".to_string(),
+        });
     }
 
     // Genuinely free, real trust data for OLX's verified-seller
@@ -313,6 +322,15 @@ pub async fn build_all_signals(
                 signals.push(store_signal);
             }
         }
+    } else {
+        signals.push(Signal {
+            label: "Store page check".to_string(),
+            sub: "No separate store or profile page was found for this seller.".to_string(),
+            value: "No store page found".to_string(),
+            signal_type: "info".to_string(),
+            category: "identity".to_string(),
+            check_type: "consistency".to_string(),
+        });
     }
 
     signals
@@ -453,11 +471,36 @@ pub async fn create_analysis(data: CreateAnalysisData<'_>) -> Result<Analysis, E
 /// due diligence asks fundamentally different questions than
 /// consumer-marketplace fraud detection.
 pub async fn build_b2b_analysis_path(
-    _pool: &Pool<Postgres>,
+    pool: &Pool<Postgres>,
     request: &AnalyzeRequest,
     fraud_count: i64,
+    seller_id: Uuid,
 ) -> Result<(Vec<Signal>, i16, String, B2bSupplierProfile), AnalyzeError> {
     let mut signals = Vec::new();
+
+    if let Some(memory_signal) = build_network_memory_signal(pool, seller_id).await {
+        signals.push(memory_signal);
+    }
+
+    if let Some(domain_signal) = build_domain_signal(
+        request.domain_check_status.as_deref(),
+        request.domain_check_real_name.as_deref(),
+        request.domain_check_real_domain.as_deref(),
+        request.domain_check_current_domain.as_deref(),
+        request.domain_check_current_html.as_deref(),
+        request.domain_check_real_html.as_deref(),
+    ) {
+        signals.push(domain_signal);
+    }
+
+    signals.push(Signal {
+        label: "Seller website check".to_string(),
+        sub: "No website was found for this supplier on this platform.".to_string(),
+        value: "No website found".to_string(),
+        signal_type: "info".to_string(),
+        category: "website".to_string(),
+        check_type: "existence".to_string(),
+    });
 
     let (supplier, listing) = check_b2b_page(&request.platform, &request.listing_url)
         .await
@@ -473,15 +516,14 @@ pub async fn build_b2b_analysis_path(
         employee_count: supplier.employee_count.as_deref().unwrap_or("Unknown"),
         product_title: listing.title.as_deref().unwrap_or("Unknown"),
         product_description: listing.description.as_deref().unwrap_or("None provided"),
+        image_urls: &listing.image_urls,
     })
     .await
     .map_err(|e| AnalyzeError::ClaudeAnalysisFailed(e.to_string()))?;
 
     signals.extend(build_b2b_claude_signals(&claude_result));
     signals.push(build_b2b_verification_signal(&supplier));
-    if let Some(age_signal) = build_b2b_company_age_signal(&supplier) {
-        signals.push(age_signal);
-    }
+    signals.push(build_b2b_company_age_signal(&supplier));
 
     signals.push(build_b2b_transparency_signal(&supplier));
     signals.push(build_b2b_listing_completeness_signal(&listing));

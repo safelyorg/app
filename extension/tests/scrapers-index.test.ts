@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import "../ts/scrapers/index";
 
 const scrapers = (window as any).__safelyScrapers;
@@ -23,6 +23,27 @@ describe("editDistance", () => {
 });
 
 describe("checkDomain", () => {
+  beforeEach(async () => {
+    // PROTECTED_DOMAINS is now populated via a real, live fetch to
+    // the backend - for these tests, we bypass that by directly
+    // seeding the cache loadProtectedDomains() reads from, so
+    // checkDomain() has real, known data to compare against.
+    (globalThis as any).chrome = {
+      storage: {
+        local: {
+          get: vi.fn().mockResolvedValue({
+            safely_protected_domains_cache: [
+              { name: "OLX Pakistan", domain: "olx.com.pk" },
+            ],
+            safely_protected_domains_cached_at: Date.now(),
+          }),
+          set: vi.fn(),
+        },
+      },
+    };
+    await scrapers.loadProtectedDomains();
+  });
+
   it("returns null for a domain with no relation to any protected site", () => {
     Object.defineProperty(window, "location", {
       value: { hostname: "some-genuinely-unrelated-site.com" },

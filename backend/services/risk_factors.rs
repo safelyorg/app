@@ -12,27 +12,26 @@ pub fn find_signal<'a>(signals: &'a [Signal], label: &str) -> Option<&'a Signal>
 /// conclusions - the actual "what does this mean" layer, sitting on
 /// top of the raw "what did we find" signals.
 ///
-/// It checks for hard factors first (things serious enough alone),
-/// then checks for specific, known compound combinations, then treats
-/// any remaining individual caution signal as a soft factor.
+/// Uses signal_type ("good"/"caution"/"bad") rather than exact value
+/// text to decide severity - this is what makes these rules genuinely
+/// platform-agnostic, since OLX and B2B use different literal words
+/// ("Detected" vs "Not confirmed") for the same underlying bad outcome.
 pub fn derive_risk_factors(signals: &[Signal]) -> Vec<RiskFactor> {
     let mut factors = Vec::new();
     let mut covered_labels: Vec<&str> = Vec::new();
 
     // Hard factors
-    if let Some(s) = find_signal(signals, "Fraud pattern match") {
-        if s.value == "Detected" {
+    if let Some(s) = find_signal(signals, "Overall legitimacy check") {
+        if s.signal_type == "caution" || s.signal_type == "bad" {
             factors.push(RiskFactor {
                 severity: "hard".to_string(),
-                name: "confirmed_fraud_pattern".to_string(),
-                description: "Claude identified a specific, known fraud pattern in this listing."
-                    .to_string(),
-                contributing_signals: vec!["Fraud pattern match".to_string()],
+                name: "confirmed_legitimacy_concern".to_string(),
+                description: "A specific, known fraud pattern or legitimacy concern was identified in this listing.".to_string(),
+                contributing_signals: vec!["Overall legitimacy check".to_string()],
             });
-            covered_labels.push("Fraud pattern match");
+            covered_labels.push("Overall legitimacy check");
         }
     }
-
     if let Some(s) = find_signal(signals, "Safely history") {
         if s.signal_type == "bad" {
             factors.push(RiskFactor {
@@ -50,7 +49,7 @@ pub fn derive_risk_factors(signals: &[Signal]) -> Vec<RiskFactor> {
     let duplicate = find_signal(signals, "Duplicate listing");
     let image_auth = find_signal(signals, "Image authenticity");
     if let (Some(d), Some(i)) = (duplicate, image_auth) {
-        if d.value == "Detected" && (i.value == "unverifiable" || i.value == "suspicious") {
+        if d.signal_type != "good" && i.signal_type != "good" {
             factors.push(RiskFactor {
                 severity: "compound".to_string(),
                 name: "likely_counterfeit_or_nonexistent_product".to_string(),
@@ -65,7 +64,7 @@ pub fn derive_risk_factors(signals: &[Signal]) -> Vec<RiskFactor> {
     let urgency = find_signal(signals, "Urgency language");
     let advance_payment = find_signal(signals, "Advance payment request");
     if let (Some(u), Some(a)) = (urgency, advance_payment) {
-        if u.value == "Detected" && a.value == "Detected" {
+        if u.signal_type != "good" && a.signal_type != "good" {
             factors.push(RiskFactor {
                 severity: "compound".to_string(),
                 name: "advance_fee_scam_pattern".to_string(),
@@ -77,27 +76,29 @@ pub fn derive_risk_factors(signals: &[Signal]) -> Vec<RiskFactor> {
         }
     }
 
-    if let (Some(age), Some(fraud)) = (
-        find_signal(signals, "Account age"),
-        find_signal(signals, "Fraud pattern match"),
+    if let (Some(age), Some(legitimacy)) = (
+        find_signal(signals, "Entity age"),
+        find_signal(signals, "Overall legitimacy check"),
     ) {
         if is_new_account(&age.value)
-            && fraud.value == "Detected"
-            && !covered_labels.contains(&"Fraud pattern match")
+            && legitimacy.signal_type != "good"
+            && !covered_labels.contains(&"Overall legitimacy check")
         {
             factors.push(RiskFactor {
                 severity: "compound".to_string(),
-                name: "newly_created_high_risk_account".to_string(),
-                description: "A very recently created account combined with a matched fraud pattern is a strong, well-known combination seen in scam listings.".to_string(),
-                contributing_signals: vec!["Account age".to_string(), "Fraud pattern match".to_string()],
+                name: "newly_created_high_risk_entity".to_string(),
+                description: "A very recently established entity combined with a matched legitimacy concern is a strong, well-known combination seen in scam listings.".to_string(),
+                contributing_signals: vec!["Entity age".to_string(), "Overall legitimacy check".to_string()],
             });
-            covered_labels.push("Account age");
+            covered_labels.push("Entity age");
         }
     }
 
-    // Soft factors - anything caution-type not already covered above
+    // Soft factors - anything caution/bad-type not already covered above
     for signal in signals {
-        if signal.signal_type == "caution" && !covered_labels.contains(&signal.label.as_str()) {
+        if (signal.signal_type == "caution" || signal.signal_type == "bad")
+            && !covered_labels.contains(&signal.label.as_str())
+        {
             factors.push(RiskFactor {
                 severity: "soft".to_string(),
                 name: format!("{}_flagged", signal.label.to_lowercase().replace(' ', "_")),

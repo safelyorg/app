@@ -10,6 +10,7 @@ fn b2b_content_includes_the_real_company_name() {
         employee_count: "0-10",
         product_title: "Test Product",
         product_description: "Test description",
+        image_urls: &[],
     };
     let prompt = b2b_content(&args);
     assert!(prompt.contains("Akurat Consultoria Empresarial"));
@@ -25,6 +26,7 @@ fn b2b_content_includes_the_real_year_and_employee_count() {
         employee_count: "0-10",
         product_title: "Test Product",
         product_description: "Test description",
+        image_urls: &[],
     };
     let prompt = b2b_content(&args);
     assert!(prompt.contains("2013"));
@@ -42,6 +44,7 @@ fn b2b_content_includes_the_real_product_details() {
         employee_count: "0-10",
         product_title: "Precision Microcast Parts",
         product_description: "Industrial casting components",
+        image_urls: &[],
     };
     let prompt = b2b_content(&args);
     assert!(prompt.contains("Precision Microcast Parts"));
@@ -58,6 +61,7 @@ fn b2b_content_explicitly_tells_claude_not_to_apply_consumer_fraud_patterns() {
         employee_count: "0-10",
         product_title: "Test",
         product_description: "Test",
+        image_urls: &[],
     };
     let prompt = b2b_content(&args);
     assert!(prompt.to_lowercase().contains("not a consumer marketplace"));
@@ -74,6 +78,7 @@ fn b2b_content_produces_genuinely_different_text_for_different_inputs() {
         employee_count: "0-10",
         product_title: "Product A",
         product_description: "Description A",
+        image_urls: &[],
     };
     let args_b = CallB2bClaudeArguments {
         platform: "b2brazil",
@@ -83,6 +88,7 @@ fn b2b_content_produces_genuinely_different_text_for_different_inputs() {
         employee_count: "50-100",
         product_title: "Product B",
         product_description: "Description B",
+        image_urls: &[],
     };
     assert_ne!(b2b_content(&args_a), b2b_content(&args_b));
 }

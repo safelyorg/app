@@ -22,3 +22,4 @@ pub mod sellers;
 pub mod signals;
 pub mod templates;
 pub mod whois;
+pub mod platform_config;

@@ -2,7 +2,9 @@ use axum::http::{HeaderValue, Method, header};
 use axum::serve;
 use axum::{Router, response::Redirect, routing::get};
 use backend::db::{bootstrap::run_grants, connection::load_pool};
-use backend::routes::{analyze, auth, billing, dashboard, fraud_reports, outcomes, subscribe};
+use backend::routes::{
+    analyze, auth, billing, dashboard, fraud_reports, outcomes, platform_domains, subscribe,
+};
 use dotenvy::dotenv;
 use sqlx::{Pool, Postgres};
 use tokio::net::TcpListener;
@@ -45,6 +47,7 @@ fn build_router(app_pool: Pool<Postgres>) -> Router {
         .merge(billing::billing_routes())
         .merge(subscribe::subscribe_routes())
         .merge(outcomes::outcomes_routes())
+        .merge(platform_domains::platform_domains_routes())
         .route(
             "/dashboard",
             get(|| async { Redirect::permanent("/dashboard/") }),

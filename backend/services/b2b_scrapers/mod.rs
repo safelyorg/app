@@ -18,6 +18,7 @@ pub struct B2bSupplierProfile {
 pub struct B2bListingProfile {
     pub title: Option<String>,
     pub description: Option<String>,
+    pub image_urls: Vec<String>,
     pub unit_price: Option<String>,
     pub fob_price: Option<String>,
     pub minimum_order_quantity: Option<String>,

@@ -24,30 +24,32 @@ fn unverified_badge_produces_caution_signal() {
 }
 
 #[test]
-fn no_year_established_returns_none() {
+fn no_year_established_returns_not_provided() {
     let supplier = make_supplier(true, None, None, None, None);
-    assert!(build_b2b_company_age_signal(&supplier).is_none());
+    let signal = build_b2b_company_age_signal(&supplier);
+    assert_eq!(signal.value, "Not provided");
 }
 
 #[test]
 fn genuinely_new_company_gets_caution() {
     let current_year = chrono::Utc::now().year();
     let supplier = make_supplier(true, Some(&current_year.to_string()), None, None, None);
-    let signal = build_b2b_company_age_signal(&supplier).unwrap();
+    let signal = build_b2b_company_age_signal(&supplier);
     assert_eq!(signal.signal_type, "caution");
 }
 
 #[test]
 fn established_company_gets_good() {
     let supplier = make_supplier(true, Some("2013"), None, None, None);
-    let signal = build_b2b_company_age_signal(&supplier).unwrap();
+    let signal = build_b2b_company_age_signal(&supplier);
     assert_eq!(signal.signal_type, "good");
 }
 
 #[test]
-fn malformed_year_returns_none_not_a_crash() {
+fn malformed_year_returns_invalid_date_not_a_crash() {
     let supplier = make_supplier(true, Some("not a year"), None, None, None);
-    assert!(build_b2b_company_age_signal(&supplier).is_none());
+    let signal = build_b2b_company_age_signal(&supplier);
+    assert_eq!(signal.value, "Invalid date");
 }
 
 #[test]

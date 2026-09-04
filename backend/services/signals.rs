@@ -1,5 +1,4 @@
 use chrono::{Datelike, Utc};
-
 use crate::{
     models::{analysis::Signal, helpers::format_account_age, sellers::Sellers},
     services::{
@@ -31,6 +30,7 @@ pub fn build_signals(analysis: &ClaudeAnalysis, seller: &Sellers) -> Vec<Signal>
         category: "listing".to_string(),
         check_type: "anomaly".to_string(),
     });
+
     signals.push(finding_to_signal(
         "Urgency language",
         &analysis.urgency_language.evidence,
@@ -38,6 +38,7 @@ pub fn build_signals(analysis: &ClaudeAnalysis, seller: &Sellers) -> Vec<Signal>
         "communication",
         "pattern",
     ));
+
     signals.push(finding_to_signal(
         "Advance payment request",
         &analysis.advance_payment_request.evidence,
@@ -45,8 +46,9 @@ pub fn build_signals(analysis: &ClaudeAnalysis, seller: &Sellers) -> Vec<Signal>
         "communication",
         "pattern",
     ));
+
     signals.push(Signal {
-        label: "Account age".to_string(),
+        label: "Entity age".to_string(),
         sub: "Cross-referenced with Safely records".to_string(),
         value: seller
             .join_date
@@ -56,6 +58,7 @@ pub fn build_signals(analysis: &ClaudeAnalysis, seller: &Sellers) -> Vec<Signal>
         category: "marketplace".to_string(),
         check_type: "anomaly".to_string(),
     });
+
     signals.push(finding_to_signal(
         "Duplicate listing",
         &analysis.duplicate_listing.evidence,
@@ -63,6 +66,7 @@ pub fn build_signals(analysis: &ClaudeAnalysis, seller: &Sellers) -> Vec<Signal>
         "listing",
         "pattern",
     ));
+
     signals.push(Signal {
         label: "Image authenticity".to_string(),
         sub: analysis.image_authenticity.reasoning.clone(),
@@ -75,20 +79,32 @@ pub fn build_signals(analysis: &ClaudeAnalysis, seller: &Sellers) -> Vec<Signal>
         category: "listing".to_string(),
         check_type: "existence".to_string(),
     });
+
     signals.push(finding_to_signal(
-        "Fraud pattern match",
+        "Overall legitimacy check",
         &analysis.fraud_pattern_match.evidence,
         &analysis.fraud_pattern_match,
         "behavioral",
         "pattern",
     ));
-    signals.push(finding_to_signal(
-        "Contact info in listing",
-        &analysis.contact_info_in_listing.evidence,
-        &analysis.contact_info_in_listing,
-        "communication",
-        "existence",
-    ));
+
+    signals.push(Signal {
+        label: "Contact info".to_string(),
+        sub: analysis.contact_info_in_listing.evidence.clone(),
+        value: if analysis.contact_info_in_listing.found {
+            "Confirmed".to_string()
+        } else {
+            "Not confirmed".to_string()
+        },
+        signal_type: if analysis.contact_info_in_listing.found {
+            "caution".to_string()
+        } else {
+            "good".to_string()
+        },
+        category: "communication".to_string(),
+        check_type: "existence".to_string(),
+    });
+
     signals
 }
 
@@ -219,23 +235,18 @@ pub fn build_seller_verification_signals(
     total_products: Option<i32>,
 ) -> Vec<Signal> {
     let mut signals = Vec::new();
-    let is_seller_center_account = verified || rating.is_some() || total_products.is_some();
-
-    if !is_seller_center_account {
-        return signals;
-    }
 
     signals.push(Signal {
-        label: "Seller verification".to_string(),
+        label: "Platform verification".to_string(),
         sub: if verified {
-            "This is an OLX-verified business seller account.".to_string()
+            "This seller is verified on the platform.".to_string()
         } else {
-            "This seller has a dedicated store page but is not OLX-verified.".to_string()
+            "This seller is not verified on the platform.".to_string()
         },
         value: if verified {
             "Verified".to_string()
         } else {
-            "Unverified store".to_string()
+            "Not verified".to_string()
         },
         signal_type: if verified {
             "good".to_string()
@@ -346,9 +357,31 @@ pub fn build_b2b_verification_signal(supplier: &B2bSupplierProfile) -> Signal {
 /// a genuinely new company is not inherently fraudulent, but it's a
 /// real, honest anomaly worth noting, the same logic already applied
 /// to OLX account age.
-pub fn build_b2b_company_age_signal(supplier: &B2bSupplierProfile) -> Option<Signal> {
-    let year_str = supplier.year_established.as_deref()?;
-    let established_year: i32 = year_str.trim().parse().ok()?;
+pub fn build_b2b_company_age_signal(supplier: &B2bSupplierProfile) -> Signal {
+    let Some(year_str) = supplier.year_established.as_deref() else {
+        return Signal {
+            label: "Entity age".to_string(),
+            sub: "No founding year was provided by this company.".to_string(),
+            value: "Not provided".to_string(),
+            signal_type: "info".to_string(),
+            category: "company".to_string(),
+            check_type: "anomaly".to_string(),
+        };
+    };
+    let Ok(established_year) = year_str.trim().parse::<i32>() else {
+        return Signal {
+            label: "Entity age".to_string(),
+            sub: format!(
+                "The stated founding year ('{}') could not be understood.",
+                year_str
+            ),
+            value: "Invalid date".to_string(),
+            signal_type: "caution".to_string(),
+            category: "company".to_string(),
+            check_type: "anomaly".to_string(),
+        };
+    };
+
     let current_year = Utc::now().year();
     let age = current_year - established_year;
 
@@ -360,8 +393,8 @@ pub fn build_b2b_company_age_signal(supplier: &B2bSupplierProfile) -> Option<Sig
         (format!("{} years", age), "good".to_string())
     };
 
-    Some(Signal {
-        label: "Company age".to_string(),
+    Signal {
+        label: "Entity age".to_string(),
         sub: format!(
             "This company states it was established in {}.",
             established_year
@@ -370,7 +403,7 @@ pub fn build_b2b_company_age_signal(supplier: &B2bSupplierProfile) -> Option<Sig
         signal_type,
         category: "company".to_string(),
         check_type: "anomaly".to_string(),
-    })
+    }
 }
 
 /// Checks whether the company has genuinely filled in transparency
@@ -464,7 +497,7 @@ fn b2b_finding_to_signal(
 pub fn build_b2b_claude_signals(analysis: &B2bClaudeAnalysis) -> Vec<Signal> {
     vec![
         b2b_finding_to_signal(
-            "Business legitimacy",
+            "Overall legitimacy check",
             "company",
             "existence",
             &analysis.business_legitimacy,
@@ -476,16 +509,89 @@ pub fn build_b2b_claude_signals(analysis: &B2bClaudeAnalysis) -> Vec<Signal> {
             &analysis.registration_consistency,
         ),
         b2b_finding_to_signal(
-            "Listing specificity",
+            "Duplicate listing",
             "listing",
             "pattern",
             &analysis.listing_specificity,
         ),
+        Signal {
+            label: "Price analysis".to_string(),
+            sub: analysis.pricing_transparency.reasoning.clone(),
+            value: analysis.pricing_transparency.verdict.clone(),
+            signal_type: if analysis.pricing_transparency.verdict == "normal" {
+                "good".to_string()
+            } else {
+                "caution".to_string()
+            },
+            category: "listing".to_string(),
+            check_type: "anomaly".to_string(),
+        },
         b2b_finding_to_signal(
-            "Contact verifiability",
+            "Contact info",
             "identity",
             "existence",
             &analysis.contact_verifiability,
         ),
+        finding_to_signal(
+            "Urgency language",
+            &analysis.urgency_language.evidence,
+            &analysis.urgency_language,
+            "communication",
+            "pattern",
+        ),
+        finding_to_signal(
+            "Advance payment request",
+            &analysis.advance_payment_request.evidence,
+            &analysis.advance_payment_request,
+            "communication",
+            "pattern",
+        ),
+        Signal {
+            label: "Image authenticity".to_string(),
+            sub: analysis.image_authenticity.reasoning.clone(),
+            value: analysis.image_authenticity.verdict.clone(),
+            signal_type: if analysis.image_authenticity.verdict == "original" {
+                "good".to_string()
+            } else {
+                "caution".to_string()
+            },
+            category: "listing".to_string(),
+            check_type: "existence".to_string(),
+        },
     ]
+}
+
+/// The real, fixed display order: Table 1 (unified signals) always
+/// first, then Table 2 (the contact info/verifiability pair, which
+/// looks similar but means opposite things per platform), then Table
+/// 3 (genuinely platform-specific signals).
+fn table_rank(label: &str) -> u8 {
+    match label {
+        "Domain check" => 0,
+        "Price analysis" => 1,
+        "Urgency language" => 2,
+        "Advance payment request" => 3,
+        "Entity age" => 4,
+        "Duplicate listing" => 5,
+        "Image authenticity" => 6,
+        "Overall legitimacy check" => 7,
+        "Safely history" => 8,
+        "Seller website check" => 9,
+        "Platform verification" => 10,
+
+        "Contact info in listing" => 11,
+        "Contact verifiability" => 11,
+
+        "Store page check" => 12,
+        "Seller track record" => 13,
+        "Registration consistency" => 14,
+        "Company profile completeness" => 15,
+        "Listing completeness" => 16,
+
+        _ => 255,
+    }
+}
+
+pub fn sort_signals_by_table(signals: &mut [Signal]) {
+    signals.sort_by_key(|s| table_rank(&s.label));
 }

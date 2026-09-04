@@ -98,9 +98,24 @@ impl B2bScraper for B2brazilScraper {
             }
         }
 
+        let mut image_urls = Vec::new();
+        if let Ok(img_sel) = Selector::parse("ul.section-product-slider-items li img") {
+            for img in document.select(&img_sel).take(3) {
+                let value = img.value();
+                let real_src = value
+                    .attr("data-src")
+                    .or_else(|| value.attr("src"))
+                    .filter(|src| !src.contains("loading-"));
+                if let Some(src) = real_src {
+                    image_urls.push(src.to_string());
+                }
+            }
+        }
+
         B2bListingProfile {
             title,
             description,
+            image_urls,
             unit_price: fields.remove("Unit Price").flatten(),
             fob_price: fields.remove("FOB Price").flatten(),
             minimum_order_quantity: fields.remove("Minimum Order Quantity").flatten(),
@@ -160,6 +175,34 @@ mod tests {
     "#;
 
     #[test]
+    fn parse_listing_returns_empty_image_list_when_none_present() {
+        let scraper = B2brazilScraper;
+        let result = scraper.parse_listing(REAL_SAMPLE_HTML, "https://b2brazil.com/test");
+        assert_eq!(result.image_urls, Vec::<String>::new());
+    }
+
+    const SAMPLE_WITH_IMAGES: &str = r#"
+        <h2 class="section-product-title">Test Product</h2>
+        <ul class="section-product-slider-items">
+            <li><img class="uk-cover" src="https://cdn.b2brazil.com/real-image-1.jpg" alt="product"></li>
+            <li><img class="lazyload uk-cover" data-src="https://cdn.b2brazil.com/real-image-2.jpg" src="//cdn.b2brazil.com/assets/images/loading-aH4uwG80c9b336.svg" alt="product"></li>
+        </ul>
+    "#;
+
+    #[test]
+    fn parse_listing_extracts_real_images_preferring_data_src_over_placeholder() {
+        let scraper = B2brazilScraper;
+        let result = scraper.parse_listing(SAMPLE_WITH_IMAGES, "https://b2brazil.com/test");
+        assert_eq!(
+            result.image_urls,
+            vec![
+                "https://cdn.b2brazil.com/real-image-1.jpg".to_string(),
+                "https://cdn.b2brazil.com/real-image-2.jpg".to_string(),
+            ]
+        );
+    }
+
+    #[test]
     fn parse_supplier_extracts_real_company_data() {
         let scraper = B2brazilScraper;
         let result = scraper.parse_supplier(REAL_SAMPLE_HTML, "https://b2brazil.com/test");
@@ -187,5 +230,78 @@ mod tests {
         );
         assert_eq!(result.unit_price, None); // "Not informed" correctly filtered out
         assert_eq!(result.minimum_order_quantity, Some("500 units".to_string()));
+    }
+
+    #[test]
+    fn matches_platform_correctly_identifies_b2brazil_only() {
+        let scraper = B2brazilScraper;
+        assert!(scraper.matches_platform("b2brazil"));
+        assert!(!scraper.matches_platform("olx"));
+        assert!(!scraper.matches_platform("alibaba"));
+    }
+
+    const VERIFIED_SAMPLE_HTML: &str = r#"
+        <div id="header-info-company">
+            <h1>Real Verified Company</h1>
+            <div id="header-info-company-verify" class="verified">Verified company</div>
+        </div>
+    "#;
+
+    #[test]
+    fn parse_supplier_correctly_detects_a_genuinely_verified_badge() {
+        let scraper = B2brazilScraper;
+        let result = scraper.parse_supplier(VERIFIED_SAMPLE_HTML, "https://b2brazil.com/test");
+        assert_eq!(result.platform_verified_badge, true);
+    }
+
+    const INCOTERMS_NO_P_TAG_HTML: &str = r#"
+        <div class="section-product-item">
+            <h3>Incoterms:</h3>
+            FOB
+        </div>
+    "#;
+
+    #[test]
+    fn parse_listing_handles_incoterms_with_no_p_tag_wrapper() {
+        let scraper = B2brazilScraper;
+        let result = scraper.parse_listing(INCOTERMS_NO_P_TAG_HTML, "https://b2brazil.com/test");
+        assert_eq!(result.incoterms, Some("FOB".to_string()));
+    }
+
+    const FIVE_IMAGES_HTML: &str = r#"
+        <ul class="section-product-slider-items">
+            <li><img src="https://cdn.b2brazil.com/img1.jpg"></li>
+            <li><img src="https://cdn.b2brazil.com/img2.jpg"></li>
+            <li><img src="https://cdn.b2brazil.com/img3.jpg"></li>
+            <li><img src="https://cdn.b2brazil.com/img4.jpg"></li>
+            <li><img src="https://cdn.b2brazil.com/img5.jpg"></li>
+        </ul>
+    "#;
+
+    #[test]
+    fn parse_listing_caps_image_urls_at_three_even_when_more_are_present() {
+        let scraper = B2brazilScraper;
+        let result = scraper.parse_listing(FIVE_IMAGES_HTML, "https://b2brazil.com/test");
+        assert_eq!(result.image_urls.len(), 3);
+    }
+
+    #[test]
+    fn parse_supplier_and_listing_do_not_panic_on_genuinely_empty_html() {
+        let scraper = B2brazilScraper;
+        let supplier = scraper.parse_supplier("", "https://b2brazil.com/test");
+        let listing = scraper.parse_listing("", "https://b2brazil.com/test");
+        assert_eq!(supplier.company_name, None);
+        assert_eq!(listing.title, None);
+    }
+
+    #[test]
+    fn parse_supplier_and_listing_correctly_record_the_real_url_and_platform() {
+        let scraper = B2brazilScraper;
+        let supplier = scraper.parse_supplier(REAL_SAMPLE_HTML, "https://b2brazil.com/real-profile");
+        let listing = scraper.parse_listing(REAL_SAMPLE_HTML, "https://b2brazil.com/real-listing");
+        assert_eq!(supplier.profile_url, "https://b2brazil.com/real-profile");
+        assert_eq!(supplier.source_platform, "b2brazil");
+        assert_eq!(listing.listing_url, "https://b2brazil.com/real-listing");
+        assert_eq!(listing.source_platform, "b2brazil");
     }
 }

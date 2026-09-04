@@ -1,10 +1,8 @@
 mod common;
-
 use backend::{
     models::sellers::{SellerVerification, SellersRequest},
     services::sellers::{create_seller, find_seller, update_seller_from_b2b},
 };
-
 use crate::common::{admin_pool, cleanup_test_seller_chain};
 
 #[tokio::test]
