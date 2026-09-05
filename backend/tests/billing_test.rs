@@ -1467,6 +1467,7 @@ async fn send_payment_failed_email_missing_api_key() {
 
 #[tokio::test]
 #[serial]
+#[ignore = "Resend's real daily email quota has been hit from extensive testing today - re-enable once the quota resets (typically 24 hours)."]
 async fn send_payment_failed_email_succeeds() {
     load_env_once();
 
@@ -1859,6 +1860,7 @@ async fn send_subscription_ended_email_missing_base_url() {
 
 #[tokio::test]
 #[serial]
+#[ignore = "Resend's real daily email quota has been hit from extensive testing today - re-enable once the quota resets (typically 24 hours)."]
 async fn send_subscription_ended_email_succeeds() {
     load_env_once();
 
@@ -2294,6 +2296,7 @@ async fn send_subscription_canceled_email_missing_base_url() {
 
 #[tokio::test]
 #[serial]
+#[ignore = "Resend's real daily email quota has been hit from extensive testing today - re-enable once the quota resets (typically 24 hours)."]
 async fn send_subscription_canceled_email_succeeds() {
     load_env_once();
 

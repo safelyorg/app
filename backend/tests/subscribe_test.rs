@@ -26,7 +26,6 @@ async fn newsletter_subscribe_bad_request_invalid_email() {
 }
 
 #[tokio::test]
-#[ignore = "ConvertKit's Cloudflare is currently blocking real requests with a 403 - external, unrelated to our code. Re-enable once confirmed working again."]
 async fn newsletter_subscribe_success() {
     dotenv().ok();
     let request = NewsletterSubscribeRequest {
@@ -103,7 +102,6 @@ async fn subscribe_to_newsletter_kit_rejects_wrong_key() {
 
 #[tokio::test]
 #[serial]
-#[ignore = "ConvertKit's Cloudflare is currently blocking real requests with a 403 - external, unrelated to our code. Re-enable once confirmed working again."]
 async fn subscribe_to_newsletter_success() {
     dotenv().ok();
     let result = subscribe_to_newsletter("newsletter_test_service_success@example.com").await;

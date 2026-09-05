@@ -133,6 +133,6 @@ async fn build_b2b_analysis_path_fails_gracefully_for_a_genuinely_broken_url() {
     let result = build_b2b_analysis_path(&pool, &request, 0, Uuid::new_v4()).await;
     assert!(
         result.is_err(),
-        "expected a genuinely broken URL to fail cleanly, not panic"
+        "expected the analysis to fail gracefully for a genuinely broken URL, but it succeeded"
     );
 }

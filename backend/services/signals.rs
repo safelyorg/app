@@ -1,4 +1,3 @@
-use chrono::{Datelike, Utc};
 use crate::{
     models::{analysis::Signal, helpers::format_account_age, sellers::Sellers},
     services::{
@@ -8,6 +7,7 @@ use crate::{
         whois::WhoisResult,
     },
 };
+use chrono::{Datelike, Utc};
 
 /// It takes Claude's raw analysis and turns it into a real, ordered list of
 /// 7 separate signal cards each one representing one specific thing that was checked.
@@ -578,10 +578,7 @@ fn table_rank(label: &str) -> u8 {
         "Safely history" => 8,
         "Seller website check" => 9,
         "Platform verification" => 10,
-
-        "Contact info in listing" => 11,
-        "Contact verifiability" => 11,
-
+        "Contact info" => 11,
         "Store page check" => 12,
         "Seller track record" => 13,
         "Registration consistency" => 14,
