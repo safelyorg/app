@@ -255,13 +255,21 @@ pub async fn upsert_subscription(
 /// failure in one (like the email not sending) doesn't stop the other
 /// from completing.
 pub async fn handle_subscription_past_due(pool: &Pool<Postgres>, parsed: &ParsedSubscription) {
-    let portal_url = format!(
-        "{}/dashboard/?manage_billing=1",
-        var("PUBLIC_BASE_URL").unwrap_or_else(|_| "http://localhost:3000".to_string())
-    );
+    let previous_status: Option<String> =
+        query_scalar("SELECT status::text FROM subscriptions WHERE creem_subscription_id = $1")
+            .bind(&parsed.id)
+            .fetch_optional(pool)
+            .await
+            .unwrap_or(None);
 
-    if let Err(e) = send_payment_failed_email(&parsed.customer.email, &portal_url).await {
-        eprintln!("Failed to send payment-failed email: {:?}", e);
+    if previous_status.as_deref() != Some("past_due") {
+        let portal_url = format!(
+            "{}/dashboard/?manage_billing=1",
+            var("PUBLIC_BASE_URL").unwrap_or_else(|_| "http://localhost:3000".to_string())
+        );
+        if let Err(e) = send_payment_failed_email(&parsed.customer.email, &portal_url).await {
+            eprintln!("Failed to send payment-failed email: {:?}", e);
+        }
     }
 
     if let Some(user_id) = extract_metadata_user_id(parsed) {
@@ -502,4 +510,29 @@ pub async fn apply_upgrade(
     .map_err(|_| BillingError::InternalError("Failed to update subscription".to_string()))?;
 
     Ok(Json(json!({ "applied": "immediately" })))
+}
+
+/// Atomically records that a specific webhook event has been
+/// processed, and reports whether this is genuinely the FIRST time
+/// we've seen it. Uses the database's own uniqueness guarantee
+/// (ON CONFLICT DO NOTHING) rather than a separate "check, then
+/// write" pair of steps - this is what actually closes the rare
+/// race condition where two, truly simultaneous deliveries of the
+/// same event could otherwise both slip through.
+pub async fn mark_event_processed_if_new(pool: &Pool<Postgres>, event_id: &str) -> bool {
+    let result = query(
+        "INSERT INTO webhook_events_processed (event_id) VALUES ($1)
+         ON CONFLICT (event_id) DO NOTHING",
+    )
+    .bind(event_id)
+    .execute(pool)
+    .await;
+
+    match result {
+        Ok(res) => res.rows_affected() > 0,
+        Err(e) => {
+            eprintln!("Failed to record webhook event {}: {}", event_id, e);
+            true
+        }
+    }
 }

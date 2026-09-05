@@ -22,7 +22,7 @@ pub struct CreateCheckoutRequest {
     pub metadata: Value,
 }
 
-#[derive(Debug, serde::Deserialize)]
+#[derive(Debug, Deserialize)]
 pub struct CreateCheckoutResponse {
     pub id: String,
     pub checkout_url: String,

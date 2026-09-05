@@ -1,5 +1,5 @@
 use crate::errors::billing::{BillingError, WebhookError};
-use crate::services::billing::extract_subscription;
+use crate::services::billing::{extract_subscription, mark_event_processed_if_new};
 use crate::services::{
     auth::extract_user_id,
     billing::{
@@ -95,6 +95,14 @@ pub async fn creem_webhook(
     body: Bytes,
 ) -> Result<StatusCode, WebhookError> {
     let event = verify_and_parse_webhook(&headers, &body).await?;
+
+    if !mark_event_processed_if_new(&pool, &event.id).await {
+        eprintln!(
+            "Webhook event {} already processed - skipping duplicate",
+            event.id
+        );
+        return Ok(StatusCode::OK);
+    }
 
     match event.event_type.as_str() {
         "checkout.completed" => {

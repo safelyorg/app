@@ -3,7 +3,7 @@ mod common;
 use crate::common::{
     TestSubscriptionOptions, auth_headers_for, cleanup_test_subscription, cleanup_test_user,
     compute_creem_signature, create_test_user, get_subscription_status_text,
-    insert_test_subscription, insert_test_subscription_full, test_pool,
+    insert_test_subscription, insert_test_subscription_full, load_env_once, test_pool,
 };
 use axum::{
     Json,
@@ -22,13 +22,14 @@ use backend::{
     },
     models::billing::{ParsedCustomer, ParsedMetadata, ParsedProduct, ParsedSubscription},
     services::{
+        auth::find_or_create_user_by_email,
         billing::{
             CreateCheckoutError, apply_scheduled_downgrade_if_due, apply_upgrade,
             cancel_with_creem, change_creem_subscription_product, create_checkout,
             extract_metadata_user_id, extract_subscription, fetch_subscriber_email,
             handle_subscription_granted, handle_subscription_lost, handle_subscription_past_due,
-            handle_subscription_update, upsert_subscription, verify_and_parse_webhook,
-            verify_creem_signature,
+            handle_subscription_update, mark_event_processed_if_new, upsert_subscription,
+            verify_and_parse_webhook, verify_creem_signature,
         },
         email::{
             send_payment_failed_email, send_subscription_canceled_email,
@@ -37,7 +38,6 @@ use backend::{
     },
 };
 use chrono::{DateTime, Duration, Utc};
-use dotenvy::dotenv;
 use hmac::{Hmac, KeyInit, Mac};
 use reqwest::StatusCode;
 use serde_json::json;
@@ -53,7 +53,27 @@ type HmacSha256 = Hmac<Sha256>;
 #[tokio::test]
 #[serial]
 async fn checkout_handler_success() {
-    dotenv().ok();
+    use wiremock::{
+        Mock, MockServer, ResponseTemplate,
+        matchers::{method, path},
+    };
+    load_env_once();
+
+    let mock_server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/checkouts"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "id": "fake_checkout_id_123",
+            "checkout_url": "https://creem.io/test/checkout/fake_product_id/ch_fake123"
+        })))
+        .mount(&mock_server)
+        .await;
+
+    let original_base_url = var("CREEM_API_BASE_URL").ok();
+    unsafe {
+        set_var("CREEM_API_BASE_URL", mock_server.uri());
+    }
+
     let pool = test_pool().await;
     let email = "checkout_handler@example.com";
     let (user, _) = create_test_user(&pool, email).await;
@@ -73,9 +93,16 @@ async fn checkout_handler_success() {
 
     assert!(
         checkout_url.contains("creem.io"),
-        "expected a genuine Creem checkout URL, got: {}",
+        "expected a genuine-looking Creem checkout URL, got: {}",
         checkout_url
     );
+
+    unsafe {
+        match original_base_url {
+            Some(url) => set_var("CREEM_API_BASE_URL", url),
+            None => remove_var("CREEM_API_BASE_URL"),
+        }
+    }
 
     cleanup_test_user(&pool, email).await;
 }
@@ -83,7 +110,7 @@ async fn checkout_handler_success() {
 #[tokio::test]
 #[serial]
 async fn checkout_handler_unauthorized() {
-    dotenv().ok();
+    load_env_once();
     let pool = test_pool().await;
     let headers = HeaderMap::new();
 
@@ -101,6 +128,7 @@ async fn checkout_handler_unauthorized() {
 }
 
 #[tokio::test]
+#[serial]
 async fn checkout_handler_creem_rejects_invalid_product() {
     let pool = test_pool().await;
     let email = "checkout_rejected@example.com";
@@ -127,25 +155,54 @@ async fn checkout_handler_creem_rejects_invalid_product() {
 
 // Create Checkout Tests
 #[tokio::test]
+#[serial]
 async fn create_checkout_success() {
+    use wiremock::{
+        Mock, MockServer, ResponseTemplate,
+        matchers::{method, path},
+    };
+
+    // A genuine, local, fake server standing in for Creem
+    let mock_server = MockServer::start().await;
+
+    Mock::given(method("POST"))
+        .and(path("/v1/checkouts"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "id": "fake_checkout_id_123",
+            "checkout_url": "https://fake-checkout-url.test/abc123"
+        })))
+        .mount(&mock_server)
+        .await;
+
+    let original_base_url = var("CREEM_API_BASE_URL").ok();
+    unsafe {
+        set_var("CREEM_API_BASE_URL", mock_server.uri());
+    }
+
     let pool = test_pool().await;
-    let email = "checkout_success@example.com";
-    let (user, _) = create_test_user(&pool, email).await;
+    let email = "create_checkout_mocked_test@example.com";
+    cleanup_test_user(&pool, email).await;
+    let (user, _) = find_or_create_user_by_email(&pool, email)
+        .await
+        .expect("expected to create the user");
 
     let result = create_checkout("prod_6qDjyvwKbCZvWTgIztzqz4", user.id)
         .await
-        .expect("expected the checkout to be created successfully");
+        .expect("expected the mocked checkout call to succeed");
 
-    assert!(
-        result.checkout_url.contains("creem.io"),
-        "expected a genuine Creem checkout URL, got: {}",
-        result.checkout_url
-    );
+    assert_eq!(result.checkout_url, "https://fake-checkout-url.test/abc123");
 
+    unsafe {
+        match original_base_url {
+            Some(url) => set_var("CREEM_API_BASE_URL", url),
+            None => remove_var("CREEM_API_BASE_URL"),
+        }
+    }
     cleanup_test_user(&pool, email).await;
 }
 
 #[tokio::test]
+#[serial]
 async fn create_checkout_creem_rejected() {
     let pool = test_pool().await;
     let email = "checkout_creem_rejected@example.com";
@@ -165,7 +222,7 @@ async fn create_checkout_creem_rejected() {
 #[tokio::test]
 #[serial]
 async fn create_checkout_missing_api_key() {
-    dotenv().ok();
+    load_env_once();
     let original_key = var("CREEM_API_KEY").ok();
     unsafe {
         remove_var("CREEM_API_KEY");
@@ -190,7 +247,7 @@ async fn create_checkout_missing_api_key() {
 #[tokio::test]
 #[serial]
 async fn create_checkout_request_failed() {
-    dotenv().ok();
+    load_env_once();
     let original_base_url = var("CREEM_API_BASE_URL").ok();
 
     unsafe {
@@ -221,7 +278,7 @@ async fn create_checkout_request_failed() {
 #[tokio::test]
 #[serial]
 async fn creem_webhook_verification_failure_propagates() {
-    dotenv().ok();
+    load_env_once();
 
     let pool = test_pool().await;
 
@@ -253,7 +310,7 @@ async fn creem_webhook_verification_failure_propagates() {
 #[tokio::test]
 #[serial]
 async fn creem_webhook_success_refund_created() {
-    dotenv().ok();
+    load_env_once();
 
     let pool = test_pool().await;
 
@@ -282,7 +339,7 @@ async fn creem_webhook_success_refund_created() {
 #[tokio::test]
 #[serial]
 async fn creem_webhook_unrecognized_event_type_still_ok() {
-    dotenv().ok();
+    load_env_once();
 
     let pool = test_pool().await;
 
@@ -311,7 +368,7 @@ async fn creem_webhook_unrecognized_event_type_still_ok() {
 #[tokio::test]
 #[serial]
 async fn creem_webhook_inner_handler_failure_still_returns_ok() {
-    dotenv().ok();
+    load_env_once();
     let pool = test_pool().await;
 
     let secret = var("CREEM_WEBHOOK_SECRET")
@@ -364,7 +421,7 @@ async fn creem_webhook_inner_handler_failure_still_returns_ok() {
 #[tokio::test]
 #[serial]
 async fn verify_and_parse_webhook_secret_missing() {
-    dotenv().ok();
+    load_env_once();
 
     let original_secret = var("CREEM_WEBHOOK_SECRET").ok();
     unsafe {
@@ -392,7 +449,7 @@ async fn verify_and_parse_webhook_secret_missing() {
 #[tokio::test]
 #[serial]
 async fn verify_and_parse_webhook_missing_signature() {
-    dotenv().ok();
+    load_env_once();
 
     let headers = HeaderMap::new();
     let body = Bytes::from("{}");
@@ -414,7 +471,7 @@ async fn verify_and_parse_webhook_missing_signature() {
 #[tokio::test]
 #[serial]
 async fn verify_and_parse_webhook_invalid_body() {
-    dotenv().ok();
+    load_env_once();
 
     let mut headers = HeaderMap::new();
     headers.insert(
@@ -436,7 +493,7 @@ async fn verify_and_parse_webhook_invalid_body() {
 #[tokio::test]
 #[serial]
 async fn verify_and_parse_webhook_invalid_signature() {
-    dotenv().ok();
+    load_env_once();
 
     let mut headers = HeaderMap::new();
     headers.insert(
@@ -462,7 +519,7 @@ async fn verify_and_parse_webhook_invalid_signature() {
 #[tokio::test]
 #[serial]
 async fn verify_and_parse_webhook_invalid_payload() {
-    dotenv().ok();
+    load_env_once();
 
     let secret = var("CREEM_WEBHOOK_SECRET")
         .expect("expected CREEM_WEBHOOK_SECRET to be genuinely set for this test");
@@ -491,7 +548,7 @@ async fn verify_and_parse_webhook_invalid_payload() {
 #[tokio::test]
 #[serial]
 async fn verify_and_parse_webhook_success() {
-    dotenv().ok();
+    load_env_once();
 
     let secret = var("CREEM_WEBHOOK_SECRET")
         .expect("expected CREEM_WEBHOOK_SECRET to be genuinely set for this test");
@@ -1380,7 +1437,7 @@ async fn subscription_past_due_email_fails_but_upsert_still_succeeds() {
 #[tokio::test]
 #[serial]
 async fn send_payment_failed_email_missing_api_key() {
-    dotenv().ok();
+    load_env_once();
     let original_key = var("RESEND_API_KEY").ok();
     unsafe {
         remove_var("RESEND_API_KEY");
@@ -1411,7 +1468,7 @@ async fn send_payment_failed_email_missing_api_key() {
 #[tokio::test]
 #[serial]
 async fn send_payment_failed_email_succeeds() {
-    dotenv().ok();
+    load_env_once();
 
     let result = send_payment_failed_email(
         "delivered@resend.dev",
@@ -1429,7 +1486,7 @@ async fn send_payment_failed_email_succeeds() {
 #[tokio::test]
 #[serial]
 async fn send_payment_failed_email_fails_for_a_blocked_domain() {
-    dotenv().ok();
+    load_env_once();
 
     let result = send_payment_failed_email(
         "test_user@example.com",
@@ -1751,7 +1808,7 @@ async fn subscription_lost_upsert_fails() {
 #[tokio::test]
 #[serial]
 async fn send_subscription_ended_email_missing_api_key() {
-    dotenv().ok();
+    load_env_once();
     let original_key = var("RESEND_API_KEY").ok();
     unsafe {
         remove_var("RESEND_API_KEY");
@@ -1777,7 +1834,7 @@ async fn send_subscription_ended_email_missing_api_key() {
 #[tokio::test]
 #[serial]
 async fn send_subscription_ended_email_missing_base_url() {
-    dotenv().ok();
+    load_env_once();
     let original_url = var("PUBLIC_BASE_URL").ok();
     unsafe {
         remove_var("PUBLIC_BASE_URL");
@@ -1803,7 +1860,7 @@ async fn send_subscription_ended_email_missing_base_url() {
 #[tokio::test]
 #[serial]
 async fn send_subscription_ended_email_succeeds() {
-    dotenv().ok();
+    load_env_once();
 
     let result = send_subscription_ended_email("delivered@resend.dev").await;
     assert!(
@@ -1816,7 +1873,7 @@ async fn send_subscription_ended_email_succeeds() {
 #[tokio::test]
 #[serial]
 async fn send_subscription_ended_email_fails_for_a_blocked_domain() {
-    dotenv().ok();
+    load_env_once();
 
     let result = send_subscription_ended_email("test_user@example.com").await;
     match result {
@@ -2051,7 +2108,7 @@ async fn cancel_subscription_creem_rejects() {
 #[tokio::test]
 #[serial]
 async fn cancel_with_creem_missing_api_key() {
-    dotenv().ok();
+    load_env_once();
 
     let original_key = var("CREEM_API_KEY").ok();
     unsafe {
@@ -2075,7 +2132,7 @@ async fn cancel_with_creem_missing_api_key() {
 #[tokio::test]
 #[serial]
 async fn cancel_with_creem_request_failed() {
-    dotenv().ok();
+    load_env_once();
 
     let original_base_url = var("CREEM_API_BASE_URL").ok();
 
@@ -2114,7 +2171,7 @@ async fn cancel_with_creem_request_failed() {
 #[tokio::test]
 #[serial]
 async fn cancel_with_creem_rejected() {
-    dotenv().ok();
+    load_env_once();
     let result = cancel_with_creem("sub_definitely_does_not_exist_on_creem").await;
 
     match result {
@@ -2185,7 +2242,7 @@ async fn fetch_subscriber_email_database_error_still_returns_none() {
 #[tokio::test]
 #[serial]
 async fn send_subscription_canceled_email_missing_api_key() {
-    dotenv().ok();
+    load_env_once();
     let original_key = var("RESEND_API_KEY").ok();
     unsafe {
         remove_var("RESEND_API_KEY");
@@ -2211,7 +2268,7 @@ async fn send_subscription_canceled_email_missing_api_key() {
 #[tokio::test]
 #[serial]
 async fn send_subscription_canceled_email_missing_base_url() {
-    dotenv().ok();
+    load_env_once();
 
     let original_url = var("PUBLIC_BASE_URL").ok();
     unsafe {
@@ -2238,7 +2295,7 @@ async fn send_subscription_canceled_email_missing_base_url() {
 #[tokio::test]
 #[serial]
 async fn send_subscription_canceled_email_succeeds() {
-    dotenv().ok();
+    load_env_once();
 
     let result = send_subscription_canceled_email("delivered@resend.dev").await;
     assert!(
@@ -2251,7 +2308,7 @@ async fn send_subscription_canceled_email_succeeds() {
 #[tokio::test]
 #[serial]
 async fn send_subscription_canceled_email_fails_for_a_blocked_domain() {
-    dotenv().ok();
+    load_env_once();
 
     let result = send_subscription_canceled_email("test_user@example.com").await;
     match result {
@@ -2605,7 +2662,7 @@ async fn apply_scheduled_downgrade_creem_rejects() {
 #[tokio::test]
 #[serial]
 async fn change_creem_subscription_product_missing_api_key() {
-    dotenvy::dotenv().ok();
+    load_env_once();
     let original_key = var("CREEM_API_KEY").ok();
     unsafe {
         remove_var("CREEM_API_KEY");
@@ -2633,7 +2690,7 @@ async fn change_creem_subscription_product_missing_api_key() {
 #[tokio::test]
 #[serial]
 async fn change_creem_subscription_product_request_failed() {
-    dotenvy::dotenv().ok();
+    load_env_once();
     let original_base_url = var("CREEM_API_BASE_URL").ok();
     unsafe {
         set_var(
@@ -2665,7 +2722,7 @@ async fn change_creem_subscription_product_request_failed() {
 #[tokio::test]
 #[serial]
 async fn change_creem_subscription_product_creem_rejects() {
-    dotenvy::dotenv().ok();
+    load_env_once();
 
     let result = change_creem_subscription_product(
         "sub_definitely_does_not_exist_on_creem",
@@ -2961,7 +3018,7 @@ async fn apply_upgrade_creem_rejects() {
 #[tokio::test]
 #[serial]
 async fn get_product_ids_success() {
-    dotenv().ok();
+    load_env_once();
 
     let expected_team_id = var("CREEM_TEAM_PRODUCT_ID")
         .expect("expected CREEM_TEAM_PRODUCT_ID to be genuinely set for this test");
@@ -2986,7 +3043,7 @@ async fn get_product_ids_success() {
 #[tokio::test]
 #[serial]
 async fn get_product_ids_missing_team_id() {
-    dotenv().ok();
+    load_env_once();
 
     let original_team_id = var("CREEM_TEAM_PRODUCT_ID").ok();
     unsafe {
@@ -3013,7 +3070,7 @@ async fn get_product_ids_missing_team_id() {
 #[tokio::test]
 #[serial]
 async fn get_product_ids_missing_enterprise_id() {
-    dotenv().ok();
+    load_env_once();
 
     let original_enterprise_id = var("CREEM_ENTERPRISE_PRODUCT_ID").ok();
     unsafe {
@@ -3035,4 +3092,149 @@ async fn get_product_ids_missing_enterprise_id() {
             set_var("CREEM_ENTERPRISE_PRODUCT_ID", id);
         }
     }
+}
+
+// Mark Event Processed If New Tests
+#[tokio::test]
+async fn mark_event_processed_returns_true_for_a_genuinely_new_event() {
+    let pool = test_pool().await;
+    let event_id = "evt_genuinely_new_001";
+    query("DELETE FROM webhook_events_processed WHERE event_id = $1")
+        .bind(event_id)
+        .execute(&pool)
+        .await
+        .ok();
+
+    let result = mark_event_processed_if_new(&pool, event_id).await;
+    assert!(
+        result,
+        "expected true for a genuinely new, never-before-seen event ID"
+    );
+
+    query("DELETE FROM webhook_events_processed WHERE event_id = $1")
+        .bind(event_id)
+        .execute(&pool)
+        .await
+        .ok();
+}
+
+#[tokio::test]
+async fn mark_event_processed_returns_false_for_a_genuinely_repeated_event() {
+    let pool = test_pool().await;
+    let event_id = "evt_genuinely_repeated_001";
+    query("DELETE FROM webhook_events_processed WHERE event_id = $1")
+        .bind(event_id)
+        .execute(&pool)
+        .await
+        .ok();
+
+    let first_result = mark_event_processed_if_new(&pool, event_id).await;
+    assert!(first_result, "expected the first call to genuinely be new");
+
+    let second_result = mark_event_processed_if_new(&pool, event_id).await;
+    assert!(
+        !second_result,
+        "expected the SAME event ID, seen a second time, to correctly report false"
+    );
+
+    query("DELETE FROM webhook_events_processed WHERE event_id = $1")
+        .bind(event_id)
+        .execute(&pool)
+        .await
+        .ok();
+}
+
+#[tokio::test]
+async fn mark_event_processed_correctly_writes_a_real_row_to_the_database() {
+    let pool = test_pool().await;
+    let event_id = "evt_real_row_check_001";
+    query("DELETE FROM webhook_events_processed WHERE event_id = $1")
+        .bind(event_id)
+        .execute(&pool)
+        .await
+        .ok();
+
+    mark_event_processed_if_new(&pool, event_id).await;
+
+    let row_exists: Option<String> =
+        query_scalar("SELECT event_id FROM webhook_events_processed WHERE event_id = $1")
+            .bind(event_id)
+            .fetch_optional(&pool)
+            .await
+            .expect("expected the query itself to succeed");
+
+    assert_eq!(
+        row_exists,
+        Some(event_id.to_string()),
+        "expected a real, permanent row to genuinely exist in the database"
+    );
+
+    query("DELETE FROM webhook_events_processed WHERE event_id = $1")
+        .bind(event_id)
+        .execute(&pool)
+        .await
+        .ok();
+}
+
+#[tokio::test]
+async fn mark_event_processed_treats_different_event_ids_as_genuinely_independent() {
+    let pool = test_pool().await;
+    let event_a = "evt_independent_a_001";
+    let event_b = "evt_independent_b_001";
+    query("DELETE FROM webhook_events_processed WHERE event_id IN ($1, $2)")
+        .bind(event_a)
+        .bind(event_b)
+        .execute(&pool)
+        .await
+        .ok();
+
+    let result_a = mark_event_processed_if_new(&pool, event_a).await;
+    let result_b = mark_event_processed_if_new(&pool, event_b).await;
+
+    assert!(result_a, "expected event A to be genuinely new");
+    assert!(
+        result_b,
+        "expected event B to ALSO be genuinely new, unaffected by event A already being recorded"
+    );
+
+    query("DELETE FROM webhook_events_processed WHERE event_id IN ($1, $2)")
+        .bind(event_a)
+        .bind(event_b)
+        .execute(&pool)
+        .await
+        .ok();
+}
+
+#[tokio::test]
+async fn mark_event_processed_correctly_handles_two_genuinely_simultaneous_attempts() {
+    let pool = test_pool().await;
+    let event_id = "evt_concurrent_race_001";
+    query("DELETE FROM webhook_events_processed WHERE event_id = $1")
+        .bind(event_id)
+        .execute(&pool)
+        .await
+        .ok();
+
+    let pool_a = pool.clone();
+    let pool_b = pool.clone();
+    let event_id_a = event_id.to_string();
+    let event_id_b = event_id.to_string();
+
+    let (result_a, result_b) = tokio::join!(
+        mark_event_processed_if_new(&pool_a, &event_id_a),
+        mark_event_processed_if_new(&pool_b, &event_id_b)
+    );
+
+    let true_count = [result_a, result_b].iter().filter(|&&r| r).count();
+    assert_eq!(
+        true_count, 1,
+        "expected EXACTLY one of the two genuinely simultaneous attempts to succeed, got: a={}, b={}",
+        result_a, result_b
+    );
+
+    query("DELETE FROM webhook_events_processed WHERE event_id = $1")
+        .bind(event_id)
+        .execute(&pool)
+        .await
+        .ok();
 }

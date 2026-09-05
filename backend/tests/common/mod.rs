@@ -15,7 +15,10 @@ use serde_json::json;
 use sha2::Sha256;
 use sqlx::{Pool, Postgres, query, query_as, query_scalar};
 use std::env::var;
+use std::sync::Once;
 use uuid::Uuid;
+
+static DOTENV_INIT: Once = Once::new();
 
 type HmacSha256 = Hmac<Sha256>;
 
@@ -538,4 +541,11 @@ pub fn make_listing(filled_count: usize) -> B2bListingProfile {
     }
 
     listing
+}
+
+#[allow(dead_code)]
+pub fn load_env_once() {
+    DOTENV_INIT.call_once(|| {
+        dotenvy::dotenv().ok();
+    });
 }
