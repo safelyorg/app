@@ -104,3 +104,30 @@ pub async fn get_monthly_visit_activity(
 
     Ok(activity)
 }
+
+/// Updates a listing's real title, once B2B scraping discovers it -
+/// since create_listing runs BEFORE the B2B fetch happens (the
+/// extension never sends a title for B2B platforms at all), the
+/// listing record starts genuinely empty and needs this follow-up
+/// update once the real data becomes available. Mirrors
+/// update_seller_from_b2b exactly.
+pub async fn update_listing_from_b2b(
+    pool: &Pool<Postgres>,
+    listing_id: Uuid,
+    title: Option<&str>,
+    description: Option<&str>,
+) -> Result<(), Error> {
+    query(
+        "UPDATE listings SET
+            title = COALESCE($1, title),
+            description = COALESCE($2, description),
+            updated_at = NOW()
+         WHERE id = $3",
+    )
+    .bind(title)
+    .bind(description)
+    .bind(listing_id)
+    .execute(pool)
+    .await?;
+    Ok(())
+}

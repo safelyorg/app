@@ -1,9 +1,9 @@
 mod common;
+use crate::common::test_pool;
 use backend::{
     models::analysis::AnalyzeRequest,
     services::{analysis::build_b2b_analysis_path, b2b_scrapers::check_b2b_page},
 };
-use crate::common::test_pool;
 use uuid::Uuid;
 
 #[tokio::test]
@@ -85,7 +85,7 @@ async fn build_b2b_analysis_path_produces_a_real_complete_result_from_the_live_s
         "expected the full, real B2B analysis path to succeed against the live site"
     );
 
-    let (signals, risk_score, notes, supplier) = result.unwrap();
+    let (signals, risk_score, notes, supplier, _listing) = result.unwrap();
 
     assert_eq!(signals.len(), 13);
     assert!(risk_score >= 0 && risk_score <= 100);

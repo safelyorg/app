@@ -7,8 +7,8 @@ use crate::{
             build_requests, resolve_seller, run_claude_analysis, save_and_build_response,
         },
         b2b_scrapers::get_scraper_for_platform,
-        b2c_scrapers::{requires_client_side_scraping, check_listing_page},
-        listings::create_listing,
+        b2c_scrapers::{check_listing_page, requires_client_side_scraping},
+        listings::{create_listing, update_listing_from_b2b},
         scoring::calculate_risk_score,
         sellers::update_seller_from_b2b,
         signals::sort_signals_by_table,
@@ -94,15 +94,21 @@ pub async fn analyze(
     let mut resolved = resolved;
 
     let (signals, risk_score, overall_risk_notes) = if is_b2b {
-        let (signals, risk_score, notes, supplier) =
+        let (signals, risk_score, notes, supplier, listing_data) =
             build_b2b_analysis_path(&pool, &request, resolved.fraud_count, resolved.seller.id)
                 .await?;
-
         let _ = update_seller_from_b2b(
             &pool,
             resolved.seller.id,
             supplier.company_name.as_deref(),
             supplier.country.as_deref(),
+        )
+        .await;
+        let _ = update_listing_from_b2b(
+            &pool,
+            listing.id,
+            listing_data.title.as_deref(),
+            listing_data.description.as_deref(),
         )
         .await;
         if supplier.company_name.is_some() {

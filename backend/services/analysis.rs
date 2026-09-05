@@ -8,7 +8,7 @@ use crate::{
     },
     services::{
         auth::extract_user_id,
-        b2b_scrapers::{B2bSupplierProfile, check_b2b_page},
+        b2b_scrapers::{B2bListingProfile, B2bSupplierProfile, check_b2b_page},
         b2c_scrapers::check_store_page,
         claude::{
             CallB2bClaudeArguments, CallClaudeArguments, ClaudeAnalysis, call_b2b_claude,
@@ -475,7 +475,16 @@ pub async fn build_b2b_analysis_path(
     request: &AnalyzeRequest,
     fraud_count: i64,
     seller_id: Uuid,
-) -> Result<(Vec<Signal>, i16, String, B2bSupplierProfile), AnalyzeError> {
+) -> Result<
+    (
+        Vec<Signal>,
+        i16,
+        String,
+        B2bSupplierProfile,
+        B2bListingProfile,
+    ),
+    AnalyzeError,
+> {
     let mut signals = Vec::new();
 
     if let Some(memory_signal) = build_network_memory_signal(pool, seller_id).await {
@@ -535,5 +544,11 @@ pub async fn build_b2b_analysis_path(
     let risk_score = ((caution_count as i16) * 15).min(100) + (fraud_count as i16 * 5).min(20);
 
     let overall_risk_notes = claude_result.overall_risk_notes.clone();
-    Ok((signals, risk_score.min(100), overall_risk_notes, supplier))
+    Ok((
+        signals,
+        risk_score.min(100),
+        overall_risk_notes,
+        supplier,
+        listing,
+    ))
 }
