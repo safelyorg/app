@@ -190,20 +190,27 @@ function renderDetailBody(data) {
     }
     const signalsList = document.getElementById("detail-signals-list");
     signalsList.innerHTML = signals
-        .map((s) => '<div class="bg-surface border border-line rounded-xl p-4 mb-2.5 last:mb-0">' +
-        '<div class="flex justify-between items-baseline gap-3">' +
-        '<div class="font-semibold text-[13px]">' +
-        s.label +
-        "</div>" +
-        '<div class="text-[13px] font-bold whitespace-nowrap ' +
-        signalTextClass(s.type) +
-        '">' +
-        s.value +
-        "</div></div>" +
-        '<div class="text-[12px] text-muted mt-1.5">' +
-        (s.sub || "") +
-        "</div></div>")
+        .map((s, idx) => {
+        const { realSub, checklist } = parseChecklistSignal(s.sub);
+        const dropdownId = "detail-checklist-" + idx;
+        return ('<div class="bg-surface border border-line rounded-xl p-4 mb-2.5 last:mb-0">' +
+            '<div class="flex justify-between items-baseline gap-3">' +
+            '<div class="font-semibold text-[13px]">' +
+            s.label +
+            "</div>" +
+            '<div class="text-[13px] font-bold whitespace-nowrap ' +
+            signalTextClass(s.type) +
+            '">' +
+            s.value +
+            "</div></div>" +
+            '<div class="text-[12px] text-muted mt-1.5">' +
+            (realSub || "") +
+            "</div>" +
+            buildChecklistDropdown(dropdownId, checklist) +
+            "</div>");
+    })
         .join("");
+    signals.forEach((_, idx) => attachChecklistListener("detail-checklist-" + idx));
     const socialPresenceEl = document.getElementById("detail-social-presence");
     if (socialPresenceEl) {
         socialPresenceEl.innerHTML = buildSocialPresenceSection(data.social_candidates || []);
@@ -366,6 +373,68 @@ function escapeHtml(str) {
     const div = document.createElement("div");
     div.textContent = str;
     return div.innerHTML;
+}
+function parseChecklistSignal(sub) {
+    if (!sub)
+        return { realSub: "", checklist: [] };
+    const marker = "###CHECKLIST###";
+    const idx = sub.indexOf(marker);
+    if (idx === -1)
+        return { realSub: sub, checklist: [] };
+    const realSub = sub.slice(0, idx);
+    const checklistRaw = sub.slice(idx + marker.length);
+    const checklist = checklistRaw
+        .split(";")
+        .filter(Boolean)
+        .map((entry) => {
+        const [name, present] = entry.split("|");
+        return [name, present === "true"];
+    });
+    return { realSub, checklist };
+}
+function buildChecklistDropdown(id, checklist) {
+    if (checklist.length === 0)
+        return "";
+    const rows = checklist
+        .map(([name, present]) => {
+        const icon = present
+            ? '<span class="text-mint flex-shrink-0">&#10003;</span>'
+            : '<span class="text-muted flex-shrink-0">&#10005;</span>';
+        return ('<div class="flex items-center gap-2 py-1">' +
+            icon +
+            '<span class="text-[12px] text-ink">' +
+            escapeHtml(name) +
+            "</span></div>");
+    })
+        .join("");
+    return ('<button id="' +
+        id +
+        '-toggle" type="button" class="w-full text-left bg-transparent border-0 cursor-pointer p-0 pt-2 text-[11px] font-semibold text-muted flex justify-between items-center">' +
+        '<span id="' +
+        id +
+        '-toggle-text">Click to see checks</span><span id="' +
+        id +
+        '-arrow">&#9662;</span>' +
+        "</button>" +
+        '<div id="' +
+        id +
+        '-dropdown" class="hidden mt-1.5">' +
+        rows +
+        "</div>");
+}
+function attachChecklistListener(id) {
+    const toggle = document.getElementById(id + "-toggle");
+    const dropdown = document.getElementById(id + "-dropdown");
+    const arrow = document.getElementById(id + "-arrow");
+    const toggleText = document.getElementById(id + "-toggle-text");
+    if (toggle && dropdown && arrow && toggleText) {
+        toggle.addEventListener("click", () => {
+            const isOpen = !dropdown.classList.contains("hidden");
+            dropdown.classList.toggle("hidden", isOpen);
+            arrow.innerHTML = isOpen ? "&#9662;" : "&#9652;";
+            toggleText.textContent = isOpen ? "Click to see checks" : "Click to hide checks";
+        });
+    }
 }
 function switchDetailTab(tab) {
     ["risk", "intel", "report"].forEach((name) => {

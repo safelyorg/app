@@ -398,7 +398,7 @@ pub async fn save_and_build_response(
 
     record_risk_factors(data.pool, saved_analysis.id, data.seller.id, &risk_factors).await;
 
-    let monthly_activity = get_monthly_visit_activity(data.pool, data.seller.id)
+    let monthly_activity = get_monthly_visit_activity(data.pool, data.listing_id)
         .await
         .unwrap_or_else(|_| vec![0i32; 12]);
 

@@ -20,6 +20,7 @@ pub mod pdf_report;
 pub mod platform_config;
 pub mod risk_factors;
 pub mod scoring;
+pub mod scraper_client;
 pub mod sellers;
 pub mod signals;
 pub mod templates;

@@ -34,8 +34,10 @@
                     info: "#8e8e93",
                 };
                 return signals
-                    .map((s) => {
+                    .map((s, idx) => {
                     const color = COLORS[s.type] || "#ff5d5d";
+                    const { realSub, checklist } = parseChecklistSignal(s.sub);
+                    const dropdownId = "safely-checklist-" + idx;
                     return ('<div class="safely-check-card">' +
                         '<div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;">' +
                         '<div class="safely-check-title">' +
@@ -47,8 +49,10 @@
                         window.escapeHtml(capitalizeFirst(s.value)) +
                         "</div></div>" +
                         '<div class="safely-check-body">' +
-                        window.escapeHtml(capitalizeFirst(s.sub) || "") +
-                        "</div></div>");
+                        window.escapeHtml(capitalizeFirst(realSub) || "") +
+                        "</div>" +
+                        buildChecklistDropdown(dropdownId, checklist) +
+                        "</div>");
                 })
                     .join("");
             },
@@ -115,6 +119,100 @@
             groupsHTML +
             "</div></div>");
     }
+    function parseChecklistSignal(sub) {
+        const marker = "###CHECKLIST###";
+        const idx = sub.indexOf(marker);
+        if (idx === -1)
+            return { realSub: sub, checklist: [] };
+        const realSub = sub.slice(0, idx);
+        const checklistRaw = sub.slice(idx + marker.length);
+        const checklist = checklistRaw
+            .split(";")
+            .filter(Boolean)
+            .map((entry) => {
+            const [name, present] = entry.split("|");
+            return [name, present === "true"];
+        });
+        return { realSub, checklist };
+    }
+    function buildChecklistDropdown(id, checklist) {
+        if (checklist.length === 0)
+            return "";
+        const rows = checklist
+            .map(([name, present]) => {
+            const icon = present
+                ? '<span style="color:#35d0a6;flex-shrink:0;">&#10003;</span>'
+                : '<span style="color:#8e8e93;flex-shrink:0;">&#10005;</span>';
+            return ('<div style="display:flex;align-items:center;gap:8px;padding:6px 4px;">' +
+                icon +
+                '<span style="font-size:12px;color:#f2f1ed;">' +
+                window.escapeHtml(name) +
+                "</span></div>");
+        })
+            .join("");
+        return ('<button id="' +
+            id +
+            '-toggle" type="button" style="width:100%;text-align:left;background:none;border:none;cursor:pointer;padding:8px 0 0 0;font-size:12px;font-weight:600;color:#8e8e93;display:flex;justify-content:space-between;align-items:center;">' +
+            '<span id="' +
+            id +
+            '-toggle-text">Click to see checks</span><span id="' +
+            id +
+            '-arrow">&#9662;</span>' +
+            "</button>" +
+            '<div id="' +
+            id +
+            '-dropdown" style="display:none;margin-top:6px;">' +
+            rows +
+            "</div>");
+    }
+    function attachChecklistListener(id) {
+        const toggle = document.getElementById(id + "-toggle");
+        const dropdown = document.getElementById(id + "-dropdown");
+        const arrow = document.getElementById(id + "-arrow");
+        const toggleText = document.getElementById(id + "-toggle-text");
+        if (toggle && dropdown && arrow && toggleText) {
+            toggle.addEventListener("click", () => {
+                const isOpen = dropdown.style.display !== "none";
+                dropdown.style.display = isOpen ? "none" : "block";
+                arrow.innerHTML = isOpen ? "&#9662;" : "&#9652;";
+                toggleText.textContent = isOpen ? "Click to see checks" : "Click to hide checks";
+            });
+        }
+    }
+    // Real, direct TypeScript rendering for signal rows - deliberately
+    // bypasses wasm.build_signal_rows, since the compiled WASM module
+    // doesn't know how to parse the new ###CHECKLIST### marker. Keeping
+    // this logic here, in one, single, real place, avoids needing to
+    // touch or recompile the Rust/WASM source at all.
+    function buildSignalRowsTs(signals) {
+        const COLORS = {
+            good: "#35d0a6",
+            caution: "#f2b84c",
+            info: "#8e8e93",
+        };
+        return signals
+            .map((s, idx) => {
+            const color = COLORS[s.type] || "#ff5d5d";
+            const { realSub, checklist } = parseChecklistSignal(s.sub);
+            const dropdownId = "safely-checklist-" + idx;
+            return ('<div class="safely-check-card">' +
+                '<div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;">' +
+                '<div class="safely-check-title">' +
+                window.escapeHtml(capitalizeFirst(s.label)) +
+                "</div>" +
+                '<div style="font-weight:700;white-space:nowrap;font-size:13px;color:' +
+                color +
+                ';">' +
+                window.escapeHtml(capitalizeFirst(s.value)) +
+                "</div></div>" +
+                '<div class="safely-check-body">' +
+                window.escapeHtml(capitalizeFirst(realSub) || "") +
+                "</div>" +
+                buildChecklistDropdown(dropdownId, checklist) +
+                "</div>");
+        })
+            .join("");
+    }
     function attachSocialPresenceListeners() {
         const toggle = document.getElementById("safely-social-toggle");
         const dropdown = document.getElementById("safely-social-dropdown");
@@ -140,7 +238,7 @@
             summaryText +
             "</span></div>" +
             '<div class="safely-section-label" style="margin-top:14px">Listing signals</div><div style="display:flex;flex-direction:column;gap:8px">' +
-            wasm.build_signal_rows(JSON.stringify(pageData.signals)) +
+            buildSignalRowsTs(pageData.signals) +
             "</div>" +
             buildSocialPresenceSection() +
             (function () {
@@ -214,12 +312,19 @@
             rows +
             "</div>");
     }
-    window.__safelyAddTab("intelligence", "Intelligence", buildIntelligenceTab(), '<svg viewBox="0 0 24 24" fill="none" stroke="#8e8e93" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="2"/><path d="M16.24 7.76a6 6 0 010 8.48"/><path d="M19.07 4.93a10 10 0 010 14.14"/><path d="M7.76 16.24a6 6 0 010-8.48"/><path d="M4.93 19.07a10 10 0 010-14.14"/></svg>', attachSocialPresenceListeners);
+    function attachAllChecklistListeners() {
+        attachSocialPresenceListeners();
+        const pageData = window.__safelyData;
+        (pageData.signals || []).forEach((_, idx) => {
+            attachChecklistListener("safely-checklist-" + idx);
+        });
+    }
+    window.__safelyAddTab("intelligence", "Intelligence", buildIntelligenceTab(), '<svg viewBox="0 0 24 24" fill="none" stroke="#8e8e93" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="2"/><path d="M16.24 7.76a6 6 0 010 8.48"/><path d="M19.07 4.93a10 10 0 010 14.14"/><path d="M7.76 16.24a6 6 0 010-8.48"/><path d="M4.93 19.07a10 10 0 010-14.14"/></svg>', attachAllChecklistListeners);
     window.addEventListener("safely-data-ready", () => {
         const tabEl = document.getElementById("safely-tab-intelligence");
         if (tabEl) {
             tabEl.innerHTML = buildIntelligenceTab();
-            attachSocialPresenceListeners();
+            attachAllChecklistListeners();
         }
     });
 })();

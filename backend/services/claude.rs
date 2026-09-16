@@ -291,6 +291,14 @@ pub fn b2c_content(arg: &CallClaudeArguments) -> String {
 }
 
 pub fn b2b_content(arg: &CallB2bClaudeArguments) -> String {
+    let image_context = if arg.image_urls.is_empty() {
+        "no actual product images were provided or found for this listing - use \"not verified\" as the verdict, since authenticity cannot genuinely be assessed without any real images.".to_string()
+    } else {
+        format!(
+            "{} real product image(s) were found on this listing, but image sending is disabled for cost reasons, so you cannot directly view them - use \"not verified\" as the honest verdict, since authenticity cannot genuinely be assessed without actually viewing the real images.",
+            arg.image_urls.len()
+        )
+    };
     format!(
         r#"
         You are a B2B supplier due-diligence assistant helping a procurement
@@ -348,12 +356,9 @@ pub fn b2b_content(arg: &CallB2bClaudeArguments) -> String {
         legitimate B2B trade, where partial deposits and post-inspection
         payment terms are standard?
 
-        For image_authenticity: no actual product images are provided
-        in this analysis (image sending is disabled for cost reasons,
-        matching the same limitation applied to consumer listings).
+        For image_authenticity: {image_context}
         Verdict must be exactly "original" or "not verified" - no other
-        words. Use "not verified" whenever no images were provided or
-        authenticity cannot genuinely be assessed.
+        words.
 
         Return JSON in exactly this shape:
         {{
@@ -375,5 +380,6 @@ pub fn b2b_content(arg: &CallB2bClaudeArguments) -> String {
         employee_count = arg.employee_count,
         product_title = arg.product_title,
         product_description = arg.product_description,
+        image_context = image_context,
     )
 }

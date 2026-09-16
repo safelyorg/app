@@ -89,7 +89,8 @@ pub async fn get_history_detail(
             l.title AS listing_title,
             l.listing_url,
             l.platform,
-            l.seller_id
+            l.seller_id,
+            l.id AS listing_id
         FROM analysis a
         JOIN listings l ON a.listing_id = l.id
         WHERE a.id = $1 AND a.user_id = $2
@@ -111,7 +112,7 @@ pub async fn get_history_detail(
 
     let fraud_count = count_fraud_reports(pool, seller.id).await?;
     let network_summary = build_network_summary(fraud_count);
-    let monthly_activity = get_monthly_visit_activity(pool, seller.id)
+    let monthly_activity = get_monthly_visit_activity(pool, row.listing_id)
         .await
         .unwrap_or_else(|_| vec![0i32; 12]);
 

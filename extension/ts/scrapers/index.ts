@@ -203,6 +203,12 @@ type DomainCheckResult = LegitimateDomainResult | SuspiciousDomainResult | null;
       requiresClientSideScraping: false,
       isListingUrl: (url) => url.includes("/hotsite/"),
     },
+    {
+      name: "alibaba",
+      matchesHostname: (hostname) => hostname.includes("alibaba.com"),
+      requiresClientSideScraping: false,
+      isListingUrl: (url) => url.includes("/product-detail/"),
+    },
   ];
 
   function detectPlatform(): string {

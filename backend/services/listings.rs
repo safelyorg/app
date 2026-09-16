@@ -65,15 +65,14 @@ pub async fn create_listing(
     Ok(listing)
 }
 
-/// It counts how many times a seller's listings were analyzed, month by month,
-/// over the last year, and returns exactly 12 numbers — one for each month.
-///
-/// It runs the real database query, sets up a list of 12 zeros, as the starting point,
-/// fills in the real numbers, for whichever months actually had activity and
-/// returns the completed list.
+/// It counts how many times THIS SPECIFIC listing (not the seller's
+/// listings as a whole) was analyzed, month by month, over the last
+/// year - genuinely aggregated across every real Safely user, since
+/// this follows the same, real network-effect philosophy already
+/// used for "Safely history" elsewhere in the product.
 pub async fn get_monthly_visit_activity(
     pool: &Pool<Postgres>,
-    seller_id: Uuid,
+    listing_id: Uuid,
 ) -> Result<Vec<i32>, Error> {
     let rows = query(
         "
@@ -81,14 +80,13 @@ pub async fn get_monthly_visit_activity(
             EXTRACT(MONTH FROM a.created_at)::int as month,
             COUNT(*)::int as visits
         FROM analysis a
-        JOIN listings l ON a.listing_id = l.id
-        WHERE l.seller_id = $1
+        WHERE a.listing_id = $1
             AND a.created_at >= DATE_TRUNC('month', NOW()) - INTERVAL '11 months'
         GROUP BY month
         ORDER BY month ASC
         ",
     )
-    .bind(seller_id)
+    .bind(listing_id)
     .fetch_all(pool)
     .await?;
 

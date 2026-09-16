@@ -43,6 +43,7 @@ pub struct AnalysisDetailRow {
     pub listing_url: String,
     pub platform: String,
     pub seller_id: Uuid,
+    pub listing_id: Uuid,
 }
 
 #[derive(Debug, FromRow, Serialize)]

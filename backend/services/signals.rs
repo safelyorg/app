@@ -421,22 +421,25 @@ pub fn build_b2b_company_age_signal(supplier: &B2bSupplierProfile) -> Signal {
 /// leave them blank for privacy - so this stays a mild, informational
 /// signal, not a harsh one.
 pub fn build_b2b_transparency_signal(supplier: &B2bSupplierProfile) -> Signal {
-    let filled_count = [
-        supplier.employee_count.is_some(),
-        supplier.sales_revenue.is_some(),
-        supplier.export_percentage.is_some(),
-    ]
-    .iter()
-    .filter(|&&present| present)
-    .count();
-
+    let fields: [(&str, bool); 3] = [
+        ("Employee count", supplier.employee_count.is_some()),
+        ("Sales revenue", supplier.sales_revenue.is_some()),
+        ("Export percentage", supplier.export_percentage.is_some()),
+    ];
+    let filled_count = fields.iter().filter(|(_, present)| *present).count();
     let signal_type = if filled_count >= 2 { "good" } else { "info" };
+
+    let checklist = fields
+        .iter()
+        .map(|(name, present)| format!("{}|{}", name, present))
+        .collect::<Vec<_>>()
+        .join(";");
 
     Signal {
         label: "Company profile completeness".to_string(),
         sub: format!(
-            "{} of 3 transparency fields (employees, sales volume, export percentage) are filled in.",
-            filled_count
+            "{} of 3 transparency fields (employees, sales volume, export percentage) are filled in.###CHECKLIST###{}",
+            filled_count, checklist
         ),
         value: format!("{}/3 fields provided", filled_count),
         signal_type: signal_type.to_string(),
@@ -451,26 +454,35 @@ pub fn build_b2b_transparency_signal(supplier: &B2bSupplierProfile) -> Signal {
 /// inherently suspicious, so this stays a mild pattern check, not a
 /// harsh red flag.
 pub fn build_b2b_listing_completeness_signal(listing: &B2bListingProfile) -> Signal {
-    let fields = [
-        &listing.unit_price,
-        &listing.fob_price,
-        &listing.minimum_order_quantity,
-        &listing.payment_type,
-        &listing.preferred_port,
-        &listing.production_capacity,
-        &listing.delivery_timeframe,
-        &listing.incoterms,
-        &listing.packaging_details,
+    let fields: [(&str, &Option<String>); 9] = [
+        ("Unit price", &listing.unit_price),
+        ("FOB price", &listing.fob_price),
+        ("Minimum order quantity", &listing.minimum_order_quantity),
+        ("Payment type", &listing.payment_type),
+        ("Preferred port", &listing.preferred_port),
+        ("Production capacity", &listing.production_capacity),
+        ("Delivery timeframe", &listing.delivery_timeframe),
+        ("Incoterms", &listing.incoterms),
+        ("Packaging details", &listing.packaging_details),
     ];
-    let filled_count = fields.iter().filter(|f| f.is_some()).count();
+    let filled_count = fields.iter().filter(|(_, f)| f.is_some()).count();
     let total = fields.len();
     let signal_type = if filled_count == 0 { "caution" } else { "info" };
+
+    // Real, delimited checklist the frontend parses to build the
+    // dropdown - "Field Name|true" or "Field Name|false" per line,
+    // same, simple encoding style used elsewhere in this file.
+    let checklist = fields
+        .iter()
+        .map(|(name, value)| format!("{}|{}", name, value.is_some()))
+        .collect::<Vec<_>>()
+        .join(";");
 
     Signal {
         label: "Listing completeness".to_string(),
         sub: format!(
-            "{} of {} listing details (price, MOQ, Incoterms, etc.) were provided by the supplier.",
-            filled_count, total
+            "{} of {} listing details (price, MOQ, Incoterms, etc.) were provided by the supplier.###CHECKLIST###{}",
+            filled_count, total, checklist
         ),
         value: format!("{}/{} fields provided", filled_count, total),
         signal_type: signal_type.to_string(),

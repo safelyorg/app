@@ -71,6 +71,7 @@ impl B2bScraper for B2brazilScraper {
             source_platform: "b2brazil".to_string(),
             contact_name,
             contact_phone,
+            badge_honorific: None,
         }
     }
 

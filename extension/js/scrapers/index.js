@@ -158,6 +158,12 @@
             requiresClientSideScraping: false,
             isListingUrl: (url) => url.includes("/hotsite/"),
         },
+        {
+            name: "alibaba",
+            matchesHostname: (hostname) => hostname.includes("alibaba.com"),
+            requiresClientSideScraping: false,
+            isListingUrl: (url) => url.includes("/product-detail/"),
+        },
     ];
     function detectPlatform() {
         const hostname = window.location.hostname;
