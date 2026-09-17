@@ -1,7 +1,7 @@
 pub mod alibaba;
 pub mod b2brazil;
 
-use crate::services::scraper_client::build_scraper_client;
+use crate::services::scraper_client::{build_scraper_client, wrap_scraper_url};
 
 #[derive(Debug, Default)]
 pub struct B2bSupplierProfile {
@@ -18,6 +18,7 @@ pub struct B2bSupplierProfile {
     pub contact_name: Option<String>,
     pub contact_phone: Option<String>,
     pub badge_honorific: Option<String>,
+    pub company_description: Option<String>,
 }
 
 #[derive(Debug, Default)]
@@ -43,6 +44,16 @@ pub trait B2bScraper: Send + Sync {
     fn matches_platform(&self, platform: &str) -> bool;
     fn parse_supplier(&self, html: &str, profile_url: &str) -> B2bSupplierProfile;
     fn parse_listing(&self, html: &str, listing_url: &str) -> B2bListingProfile;
+    fn extract_company_profile_url(&self, _listing_html: &str) -> Option<String> {
+        None
+    }
+    fn enrich_from_company_profile(
+        &self,
+        supplier: B2bSupplierProfile,
+        _profile_html: &str,
+    ) -> B2bSupplierProfile {
+        supplier
+    }
 }
 
 pub fn get_scraper_for_platform(platform: &str) -> Option<Box<dyn B2bScraper>> {
@@ -59,44 +70,38 @@ pub async fn check_b2b_page(
 ) -> Option<(B2bSupplierProfile, B2bListingProfile)> {
     let scraper = get_scraper_for_platform(platform)?;
     let client = build_scraper_client();
-    let fetch_url = crate::services::scraper_client::wrap_scraper_url(page_url);
+    let fetch_url = wrap_scraper_url(page_url);
 
-    // ScraperAPI's render=true requests genuinely, occasionally
-    // return a real 500 that a plain retry resolves - confirmed
-    // directly, live, more than once. Try up to 3 times before
-    // genuinely giving up.
-    let mut last_status = None;
-    for attempt in 1..=3 {
-        let response = match client.get(&fetch_url).send().await {
-            Ok(r) => r,
-            Err(e) => {
-                eprintln!(
-                    "Safely: B2B fetch attempt {} network error for {} - {:?}",
-                    attempt, page_url, e
-                );
-                continue;
-            }
-        };
+    // Single, plain fetch - no retry. A failed request here simply
+    // fails the analysis; retrying was adding real, noticeable
+    // latency for little benefit.
+    let response = client.get(&fetch_url).send().await.ok()?;
 
-        if response.status().is_success() {
-            let html = response.text().await.ok()?;
-            let supplier = scraper.parse_supplier(&html, page_url);
-            let listing = scraper.parse_listing(&html, page_url);
-            return Some((supplier, listing));
-        }
-
-        last_status = Some(response.status());
+    if !response.status().is_success() {
         eprintln!(
-            "Safely: B2B fetch attempt {} failed for {} - status {}",
-            attempt,
+            "Safely: B2B fetch failed for {} - status {}",
             page_url,
             response.status()
         );
+        return None;
     }
 
-    eprintln!(
-        "Safely: B2B page fetch genuinely failed after 3 attempts for {} - last status {:?}",
-        page_url, last_status
-    );
-    None
+    let html = response.text().await.ok()?;
+    let mut supplier = scraper.parse_supplier(&html, page_url);
+    let listing = scraper.parse_listing(&html, page_url);
+
+    // Real, optional second fetch - only happens for platforms whose
+    // scraper actually finds a real, embedded company-profile link.
+    if let Some(profile_url) = scraper.extract_company_profile_url(&html) {
+        let profile_fetch_url = wrap_scraper_url(&profile_url);
+        if let Ok(profile_response) = client.get(&profile_fetch_url).send().await {
+            if profile_response.status().is_success() {
+                if let Ok(profile_html) = profile_response.text().await {
+                    supplier = scraper.enrich_from_company_profile(supplier, &profile_html);
+                }
+            }
+        }
+    }
+
+    Some((supplier, listing))
 }

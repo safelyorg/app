@@ -121,7 +121,80 @@ impl B2bScraper for AlibabaScraper {
             contact_name: None,
             contact_phone: None,
             badge_honorific,
+            company_description: None,
         }
+    }
+
+    fn extract_company_profile_url(&self, listing_html: &str) -> Option<String> {
+        let document = Html::parse_document(listing_html);
+        let sel = Selector::parse("a").ok()?;
+        for el in document.select(&sel) {
+            if el.text().collect::<String>().trim() == "Company profile" {
+                if let Some(href) = el.value().attr("href") {
+                    return Some(href.to_string());
+                }
+            }
+        }
+        None
+    }
+
+    fn enrich_from_company_profile(
+        &self,
+        mut supplier: B2bSupplierProfile,
+        profile_html: &str,
+    ) -> B2bSupplierProfile {
+        let document = Html::parse_document(profile_html);
+
+        // Older, real template - a link (a.vd-item) whose text
+        // includes "Total Employees:" with the real value in a
+        // sibling ".con-text" span.
+        if let Ok(sel) = Selector::parse("a.vd-item") {
+            for el in document.select(&sel) {
+                let text = el.text().collect::<String>();
+                if text.contains("Total Employees:") {
+                    if let Ok(value_sel) = Selector::parse(".con-text") {
+                        if let Some(value_el) = el.select(&value_sel).next() {
+                            let value = value_el.text().collect::<String>().trim().to_string();
+                            if !value.is_empty() {
+                                supplier.employee_count = Some(value);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Newer, real "sp:"-prefixed template - a pair of sibling
+        // spans, the first with the real label text "Total
+        // employees", the second holding the real numeric value.
+        // Only runs if the older template found nothing. Note: this
+        // panel loads asynchronously on Alibaba's real page, so it
+        // is genuinely absent from a plain ScraperAPI fetch even when
+        // this selector is otherwise correct - a known, current gap.
+        if supplier.employee_count.is_none() {
+            if let Ok(div_sel) = Selector::parse("div") {
+                for div in document.select(&div_sel) {
+                    let class = div.value().attr("class").unwrap_or("");
+                    if class.contains("items-start") && class.contains("justify-between") {
+                        if let Ok(span_sel) = Selector::parse("span") {
+                            let spans: Vec<_> = div.select(&span_sel).collect();
+                            if spans.len() == 2 {
+                                let label = spans[0].text().collect::<String>().trim().to_string();
+                                if label == "Total employees" {
+                                    let value =
+                                        spans[1].text().collect::<String>().trim().to_string();
+                                    if !value.is_empty() {
+                                        supplier.employee_count = Some(value);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        supplier
     }
 
     fn parse_listing(&self, html: &str, listing_url: &str) -> B2bListingProfile {

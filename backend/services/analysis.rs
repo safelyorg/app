@@ -529,6 +529,7 @@ pub async fn build_b2b_analysis_path(
         year_established: supplier.year_established.as_deref().unwrap_or("Unknown"),
         platform_verified: supplier.platform_verified_badge,
         employee_count: supplier.employee_count.as_deref().unwrap_or("Unknown"),
+        company_description: supplier.company_description.as_deref().unwrap_or(""),
         product_title: listing.title.as_deref().unwrap_or("Unknown"),
         product_description: listing.description.as_deref().unwrap_or("None provided"),
         image_urls: &listing.image_urls,

@@ -107,6 +107,7 @@ pub struct CallB2bClaudeArguments<'a> {
     pub year_established: &'a str,
     pub platform_verified: bool,
     pub employee_count: &'a str,
+    pub company_description: &'a str,
     pub product_title: &'a str,
     pub product_description: &'a str,
     pub image_urls: &'a [String],
@@ -318,6 +319,7 @@ pub fn b2b_content(arg: &CallB2bClaudeArguments) -> String {
         Year established: {year_established}
         Platform-verified badge: {platform_verified}
         Employee count: {employee_count}
+        Company description: {company_description}
         Product title: {product_title}
         Product description: {product_description}
 
@@ -378,6 +380,11 @@ pub fn b2b_content(arg: &CallB2bClaudeArguments) -> String {
         year_established = arg.year_established,
         platform_verified = arg.platform_verified,
         employee_count = arg.employee_count,
+        company_description = if arg.company_description.is_empty() {
+            "Not provided"
+        } else {
+            arg.company_description
+        },
         product_title = arg.product_title,
         product_description = arg.product_description,
         image_context = image_context,

@@ -72,6 +72,7 @@ impl B2bScraper for B2brazilScraper {
             contact_name,
             contact_phone,
             badge_honorific: None,
+            company_description: None,
         }
     }
 
@@ -136,6 +137,41 @@ impl B2bScraper for B2brazilScraper {
             listing_url: listing_url.to_string(),
             source_platform: "b2brazil".to_string(),
         }
+    }
+
+    fn extract_company_profile_url(&self, listing_html: &str) -> Option<String> {
+        let document = Html::parse_document(listing_html);
+        let sel = Selector::parse("a.nav-home").ok()?;
+        document
+            .select(&sel)
+            .next()?
+            .value()
+            .attr("href")
+            .map(|href| {
+                if href.starts_with("http") {
+                    href.to_string()
+                } else {
+                    format!("https://b2brazil.com{}", href)
+                }
+            })
+    }
+
+    fn enrich_from_company_profile(
+        &self,
+        mut supplier: B2bSupplierProfile,
+        profile_html: &str,
+    ) -> B2bSupplierProfile {
+        let document = Html::parse_document(profile_html);
+        if let Ok(sel) = Selector::parse(".section-content-about div") {
+            if let Some(el) = document.select(&sel).next() {
+                let text = el.text().collect::<String>();
+                let trimmed = text.trim();
+                if !trimmed.is_empty() {
+                    supplier.company_description = Some(trimmed.to_string());
+                }
+            }
+        }
+        supplier
     }
 }
 
