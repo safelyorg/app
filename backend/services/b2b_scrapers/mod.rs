@@ -1,5 +1,6 @@
 pub mod alibaba;
 pub mod b2brazil;
+pub mod tradewheel;
 
 use crate::services::scraper_client::{build_scraper_client, wrap_scraper_url};
 
@@ -19,6 +20,7 @@ pub struct B2bSupplierProfile {
     pub contact_phone: Option<String>,
     pub badge_honorific: Option<String>,
     pub company_description: Option<String>,
+    pub website_url: Option<String>,
 }
 
 #[derive(Debug, Default)]
@@ -60,10 +62,10 @@ pub fn get_scraper_for_platform(platform: &str) -> Option<Box<dyn B2bScraper>> {
     let scrapers: Vec<Box<dyn B2bScraper>> = vec![
         Box::new(b2brazil::B2brazilScraper),
         Box::new(alibaba::AlibabaScraper),
+        Box::new(tradewheel::TradewheelScraper),
     ];
     scrapers.into_iter().find(|s| s.matches_platform(platform))
 }
-
 pub async fn check_b2b_page(
     platform: &str,
     page_url: &str,

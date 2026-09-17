@@ -146,6 +146,12 @@ function formatPlatformName(platform) {
             if (window.__safelyScrapers.requiresClientSideScraping(platform)) {
                 await new Promise((resolve) => setTimeout(resolve, 1500));
             }
+            if (platform === "tradewheel" && window.__safelyScrapers.fetchTradewheelWebsite) {
+                const website = await window.__safelyScrapers.fetchTradewheelWebsite();
+                if (website) {
+                    scraped.seller_website = website;
+                }
+            }
             const domainCheck = window.__safelyScrapers.checkDomain();
             const payload = {
                 platform,

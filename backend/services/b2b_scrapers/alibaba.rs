@@ -122,6 +122,7 @@ impl B2bScraper for AlibabaScraper {
             contact_phone: None,
             badge_honorific,
             company_description: None,
+            website_url: None,
         }
     }
 

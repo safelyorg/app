@@ -508,20 +508,45 @@ pub async fn build_b2b_analysis_path(
         signals.push(domain_signal);
     }
 
-    signals.push(Signal {
-        label: "Seller website check".to_string(),
-        sub: "No website was found for this supplier on this platform.".to_string(),
-        value: "No website found".to_string(),
-        signal_type: "info".to_string(),
-        category: "website".to_string(),
-        check_type: "existence".to_string(),
-    });
-
-    let (supplier, listing) = check_b2b_page(&request.platform, &request.listing_url)
+    let (mut supplier, listing) = check_b2b_page(&request.platform, &request.listing_url)
         .await
         .ok_or_else(|| {
             AnalyzeError::ClaudeAnalysisFailed("Could not fetch B2B supplier page".to_string())
         })?;
+
+    // Real fallback - some platforms (e.g. TradeWheel) only reveal a
+    // supplier's real website to a logged-in visitor, so the
+    // anonymous, server-side fetch above genuinely can't see it.
+    // If the extension's own client-side scrape (running in the
+    // visiting user's own, possibly logged-in browser) found a real
+    // website, use that instead - never overwrites a value the
+    // server-side fetch already found on its own.
+    if supplier.website_url.is_none() {
+        if let Some(client_website) = request.seller_website.as_deref() {
+            if !client_website.is_empty() {
+                supplier.website_url = Some(client_website.to_string());
+            }
+        }
+    }
+
+    signals.push(match supplier.website_url.as_deref() {
+        Some(url) => Signal {
+            label: "Seller website check".to_string(),
+            sub: format!("This supplier's website was found: {}", url),
+            value: "Website found".to_string(),
+            signal_type: "info".to_string(),
+            category: "website".to_string(),
+            check_type: "existence".to_string(),
+        },
+        None => Signal {
+            label: "Seller website check".to_string(),
+            sub: "No website was found for this supplier on this platform.".to_string(),
+            value: "No website found".to_string(),
+            signal_type: "info".to_string(),
+            category: "website".to_string(),
+            check_type: "existence".to_string(),
+        },
+    });
 
     let claude_result = call_b2b_claude(CallB2bClaudeArguments {
         platform: &request.platform,

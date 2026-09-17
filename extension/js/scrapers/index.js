@@ -164,6 +164,12 @@
             requiresClientSideScraping: false,
             isListingUrl: (url) => url.includes("/product-detail/"),
         },
+        {
+            name: "tradewheel",
+            matchesHostname: (hostname) => hostname.includes("tradewheel.com"),
+            requiresClientSideScraping: true,
+            isListingUrl: (url) => url.includes("/p/"),
+        },
     ];
     function detectPlatform() {
         const hostname = window.location.hostname;
@@ -189,4 +195,40 @@
     window.__safelyScrapers.editDistance = editDistance;
     window.__safelyScrapers.highlightDiff = highlightDiff;
     window.__safelyScrapers.isGenuineDomain = isGenuineDomain;
+    /// Finds the real company profile link on a TradeWheel listing
+    /// page, then fetches that page in the background, using the
+    /// visiting user's own, real browser session (their cookies are
+    /// sent automatically by the browser, since this fetch runs on the
+    /// tradewheel.com origin itself). Extracts the real website field
+    /// if the fetched page shows one - which only happens for a
+    /// genuinely logged-in visitor.
+    async function fetchTradewheelWebsite() {
+        const companyLink = document.querySelector(".comp-info a");
+        if (!companyLink)
+            return null;
+        try {
+            const response = await fetch(companyLink.href, { credentials: "include" });
+            if (!response.ok)
+                return null;
+            const html = await response.text();
+            const doc = new DOMParser().parseFromString(html, "text/html");
+            const rows = doc.querySelectorAll(".contact_details table tr");
+            for (const row of Array.from(rows)) {
+                const text = row.textContent?.trim() || "";
+                if (text.startsWith("Website:")) {
+                    const value = text.replace("Website:", "").trim();
+                    if (value && value.toLowerCase() !== "show") {
+                        return value;
+                    }
+                    return null;
+                }
+            }
+            return null;
+        }
+        catch (e) {
+            console.error("Safely: failed to fetch TradeWheel company page", e);
+            return null;
+        }
+    }
+    window.__safelyScrapers.fetchTradewheelWebsite = fetchTradewheelWebsite;
 })();

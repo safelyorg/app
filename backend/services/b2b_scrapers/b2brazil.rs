@@ -73,6 +73,7 @@ impl B2bScraper for B2brazilScraper {
             contact_phone,
             badge_honorific: None,
             company_description: None,
+            website_url: None,
         }
     }
 

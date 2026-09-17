@@ -195,6 +195,12 @@ impl ListingScraper for OlxListingScraper {
             }
         }
 
+        // Real, optional seller photo - only present when the seller
+        // actually uploaded one; a real <img class="sellerCard_
+        // sellerPic__65feA">, genuinely absent (falling back to a
+        // generic, shared SVG icon) for sellers who never did.
+        let sold_by_logo_url = select_attr(&document, ".sellerCard_sellerPic__65feA", "src");
+
         // "Sold by" data takes priority; a regular "Posted by" seller
         // simply won't have any of these fields, correctly leaving
         // them as their honest, existing default values.
@@ -257,6 +263,7 @@ impl ListingScraper for OlxListingScraper {
             seller_join_date,
             image_urls,
             seller_website,
+            seller_logo_url: sold_by_logo_url,
         }
     }
 }
@@ -305,6 +312,15 @@ fn select_page_text(document: &Html, selector: &str) -> Option<String> {
     } else {
         Some(trimmed.to_string())
     }
+}
+
+fn select_attr(document: &Html, selector: &str, attr: &str) -> Option<String> {
+    let sel = Selector::parse(selector).ok()?;
+    document
+        .select(&sel)
+        .next()
+        .and_then(|el| el.value().attr(attr))
+        .map(|s| s.to_string())
 }
 
 #[cfg(test)]

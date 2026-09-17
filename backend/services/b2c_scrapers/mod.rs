@@ -92,6 +92,7 @@ pub struct ListingPageData {
     pub seller_join_date: Option<String>,
     pub image_urls: Vec<String>,
     pub seller_website: Option<String>,
+    pub seller_logo_url: Option<String>,
 }
 
 pub trait ListingScraper: Send + Sync {

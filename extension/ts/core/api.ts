@@ -230,6 +230,13 @@ function formatPlatformName(platform: string | null | undefined): string {
         await new Promise((resolve) => setTimeout(resolve, 1500));
       }
 
+      if (platform === "tradewheel" && (window as any).__safelyScrapers.fetchTradewheelWebsite) {
+        const website = await (window as any).__safelyScrapers.fetchTradewheelWebsite();
+        if (website) {
+          scraped.seller_website = website;
+        }
+      }
+
       const domainCheck = (window as any).__safelyScrapers.checkDomain();
       const payload: AnalyzePayload = {
         platform,
