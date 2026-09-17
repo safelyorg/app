@@ -54,6 +54,7 @@
     --navh: 84px;
 
     --disp: "Clash Display", "Archivo", "Archivo Black", system-ui, sans-serif;
+    --disp-gasoek: "Gasoek One", "Archivo Black", system-ui, sans-serif;
     --body: "Inter", system-ui, -apple-system, sans-serif;
 }
 
@@ -109,6 +110,11 @@ ul {
     font-weight: 800;
     line-height: 0.95;
     letter-spacing: -0.025em;
+}
+.gasoek {
+    font-family: var(--disp-gasoek) !important;
+    font-weight: 400 !important;
+    letter-spacing: 0.02em !important;
 }
 .it {
     font-family: "Archivo", sans-serif;
