@@ -158,10 +158,24 @@ pub async fn call_b2c_claude(args: CallClaudeArguments<'_>) -> Result<ClaudeAnal
         .await
         .map_err(|e| ClaudeError::RequestFailed(e.to_string()))?;
 
+    let status = response.status();
     let body_text = response
         .text()
         .await
         .map_err(|e| ClaudeError::RequestFailed(e.to_string()))?;
+
+    if !status.is_success() {
+        eprintln!(
+            "Safely: Claude API real, non-success status {} - body: {}",
+            status,
+            &body_text[..body_text.len().min(300)]
+        );
+        return Err(match status.as_u16() {
+            401 | 403 => ClaudeError::Unauthorized,
+            429 | 402 => ClaudeError::QuotaExceeded,
+            code => ClaudeError::ServiceUnavailable(code),
+        });
+    }
 
     let envelope: ClaudeEnvelope =
         from_str(&body_text).map_err(|e| ClaudeError::ParseFailed(e.to_string()))?;
@@ -203,13 +217,28 @@ pub async fn call_b2b_claude(
         .await
         .map_err(|e| ClaudeError::RequestFailed(e.to_string()))?;
 
+    let status = response.status();
     let body_text = response
         .text()
         .await
         .map_err(|e| ClaudeError::RequestFailed(e.to_string()))?;
 
+    if !status.is_success() {
+        eprintln!(
+            "Safely: Claude API real, non-success status {} - body: {}",
+            status,
+            &body_text[..body_text.len().min(300)]
+        );
+        return Err(match status.as_u16() {
+            401 | 403 => ClaudeError::Unauthorized,
+            429 | 402 => ClaudeError::QuotaExceeded,
+            code => ClaudeError::ServiceUnavailable(code),
+        });
+    }
+
     let envelope: ClaudeEnvelope =
         from_str(&body_text).map_err(|e| ClaudeError::ParseFailed(e.to_string()))?;
+
     let inner_json = &envelope.content[0].text;
     let cleaned = inner_json
         .trim()

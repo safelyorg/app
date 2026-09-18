@@ -215,6 +215,12 @@ type DomainCheckResult = LegitimateDomainResult | SuspiciousDomainResult | null;
       requiresClientSideScraping: true,
       isListingUrl: (url) => url.includes("/p/"),
     },
+    {
+      name: "exporthub",
+      matchesHostname: (hostname) => hostname.includes("exporthub.com"),
+      requiresClientSideScraping: false,
+      isListingUrl: (url) => url.includes("/product/"),
+    },
   ];
 
   function detectPlatform(): string {

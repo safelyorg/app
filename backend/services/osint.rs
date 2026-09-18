@@ -299,10 +299,10 @@ pub async fn build_social_presence_matrix(
     contact_name: Option<&str>,
     location: Option<&str>,
     phone: Option<&str>,
-) -> (Signal, Vec<PlatformCheckResult>) {
+) -> Result<(Signal, Vec<PlatformCheckResult>), String> {
     let queries = build_osint_query_matrix(company_name, contact_name, location, phone);
     if queries.is_empty() {
-        return (
+        return Ok((
             Signal {
                 label: "Social presence check".to_string(),
                 sub: "No company name was available to search with.".to_string(),
@@ -312,7 +312,7 @@ pub async fn build_social_presence_matrix(
                 check_type: "existence".to_string(),
             },
             Vec::new(),
-        );
+        ));
     }
 
     // Run real, live searches in parallel, but genuinely LIMITED to
@@ -323,6 +323,7 @@ pub async fn build_social_presence_matrix(
     // once" rule - the 11th request genuinely waits for a slot to
     // free up, rather than being sent immediately and getting
     // rejected.
+    let queries_len = queries.len();
     let semaphore = Arc::new(Semaphore::new(10));
     let mut join_set = JoinSet::new();
     for (platform_label, query, variant) in queries {
@@ -330,6 +331,7 @@ pub async fn build_social_presence_matrix(
         join_set.spawn(async move {
             let _permit = permit_holder.acquire().await.ok();
             let real_results = run_serper_search(&query, Some("br")).await;
+            let search_succeeded = real_results.is_some();
             let mut real_candidates = Vec::new();
             if let Some(response) = real_results {
                 for r in response.organic.iter().take(3) {
@@ -348,20 +350,41 @@ pub async fn build_social_presence_matrix(
                     });
                 }
             }
-            PlatformCheckResult {
-                platform: platform_label,
-                variant_searched: variant,
-                found: !real_candidates.is_empty(),
-                candidates: real_candidates,
-            }
+            (
+                PlatformCheckResult {
+                    platform: platform_label,
+                    variant_searched: variant,
+                    found: !real_candidates.is_empty(),
+                    candidates: real_candidates,
+                },
+                search_succeeded,
+            )
         });
     }
 
+    let total_queries = queries_len;
     let mut results: Vec<PlatformCheckResult> = Vec::new();
+    let mut real_search_failures = 0u32;
     while let Some(joined) = join_set.join_next().await {
-        if let Ok(result) = joined {
+        if let Ok((result, search_succeeded)) = joined {
+            if !search_succeeded {
+                real_search_failures += 1;
+            }
             results.push(result);
         }
+    }
+
+    let failure_rate = real_search_failures as f64 / total_queries.max(1) as f64;
+    if failure_rate > 0.5 {
+        eprintln!(
+            "Safely: DEPENDENCY DOWN: Serper real failure rate {:.0}% ({}/{}) - likely SERPER_API_KEY exhausted or invalid",
+            failure_rate * 100.0,
+            real_search_failures,
+            total_queries
+        );
+        return Err(
+            "This check could not be completed right now - Serper appears to be down".to_string(),
+        );
     }
 
     let found_count = results.iter().filter(|r| r.found).count();
@@ -386,7 +409,7 @@ pub async fn build_social_presence_matrix(
         check_type: "existence".to_string(),
     };
 
-    (signal, results)
+    Ok((signal, results))
 }
 
 /// Fetches ONE, real, specific candidate link's actual page content,

@@ -102,13 +102,17 @@ pub async fn analyze(
     }
 
     let (mut seller_req, listing_req) = build_requests(&request);
-    if seller_req.platform_id.is_none() && request.platform == "b2brazil" {
-        seller_req.platform_id = request
-            .listing_url
-            .split("/hotsite/")
-            .nth(1)
-            .and_then(|rest| rest.split('/').next())
-            .map(|s| s.to_string());
+    if seller_req.platform_id.is_none() {
+        seller_req.platform_id = match request.platform.as_str() {
+            "b2brazil" => request
+                .listing_url
+                .split("/hotsite/")
+                .nth(1)
+                .and_then(|rest| rest.split('/').next())
+                .map(|s| s.to_string()),
+            "exporthub" | "tradewheel" | "alibaba" => Some(request.listing_url.clone()),
+            _ => None,
+        };
     }
     let platform_id = seller_req.platform_id.as_deref().unwrap_or("unknown");
     let resolved = resolve_seller(&pool, &seller_req, &request.platform, platform_id).await?;

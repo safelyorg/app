@@ -573,7 +573,8 @@ pub async fn build_b2b_analysis_path(
         supplier.country.as_deref(),
         supplier.contact_phone.as_deref(),
     )
-    .await;
+    .await
+    .map_err(AnalyzeError::ClaudeAnalysisFailed)?;
     signals.push(social_presence_signal);
 
     let caution_count = signals

@@ -1,5 +1,6 @@
 pub mod olx;
 
+use crate::services::b2b_scrapers::looks_like_a_real_page;
 use crate::services::scraper_client::{build_scraper_client, wrap_scraper_url};
 
 // ─────────────────────────────────────────────────────────
@@ -31,42 +32,28 @@ pub async fn check_store_page(
     let client = build_scraper_client();
     let fetch_url = wrap_scraper_url(profile_url);
 
-    // Same, real 3-attempt retry as check_b2b_page - transient
-    // network/DNS/ScraperAPI failures are genuinely possible on any
-    // platform routed through the shared scraper client, not just
-    // ones that specifically need CAPTCHA bypassing.
-    let mut last_status = None;
-    for attempt in 1..=3 {
-        let response = match client.get(&fetch_url).send().await {
-            Ok(r) => r,
-            Err(e) => {
-                eprintln!(
-                    "Safely: store page fetch attempt {} network error for {} - {:?}",
-                    attempt, profile_url, e
-                );
-                continue;
-            }
-        };
-
-        if response.status().is_success() {
-            let html = response.text().await.ok()?;
-            return Some(scraper.parse(&html, expected_seller_name));
-        }
-
-        last_status = Some(response.status());
+    let response = client.get(&fetch_url).send().await.ok()?;
+    if !response.status().is_success() {
         eprintln!(
-            "Safely: store page fetch attempt {} failed for {} - status {}",
-            attempt,
+            "Safely: store page fetch failed for {} - status {}",
             profile_url,
             response.status()
         );
+        return None;
     }
 
-    eprintln!(
-        "Safely: store page fetch genuinely failed after 3 attempts for {} - last status {:?}",
-        profile_url, last_status
-    );
-    None
+    let html = response.text().await.ok()?;
+
+    if !looks_like_a_real_page(&html) {
+        eprintln!(
+            "Safely: DEPENDENCY DOWN: store page fetch for {} returned {} bytes that don't look like a real page - likely ScraperAPI credits exhausted",
+            profile_url,
+            html.len()
+        );
+        return None;
+    }
+
+    Some(scraper.parse(&html, expected_seller_name))
 }
 
 // ─────────────────────────────────────────────────────────
@@ -110,38 +97,28 @@ pub async fn check_listing_page(platform: &str, listing_url: &str) -> Option<Lis
     let client = build_scraper_client();
     let fetch_url = wrap_scraper_url(listing_url);
 
-    let mut last_status = None;
-    for attempt in 1..=3 {
-        let response = match client.get(&fetch_url).send().await {
-            Ok(r) => r,
-            Err(e) => {
-                eprintln!(
-                    "Safely: listing page fetch attempt {} network error for {} - {:?}",
-                    attempt, listing_url, e
-                );
-                continue;
-            }
-        };
-
-        if response.status().is_success() {
-            let html = response.text().await.ok()?;
-            return Some(scraper.parse(&html));
-        }
-
-        last_status = Some(response.status());
+    let response = client.get(&fetch_url).send().await.ok()?;
+    if !response.status().is_success() {
         eprintln!(
-            "Safely: listing page fetch attempt {} failed for {} - status {}",
-            attempt,
+            "Safely: listing page fetch failed for {} - status {}",
             listing_url,
             response.status()
         );
+        return None;
     }
 
-    eprintln!(
-        "Safely: listing page fetch genuinely failed after 3 attempts for {} - last status {:?}",
-        listing_url, last_status
-    );
-    None
+    let html = response.text().await.ok()?;
+
+    if !looks_like_a_real_page(&html) {
+        eprintln!(
+            "Safely: DEPENDENCY DOWN: listing page fetch for {} returned {} bytes that don't look like a real page - likely ScraperAPI credits exhausted",
+            listing_url,
+            html.len()
+        );
+        return None;
+    }
+
+    Some(scraper.parse(&html))
 }
 
 pub fn requires_client_side_scraping(platform: &str) -> bool {
