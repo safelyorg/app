@@ -1,7 +1,7 @@
-use backend::services::claude::{
-    b2b_content, b2c_content, call_b2b_claude, CallB2bClaudeArguments, CallClaudeArguments,
-};
 use backend::errors::claude::ClaudeError;
+use backend::services::claude::{
+    CallB2bClaudeArguments, CallClaudeArguments, b2b_content, b2c_content, call_b2b_claude,
+};
 use std::env::{remove_var, set_var, var};
 
 fn make_b2b_args() -> CallB2bClaudeArguments<'static> {
@@ -11,12 +11,12 @@ fn make_b2b_args() -> CallB2bClaudeArguments<'static> {
         year_established: "2013",
         platform_verified: true,
         employee_count: "0-10",
+        company_description: "Test description",
         product_title: "Test Product",
         product_description: "Test description",
         image_urls: &[],
     }
 }
-
 // ─────────────────────────────────────────────────────────
 // b2b_content - confirming today's new additions are genuinely present
 // ─────────────────────────────────────────────────────────
@@ -43,7 +43,10 @@ fn b2b_content_has_no_leftover_duplicate_json_shape_line() {
     let args = make_b2b_args();
     let prompt = b2b_content(&args);
     let occurrences = prompt.matches("Return JSON in exactly this shape:").count();
-    assert_eq!(occurrences, 1, "expected exactly one, not a leftover duplicate");
+    assert_eq!(
+        occurrences, 1,
+        "expected exactly one, not a leftover duplicate"
+    );
 }
 
 // ─────────────────────────────────────────────────────────

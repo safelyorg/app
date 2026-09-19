@@ -12,7 +12,7 @@ fn returns_exactly_the_platforms_currently_configured_no_more_no_less() {
     let domains = get_all_platform_domains();
     assert_eq!(
         domains.len(),
-        2,
+        5,
         "expected exactly the platforms currently in platform_domains.json - \
          update this test if a new platform is genuinely added"
     );
@@ -21,7 +21,7 @@ fn returns_exactly_the_platforms_currently_configured_no_more_no_less() {
 #[test]
 fn does_not_contain_a_genuinely_unconfigured_platform() {
     let domains = get_all_platform_domains();
-    assert_eq!(domains.get("alibaba"), None);
+    assert_eq!(domains.get("sap_ariba"), None);
     assert_eq!(domains.get("some_random_platform"), None);
 }
 
@@ -43,7 +43,7 @@ fn returns_a_genuine_clone_not_a_shared_mutable_reference() {
         None,
         "expected the static, real data to remain genuinely unaffected by mutating a returned clone"
     );
-    assert_eq!(second_call.len(), 2);
+    assert_eq!(second_call.len(), 5);
 }
 
 #[test]

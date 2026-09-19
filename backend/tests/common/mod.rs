@@ -8,7 +8,6 @@ use backend::{
     },
 };
 use chrono::{DateTime, Utc};
-use dotenvy::dotenv;
 use hex::encode;
 use hmac::{Hmac, KeyInit, Mac};
 use serde_json::json;
@@ -31,7 +30,7 @@ pub struct TestSubscriptionOptions {
 
 #[allow(dead_code)]
 pub async fn admin_pool() -> Pool<Postgres> {
-    dotenv().ok();
+    load_env_once();
     let url = var("DATABASE_URL").expect("admin database URL needed for test cleanup");
     Pool::<Postgres>::connect(&url)
         .await
@@ -40,7 +39,7 @@ pub async fn admin_pool() -> Pool<Postgres> {
 
 #[allow(dead_code)]
 pub async fn test_pool() -> Pool<Postgres> {
-    dotenv().ok();
+    load_env_once();
     let url = var("APP_URL").expect("the url needs to set in the .env file");
     Pool::<Postgres>::connect(&url)
         .await
