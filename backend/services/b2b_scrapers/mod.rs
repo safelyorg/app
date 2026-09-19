@@ -3,7 +3,7 @@ pub mod b2brazil;
 pub mod exporthub;
 pub mod tradewheel;
 
-use crate::services::scraper_client::{build_scraper_client, wrap_scraper_url};
+use crate::services::scraper_client::{build_scraper_client, wrap_scraper_url_for_platform};
 
 #[derive(Debug, Default)]
 pub struct B2bSupplierProfile {
@@ -92,7 +92,7 @@ pub async fn check_b2b_page(
 ) -> Option<(B2bSupplierProfile, B2bListingProfile)> {
     let scraper = get_scraper_for_platform(platform)?;
     let client = build_scraper_client();
-    let fetch_url = wrap_scraper_url(page_url);
+    let fetch_url = wrap_scraper_url_for_platform(page_url, platform);
 
     let response = client.get(&fetch_url).send().await.ok()?;
 
@@ -120,8 +120,18 @@ pub async fn check_b2b_page(
     let mut supplier = scraper.parse_supplier(&html, page_url);
     let listing = scraper.parse_listing(&html, page_url);
 
+    if supplier.company_name.is_none() && listing.title.is_none() {
+        eprintln!(
+            "Safely: DEPENDENCY DOWN: B2B fetch for {} - real HTML but no matching content. Total length: {} bytes. First 3000 chars:\n{}",
+            page_url,
+            html.len(),
+            &html[..html.len().min(3000)]
+        );
+        return None;
+    }
+
     if let Some(profile_url) = scraper.extract_company_profile_url(&html) {
-        let profile_fetch_url = wrap_scraper_url(&profile_url);
+        let profile_fetch_url = wrap_scraper_url_for_platform(&profile_url, platform);
         if let Ok(profile_response) = client.get(&profile_fetch_url).send().await {
             if profile_response.status().is_success() {
                 if let Ok(profile_html) = profile_response.text().await {
@@ -139,7 +149,7 @@ pub async fn check_b2b_page(
         }
 
         if let Some(extended_url) = scraper.build_extended_profile_url(&profile_url) {
-            let extended_fetch_url = wrap_scraper_url(&extended_url);
+            let extended_fetch_url = wrap_scraper_url_for_platform(&extended_url, platform);
             if let Ok(extended_response) = client.get(&extended_fetch_url).send().await {
                 if extended_response.status().is_success() {
                     if let Ok(extended_html) = extended_response.text().await {

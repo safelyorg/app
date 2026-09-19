@@ -65,14 +65,16 @@ function formatPlatformName(platform) {
                 const response = await fetch(API_BASE + "/billing/subscription-status", {
                     headers: authHeaders,
                 });
-                if (!response.ok)
-                    return null;
+                if (!response.ok) {
+                    console.error("Safely: subscription status check failed - status", response.status);
+                    return { ok: false };
+                }
                 const data = await response.json();
-                return data.status || null;
+                return { ok: true, status: data.status || null };
             }
             catch (error) {
-                console.error("Safely: failed to check subscription status", error);
-                return null;
+                console.error("Safely: could not reach Safely server to check subscription", error);
+                return { ok: false };
             }
         },
         submitOutcome: async function (analysisId, action) {
@@ -129,16 +131,26 @@ function formatPlatformName(platform) {
             }
         },
         fetchAnalysis: async function () {
+            // Tags this exact call with the real page it's running for - the
+            // only thing that gets checked later is "is the user still on
+            // this same page when the result comes back", never anything
+            // about which specific group/state was showing at the time.
+            const requestUrl = window.location.href;
+            const isStillCurrentPage = () => window.location.href === requestUrl;
             await window.__safelyScrapers.loadProtectedDomains();
             const platform = window.__safelyScrapers.detectPlatform();
             if (platform === "unknown") {
-                window.dispatchEvent(new CustomEvent("safely-analysis-finished"));
+                if (isStillCurrentPage()) {
+                    window.dispatchEvent(new CustomEvent("safely-analysis-finished"));
+                }
                 return;
             }
             // Defense-in-depth: panel.js already gates this, but checking
             // again here keeps this safe even if something calls it directly.
             if (!window.__safelyScrapers.isListingPage()) {
-                window.dispatchEvent(new CustomEvent("safely-analysis-finished"));
+                if (isStillCurrentPage()) {
+                    window.dispatchEvent(new CustomEvent("safely-analysis-finished"));
+                }
                 return;
             }
             const listing_url = window.location.href;
@@ -186,6 +198,9 @@ function formatPlatformName(platform) {
                 domain_check_real_html: domainCheck ? domainCheck.realDomainHtml || null : null,
             };
             const data = await window.__safelyAPI.analyze(payload);
+            if (!isStillCurrentPage()) {
+                return;
+            }
             if (!data || data.error) {
                 window.dispatchEvent(new CustomEvent("safely-analysis-finished", {
                     detail: {

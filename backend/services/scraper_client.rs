@@ -14,19 +14,41 @@ pub fn build_scraper_client() -> Client {
         .unwrap_or_else(|_| Client::new())
 }
 
-/// Wraps a real, actual target URL inside ScraperAPI's own, real
-/// endpoint - if a real, live API key is configured, every scraper
-/// fetch goes through ScraperAPI's genuine, own unblocking service
-/// instead of fetching the target directly. Falls back to fetching
-/// the target directly if no key is configured, so this stays
-/// entirely optional, never breaking OLX/B2Brazil if unset.
+/// Real, per-platform country targeting - each B2B platform is
+/// actually based in (or primarily serves) a different real region,
+/// so one hardcoded country_code would be wrong for the others.
+/// Returns None for platforms where no specific country genuinely
+/// helps (ScraperAPI then picks its own default automatically).
+fn country_code_for_platform(platform: &str) -> Option<&'static str> {
+    match platform {
+        "exporthub" => Some("us"),
+        "b2brazil" => Some("br"),
+        "alibaba" => Some("cn"),
+        "olx" => Some("pk"),
+        _ => None,
+    }
+}
+
 pub fn wrap_scraper_url(target_url: &str) -> String {
+    wrap_scraper_url_for_platform(target_url, "")
+}
+
+/// The real, platform-aware version - prefer this at every call site
+/// going forward. wrap_scraper_url() above is kept only so any
+/// not-yet-updated call site keeps compiling; it applies no country
+/// targeting at all.
+pub fn wrap_scraper_url_for_platform(target_url: &str, platform: &str) -> String {
     if let Ok(api_key) = var("SCRAPERAPI_KEY") {
         let encoded_url = encode(target_url);
-        format!(
-            "https://api.scraperapi.com/?api_key={}&url={}&render=true",
+        let mut url = format!(
+            "https://api.scraperapi.com/?api_key={}&url={}&render=true&premium=true",
             api_key, encoded_url
-        )
+        );
+        if let Some(country) = country_code_for_platform(platform) {
+            url.push_str("&country_code=");
+            url.push_str(country);
+        }
+        url
     } else {
         target_url.to_string()
     }

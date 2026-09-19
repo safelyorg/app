@@ -27,8 +27,8 @@
             '<div class="safely-tabs-area" id="safely-tabs-area"></div>' +
             '<div class="safely-loading-overlay" id="safely-loading-overlay"><div class="safely-loading-dots"><span></span><span></span><span></span></div></div>' +
             '<div class="safely-tab-content" id="safely-tab-unsupported" style="display:none; padding: 20px; font-size: 13px; line-height: 1.5; color: #8a8a93;">' +
-            "Safely isn't reading this page — it only activates on an actual " +
-            "listing's page on OLX, not a site's general pages." +
+            "Safely doesn't check this page — open a listing on a supported " +
+            "marketplace to scan it." +
             "</div>" +
             '<div class="safely-tab-content" id="safely-tab-signin-required" style="display:none; padding: 20px; text-align: center;">' +
             '<div style="font-size:13px; line-height:1.6; color:#8a8a93; margin-bottom:16px;">' +
@@ -257,19 +257,39 @@
     // ── Switches between "real listing" and "not supported" - can be
     // called repeatedly as navigation happens. ──
     function updateSupportState() {
+        const requestUrl = window.location.href;
+        const isStillCurrentPage = () => window.location.href === requestUrl;
         const supported = window.__safelyScrapers.isListingPage();
         if (supported) {
             unsupportedIcon.style.display = "none";
-            // Real, chargeable AI analysis only ever runs for a signed-in
-            // person - checking this here means an anonymous visitor never
-            // triggers a real Claude API call at all.
             chrome.storage.local.get("safely_session_token", async (result) => {
+                if (!isStillCurrentPage())
+                    return;
                 if (result.safely_session_token) {
                     signinRequiredIcon.style.display = "none";
                     analysisFailedIcon.style.display = "none";
                     subscriptionRequiredIcon.style.display = "none";
-                    const subscriptionStatus = await window.__safelyAPI.checkSubscriptionStatus();
-                    const isSubscribed = isSubscriptionActive(subscriptionStatus);
+                    const subscriptionResult = await window.__safelyAPI.checkSubscriptionStatus();
+                    if (!isStillCurrentPage())
+                        return;
+                    if (!subscriptionResult.ok) {
+                        TAB_ORDER.forEach((id) => {
+                            if (iconSlots[id])
+                                iconSlots[id].style.display = "none";
+                        });
+                        signinRequiredIcon.style.display = "none";
+                        subscriptionRequiredIcon.style.display = "none";
+                        if (failedMessage) {
+                            failedMessage.textContent =
+                                "Safely couldn't connect right now. Please try again in a moment.";
+                        }
+                        if (retryBtn)
+                            retryBtn.style.display = "flex";
+                        analysisFailedIcon.style.display = "flex";
+                        switchTab("analysis-failed");
+                        return;
+                    }
+                    const isSubscribed = isSubscriptionActive(subscriptionResult.status);
                     if (!isSubscribed) {
                         TAB_ORDER.forEach((id) => {
                             if (iconSlots[id])
