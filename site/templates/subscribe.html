@@ -44,11 +44,16 @@
                         Safely
                     </a>
                     <div class="nav-links">
-                        <a href="#what-to-expect">What to expect</a>
+                        <a href="#what-to-expect" data-i18n="nav.what_to_expect">What to expect</a>
                     </div>
                     <div class="nav-right">
+                        <select
+                            data-safely-lang-select
+                            class="lang-select"
+                            aria-label="Choose language"
+                        ></select>
                         <a href="#subscribe" class="btn btn-sun"
-                            >Subscribe
+                            ><span data-i18n="nav.subscribe_btn">Subscribe</span>
                             <svg viewBox="0 0 24 24" fill="none">
                                 <path
                                     d="M5 12h14M13 5l7 7-7 7"
@@ -70,9 +75,14 @@
             </div>
         </div>
         <div class="drawer" id="drawer">
-            <a href="#what-to-expect">What to expect</a>
+            <a href="#what-to-expect" data-i18n="nav.what_to_expect">What to expect</a>
+            <select
+                data-safely-lang-select
+                class="lang-select lang-select-drawer"
+                aria-label="Choose language"
+            ></select>
             <a href="#subscribe" class="btn btn-sun"
-                >Subscribe
+                ><span data-i18n="nav.subscribe_btn">Subscribe</span>
                 <svg viewBox="0 0 24 24" fill="none">
                     <path
                         d="M5 12h14M13 5l7 7-7 7"
@@ -120,12 +130,12 @@
                 </svg>
                 <div class="head">
                     <span class="badge p"
-                        ><span class="bd"></span>Subscribe Safely</span
+                        ><span class="bd"></span><span data-i18n="nl.badge">Subscribe Safely</span></span
                     >
-                    <h2 class="disp">
+                    <h2 class="disp" data-i18n="nl.headline">
                         Scam Awareness,<br />Delivered.
                     </h2>
-                    <p>
+                    <p data-i18n="nl.sub">
                         Real scam case studies and practical prevention
                         tips — for anyone who buys or sells online, not
                         just Safely users.
@@ -140,12 +150,12 @@
                         required
                         autocomplete="email"
                     />
-                    <button type="submit" class="btn btn-dark" id="nl-submit">
+                    <button type="submit" class="btn btn-dark" id="nl-submit" data-i18n="nl.submit">
                         Subscribe
                     </button>
                 </form>
                 <div id="nl-message" class="nl-message" role="status" aria-live="polite"></div>
-                <p class="nl-note">
+                <p class="nl-note" data-i18n="nl.note">
                     Be aware of the different scams stories — no spam, unsubscribe any time.
                 </p>
             </div>
@@ -163,8 +173,8 @@
         <section class="sec nl-expect" id="what-to-expect" style="background: var(--cream-2)">
             <div class="wrap">
                 <div class="head">
-                    <span class="badge o"><span class="bd"></span>What to expect</span>
-                    <h2 class="disp">What you'll actually get.</h2>
+                    <span class="badge o"><span class="bd"></span><span data-i18n="nl.expect_badge">What to expect</span></span>
+                    <h2 class="disp" data-i18n="nl.expect_title">What you'll actually get.</h2>
                 </div>
                 <div class="nl-cards">
                     <div class="nl-card">
@@ -179,8 +189,8 @@
                                 />
                             </svg>
                         </span>
-                        <h3>Real scam breakdowns</h3>
-                        <p>
+                        <h3 data-i18n="nl.card1.title">Real scam breakdowns</h3>
+                        <p data-i18n="nl.card1.body">
                             How specific scams actually worked, what the
                             warning signs were, and what the buyer could have
                             caught earlier.
@@ -204,8 +214,8 @@
                                 />
                             </svg>
                         </span>
-                        <h3>Practical prevention tips</h3>
-                        <p>
+                        <h3 data-i18n="nl.card2.title">Practical prevention tips</h3>
+                        <p data-i18n="nl.card2.body">
                             Genuinely useful things to check before you pay —
                             not vague "be careful online" advice.
                         </p>
@@ -221,8 +231,8 @@
                                 />
                             </svg>
                         </span>
-                        <h3>Product updates</h3>
-                        <p>
+                        <h3 data-i18n="nl.card3.title">Product updates</h3>
+                        <p data-i18n="nl.card3.body">
                             New marketplaces, new detection features, and what
                             we're building next — without it being the whole
                             newsletter.
@@ -251,7 +261,7 @@
                             </span>
                             Safely
                         </a>
-                        <p>
+                        <p data-i18n="footer.tagline">
                             Fraud detection for any online marketplace. Powered
                             by AI, protected by community. Works anywhere you
                             buy and sell online.
@@ -294,41 +304,41 @@
                         </div>
                     </div>
                     <div class="fcol">
-                        <h5>Product</h5>
-                        <a href="/#how">How it works</a
-                        ><a href="/#features">Features</a
-                        ><a href="/#pricing">Pricing</a
-                        ><a href="#m-chrome">Chrome Extension</a
-                        ><a href="#m-api">API</a>
+                        <h5 data-i18n="footer.product">Product</h5>
+                        <a href="/#how" data-i18n="footer.how_it_works">How it works</a
+                        ><a href="/#features" data-i18n="footer.features">Features</a
+                        ><a href="/#pricing" data-i18n="footer.pricing">Pricing</a
+                        ><a href="#m-chrome" data-i18n="footer.chrome_extension">Chrome Extension</a
+                        ><a href="#m-api" data-i18n="footer.api">API</a>
                     </div>
                     <div class="fcol">
-                        <h5>Company</h5>
-                        <a href="#m-about">About</a>
-                        <a href="/subscribe">Subscribe</a>
-                        <a href="#m-careers">Careers</a>
-                        <a href="#m-contact">Contact</a>
+                        <h5 data-i18n="footer.company">Company</h5>
+                        <a href="#m-about" data-i18n="footer.about">About</a>
+                        <a href="/subscribe" data-i18n="footer.subscribe">Subscribe</a>
+                        <a href="#m-careers" data-i18n="footer.careers">Careers</a>
+                        <a href="#m-contact" data-i18n="footer.contact">Contact</a>
                     </div>
                     <div class="fcol">
-                        <h5>Legal</h5>
-                        <a href="#m-privacy">Privacy Policy</a
-                        ><a href="#m-terms">Terms of Service</a
-                        ><a href="#m-cookie">Cookie Policy</a
-                        ><a href="#m-report">Report Abuse</a>
+                        <h5 data-i18n="footer.legal">Legal</h5>
+                        <a href="#m-privacy" data-i18n="footer.privacy_policy">Privacy Policy</a
+                        ><a href="#m-terms" data-i18n="footer.terms">Terms of Service</a
+                        ><a href="#m-cookie" data-i18n="footer.cookie_policy">Cookie Policy</a
+                        ><a href="#m-report" data-i18n="footer.report_abuse">Report Abuse</a>
                     </div>
                     <div class="fcol">
-                        <h5>Compare</h5>
-                        <a href="#m-vs-norton">vs Norton</a
-                        ><a href="#m-vs-manual">vs Manual Research</a
-                        ><a href="#m-vs-reviews">vs Basic Reviews</a
-                        ><a href="#m-vs-extensions">vs Other Extensions</a>
+                        <h5 data-i18n="footer.compare">Compare</h5>
+                        <a href="#m-vs-norton" data-i18n="footer.vs_norton">vs Norton</a
+                        ><a href="#m-vs-manual" data-i18n="footer.vs_manual">vs Manual Research</a
+                        ><a href="#m-vs-reviews" data-i18n="footer.vs_reviews">vs Basic Reviews</a
+                        ><a href="#m-vs-extensions" data-i18n="footer.vs_extensions">vs Other Extensions</a>
                     </div>
                 </div>
                 <div class="fbottom">
-                    <div class="cp">© 2026 Safely. All rights reserved.</div>
+                    <div class="cp" data-i18n="footer.copyright">© 2026 Safely. All rights reserved.</div>
                     <div class="links">
-                        <a href="#m-privacy">Privacy</a
-                        ><a href="#m-terms">Terms</a
-                        ><a href="#m-contact">Contact</a>
+                        <a href="#m-privacy" data-i18n="footer.privacy">Privacy</a
+                        ><a href="#m-terms" data-i18n="footer.terms_short">Terms</a
+                        ><a href="#m-contact" data-i18n="footer.contact_short">Contact</a>
                     </div>
                 </div>
             </div>
@@ -344,21 +354,21 @@
                             <path d="M12 3l8 3v6c0 5-3.4 8-8 9-4.6-1-8-4-8-9V6l8-3z" stroke="#161616" stroke-width="2.2" stroke-linejoin="round" />
                             <path d="M9 12l2 2 4-4" stroke="#161616" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" /></svg
                     ></span>
-                    <h3 id="t-about">About Safely</h3>
+                    <h3 id="t-about" data-i18n="modal.about.title">About Safely</h3>
                     <a class="mclose" href="#_" aria-label="Close dialog"
                         ><svg viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="#161616" stroke-width="2.4" stroke-linecap="round" /></svg
                     ></a>
                 </div>
                 <div class="mbody">
-                    <p>
+                    <p data-i18n="modal.about.body1">
                         Safely started after one too many friends lost money
                         buying second-hand online. We build AI-powered fraud
                         detection that runs quietly in your browser and warns
                         you before money ever leaves your hands.
                     </p>
-                    <p>Our mission is simple: make every online marketplace safe to buy from.</p>
+                    <p data-i18n="modal.about.body2">Our mission is simple: make every online marketplace safe to buy from.</p>
                 </div>
-                <div class="mfoot"><a class="btn btn-sun" href="#_">Got it</a></div>
+                <div class="mfoot"><a class="btn btn-sun" href="#_" data-i18n="modal.got_it">Got it</a></div>
             </div>
         </div>
         <div class="modal-ov" id="m-careers">
@@ -370,24 +380,24 @@
                             <path d="M12 3l8 3v6c0 5-3.4 8-8 9-4.6-1-8-4-8-9V6l8-3z" stroke="#161616" stroke-width="2.2" stroke-linejoin="round" />
                             <path d="M9 12l2 2 4-4" stroke="#161616" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" /></svg
                     ></span>
-                    <h3 id="t-careers">Careers</h3>
+                    <h3 id="t-careers" data-i18n="modal.careers.title">Careers</h3>
                     <a class="mclose" href="#_" aria-label="Close dialog"
                         ><svg viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="#161616" stroke-width="2.4" stroke-linecap="round" /></svg
                     ></a>
                 </div>
                 <div class="mbody">
-                    <p>
+                    <p data-i18n="modal.careers.body1">
                         We're a small, fully-remote team building trust
                         infrastructure for online commerce, and we care a lot
                         about protecting buyers.
                     </p>
-                    <p>
+                    <p data-i18n="modal.careers.body2">
                         There are no open roles listed right now, but we're
                         always happy to hear from thoughtful people — reach out
                         at <b>help@safely.sh</b>.
                     </p>
                 </div>
-                <div class="mfoot"><a class="btn btn-sun" href="#_">Got it</a></div>
+                <div class="mfoot"><a class="btn btn-sun" href="#_" data-i18n="modal.got_it">Got it</a></div>
             </div>
         </div>
         <div class="modal-ov" id="m-contact">
@@ -399,20 +409,20 @@
                             <path d="M12 3l8 3v6c0 5-3.4 8-8 9-4.6-1-8-4-8-9V6l8-3z" stroke="#161616" stroke-width="2.2" stroke-linejoin="round" />
                             <path d="M9 12l2 2 4-4" stroke="#161616" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" /></svg
                     ></span>
-                    <h3 id="t-contact">Contact</h3>
+                    <h3 id="t-contact" data-i18n="modal.contact.title">Contact</h3>
                     <a class="mclose" href="#_" aria-label="Close dialog"
                         ><svg viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="#161616" stroke-width="2.4" stroke-linecap="round" /></svg
                     ></a>
                 </div>
                 <div class="mbody">
-                    <p>
+                    <p data-i18n="modal.contact.body1">
                         Questions, partnership ideas, or a scam you'd like us to
                         look into? Email the team at <b>help@safely.sh</b> and
                         we'll get back to you within one business day.
                     </p>
-                    <p>Pro and Business customers receive priority support.</p>
+                    <p data-i18n="modal.contact.body2">Pro and Business customers receive priority support.</p>
                 </div>
-                <div class="mfoot"><a class="btn btn-sun" href="#_">Got it</a></div>
+                <div class="mfoot"><a class="btn btn-sun" href="#_" data-i18n="modal.got_it">Got it</a></div>
             </div>
         </div>
         <div class="modal-ov" id="m-privacy">
@@ -424,25 +434,25 @@
                             <path d="M12 3l8 3v6c0 5-3.4 8-8 9-4.6-1-8-4-8-9V6l8-3z" stroke="#161616" stroke-width="2.2" stroke-linejoin="round" />
                             <path d="M9 12l2 2 4-4" stroke="#161616" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" /></svg
                     ></span>
-                    <h3 id="t-privacy">Privacy Policy</h3>
+                    <h3 id="t-privacy" data-i18n="modal.privacy.title">Privacy Policy</h3>
                     <a class="mclose" href="#_" aria-label="Close dialog"
                         ><svg viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="#161616" stroke-width="2.4" stroke-linecap="round" /></svg
                     ></a>
                 </div>
                 <div class="mbody">
-                    <p>
+                    <p data-i18n="modal.privacy.body1">
                         We only read listing and seller data from pages you
                         actively open on supported marketplaces. We never track
                         your general browsing history and never sell your data
                         to third parties.
                     </p>
-                    <p>
+                    <p data-i18n="modal.privacy.body2">
                         You can export or delete your account and all associated
                         data at any time. This is a plain-language summary of
                         our full policy.
                     </p>
                 </div>
-                <div class="mfoot"><a class="btn btn-sun" href="#_">Got it</a></div>
+                <div class="mfoot"><a class="btn btn-sun" href="#_" data-i18n="modal.got_it">Got it</a></div>
             </div>
         </div>
         <div class="modal-ov" id="m-terms">
@@ -454,21 +464,21 @@
                             <path d="M12 3l8 3v6c0 5-3.4 8-8 9-4.6-1-8-4-8-9V6l8-3z" stroke="#161616" stroke-width="2.2" stroke-linejoin="round" />
                             <path d="M9 12l2 2 4-4" stroke="#161616" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" /></svg
                     ></span>
-                    <h3 id="t-terms">Terms of Service</h3>
+                    <h3 id="t-terms" data-i18n="modal.terms.title">Terms of Service</h3>
                     <a class="mclose" href="#_" aria-label="Close dialog"
                         ><svg viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="#161616" stroke-width="2.4" stroke-linecap="round" /></svg
                     ></a>
                 </div>
                 <div class="mbody">
-                    <p>
+                    <p data-i18n="modal.terms.body1">
                         By using Safely you agree to use it for lawful buying
                         and selling only. Risk scores are guidance to help you
                         decide — not a guarantee — so always use your own
                         judgement before paying.
                     </p>
-                    <p>The service is provided as-is. This is an overview of the full terms.</p>
+                    <p data-i18n="modal.terms.body2">The service is provided as-is. This is an overview of the full terms.</p>
                 </div>
-                <div class="mfoot"><a class="btn btn-sun" href="#_">Got it</a></div>
+                <div class="mfoot"><a class="btn btn-sun" href="#_" data-i18n="modal.got_it">Got it</a></div>
             </div>
         </div>
         <div class="modal-ov" id="m-cookie">
@@ -480,20 +490,20 @@
                             <path d="M12 3l8 3v6c0 5-3.4 8-8 9-4.6-1-8-4-8-9V6l8-3z" stroke="#161616" stroke-width="2.2" stroke-linejoin="round" />
                             <path d="M9 12l2 2 4-4" stroke="#161616" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" /></svg
                     ></span>
-                    <h3 id="t-cookie">Cookie Policy</h3>
+                    <h3 id="t-cookie" data-i18n="modal.cookie.title">Cookie Policy</h3>
                     <a class="mclose" href="#_" aria-label="Close dialog"
                         ><svg viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="#161616" stroke-width="2.4" stroke-linecap="round" /></svg
                     ></a>
                 </div>
                 <div class="mbody">
-                    <p>
+                    <p data-i18n="modal.cookie.body1">
                         We use a small number of essential cookies to keep you
                         signed in and remember your settings. We do not use
                         advertising or cross-site tracking cookies.
                     </p>
-                    <p>You can clear cookies any time from your browser settings.</p>
+                    <p data-i18n="modal.cookie.body2">You can clear cookies any time from your browser settings.</p>
                 </div>
-                <div class="mfoot"><a class="btn btn-sun" href="#_">Got it</a></div>
+                <div class="mfoot"><a class="btn btn-sun" href="#_" data-i18n="modal.got_it">Got it</a></div>
             </div>
         </div>
         <div class="modal-ov" id="m-report">
@@ -505,20 +515,20 @@
                             <path d="M12 3l8 3v6c0 5-3.4 8-8 9-4.6-1-8-4-8-9V6l8-3z" stroke="#161616" stroke-width="2.2" stroke-linejoin="round" />
                             <path d="M9 12l2 2 4-4" stroke="#161616" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" /></svg
                     ></span>
-                    <h3 id="t-report">Report Abuse</h3>
+                    <h3 id="t-report" data-i18n="modal.report.title">Report Abuse</h3>
                     <a class="mclose" href="#_" aria-label="Close dialog"
                         ><svg viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="#161616" stroke-width="2.4" stroke-linecap="round" /></svg
                     ></a>
                 </div>
                 <div class="mbody">
-                    <p>
+                    <p data-i18n="modal.report.body1">
                         Spotted a scammer, an abusive seller, or misuse of
                         Safely? Report it directly from the extension on the
                         seller's page, or email <b>help@safely.sh</b>.
                     </p>
-                    <p>Reports are reviewed quickly and help protect the whole community.</p>
+                    <p data-i18n="modal.report.body2">Reports are reviewed quickly and help protect the whole community.</p>
                 </div>
-                <div class="mfoot"><a class="btn btn-sun" href="#_">Got it</a></div>
+                <div class="mfoot"><a class="btn btn-sun" href="#_" data-i18n="modal.got_it">Got it</a></div>
             </div>
         </div>
         <div class="modal-ov" id="m-chrome">
@@ -530,20 +540,20 @@
                             <path d="M12 3l8 3v6c0 5-3.4 8-8 9-4.6-1-8-4-8-9V6l8-3z" stroke="#161616" stroke-width="2.2" stroke-linejoin="round" />
                             <path d="M9 12l2 2 4-4" stroke="#161616" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" /></svg
                     ></span>
-                    <h3 id="t-chrome">Chrome Extension</h3>
+                    <h3 id="t-chrome" data-i18n="modal.chrome.title">Chrome Extension</h3>
                     <a class="mclose" href="#_" aria-label="Close dialog"
                         ><svg viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="#161616" stroke-width="2.4" stroke-linecap="round" /></svg
                     ></a>
                 </div>
                 <div class="mbody">
-                    <p>
+                    <p data-i18n="modal.chrome.body1">
                         Safely is a lightweight Chrome extension. Install it in
                         one click and it activates automatically on any
                         supported marketplace — no account needed to start.
                     </p>
-                    <p>Support for Edge and Firefox is on the way.</p>
+                    <p data-i18n="modal.chrome.body2">Support for Edge and Firefox is on the way.</p>
                 </div>
-                <div class="mfoot"><a class="btn btn-sun" href="#_">Got it</a></div>
+                <div class="mfoot"><a class="btn btn-sun" href="#_" data-i18n="modal.got_it">Got it</a></div>
             </div>
         </div>
         <div class="modal-ov" id="m-api">
@@ -555,22 +565,22 @@
                             <path d="M12 3l8 3v6c0 5-3.4 8-8 9-4.6-1-8-4-8-9V6l8-3z" stroke="#161616" stroke-width="2.2" stroke-linejoin="round" />
                             <path d="M9 12l2 2 4-4" stroke="#161616" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" /></svg
                     ></span>
-                    <h3 id="t-api">API</h3>
+                    <h3 id="t-api" data-i18n="modal.api.title">API</h3>
                     <a class="mclose" href="#_" aria-label="Close dialog"
                         ><svg viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="#161616" stroke-width="2.4" stroke-linecap="round" /></svg
                     ></a>
                 </div>
                 <div class="mbody">
-                    <p>
+                    <p data-i18n="modal.api.body1">
                         The Safely API lets Business and Enterprise customers
                         score listings and sellers programmatically, run bulk
                         analyses, and pull fraud reports into their own tools.
                     </p>
-                    <p>
+                    <p data-i18n="modal.api.body2">
                         API access is included on the Enterprise plan.
                     </p>
                 </div>
-                <div class="mfoot"><a class="btn btn-sun" href="#_">Got it</a></div>
+                <div class="mfoot"><a class="btn btn-sun" href="#_" data-i18n="modal.got_it">Got it</a></div>
             </div>
         </div>
         <div class="modal-ov" id="m-vs-norton">
@@ -582,18 +592,18 @@
                             <path d="M12 3l8 3v6c0 5-3.4 8-8 9-4.6-1-8-4-8-9V6l8-3z" stroke="#161616" stroke-width="2.2" stroke-linejoin="round" />
                             <path d="M9 12l2 2 4-4" stroke="#161616" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" /></svg
                     ></span>
-                    <h3 id="t-vs-norton">Safely vs Norton</h3>
+                    <h3 id="t-vs-norton" data-i18n="modal.vs_norton.title">Safely vs Norton</h3>
                     <a class="mclose" href="#_" aria-label="Close dialog"
                         ><svg viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="#161616" stroke-width="2.4" stroke-linecap="round" /></svg
                     ></a>
                 </div>
                 <div class="mbody">
-                    <p>
+                    <p data-i18n="modal.vs_norton.body1">
                         Norton and similar antivirus tools protect your computer
                         — they catch malware, viruses, and malicious files
                         trying to attack your device.
                     </p>
-                    <p>
+                    <p data-i18n="modal.vs_norton.body2">
                         Safely protects you from a different kind of attack
                         entirely: a real person on the other end of a listing,
                         manipulating your judgement into sending money for
@@ -604,7 +614,7 @@
                         from both.
                     </p>
                 </div>
-                <div class="mfoot"><a class="btn btn-sun" href="#_">Got it</a></div>
+                <div class="mfoot"><a class="btn btn-sun" href="#_" data-i18n="modal.got_it">Got it</a></div>
             </div>
         </div>
         <div class="modal-ov" id="m-vs-manual">
@@ -616,13 +626,13 @@
                             <path d="M12 3l8 3v6c0 5-3.4 8-8 9-4.6-1-8-4-8-9V6l8-3z" stroke="#161616" stroke-width="2.2" stroke-linejoin="round" />
                             <path d="M9 12l2 2 4-4" stroke="#161616" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" /></svg
                     ></span>
-                    <h3 id="t-vs-manual">Safely vs manual research</h3>
+                    <h3 id="t-vs-manual" data-i18n="modal.vs_manual.title">Safely vs manual research</h3>
                     <a class="mclose" href="#_" aria-label="Close dialog"
                         ><svg viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="#161616" stroke-width="2.4" stroke-linecap="round" /></svg
                     ></a>
                 </div>
                 <div class="mbody">
-                    <p>
+                    <p data-i18n="modal.vs_manual.body1">
                         Most buyers today check a listing by reading it
                         carefully, searching the seller's name, and going with
                         their gut. That works reasonably well for obvious scams,
@@ -631,13 +641,13 @@
                         or urgency language designed specifically to bypass
                         exactly that kind of gut check.
                     </p>
-                    <p>
+                    <p data-i18n="modal.vs_manual.body2">
                         Safely runs the same checks a careful buyer would want
                         to do, automatically, in about 2 seconds, every time you
                         open a listing.
                     </p>
                 </div>
-                <div class="mfoot"><a class="btn btn-sun" href="#_">Got it</a></div>
+                <div class="mfoot"><a class="btn btn-sun" href="#_" data-i18n="modal.got_it">Got it</a></div>
             </div>
         </div>
         <div class="modal-ov" id="m-vs-reviews">
@@ -649,27 +659,27 @@
                             <path d="M12 3l8 3v6c0 5-3.4 8-8 9-4.6-1-8-4-8-9V6l8-3z" stroke="#161616" stroke-width="2.2" stroke-linejoin="round" />
                             <path d="M9 12l2 2 4-4" stroke="#161616" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" /></svg
                     ></span>
-                    <h3 id="t-vs-reviews">Safely vs basic seller reviews</h3>
+                    <h3 id="t-vs-reviews" data-i18n="modal.vs_reviews.title">Safely vs basic seller reviews</h3>
                     <a class="mclose" href="#_" aria-label="Close dialog"
                         ><svg viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="#161616" stroke-width="2.4" stroke-linecap="round" /></svg
                     ></a>
                 </div>
                 <div class="mbody">
-                    <p>
+                    <p data-i18n="modal.vs_reviews.body1">
                         Star ratings and reviews built into marketplaces are
                         useful, but a brand-new seller account naturally has
                         none yet — which tells you nothing either way, and is
                         exactly the situation most scam listings are posted
                         from.
                     </p>
-                    <p>
+                    <p data-i18n="modal.vs_reviews.body2">
                         Safely doesn't rely on a review history existing at all.
                         It analyzes the listing itself — the language used, the
                         images, the price, the seller's account age — so it can
                         flag risk even on a seller's very first post.
                     </p>
                 </div>
-                <div class="mfoot"><a class="btn btn-sun" href="#_">Got it</a></div>
+                <div class="mfoot"><a class="btn btn-sun" href="#_" data-i18n="modal.got_it">Got it</a></div>
             </div>
         </div>
         <div class="modal-ov" id="m-vs-extensions">
@@ -681,19 +691,19 @@
                             <path d="M12 3l8 3v6c0 5-3.4 8-8 9-4.6-1-8-4-8-9V6l8-3z" stroke="#161616" stroke-width="2.2" stroke-linejoin="round" />
                             <path d="M9 12l2 2 4-4" stroke="#161616" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" /></svg
                     ></span>
-                    <h3 id="t-vs-extensions">Safely vs generic browser extensions</h3>
+                    <h3 id="t-vs-extensions" data-i18n="modal.vs_extensions.title">Safely vs generic browser extensions</h3>
                     <a class="mclose" href="#_" aria-label="Close dialog"
                         ><svg viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="#161616" stroke-width="2.4" stroke-linecap="round" /></svg
                     ></a>
                 </div>
                 <div class="mbody">
-                    <p>
+                    <p data-i18n="modal.vs_extensions.body1">
                         Ad blockers, price trackers, and coupon extensions are
                         built to change or add something to a page — they were
                         never designed to evaluate whether the person selling to
                         you is trustworthy.
                     </p>
-                    <p>
+                    <p data-i18n="modal.vs_extensions.body2">
                         Safely is purpose-built around one question: is this
                         specific listing and seller safe to send money to.
                         That's the only thing it does, which is why it can go
@@ -702,10 +712,11 @@
                         focused tool.
                     </p>
                 </div>
-                <div class="mfoot"><a class="btn btn-sun" href="#_">Got it</a></div>
+                <div class="mfoot"><a class="btn btn-sun" href="#_" data-i18n="modal.got_it">Got it</a></div>
             </div>
         </div>
 
+        <script src="js/i18n.js"></script>
         <script src="js/subscribe.js"></script>
     </body>
 </html>

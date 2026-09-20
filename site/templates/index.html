@@ -65,25 +65,23 @@
                         Safely
                     </a>
                     <div class="nav-links">
-                        <a href="#how">Explore</a>
-                        <a href="#pricing">Pricing</a>
-                        <a href="#faq">FAQ</a>
-                        <a href="/subscribe">Subscribe</a>
+                        <a href="#how" data-i18n="nav.explore">Explore</a>
+                        <a href="#pricing" data-i18n="nav.pricing">Pricing</a>
+                        <a href="#faq" data-i18n="nav.faq">FAQ</a>
+                        <a href="/subscribe" data-i18n="nav.subscribe">Subscribe</a>
                     </div>
                     <div class="nav-right">
-                        <label
-                            class="btn"
-                            for="si-toggle"
-                            tabindex="0"
-                            role="button"
-                            >Log in</label
-                        >
+                        <select
+                            data-safely-lang-select
+                            class="lang-select"
+                            aria-label="Choose language"
+                        ></select>
                         <label
                             class="btn btn-sun"
                             for="si-toggle"
                             tabindex="0"
                             role="button"
-                            >Get started
+                            ><span data-i18n="nav.get_started">Get started</span>
                             <svg viewBox="0 0 24 24" fill="none">
                                 <path
                                     d="M5 12h14M13 5l7 7-7 7"
@@ -106,18 +104,20 @@
         </div>
 
         <div class="drawer" id="drawer">
-            <a href="#how">Explore</a
-            ><a href="#pricing">Pricing</a><a href="#faq">FAQ</a
-            ><a href="/subscribe">Subscribe</a>
-            <label class="btn" for="si-toggle" tabindex="0" role="button"
-                >Log in</label
-            >
+            <a href="#how" data-i18n="nav.explore">Explore</a
+            ><a href="#pricing" data-i18n="nav.pricing">Pricing</a><a href="#faq" data-i18n="nav.faq">FAQ</a
+            ><a href="/subscribe" data-i18n="nav.subscribe">Subscribe</a>
+            <select
+                data-safely-lang-select
+                class="lang-select lang-select-drawer"
+                aria-label="Choose language"
+            ></select>
             <label
                 class="btn btn-sun"
                 for="si-toggle"
                 tabindex="0"
                 role="button"
-                >Get started
+                ><span data-i18n="nav.get_started">Get started</span>
                 <svg viewBox="0 0 24 24" fill="none">
                     <path
                         d="M5 12h14M13 5l7 7-7 7"
@@ -139,7 +139,7 @@
         <section class="hero">
             <div class="wrap">
                 <span class="badge r"
-                    ><span class="bd"></span>Live on Alibaba, TradeWheel, ExportHub &amp; B2Brazil</span
+                    ><span class="bd"></span><span data-i18n="hero.badge">Live on Alibaba, TradeWheel, ExportHub &amp; B2Brazil</span></span
                 >
                 <div class="hero-title">
                     <svg
@@ -181,13 +181,13 @@
                         <circle cx="44" cy="46" r="12" fill="#161616" />
                         <circle cx="100" cy="46" r="12" fill="#161616" />
                     </svg>
-                    <h1 class="disp">
+                    <h1 class="disp" data-i18n="hero.headline">
                         PAY<br>
                         WITH<br>
                         CONFIDENCE
                     </h1>
                 </div>
-                <p class="sub">
+                <p class="sub" data-i18n="hero.sub">
                     Safely checks a supplier's registration, listings, and online presence the moment you open their page.
                 </p>
                 <div class="hero-cta">
@@ -195,7 +195,7 @@
                         href="https://chromewebstore.google.com/detail/safely/bmjdfmkocaaeephfpokmpffhlogmjlnf"
                         class="btn btn-lg btn-sun"
                         target="_blank"
-                        >Add to Chrome — It's Free
+                        ><span data-i18n="hero.add_to_chrome">Add to Chrome — It's Free</span>
                         <svg viewBox="0 0 24 24" fill="none">
                             <path
                                 d="M12 3v12m0 0l-4-4m4 4l4-4M5 21h14"
@@ -207,7 +207,7 @@
                         </svg>
                     </a>
                     <a href="#how" class="btn btn-lg"
-                        >See how it works
+                        ><span data-i18n="hero.see_how">See how it works</span>
                         <svg viewBox="0 0 24 24" fill="none">
                             <path
                                 d="M5 12h14M13 5l7 7-7 7"
@@ -298,8 +298,8 @@
                             />
                         </svg>
                     </span>
-                    <!--Trusted by 2,400+ buyers worldwide-->
-                    One place to verify every supplier before you commit
+                    <!--Trusted by 2,400+ buyers worldwide -->
+                    <span data-i18n="hero.proof">One place to verify every supplier before you commit</span>
                 </div>
             </div>
             <div class="wv down" aria-hidden="true">
@@ -315,7 +315,7 @@
         <!-- ============ LOGOS ============ -->
         <section class="sec" style="padding-block: clamp(40px, 5vw, 60px)">
             <div class="wrap">
-                <p class="lblabel reveal">Live today — verifying suppliers on these platforms</p>
+                <p class="lblabel reveal" data-i18n="logos.label">Live today — verifying suppliers on these platforms</p>
                 <div class="logos reveal d1">
                     <span class="mp"><span class="ic" style="background: #16a085"><svg viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17l-5-5" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" /></svg></span>Alibaba</span>
                     <span class="mp"><span class="ic" style="background: #16a085"><svg viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17l-5-5" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" /></svg></span>TradeWheel</span>
@@ -328,7 +328,7 @@
                                     d="M14 8h2V5h-2a4 4 0 00-4 4v2H9v3h1v6h3v-6h2l1-3h-3V9a1 1 0 011-1z"
                                     fill="#fff"
                                 /></svg></span
-                        >SAP Ariba <span style="font-weight: 700; color: var(--muted); font-size: 12px"> · Soon</span> </span
+                        >SAP Ariba <span style="font-weight: 700; color: var(--muted); font-size: 12px"> · <span data-i18n="logos.soon">Soon</span></span> </span
                     >
                 </div>
             </div>
@@ -347,17 +347,17 @@
             <div class="wrap">
                 <div class="head">
                     <span class="badge p reveal"
-                        ><span class="bd"></span>How it works</span
+                        ><span class="bd"></span><span data-i18n="how.badge">How it works</span></span
                     >
-                    <h2 class="disp gasoek reveal d1">Fraud detection in seconds.</h2>
-                    <p class="reveal d2">
+                    <h2 class="disp gasoek reveal d1" data-i18n="how.title">Fraud detection in seconds.</h2>
+                    <p class="reveal d2" data-i18n="how.sub">
                         Safely activates automatically the moment you open any
                         listing. No manual steps. No separate app.
                     </p>
                 </div>
                 <div class="steps">
                     <div class="step reveal">
-                        <span class="snum">01 · Install</span>
+                        <span class="snum" data-i18n="how.step1.num">01 · Install</span>
                         <span class="sic"
                             ><svg viewBox="0 0 24 24" fill="none">
                                 <path
@@ -368,15 +368,15 @@
                                     stroke-linejoin="round"
                                 /></svg
                         ></span>
-                        <h3>Add to your browser</h3>
-                        <p>
+                        <h3 data-i18n="how.step1.title">Add to your browser</h3>
+                        <p data-i18n="how.step1.body">
                             Install the Safely Chrome extension in one click. It
                             activates automatically on any online marketplace —
                             no configuration, no account needed to start.
                         </p>
                     </div>
                     <div class="step reveal d1">
-                        <span class="snum">02 · Browse</span>
+                        <span class="snum" data-i18n="how.step2.num">02 · Browse</span>
                         <span class="sic"
                             ><svg viewBox="0 0 24 24" fill="none">
                                 <circle
@@ -393,8 +393,8 @@
                                     stroke-linecap="round"
                                 /></svg
                         ></span>
-                        <h3>Open any supplier page</h3>
-                        <p>
+                        <h3 data-i18n="how.step2.title">Open any supplier page</h3>
+                        <p data-i18n="how.step2.body">
                             Visit any listing or company profile on a supported
                             B2B platform. Safely reads the supplier's company
                             data, listing details, and contact information in
@@ -402,7 +402,7 @@
                         </p>
                     </div>
                     <div class="step reveal d2">
-                        <span class="snum">03 · Decide</span>
+                        <span class="snum" data-i18n="how.step3.num">03 · Decide</span>
                         <span class="sic"
                             ><svg viewBox="0 0 24 24" fill="none">
                                 <path
@@ -419,8 +419,8 @@
                                     stroke-linejoin="round"
                                 /></svg
                         ></span>
-                        <h3>See the risk score</h3>
-                        <p>
+                        <h3 data-i18n="how.step3.title">See the risk score</h3>
+                        <p data-i18n="how.step3.body">
                             A risk score from 0–100 appears with a full
                             breakdown of 9 fraud signals, seller history,
                             community fraud reports, and plain-language
@@ -444,12 +444,12 @@
             <div class="wrap">
                 <div class="head">
                     <span class="badge o reveal"
-                        ><span class="bd"></span>Features</span
+                        ><span class="bd"></span><span data-i18n="features.badge">Features</span></span
                     >
                     <h2 class="disp gasoek reveal d1">
-                        Everything you need to
+                        <span data-i18n="features.title_pre">Everything you need to</span>
                         <span class="uline"
-                            >spot a scam<svg
+                            ><span data-i18n="features.title_highlight">spot a scam</span><svg
                                 viewBox="0 0 300 24"
                                 preserveAspectRatio="none"
                             >
@@ -462,7 +462,7 @@
                                 /></svg
                         ></span>
                     </h2>
-                    <p class="reveal d2">
+                    <p class="reveal d2" data-i18n="features.sub">
                         AI analysis, community reports, and real-time seller
                         data — combined into one clear verdict on every listing
                         you open.
@@ -471,10 +471,10 @@
 
                 <div class="f1 reveal">
                     <div class="a">
-                        <h3 class="colh disp">
+                        <h3 class="colh disp" data-i18n="features.f1.title">
                             AI-powered supplier due diligence
                         </h3>
-                        <p class="colp">
+                        <p class="colp" data-i18n="features.f1.body">
                             Every supplier is checked across 15+ distinct
                             signals using Claude AI. From company registration
                             consistency and listing completeness to social
@@ -493,7 +493,7 @@
                                             stroke-linecap="round"
                                             stroke-linejoin="round"
                                         /></svg></span
-                                >Company registration consistency
+                                ><span data-i18n="features.sig1">Company registration consistency</span>
                             </li>
                             <li>
                                 <span class="ck"
@@ -505,7 +505,7 @@
                                             stroke-linecap="round"
                                             stroke-linejoin="round"
                                         /></svg></span
-                                >Company profile completeness
+                                ><span data-i18n="features.sig2">Company profile completeness</span>
                             </li>
                             <li>
                                 <span class="ck"
@@ -517,7 +517,7 @@
                                             stroke-linecap="round"
                                             stroke-linejoin="round"
                                         /></svg></span
-                                >Listing completeness (MOQ, pricing, port &amp; more)
+                                ><span data-i18n="features.sig3">Listing completeness (MOQ, pricing, port &amp; more)</span>
                             </li>
                             <li>
                                 <span class="ck"
@@ -529,7 +529,7 @@
                                             stroke-linecap="round"
                                             stroke-linejoin="round"
                                         /></svg></span
-                                >Platform verification badge check
+                                ><span data-i18n="features.sig4">Platform verification badge check</span>
                             </li>
                             <li>
                                 <span class="ck"
@@ -541,7 +541,7 @@
                                             stroke-linecap="round"
                                             stroke-linejoin="round"
                                         /></svg></span
-                                >Social presence cross-check
+                                ><span data-i18n="features.sig5">Social presence cross-check</span>
                             </li>
                             <li>
                                 <span class="ck"
@@ -553,7 +553,7 @@
                                             stroke-linecap="round"
                                             stroke-linejoin="round"
                                         /></svg></span
-                                >Domain &amp; lookalike-site detection
+                                ><span data-i18n="features.sig6">Domain &amp; lookalike-site detection</span>
                             </li>
                             <li>
                                 <span class="ck"
@@ -565,7 +565,7 @@
                                             stroke-linecap="round"
                                             stroke-linejoin="round"
                                         /></svg></span
-                                >Duplicate &amp; templated listing detection
+                                ><span data-i18n="features.sig7">Duplicate &amp; templated listing detection</span>
                             </li>
                             <li>
                                 <span class="ck"
@@ -577,7 +577,7 @@
                                             stroke-linecap="round"
                                             stroke-linejoin="round"
                                         /></svg></span
-                                >Prior fraud report history
+                                ><span data-i18n="features.sig8">Prior fraud report history</span>
                             </li>
                         </ul>
                     </div>
@@ -771,8 +771,8 @@
                                             stroke-linecap="round"
                                             stroke-linejoin="round"
                                         /></svg></span
-                                >Fake listing reported<span class="vt"
-                                    >2h ago</span
+                                ><span data-i18n="mock.fake_listing">Fake listing reported</span><span class="vt"
+                                    data-i18n="mock.hours_ago">2h ago</span
                                 >
                             </div>
                             <div class="vchip">
@@ -787,8 +787,8 @@
                                             stroke-linecap="round"
                                             stroke-linejoin="round"
                                         /></svg></span
-                                >Advance payment scam<span class="vt"
-                                    >1d ago</span
+                                ><span data-i18n="mock.advance_scam">Advance payment scam</span><span class="vt"
+                                    data-i18n="mock.day_ago">1d ago</span
                                 >
                             </div>
                         </div>
@@ -803,8 +803,8 @@
                                         stroke-linejoin="round"
                                     /></svg
                             ></span>
-                            <h3>Community fraud reports</h3>
-                            <p>
+                            <h3 data-i18n="features.bento1.title">Community fraud reports</h3>
+                            <p data-i18n="features.bento1.body">
                                 When a buyer gets scammed, they report it
                                 directly from the extension — instantly
                                 protecting everyone who views that same seller
@@ -851,9 +851,9 @@
                                 <div>
                                     <div class="nm">unknown_seller_92</div>
                                     <div class="vmeta">
-                                        <span>Age 3mo</span
-                                        ><span class="warn">2 reports</span
-                                        ><span>Unverified</span>
+                                        <span data-i18n="mock.age_3mo">Age 3mo</span
+                                        ><span class="warn" data-i18n="mock.two_reports">2 reports</span
+                                        ><span data-i18n="mock.unverified">Unverified</span>
                                     </div>
                                 </div>
                             </div>
@@ -882,8 +882,8 @@
                                         stroke-linejoin="round"
                                     /></svg
                             ></span>
-                            <h3>Seller history tracking</h3>
-                            <p>
+                            <h3 data-i18n="features.bento2.title">Seller history tracking</h3>
+                            <p data-i18n="features.bento2.body">
                                 Safely builds a profile on every seller —
                                 account age, location, verification status, last
                                 active time, and fraud report count. Know
@@ -905,7 +905,7 @@
                                             stroke-linejoin="round"
                                         /></svg></span
                                 ><span class="u">olx.com.pk/item/iphone…</span
-                                ><span class="on">Active</span>
+                                ><span class="on" data-i18n="mock.active">Active</span>
                             </div>
                         </div>
                         <div class="btxt">
@@ -925,8 +925,8 @@
                                         stroke-linejoin="round"
                                     /></svg
                             ></span>
-                            <h3>Automatic, invisible protection</h3>
-                            <p>
+                            <h3 data-i18n="features.bento3.title">Automatic, invisible protection</h3>
+                            <p data-i18n="features.bento3.body">
                                 No extra steps, no separate app, no account
                                 needed to start. Safely sits quietly in your
                                 browser and activates the moment you open any
@@ -957,8 +957,8 @@
                                         stroke-width="2"
                                     /></svg
                             ></span>
-                            <h3>Expanding across B2B platforms</h3>
-                            <p>
+                            <h3 data-i18n="features.bento4.title">Expanding across B2B platforms</h3>
+                            <p data-i18n="features.bento4.body">
                                 Live today on Alibaba, TradeWheel, ExportHub,
                                 and B2Brazil. SAP Ariba is next — one extension
                                 will eventually cover every major B2B sourcing
@@ -982,25 +982,25 @@
             </div>
             <div class="wrap">
                 <div class="head reveal">
-                    <span class="badge p"><span class="bd"></span>By the numbers</span>
-                    <h2 class="disp gasoek">Built for speed, not friction.</h2>
+                    <span class="badge p"><span class="bd"></span><span data-i18n="stats.badge">By the numbers</span></span>
+                    <h2 class="disp gasoek" data-i18n="stats.title">Built for speed, not friction.</h2>
                 </div>
                 <div class="statbar reveal">
                     <div class="it">
                         <div class="num disp">15+</div>
-                        <div class="cap">Signals checked per supplier</div>
+                        <div class="cap" data-i18n="stats.cap1">Signals checked per supplier</div>
                     </div>
                     <div class="it">
                         <div class="num disp">2s</div>
-                        <div class="cap">Average analysis time</div>
+                        <div class="cap" data-i18n="stats.cap2">Average analysis time</div>
                     </div>
                     <div class="it">
                         <div class="num disp">0%</div>
-                        <div class="cap">Setup required</div>
+                        <div class="cap" data-i18n="stats.cap3">Setup required</div>
                     </div>
                     <div class="it">
                         <div class="num disp">100%</div>
-                        <div class="cap">Private — never sold</div>
+                        <div class="cap" data-i18n="stats.cap4">Private — never sold</div>
                     </div>
                 </div>
             </div>
@@ -1020,9 +1020,9 @@
                  </div>
                  <div class="wrap">
                 <div class="head reveal">
-                    <span class="badge p">Pricing</span>
-                    <h2 class="gasoek">Pick your shield</h2>
-                    <p>
+                    <span class="badge p" data-i18n="pricing.badge">Pricing</span>
+                    <h2 class="gasoek" data-i18n="pricing.title">Pick your shield</h2>
+                    <p data-i18n="pricing.sub">
                         No free tier. Every plan starts with a free trial — no
                         credit card required.
                     </p>
@@ -1032,8 +1032,8 @@
                 <div class="ptoggle-wrap reveal d1">
                     <div class="ptoggle">
                         <div class="ptoggle-thumb"></div>
-                        <button class="ptoggle-btn active" data-bill="mo">Monthly</button>
-                        <button class="ptoggle-btn" data-bill="yr">Yearly <span class="psave-badge">Save ~20%</span></button>
+                        <button class="ptoggle-btn active" data-bill="mo" data-i18n="pricing.monthly">Monthly</button>
+                        <button class="ptoggle-btn" data-bill="yr"><span data-i18n="pricing.yearly">Yearly</span> <span class="psave-badge" data-i18n="pricing.save">Save ~20%</span></button>
                     </div>
                 </div>
 
@@ -1041,9 +1041,9 @@
                 <div class="price-grid reveal d2">
                     <!-- TEAM -->
                     <div class="pcard feat">
-                        <span class="pbadge">Most popular</span>
-                        <div class="pname">Team</div>
-                        <div class="pfor">
+                        <span class="pbadge" data-i18n="pricing.most_popular">Most popular</span>
+                        <div class="pname" data-i18n="pricing.team.name">Team</div>
+                        <div class="pfor" data-i18n="pricing.team.for">
                             For procurement teams verifying vendors and suppliers
                         </div>
                         <div class="pprice">
@@ -1055,40 +1055,40 @@
                             data-mo=""
                             data-yr="$160/mo, billed annually"
                         ></div>
-                        <div class="p-trial">7-day free trial</div>
-                        <label for="si-toggle" class="btn btn-dark" tabindex="0" role="button">Start free trial</label>
-                        <a href="https://cal.com/ibilalkayy/safely-session" class="btn" target="_blank" style="margin-top: 10px; width: 100%">Book a session</a>
+                        <div class="p-trial" data-i18n="pricing.trial">7-day free trial</div>
+                        <label for="si-toggle" class="btn btn-dark" tabindex="0" role="button" data-i18n="pricing.start_trial">Start free trial</label>
+                        <a href="https://cal.com/ibilalkayy/safely-session" class="btn" target="_blank" style="margin-top: 10px; width: 100%" data-i18n="pricing.book_session">Book a session</a>
                         <ul class="plist">
                             <li>
                                 <span class="ck"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5" /></svg></span>
-                                Unlimited scans on Alibaba, TradeWheel, ExportHub &amp; B2Brazil
+                                <span data-i18n="pricing.team.li1">Unlimited scans on Alibaba, TradeWheel, ExportHub &amp; B2Brazil</span>
                             </li>
                             <li>
                                 <span class="ck"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5" /></svg></span>
-                                Full risk score &amp; 15+ signal breakdown
+                                <span data-i18n="pricing.team.li2">Full risk score &amp; 15+ signal breakdown</span>
                             </li>
                             <li>
                                 <span class="ck"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5" /></svg></span>
-                                Company registration &amp; listing completeness checks
+                                <span data-i18n="pricing.team.li3">Company registration &amp; listing completeness checks</span>
                             </li>
                             <li>
                                 <span class="ck"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5" /></svg></span>
-                                Social presence cross-check
+                                <span data-i18n="pricing.team.li4">Social presence cross-check</span>
                             </li>
                             <li>
                                 <span class="ck"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5" /></svg></span>
-                                Downloadable PDF due-diligence reports
+                                <span data-i18n="pricing.team.li5">Downloadable PDF due-diligence reports</span>
                             </li>
                             <li>
                                 <span class="ck"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5" /></svg></span>
-                                Community fraud report network
+                                <span data-i18n="pricing.team.li6">Community fraud report network</span>
                             </li>
                         </ul>
                     </div>
                     <!-- ENTERPRISE -->
                     <div class="pcard">
-                        <div class="pname">Enterprise</div>
-                        <div class="pfor">
+                        <div class="pname" data-i18n="pricing.ent.name">Enterprise</div>
+                        <div class="pfor" data-i18n="pricing.ent.for">
                             For high-volume procurement operations
                         </div>
                         <div class="pprice">
@@ -1100,25 +1100,25 @@
                             data-mo=""
                             data-yr="$400/mo, billed annually"
                         ></div>
-                        <div class="p-trial">7-day free trial</div>
-                        <label for="si-toggle" class="btn btn-dark" tabindex="0" role="button">Start free trial</label>
-                        <a href="https://cal.com/ibilalkayy/safely-session" class="btn" target="_blank" style="margin-top: 10px; width: 100%">Book a session</a>
+                        <div class="p-trial" data-i18n="pricing.trial">7-day free trial</div>
+                        <label for="si-toggle" class="btn btn-dark" tabindex="0" role="button" data-i18n="pricing.start_trial">Start free trial</label>
+                        <a href="https://cal.com/ibilalkayy/safely-session" class="btn" target="_blank" style="margin-top: 10px; width: 100%" data-i18n="pricing.book_session">Book a session</a>
                         <ul class="plist">
                             <li>
                                 <span class="ck"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5" /></svg></span>
-                                Everything in Team
+                                <span data-i18n="pricing.ent.li1">Everything in Team</span>
                             </li>
                             <li>
                                 <span class="ck"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5" /></svg></span>
-                                Priority support &amp; faster response times
+                                <span data-i18n="pricing.ent.li2">Priority support &amp; faster response times</span>
                             </li>
                             <li>
                                 <span class="ck"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5" /></svg></span>
-                                Early access to new platforms &amp; signals
+                                <span data-i18n="pricing.ent.li3">Early access to new platforms &amp; signals</span>
                             </li>
                             <li>
                                 <span class="ck"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5" /></svg></span>
-                                Direct line to the team for feature requests
+                                <span data-i18n="pricing.ent.li4">Direct line to the team for feature requests</span>
                             </li>
                         </ul>
                     </div>
@@ -1126,12 +1126,12 @@
 
                 <!-- Comparison table -->
                 <div class="comp-wrap reveal d3">
-                    <h3 class="gasoek">Side-by-side comparison</h3>
+                    <h3 class="gasoek" data-i18n="pricing.comp.title">Side-by-side comparison</h3>
                     <div class="comp-scroll">
                         <table class="comp-table">
                             <thead>
                                 <tr>
-                                    <th style="width: 50%">Feature</th>
+                                    <th style="width: 50%" data-i18n="pricing.comp.feature">Feature</th>
                                     <th class="feat-col">
                                         Team<br /><span style="font-family: var(--body); font-weight: 600; font-size: 12px; color: #1d3550;">$200/mo</span>
                                     </th>
@@ -1141,48 +1141,48 @@
                                 </tr>
                             </thead>
                             <tbody>
-                                <tr class="comp-cat"><td colspan="3">Core Access</td></tr>
+                                <tr class="comp-cat"><td colspan="3" data-i18n="pricing.comp.core_access">Core Access</td></tr>
                                 <tr>
-                                    <td>Supplier scans (Alibaba, TradeWheel, ExportHub, B2Brazil)</td>
-                                    <td><span class="tval">Unlimited</span></td>
-                                    <td><span class="tval">Unlimited</span></td>
+                                    <td data-i18n="pricing.comp.row1">Supplier scans (Alibaba, TradeWheel, ExportHub, B2Brazil)</td>
+                                    <td><span class="tval" data-i18n="pricing.comp.unlimited">Unlimited</span></td>
+                                    <td><span class="tval" data-i18n="pricing.comp.unlimited">Unlimited</span></td>
                                 </tr>
                                 <tr>
-                                    <td>Risk score &amp; 15+ signal breakdown</td>
-                                    <td><span class="tck"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5" /></svg></span></td>
-                                    <td><span class="tck"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5" /></svg></span></td>
-                                </tr>
-                                <tr class="comp-cat"><td colspan="3">Due Diligence</td></tr>
-                                <tr>
-                                    <td>Company registration &amp; listing completeness checks</td>
+                                    <td data-i18n="pricing.comp.row2">Risk score &amp; 15+ signal breakdown</td>
                                     <td><span class="tck"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5" /></svg></span></td>
                                     <td><span class="tck"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5" /></svg></span></td>
                                 </tr>
+                                <tr class="comp-cat"><td colspan="3" data-i18n="pricing.comp.due_diligence">Due Diligence</td></tr>
                                 <tr>
-                                    <td>Social presence cross-check</td>
+                                    <td data-i18n="pricing.comp.row3">Company registration &amp; listing completeness checks</td>
                                     <td><span class="tck"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5" /></svg></span></td>
                                     <td><span class="tck"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5" /></svg></span></td>
                                 </tr>
                                 <tr>
-                                    <td>Downloadable PDF report</td>
+                                    <td data-i18n="pricing.comp.row4">Social presence cross-check</td>
                                     <td><span class="tck"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5" /></svg></span></td>
                                     <td><span class="tck"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5" /></svg></span></td>
                                 </tr>
                                 <tr>
-                                    <td>Community fraud report network</td>
+                                    <td data-i18n="pricing.comp.row5">Downloadable PDF report</td>
                                     <td><span class="tck"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5" /></svg></span></td>
                                     <td><span class="tck"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5" /></svg></span></td>
                                 </tr>
-                                <tr class="comp-cat"><td colspan="3">Support</td></tr>
                                 <tr>
-                                    <td>Support response</td>
-                                    <td><span class="tval">48 hr</span></td>
-                                    <td><span class="tval">24 hr</span></td>
+                                    <td data-i18n="pricing.comp.row6">Community fraud report network</td>
+                                    <td><span class="tck"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5" /></svg></span></td>
+                                    <td><span class="tck"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5" /></svg></span></td>
+                                </tr>
+                                <tr class="comp-cat"><td colspan="3" data-i18n="pricing.comp.support">Support</td></tr>
+                                <tr>
+                                    <td data-i18n="pricing.comp.row7">Support response</td>
+                                    <td><span class="tval" data-i18n="pricing.comp.support_48">48 hr</span></td>
+                                    <td><span class="tval" data-i18n="pricing.comp.support_24">24 hr</span></td>
                                 </tr>
                                 <tr>
-                                    <td>Free trial</td>
-                                    <td><span class="tval">7 days</span></td>
-                                    <td><span class="tval">7 days</span></td>
+                                    <td data-i18n="pricing.comp.row8">Free trial</td>
+                                    <td><span class="tval" data-i18n="pricing.comp.trial_days">7 days</span></td>
+                                    <td><span class="tval" data-i18n="pricing.comp.trial_days">7 days</span></td>
                                 </tr>
                             </tbody>
                         </table>
@@ -1451,14 +1451,14 @@
             <div class="wrap">
                 <div class="head">
                     <span class="badge p reveal"
-                        ><span class="bd"></span>FAQ</span
+                        ><span class="bd"></span><span data-i18n="faq.badge">FAQ</span></span
                     >
-                    <h2 class="disp gasoek reveal d1">Common questions.</h2>
+                    <h2 class="disp gasoek reveal d1" data-i18n="faq.title">Common questions.</h2>
                 </div>
                 <div class="faq reveal d1">
                     <details class="acc" name="faq" open>
                         <summary>
-                            Do you offer a free trial?<span class="ic"
+                            <span data-i18n="faq.q1.q">Do you offer a free trial?</span><span class="ic"
                                 ><svg viewBox="0 0 24 24" fill="none">
                                     <path
                                         d="M12 5v14M5 12h14"
@@ -1469,7 +1469,7 @@
                             ></span>
                         </summary>
                         <div class="ans">
-                            <p>
+                            <p data-i18n="faq.q1.a">
                                 Yes — both Team and Enterprise start with a 7-day free trial and no credit card required,
                                 so you can test full real-world vendor and seller verification before paying anything.
                             </p>
@@ -1477,7 +1477,7 @@
                     </details>
                     <details class="acc" name="faq">
                         <summary>
-                            Which B2B platforms does Safely support?<span
+                            <span data-i18n="faq.q2.q">Which B2B platforms does Safely support?</span><span
                                 class="ic"
                                 ><svg viewBox="0 0 24 24" fill="none">
                                     <path
@@ -1489,7 +1489,7 @@
                             ></span>
                         </summary>
                         <div class="ans">
-                            <p>
+                            <p data-i18n="faq.q2.a">
                                 Safely is fully live on Alibaba, TradeWheel,
                                 ExportHub, and B2Brazil. SAP Ariba is next on
                                 our roadmap. See the next question for exactly
@@ -1499,7 +1499,7 @@
                     </details>
                     <details class="acc" name="faq">
                         <summary>
-                            How does the AI analyze listings?<span class="ic"
+                            <span data-i18n="faq.q3.q">How does the AI analyze listings?</span><span class="ic"
                                 ><svg viewBox="0 0 24 24" fill="none">
                                     <path
                                         d="M12 5v14M5 12h14"
@@ -1510,7 +1510,7 @@
                             ></span>
                         </summary>
                         <div class="ans">
-                            <p>
+                            <p data-i18n="faq.q3.a">
                                 When you open a supplier page, Safely reads the
                                 listing details, company profile, registration
                                 information, and contact data from the page.
@@ -1524,7 +1524,7 @@
                     </details>
                     <details class="acc" name="faq">
                         <summary>
-                            Who sees my fraud reports?<span class="ic"
+                            <span data-i18n="faq.q4.q">Who sees my fraud reports?</span><span class="ic"
                                 ><svg viewBox="0 0 24 24" fill="none">
                                     <path
                                         d="M12 5v14M5 12h14"
@@ -1535,7 +1535,7 @@
                             ></span>
                         </summary>
                         <div class="ans">
-                            <p>
+                            <p data-i18n="faq.q4.a">
                                 Fraud reports are shared across the Safely
                                 community — they are visible to any user who
                                 views the same seller. Your identity is never
@@ -1546,7 +1546,7 @@
                     </details>
                     <details class="acc" name="faq">
                         <summary>
-                            Does Safely slow my browser down?<span class="ic"
+                            <span data-i18n="faq.q5.q">Does Safely slow my browser down?</span><span class="ic"
                                 ><svg viewBox="0 0 24 24" fill="none">
                                     <path
                                         d="M12 5v14M5 12h14"
@@ -1557,7 +1557,7 @@
                             ></span>
                         </summary>
                         <div class="ans">
-                            <p>
+                            <p data-i18n="faq.q5.a">
                                 No. The extension only activates on supported
                                 marketplace pages and runs analysis in the
                                 background without blocking page load. Analysis
@@ -1568,7 +1568,7 @@
                     </details>
                     <details class="acc" name="faq">
                         <summary>
-                            Is my browsing data private?<span class="ic"
+                            <span data-i18n="faq.q6.q">Is my browsing data private?</span><span class="ic"
                                 ><svg viewBox="0 0 24 24" fill="none">
                                     <path
                                         d="M12 5v14M5 12h14"
@@ -1579,7 +1579,7 @@
                             ></span>
                         </summary>
                         <div class="ans">
-                            <p>
+                            <p data-i18n="faq.q6.a">
                                 We only collect listing and seller data from
                                 pages you actively visit on supported
                                 marketplaces. We never track your browsing
@@ -1592,7 +1592,7 @@
                     </details>
                     <details class="acc" name="faq">
                         <summary>
-                            Which specific pages does Safely actually scan?<span
+                            <span data-i18n="faq.q7.q">Which specific pages does Safely actually scan?</span><span
                                 class="ic"
                                 ><svg viewBox="0 0 24 24" fill="none">
                                     <path
@@ -1604,7 +1604,7 @@
                             ></span>
                         </summary>
                         <div class="ans">
-                            <p>
+                            <p data-i18n="faq.q7.a">
                                 Right now, Safely actively reads supplier and
                                 listing pages on Alibaba, TradeWheel, ExportHub,
                                 and B2Brazil. Safely only activates on
@@ -1634,12 +1634,12 @@
                     <span class="deco d1" aria-hidden="true">✦</span
                     ><span class="deco d2" aria-hidden="true">✦</span>
                     <span class="badge o" style="margin-bottom: 6px"
-                        ><span class="bd"></span>Get protected today</span
+                        ><span class="bd"></span><span data-i18n="cta.badge">Get protected today</span></span
                     >
-                    <h2 class="disp gasoek" style="margin-top: 18px;">
+                    <h2 class="disp gasoek" style="margin-top: 18px;" data-i18n="cta.title">
                         Stop getting scammed online.
                     </h2>
-                    <p>
+                    <p data-i18n="cta.sub">
                         Use Safely for security before sending any money.
                         It just takes 10 seconds to install and works automatically after that.
                     </p>
@@ -1648,7 +1648,7 @@
                             href="https://chromewebstore.google.com/detail/safely/bmjdfmkocaaeephfpokmpffhlogmjlnf"
                             class="btn btn-lg btn-sun"
                             target="_blank"
-                            >Add to Chrome — Free
+                            ><span data-i18n="cta.add_to_chrome">Add to Chrome — Free</span>
                             <svg viewBox="0 0 24 24" fill="none">
                                 <path
                                     d="M12 3v12m0 0l-4-4m4 4l4-4M5 21h14"
@@ -1660,7 +1660,7 @@
                             </svg>
                         </a>
                         <a href="#pricing" class="btn btn-lg"
-                            >View pricing
+                            ><span data-i18n="cta.view_pricing">View pricing</span>
                             <svg viewBox="0 0 24 24" fill="none">
                                 <path
                                     d="M5 12h14M13 5l7 7-7 7"
@@ -1687,7 +1687,7 @@
                             </span>
                             Safely
                         </a>
-                        <p>
+                        <p data-i18n="footer.tagline">
                             Fraud detection for any online marketplace. Powered
                             by AI, protected by community. Works anywhere you
                             buy and sell online.
@@ -1730,40 +1730,40 @@
                         </div>
                     </div>
                     <div class="fcol">
-                        <h5>Product</h5>
-                        <a href="#how">How it works</a
-                        ><a href="#features">Features</a
-                        ><a href="#pricing">Pricing</a
-                        ><a href="#m-chrome">Chrome Extension</a
-                        ><a href="#m-api">API</a>
+                        <h5 data-i18n="footer.product">Product</h5>
+                        <a href="#how" data-i18n="footer.how_it_works">How it works</a
+                        ><a href="#features" data-i18n="footer.features">Features</a
+                        ><a href="#pricing" data-i18n="footer.pricing">Pricing</a
+                        ><a href="#m-chrome" data-i18n="footer.chrome_extension">Chrome Extension</a
+                        ><a href="#m-api" data-i18n="footer.api">API</a>
                     </div>
                     <div class="fcol">
-                        <h5>Company</h5>
-                        <a href="#m-about">About</a><a href="/subscribe">Subscribe</a
-                        ><a href="#m-careers">Careers</a
-                        ><a href="#m-contact">Contact</a>
+                        <h5 data-i18n="footer.company">Company</h5>
+                        <a href="#m-about" data-i18n="footer.about">About</a><a href="/subscribe" data-i18n="footer.subscribe">Subscribe</a
+                        ><a href="#m-careers" data-i18n="footer.careers">Careers</a
+                        ><a href="#m-contact" data-i18n="footer.contact">Contact</a>
                     </div>
                     <div class="fcol">
-                        <h5>Legal</h5>
-                        <a href="#m-privacy">Privacy Policy</a
-                        ><a href="#m-terms">Terms of Service</a
-                        ><a href="#m-cookie">Cookie Policy</a
-                        ><a href="#m-report">Report Abuse</a>
+                        <h5 data-i18n="footer.legal">Legal</h5>
+                        <a href="#m-privacy" data-i18n="footer.privacy_policy">Privacy Policy</a
+                        ><a href="#m-terms" data-i18n="footer.terms">Terms of Service</a
+                        ><a href="#m-cookie" data-i18n="footer.cookie_policy">Cookie Policy</a
+                        ><a href="#m-report" data-i18n="footer.report_abuse">Report Abuse</a>
                     </div>
                     <div class="fcol">
-                        <h5>Compare</h5>
-                        <a href="#m-vs-norton">vs Norton</a
-                        ><a href="#m-vs-manual">vs Manual Research</a
-                        ><a href="#m-vs-reviews">vs Basic Reviews</a
-                        ><a href="#m-vs-extensions">vs Other Extensions</a>
+                        <h5 data-i18n="footer.compare">Compare</h5>
+                        <a href="#m-vs-norton" data-i18n="footer.vs_norton">vs Norton</a
+                        ><a href="#m-vs-manual" data-i18n="footer.vs_manual">vs Manual Research</a
+                        ><a href="#m-vs-reviews" data-i18n="footer.vs_reviews">vs Basic Reviews</a
+                        ><a href="#m-vs-extensions" data-i18n="footer.vs_extensions">vs Other Extensions</a>
                     </div>
                 </div>
                 <div class="fbottom">
-                    <div class="cp">© 2026 Safely. All rights reserved.</div>
+                    <div class="cp" data-i18n="footer.copyright">© 2026 Safely. All rights reserved.</div>
                     <div class="links">
-                        <a href="#m-privacy">Privacy</a
-                        ><a href="#m-terms">Terms</a
-                        ><a href="#m-contact">Contact</a>
+                        <a href="#m-privacy" data-i18n="footer.privacy">Privacy</a
+                        ><a href="#m-terms" data-i18n="footer.terms_short">Terms</a
+                        ><a href="#m-contact" data-i18n="footer.contact_short">Contact</a>
                     </div>
                 </div>
             </div>
@@ -1821,7 +1821,7 @@
                                 stroke-linejoin="round"
                             /></svg
                     ></span>
-                    <h3 id="t-about">About Safely</h3>
+                    <h3 id="t-about" data-i18n="modal.about.title">About Safely</h3>
                     <a class="mclose" href="#_" aria-label="Close dialog"
                         ><svg viewBox="0 0 24 24" fill="none">
                             <path
@@ -1833,19 +1833,19 @@
                     ></a>
                 </div>
                 <div class="mbody">
-                    <p>
+                    <p data-i18n="modal.about.body1">
                         Safely started after one too many friends lost money
                         buying second-hand online. We build AI-powered fraud
                         detection that runs quietly in your browser and warns
                         you before money ever leaves your hands.
                     </p>
-                    <p>
+                    <p data-i18n="modal.about.body2">
                         Our mission is simple: make every online marketplace
                         safe to buy from.
                     </p>
                 </div>
                 <div class="mfoot">
-                    <a class="btn btn-sun" href="#_">Got it</a>
+                    <a class="btn btn-sun" href="#_" data-i18n="modal.got_it">Got it</a>
                 </div>
             </div>
         </div>
@@ -1875,7 +1875,7 @@
                                 stroke-linejoin="round"
                             /></svg
                     ></span>
-                    <h3 id="t-careers">Careers</h3>
+                    <h3 id="t-careers" data-i18n="modal.careers.title">Careers</h3>
                     <a class="mclose" href="#_" aria-label="Close dialog"
                         ><svg viewBox="0 0 24 24" fill="none">
                             <path
@@ -1887,19 +1887,19 @@
                     ></a>
                 </div>
                 <div class="mbody">
-                    <p>
+                    <p data-i18n="modal.careers.body1">
                         We're a small, fully-remote team building trust
                         infrastructure for online commerce, and we care a lot
                         about protecting buyers.
                     </p>
-                    <p>
+                    <p data-i18n="modal.careers.body2">
                         There are no open roles listed right now, but we're
                         always happy to hear from thoughtful people — reach out
                         at <b>help@safely.sh</b>.
                     </p>
                 </div>
                 <div class="mfoot">
-                    <a class="btn btn-sun" href="#_">Got it</a>
+                    <a class="btn btn-sun" href="#_" data-i18n="modal.got_it">Got it</a>
                 </div>
             </div>
         </div>
@@ -1929,7 +1929,7 @@
                                 stroke-linejoin="round"
                             /></svg
                     ></span>
-                    <h3 id="t-contact">Contact</h3>
+                    <h3 id="t-contact" data-i18n="modal.contact.title">Contact</h3>
                     <a class="mclose" href="#_" aria-label="Close dialog"
                         ><svg viewBox="0 0 24 24" fill="none">
                             <path
@@ -1941,15 +1941,15 @@
                     ></a>
                 </div>
                 <div class="mbody">
-                    <p>
+                    <p data-i18n="modal.contact.body1">
                         Questions, partnership ideas, or a scam you'd like us to
                         look into? Email the team at <b>help@safely.sh</b> and
                         we'll get back to you within one business day.
                     </p>
-                    <p>Pro and Business customers receive priority support.</p>
+                    <p data-i18n="modal.contact.body2">Pro and Business customers receive priority support.</p>
                 </div>
                 <div class="mfoot">
-                    <a class="btn btn-sun" href="#_">Got it</a>
+                    <a class="btn btn-sun" href="#_" data-i18n="modal.got_it">Got it</a>
                 </div>
             </div>
         </div>
@@ -1979,7 +1979,7 @@
                                 stroke-linejoin="round"
                             /></svg
                     ></span>
-                    <h3 id="t-privacy">Privacy Policy</h3>
+                    <h3 id="t-privacy" data-i18n="modal.privacy.title">Privacy Policy</h3>
                     <a class="mclose" href="#_" aria-label="Close dialog"
                         ><svg viewBox="0 0 24 24" fill="none">
                             <path
@@ -1991,20 +1991,20 @@
                     ></a>
                 </div>
                 <div class="mbody">
-                    <p>
+                    <p data-i18n="modal.privacy.body1">
                         We only read listing and seller data from pages you
                         actively open on supported marketplaces. We never track
                         your general browsing history and never sell your data
                         to third parties.
                     </p>
-                    <p>
+                    <p data-i18n="modal.privacy.body2">
                         You can export or delete your account and all associated
                         data at any time. This is a plain-language summary of
                         our full policy.
                     </p>
                 </div>
                 <div class="mfoot">
-                    <a class="btn btn-sun" href="#_">Got it</a>
+                    <a class="btn btn-sun" href="#_" data-i18n="modal.got_it">Got it</a>
                 </div>
             </div>
         </div>
@@ -2034,7 +2034,7 @@
                                 stroke-linejoin="round"
                             /></svg
                     ></span>
-                    <h3 id="t-terms">Terms of Service</h3>
+                    <h3 id="t-terms" data-i18n="modal.terms.title">Terms of Service</h3>
                     <a class="mclose" href="#_" aria-label="Close dialog"
                         ><svg viewBox="0 0 24 24" fill="none">
                             <path
@@ -2046,19 +2046,19 @@
                     ></a>
                 </div>
                 <div class="mbody">
-                    <p>
+                    <p data-i18n="modal.terms.body1">
                         By using Safely you agree to use it for lawful buying
                         and selling only. Risk scores are guidance to help you
                         decide — not a guarantee — so always use your own
                         judgement before paying.
                     </p>
-                    <p>
+                    <p data-i18n="modal.terms.body2">
                         The service is provided as-is. This is an overview of
                         the full terms.
                     </p>
                 </div>
                 <div class="mfoot">
-                    <a class="btn btn-sun" href="#_">Got it</a>
+                    <a class="btn btn-sun" href="#_" data-i18n="modal.got_it">Got it</a>
                 </div>
             </div>
         </div>
@@ -2088,7 +2088,7 @@
                                 stroke-linejoin="round"
                             /></svg
                     ></span>
-                    <h3 id="t-cookie">Cookie Policy</h3>
+                    <h3 id="t-cookie" data-i18n="modal.cookie.title">Cookie Policy</h3>
                     <a class="mclose" href="#_" aria-label="Close dialog"
                         ><svg viewBox="0 0 24 24" fill="none">
                             <path
@@ -2100,18 +2100,18 @@
                     ></a>
                 </div>
                 <div class="mbody">
-                    <p>
+                    <p data-i18n="modal.cookie.body1">
                         We use a small number of essential cookies to keep you
                         signed in and remember your settings. We do not use
                         advertising or cross-site tracking cookies.
                     </p>
-                    <p>
+                    <p data-i18n="modal.cookie.body2">
                         You can clear cookies any time from your browser
                         settings.
                     </p>
                 </div>
                 <div class="mfoot">
-                    <a class="btn btn-sun" href="#_">Got it</a>
+                    <a class="btn btn-sun" href="#_" data-i18n="modal.got_it">Got it</a>
                 </div>
             </div>
         </div>
@@ -2141,7 +2141,7 @@
                                 stroke-linejoin="round"
                             /></svg
                     ></span>
-                    <h3 id="t-report">Report Abuse</h3>
+                    <h3 id="t-report" data-i18n="modal.report.title">Report Abuse</h3>
                     <a class="mclose" href="#_" aria-label="Close dialog"
                         ><svg viewBox="0 0 24 24" fill="none">
                             <path
@@ -2153,18 +2153,18 @@
                     ></a>
                 </div>
                 <div class="mbody">
-                    <p>
+                    <p data-i18n="modal.report.body1">
                         Spotted a scammer, an abusive seller, or misuse of
                         Safely? Report it directly from the extension on the
                         seller's page, or email <b>help@safely.sh</b>.
                     </p>
-                    <p>
+                    <p data-i18n="modal.report.body2">
                         Reports are reviewed quickly and help protect the whole
                         community.
                     </p>
                 </div>
                 <div class="mfoot">
-                    <a class="btn btn-sun" href="#_">Got it</a>
+                    <a class="btn btn-sun" href="#_" data-i18n="modal.got_it">Got it</a>
                 </div>
             </div>
         </div>
@@ -2194,7 +2194,7 @@
                                 stroke-linejoin="round"
                             /></svg
                     ></span>
-                    <h3 id="t-chrome">Chrome Extension</h3>
+                    <h3 id="t-chrome" data-i18n="modal.chrome.title">Chrome Extension</h3>
                     <a class="mclose" href="#_" aria-label="Close dialog"
                         ><svg viewBox="0 0 24 24" fill="none">
                             <path
@@ -2206,15 +2206,15 @@
                     ></a>
                 </div>
                 <div class="mbody">
-                    <p>
+                    <p data-i18n="modal.chrome.body1">
                         Safely is a lightweight Chrome extension. Install it in
                         one click and it activates automatically on any
                         supported marketplace — no account needed to start.
                     </p>
-                    <p>Support for Edge and Firefox is on the way.</p>
+                    <p data-i18n="modal.chrome.body2">Support for Edge and Firefox is on the way.</p>
                 </div>
                 <div class="mfoot">
-                    <a class="btn btn-sun" href="#_">Got it</a>
+                    <a class="btn btn-sun" href="#_" data-i18n="modal.got_it">Got it</a>
                 </div>
             </div>
         </div>
@@ -2244,7 +2244,7 @@
                                 stroke-linejoin="round"
                             /></svg
                     ></span>
-                    <h3 id="t-api">API</h3>
+                    <h3 id="t-api" data-i18n="modal.api.title">API</h3>
                     <a class="mclose" href="#_" aria-label="Close dialog"
                         ><svg viewBox="0 0 24 24" fill="none">
                             <path
@@ -2256,17 +2256,17 @@
                     ></a>
                 </div>
                 <div class="mbody">
-                    <p>
+                    <p data-i18n="modal.api.body1">
                         The Safely API lets Business and Enterprise customers
                         score listings and sellers programmatically, run bulk
                         analyses, and pull fraud reports into their own tools.
                     </p>
-                    <p>
+                    <p data-i18n="modal.api.body2">
                         API access is included on the Enterprise plan.
                     </p>
                 </div>
                 <div class="mfoot">
-                    <a class="btn btn-sun" href="#_">Got it</a>
+                    <a class="btn btn-sun" href="#_" data-i18n="modal.got_it">Got it</a>
                 </div>
             </div>
         </div>
@@ -2296,7 +2296,7 @@
                                 stroke-linejoin="round"
                             /></svg
                     ></span>
-                    <h3 id="t-vs-norton">Safely vs Norton</h3>
+                    <h3 id="t-vs-norton" data-i18n="modal.vs_norton.title">Safely vs Norton</h3>
                     <a class="mclose" href="#_" aria-label="Close dialog"
                         ><svg viewBox="0 0 24 24" fill="none">
                             <path
@@ -2308,12 +2308,12 @@
                     ></a>
                 </div>
                 <div class="mbody">
-                    <p>
+                    <p data-i18n="modal.vs_norton.body1">
                         Norton and similar antivirus tools protect your computer
                         — they catch malware, viruses, and malicious files
                         trying to attack your device.
                     </p>
-                    <p>
+                    <p data-i18n="modal.vs_norton.body2">
                         Safely protects you from a different kind of attack
                         entirely: a real person on the other end of a listing,
                         manipulating your judgement into sending money for
@@ -2325,7 +2325,7 @@
                     </p>
                 </div>
                 <div class="mfoot">
-                    <a class="btn btn-sun" href="#_">Got it</a>
+                    <a class="btn btn-sun" href="#_" data-i18n="modal.got_it">Got it</a>
                 </div>
             </div>
         </div>
@@ -2355,7 +2355,7 @@
                                 stroke-linejoin="round"
                             /></svg
                     ></span>
-                    <h3 id="t-vs-manual">Safely vs manual research</h3>
+                    <h3 id="t-vs-manual" data-i18n="modal.vs_manual.title">Safely vs manual research</h3>
                     <a class="mclose" href="#_" aria-label="Close dialog"
                         ><svg viewBox="0 0 24 24" fill="none">
                             <path
@@ -2367,7 +2367,7 @@
                     ></a>
                 </div>
                 <div class="mbody">
-                    <p>
+                    <p data-i18n="modal.vs_manual.body1">
                         Most buyers today check a listing by reading it
                         carefully, searching the seller's name, and going with
                         their gut. That works reasonably well for obvious scams,
@@ -2376,14 +2376,14 @@
                         pricing, or urgency language designed specifically to
                         bypass exactly that kind of gut check.
                     </p>
-                    <p>
+                    <p data-i18n="modal.vs_manual.body2">
                         Safely runs the same checks a careful buyer would want
                         to do, automatically, in about 2 seconds, every time you
                         open a listing.
                     </p>
                 </div>
                 <div class="mfoot">
-                    <a class="btn btn-sun" href="#_">Got it</a>
+                    <a class="btn btn-sun" href="#_" data-i18n="modal.got_it">Got it</a>
                 </div>
             </div>
         </div>
@@ -2413,7 +2413,7 @@
                                 stroke-linejoin="round"
                             /></svg
                     ></span>
-                    <h3 id="t-vs-reviews">Safely vs basic seller reviews</h3>
+                    <h3 id="t-vs-reviews" data-i18n="modal.vs_reviews.title">Safely vs basic seller reviews</h3>
                     <a class="mclose" href="#_" aria-label="Close dialog"
                         ><svg viewBox="0 0 24 24" fill="none">
                             <path
@@ -2425,14 +2425,14 @@
                     ></a>
                 </div>
                 <div class="mbody">
-                    <p>
+                    <p data-i18n="modal.vs_reviews.body1">
                         Star ratings and reviews built into marketplaces are
                         useful, but a brand-new seller account naturally has
                         none yet — which tells you nothing either way, and is
                         exactly the situation most scam listings are posted
                         from.
                     </p>
-                    <p>
+                    <p data-i18n="modal.vs_reviews.body2">
                         Safely doesn't rely on a review history existing at all.
                         It analyzes the listing itself — the language used, the
                         images, the price, the seller's account age — so it can
@@ -2440,7 +2440,7 @@
                     </p>
                 </div>
                 <div class="mfoot">
-                    <a class="btn btn-sun" href="#_">Got it</a>
+                    <a class="btn btn-sun" href="#_" data-i18n="modal.got_it">Got it</a>
                 </div>
             </div>
         </div>
@@ -2470,9 +2470,9 @@
                                 stroke-linejoin="round"
                             /></svg
                     ></span>
-                    <h3 id="t-vs-extensions">
-                        Safely vs generic browser extensions
-                    </h3>
+                        <h3 id="t-vs-extensions" data-i18n="modal.vs_extensions.title">
+                            Safely vs generic browser extensions
+                        </h3>
                     <a class="mclose" href="#_" aria-label="Close dialog"
                         ><svg viewBox="0 0 24 24" fill="none">
                             <path
@@ -2484,13 +2484,13 @@
                     ></a>
                 </div>
                 <div class="mbody">
-                    <p>
+                    <p data-i18n="modal.vs_extensions.body1">
                         Ad blockers, price trackers, and coupon extensions are
                         built to change or add something to a page — they were
                         never designed to evaluate whether the person selling to
                         you is trustworthy.
                     </p>
-                    <p>
+                    <p data-i18n="modal.vs_extensions.body2">
                         Safely is purpose-built around one question: is this
                         specific listing and seller safe to send money to.
                         That's the only thing it does, which is why it can go
@@ -2500,11 +2500,12 @@
                     </p>
                 </div>
                 <div class="mfoot">
-                    <a class="btn btn-sun" href="#_">Got it</a>
+                    <a class="btn btn-sun" href="#_" data-i18n="modal.got_it">Got it</a>
                 </div>
             </div>
         </div>
 
+        <script src="js/i18n.js"></script>
         <script src="js/landing.js"></script>
     </body>
 </html>

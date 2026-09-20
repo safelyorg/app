@@ -59,13 +59,13 @@
                     <span class="mk" aria-hidden="true">
                         <img src="images/black_logo.png" alt="" />
                     </span>
-                    Safely
+                    <span data-i18n="signin.brand">Safely</span>
                 </div>
                 <div class="si-mid">
                     <div class="si-card" id="siCard">
                         <div class="si-form">
-                            <h2>Sign in to Safely</h2>
-                            <p class="s">Create an account or sign in to continue.</p>
+                            <h2 data-i18n="signin.title">Sign in to Safely</h2>
+                            <p class="s" data-i18n="signin.sub">Create an account or sign in to continue.</p>
                             <a class="si-google" id="siGoogle" href="/api/v1/auth/google" target="_top">
                                 <svg viewBox="0 0 24 24">
                                     <path
@@ -85,10 +85,10 @@
                                         d="M12 4.75c1.62 0 3.06.56 4.21 1.64l3.15-3.15A10.5 10.5 0 0012 1 11 11 0 002.18 7.05l3.66 2.84C6.71 6.68 9.14 4.75 12 4.75z"
                                     />
                                 </svg>
-                                Continue with Google
+                                <span data-i18n="signin.google">Continue with Google</span>
                             </a>
-                            <div class="si-or">OR CONTINUE WITH EMAIL</div>
-                            <label class="si-label" for="siEmail">Email address</label>
+                            <div class="si-or" data-i18n="signin.or">OR CONTINUE WITH EMAIL</div>
+                            <label class="si-label" for="siEmail" data-i18n="signin.email_label">Email address</label>
                             <div class="si-field">
                                 <svg class="mailic" viewBox="0 0 24 24" fill="none">
                                     <rect
@@ -117,7 +117,7 @@
                                 />
                             </div>
                             <button class="si-magic" type="button" id="siMagic">
-                                Send magic link
+                                <span data-i18n="signin.magic_btn">Send magic link</span>
                                 <svg viewBox="0 0 24 24" fill="none">
                                     <path
                                         d="M5 12h14M13 5l7 7-7 7"
@@ -128,7 +128,7 @@
                                     />
                                 </svg>
                             </button>
-                            <p class="si-hint">
+                            <p class="si-hint" data-i18n="signin.hint">
                                 We'll send you a secure sign-in link to your email.
                             </p>
                         </div>
@@ -144,13 +144,13 @@
                                     />
                                 </svg>
                             </span>
-                            <h2>Check your email</h2>
-                            <p class="s" id="siOkMail">
+                            <h2 data-i18n="signin.check_email">Check your email</h2>
+                            <p class="s" id="siOkMail" data-i18n="signin.check_email_sub">
                                 We sent a secure sign-in link to your inbox.
                             </p>
                         </div>
                     </div>
-                    <p class="si-legal">
+                    <p class="si-legal" data-i18n="signin.legal">
                         By continuing, you agree to our
                         <a href="/#m-terms" target="_parent">Terms of Service</a> and
                         <a href="/#m-privacy" target="_parent">Privacy Policy</a>.
@@ -158,29 +158,29 @@
                 </div>
             </div>
             <div class="si-right">
-                <h3 class="disp">Protect every transaction.</h3>
-                <p class="rp">
+                <h3 class="disp" data-i18n="signin.right_title">Protect every transaction.</h3>
+                <p class="rp" data-i18n="signin.right_sub">
                     Real-time fraud detection on any online marketplace — before
                     you send a single payment.
                 </p>
                 <div class="si-pills">
                     <span class="si-pill"
                         ><span class="d" style="background: var(--coral)"></span
-                        >Fraud detection</span
+                        ><span data-i18n="signin.pill1">Fraud detection</span></span
                     >
                     <span class="si-pill"
                         ><span
                             class="d"
                             style="background: var(--mint-deep)"
                         ></span
-                        >Community reports</span
+                        ><span data-i18n="signin.pill2">Community reports</span></span
                     >
                     <span class="si-pill"
                         ><span
                             class="d"
                             style="background: var(--sky-deep)"
                         ></span
-                        >Works anywhere</span
+                        ><span data-i18n="signin.pill3">Works anywhere</span></span
                     >
                 </div>
                 <svg
@@ -233,6 +233,7 @@
             </div>
         </div>
 
+        <script src="/js/i18n.js"></script>
         <script src="/js/signin.js"></script>
     </body>
 </html>

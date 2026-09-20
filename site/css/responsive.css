@@ -35,7 +35,8 @@
     .nav-links {
         display: none;
     }
-    .nav-right .btn {
+    .nav-right .btn,
+    .nav-right .lang-select {
         display: none;
     }
     .hamb {
