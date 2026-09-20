@@ -42,3 +42,7 @@ function formatDate(isoString) {
 function escapeAttr(str) {
     return String(str).replace(/"/g, "&quot;");
 }
+function t(key, fallback) {
+    const fn = window.safelyT;
+    return typeof fn === "function" ? fn(key, fallback) : fallback;
+}

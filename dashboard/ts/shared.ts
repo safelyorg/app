@@ -50,3 +50,8 @@ function formatDate(isoString: string | null | undefined): string {
 function escapeAttr(str: unknown): string {
   return String(str).replace(/"/g, "&quot;");
 }
+
+function t(key: string, fallback: string): string {
+  const fn = (window as any).safelyT;
+  return typeof fn === "function" ? fn(key, fallback) : fallback;
+}

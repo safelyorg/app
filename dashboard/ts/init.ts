@@ -248,13 +248,15 @@ document.addEventListener("DOMContentLoaded", async () => {
             day: "numeric",
             year: "numeric",
           });
-          const label = data.status === "trialing" ? "Trial ends" : "Renews at";
+          const label = data.status === "trialing"
+            ? t("dash.settings.trial_ends", "Trial ends")
+            : t("dash.settings.renews_at", "Renews at");
           priceEl.textContent = label + " " + formatted;
         }
         if (currentPlanBadge) currentPlanBadge.classList.remove("hidden");
       } else {
-        if (nameEl) nameEl.textContent = "No active plan";
-        if (priceEl) priceEl.textContent = "Choose a plan below to get started";
+        if (nameEl) nameEl.textContent = t("dash.settings.no_active_plan", "No active plan");
+        if (priceEl) priceEl.textContent = t("dash.settings.choose_plan", "Choose a plan below to get started");
         if (currentPlanBadge) currentPlanBadge.classList.add("hidden");
       }
 
@@ -284,9 +286,9 @@ document.addEventListener("DOMContentLoaded", async () => {
     history.replaceState(null, "", window.location.pathname);
     loadRealSubscriptionStatus().then(() => {
       if (realSubscriptionStatus === "trialing") {
-        showToast("Welcome! Your 7-day free trial has started.");
+        showToast(t("dash.toast.trial_started", "Welcome! Your 7-day free trial has started."));
       } else {
-        showToast("Welcome! Your subscription is now active.");
+        showToast(t("dash.toast.sub_active", "Welcome! Your subscription is now active."));
       }
     });
   }
@@ -308,14 +310,14 @@ document.addEventListener("DOMContentLoaded", async () => {
     continueBtn.addEventListener("click", async () => {
       if (!selectedPlanName) return;
       if (!selectedProductId) {
-        showToast(selectedPlanName + " isn't available yet - check back soon.");
+        showToast(selectedPlanName + " " + t("dash.toast.not_available", "isn't available yet - check back soon."));
         return;
       }
 
       const isActive =
         realSubscriptionStatus === "active" || realSubscriptionStatus === "trialing";
       if (isActive && realSubscriptionPlan === selectedPlanName) {
-        showToast("You're already subscribed to " + selectedPlanName + ".");
+        showToast(t("dash.toast.already_subscribed", "You're already subscribed to") + " " + selectedPlanName + ".");
         return;
       }
 
@@ -323,7 +325,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       continueBtn.disabled = true;
 
       if (isActive) {
-        continueBtn.textContent = "Updating...";
+        continueBtn.textContent = t("dash.common.updating", "Updating...");
         try {
           const res = await fetch(API_BASE + "/billing/change-plan", {
             method: "POST",
@@ -338,20 +340,20 @@ document.addEventListener("DOMContentLoaded", async () => {
             return;
           }
           if (res.status === 409) {
-            showToast("You can switch plans once your trial ends.");
+            showToast(t("dash.toast.switch_after_trial", "You can switch plans once your trial ends."));
             return;
           }
           if (!res.ok) throw new Error("Plan change failed");
           const data = await res.json();
           if (data.applied === "immediately") {
-            showToast("You've been upgraded to " + selectedPlanName + ".");
+            showToast(t("dash.toast.upgraded", "You've been upgraded to") + " " + selectedPlanName + ".");
           } else {
-            showToast("You'll switch to " + selectedPlanName + " when your current period ends.");
+            showToast(t("dash.toast.switch_at_period_end", "You'll switch to") + " " + selectedPlanName + " " + t("dash.toast.when_period_ends", "when your current period ends."));
           }
           await loadRealSubscriptionStatus();
           togglePlanSection(false);
         } catch (e) {
-          showToast("Couldn't update your plan. Please try again.");
+          showToast(t("dash.toast.plan_update_failed", "Couldn't update your plan. Please try again."));
         } finally {
           continueBtn.disabled = false;
           continueBtn.textContent = originalText;
@@ -359,7 +361,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         return;
       }
 
-      continueBtn.textContent = "Redirecting...";
+      continueBtn.textContent = t("dash.common.redirecting", "Redirecting...");
       try {
         const res = await fetch(API_BASE + "/billing/checkout", {
           method: "POST",
@@ -378,7 +380,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         window.location.href = data.checkout_url;
       } catch (e) {
         console.error("Safely: failed to start checkout", e);
-        showToast("Couldn't start checkout. Please try again.");
+        showToast(t("dash.toast.checkout_failed", "Couldn't start checkout. Please try again."));
         continueBtn.disabled = false;
         continueBtn.textContent = originalText;
       }
@@ -395,7 +397,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       const isActive =
         realSubscriptionStatus === "active" || realSubscriptionStatus === "trialing";
       if (!isActive) {
-        showToast("You don't have an active subscription to cancel.");
+        showToast(t("dash.toast.no_sub_to_cancel", "You don't have an active subscription to cancel."));
         return;
       }
       toggleCancelConfirm(true);
@@ -412,7 +414,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     cancelSubConfirmYes.addEventListener("click", async () => {
       const originalText = cancelSubConfirmYes.textContent;
       cancelSubConfirmYes.disabled = true;
-      cancelSubConfirmYes.textContent = "Canceling...";
+      cancelSubConfirmYes.textContent = t("dash.common.canceling", "Canceling...");
       try {
         const res = await fetch(API_BASE + "/billing/cancel-subscription", {
           method: "POST",
@@ -431,17 +433,17 @@ document.addEventListener("DOMContentLoaded", async () => {
         realSubscriptionPlan = null;
         const nameEl = document.getElementById("current-plan-name");
         const priceEl = document.getElementById("current-plan-price");
-        if (nameEl) nameEl.textContent = "No active plan";
-        if (priceEl) priceEl.textContent = "Choose a plan below to get started";
+        if (nameEl) nameEl.textContent = t("dash.settings.no_active_plan", "No active plan");
+        if (priceEl) priceEl.textContent = t("dash.settings.choose_plan", "Choose a plan below to get started");
         if (currentPlanBadge) currentPlanBadge.classList.add("hidden");
         document.querySelectorAll(".plan-option .plan-check").forEach((c) => {
           c.classList.add("hidden");
         });
         toggleCancelConfirm(false);
         togglePlanSection(false);
-        showToast("Your subscription has been canceled.");
+        showToast(t("dash.toast.sub_canceled", "Your subscription has been canceled."));
       } catch (e) {
-        showToast("Couldn't cancel your subscription. Please try again.");
+        showToast(t("dash.toast.cancel_failed", "Couldn't cancel your subscription. Please try again."));
         cancelSubConfirmYes.disabled = false;
         cancelSubConfirmYes.textContent = originalText;
       }
