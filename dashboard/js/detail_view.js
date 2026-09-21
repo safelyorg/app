@@ -189,7 +189,8 @@ async function openDetail(analysisId) {
     body.classList.add("hidden");
     document.getElementById("detail-title").textContent = "";
     try {
-        const res = await fetch(API_BASE + "/history/" + analysisId, {
+        const lang = localStorage.getItem("safely_lang") || "en";
+        const res = await fetch(API_BASE + "/history/" + analysisId + "?language=" + encodeURIComponent(lang), {
             headers: window.safelyAuth.authHeader(),
         });
         if (res.status === 401) {

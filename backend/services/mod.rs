@@ -24,4 +24,5 @@ pub mod scraper_client;
 pub mod sellers;
 pub mod signals;
 pub mod templates;
+pub mod translation;
 pub mod whois;

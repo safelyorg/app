@@ -1,3 +1,4 @@
+use crate::services::translation::get_or_create_translation;
 use crate::{
     errors::dashboard::DashboardError,
     models::{analysis::RiskLevel, fraud_reports::ReportTypes},
@@ -10,7 +11,7 @@ use crate::{
 };
 use axum::{
     Json,
-    extract::{Multipart, Path, State},
+    extract::{Multipart, Path, Query, State},
     http::{HeaderMap, header::CONTENT_TYPE},
     response::{Html, IntoResponse},
 };
@@ -142,10 +143,17 @@ pub async fn get_history_html(
 /// person before returning it — a genuinely missing or someone-else's
 /// analysis both correctly report back as not found, rather than
 /// leaking whether a given ID exists at all.
+#[derive(Debug, Deserialize)]
+pub struct HistoryItemQuery {
+    #[serde(default)]
+    pub language: Option<String>,
+}
+
 pub async fn get_history_item(
     State(pool): State<Pool<Postgres>>,
     headers: HeaderMap,
     Path(id): Path<Uuid>,
+    Query(q): Query<HistoryItemQuery>,
 ) -> Result<Json<Value>, DashboardError> {
     let user_id = extract_user_id(&headers, &pool)
         .await
@@ -156,8 +164,30 @@ pub async fn get_history_item(
         .await
         .map_err(|e| DashboardError::InternalError(e.to_string()))?;
 
+    let language = q.language.as_deref().unwrap_or("en");
+
     match detail {
-        Some(d) => {
+        Some(mut d) => {
+            if language != "en" {
+                let risk_factors_value = d
+                    .risk_factors
+                    .clone()
+                    .unwrap_or_else(|| Value::Array(vec![]));
+                if let Ok(translated) = get_or_create_translation(
+                    &pool,
+                    id,
+                    &d.signals,
+                    &risk_factors_value,
+                    &d.seller.network_summary,
+                    language,
+                )
+                .await
+                {
+                    d.signals = translated.signals;
+                    d.risk_factors = Some(translated.risk_factors);
+                    d.seller.network_summary = translated.network_summary;
+                }
+            }
             let value = to_value(d).map_err(|e| DashboardError::InternalError(e.to_string()))?;
             Ok(Json(value))
         }

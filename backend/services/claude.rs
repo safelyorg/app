@@ -1,4 +1,4 @@
-use crate::errors::claude::ClaudeError;
+use crate::{errors::claude::ClaudeError, services::translation::language_instruction};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::from_str;
@@ -84,6 +84,7 @@ pub struct CallClaudeArguments<'a> {
     pub price: i64,
     pub description: &'a str,
     pub image_urls: &'a [String],
+    pub language: &'a str,
 }
 
 // B2B analysis structs
@@ -111,6 +112,7 @@ pub struct CallB2bClaudeArguments<'a> {
     pub product_title: &'a str,
     pub product_description: &'a str,
     pub image_urls: &'a [String],
+    pub language: &'a str,
 }
 
 /// The ONE, shared place that builds the real content blocks sent to
@@ -256,6 +258,12 @@ pub fn b2c_content(arg: &CallClaudeArguments) -> String {
         You are a fraud detection assistant for an online marketplace.
         Analyze this listing and seller, then return ONLY a raw JSON object with no markdown, no code fences, no backticks, no explanation. Start your response with {{ and end with }}.
 
+        IMPORTANT: Write every text value in the JSON below (all
+        "evidence" and "reasoning" fields, and "overall_risk_notes") in
+        {language}. Keep every JSON key name and every "verdict" value
+        exactly as specified in English - only the free-text explanations
+        should be in {language}.
+
         Platform: {platform}
         Seller name: {seller_name}
         Seller account age: {seller_account_age}
@@ -317,6 +325,7 @@ pub fn b2c_content(arg: &CallClaudeArguments) -> String {
         title = arg.title,
         price = arg.price,
         description = arg.description,
+        language = language_instruction(arg.language),
     )
 }
 
@@ -333,6 +342,12 @@ pub fn b2b_content(arg: &CallB2bClaudeArguments) -> String {
         r#"
         You are a B2B supplier due-diligence assistant helping a procurement
         team evaluate a potential vendor. This is NOT a consumer marketplace -
+
+        IMPORTANT: Write every text value in the JSON below (all
+        "evidence" and "reasoning" fields, and "overall_risk_notes") in
+        {language}. Keep every JSON key name and every "verdict" value
+        exactly as specified in English - only the free-text explanations
+        should be in {language}.
         do not apply consumer fraud patterns like "urgency language" or
         "advance payment scams." B2B listings routinely omit pricing, MOQ,
         and shipping terms (these are typically negotiated privately after
@@ -417,5 +432,6 @@ pub fn b2b_content(arg: &CallB2bClaudeArguments) -> String {
         product_title = arg.product_title,
         product_description = arg.product_description,
         image_context = image_context,
+        language = language_instruction(arg.language),
     )
 }

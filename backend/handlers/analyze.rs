@@ -16,10 +16,12 @@ use crate::{
         scoring::calculate_risk_score,
         sellers::update_seller_from_b2b,
         signals::sort_signals_by_table,
+        translation::save_english_baseline,
     },
 };
 use axum::{Json, extract::State, http::HeaderMap};
 use chrono::NaiveDate;
+use serde_json::to_value;
 use sqlx::{Pool, Postgres, query};
 use uuid::Uuid;
 
@@ -182,7 +184,8 @@ pub async fn analyze(
         social_candidates = candidates_from_b2b;
         (signals, risk_score, notes)
     } else {
-        let claude_analysis = run_claude_analysis(&listing, &resolved.seller).await?;
+        let language = request.language.as_deref().unwrap_or("en");
+        let claude_analysis = run_claude_analysis(&listing, &resolved.seller, language).await?;
         if let Some(phone) = &claude_analysis.extracted_phone_number {
             resolved.seller.phone = Some(phone.clone());
             let _ = query("UPDATE sellers SET phone = $1, updated_at = NOW() WHERE id = $2")
@@ -221,7 +224,28 @@ pub async fn analyze(
         social_candidates,
     };
 
-    save_and_build_response(data).await
+    let language = request.language.clone().unwrap_or_else(|| "en".to_string());
+    let response = save_and_build_response(data).await?;
+
+    let signals_value = to_value(&response.0.signals).unwrap_or_default();
+    let factors_value = to_value(&response.0.risk_factors).unwrap_or_default();
+    if let Err(e) = save_english_baseline(
+        &pool,
+        response.0.analysis_id,
+        &signals_value,
+        &factors_value,
+        &response.0.network_summary,
+        &language,
+    )
+    .await
+    {
+        eprintln!(
+            "Safely: failed to save translation baseline for analysis {}: {:?}",
+            response.0.analysis_id, e
+        );
+    }
+
+    Ok(response)
 }
 
 pub async fn verify_social_link_handler(

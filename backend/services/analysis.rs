@@ -232,6 +232,7 @@ pub async fn resolve_seller(
 pub async fn run_claude_analysis(
     listing: &Listings,
     seller: &Sellers,
+    language: &str,
 ) -> Result<ClaudeAnalysis, AnalyzeError> {
     let account_age = seller
         .join_date
@@ -248,6 +249,7 @@ pub async fn run_claude_analysis(
         price: listing.price.unwrap_or(0),
         description: listing.description.as_deref().unwrap_or("No Description"),
         image_urls,
+        language,
     })
     .await
     .map_err(|e| AnalyzeError::ClaudeAnalysisFailed(e.to_string()))
@@ -558,6 +560,7 @@ pub async fn build_b2b_analysis_path(
         product_title: listing.title.as_deref().unwrap_or("Unknown"),
         product_description: listing.description.as_deref().unwrap_or("None provided"),
         image_urls: &listing.image_urls,
+        language: request.language.as_deref().unwrap_or("en"),
     })
     .await
     .map_err(|e| AnalyzeError::ClaudeAnalysisFailed(e.to_string()))?;

@@ -273,9 +273,13 @@ async function openDetail(analysisId: string): Promise<void> {
   (document.getElementById("detail-title") as HTMLElement).textContent = "";
 
   try {
-    const res = await fetch(API_BASE + "/history/" + analysisId, {
-      headers: (window as any).safelyAuth.authHeader(),
-    });
+    const lang = localStorage.getItem("safely_lang") || "en";
+    const res = await fetch(
+      API_BASE + "/history/" + analysisId + "?language=" + encodeURIComponent(lang),
+      {
+        headers: (window as any).safelyAuth.authHeader(),
+      },
+    );
     if (res.status === 401) {
       (window as any).safelyAuth.logout();
       return;

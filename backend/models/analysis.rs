@@ -38,6 +38,8 @@ pub struct Analysis {
 pub struct AnalyzeRequest {
     // shared
     pub platform: String,
+    #[serde(default)]
+    pub language: Option<String>,
     // listing fields
     pub seller_id: Option<Uuid>,
     pub listing_url: String,

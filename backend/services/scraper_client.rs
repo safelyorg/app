@@ -22,8 +22,8 @@ pub fn build_scraper_client() -> Client {
 fn country_code_for_platform(platform: &str) -> Option<&'static str> {
     match platform {
         "exporthub" => Some("us"),
-        "b2brazil" => Some("br"),
-        "alibaba" => Some("cn"),
+        "b2brazil" => Some("us"),
+        "alibaba" => Some("us"),
         "olx" => Some("pk"),
         _ => None,
     }
