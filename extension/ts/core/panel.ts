@@ -64,6 +64,14 @@ interface PendingTabRegistration {
     "Reload" +
     "</button>" +
     "</div>" +
+    '<div class="safely-tab-content" id="safely-tab-scan-limit-reached" style="display:none; padding: 20px; text-align: center;">' +
+    '<div style="font-size:13px; line-height:1.6; color:#8a8a93; margin-bottom:16px;" id="safely-scan-limit-message">' +
+    "You've used all your scans for this billing period." +
+    "</div>" +
+    '<a href="' +
+    (window as any).__safelyAPI.SITE_BASE +
+    '/dashboard/?manage_billing=1" target="_blank" class="safely-signin-required-btn">Upgrade your plan</a>' +
+    "</div>" +
     "</div>" +
     '<div id="safely-toolbar"><img class="safely-toolbar-letter" src="' +
     chrome.runtime.getURL("icons/icon48.png") +
@@ -91,6 +99,12 @@ interface PendingTabRegistration {
   const subscriptionRequiredContent = document.getElementById(
     "safely-tab-subscription-required",
   ) as HTMLElement;
+  const scanLimitReachedContent = document.getElementById(
+    "safely-tab-scan-limit-reached",
+  ) as HTMLElement;
+  const scanLimitMessage = document.getElementById(
+    "safely-scan-limit-message",
+  ) as HTMLElement | null;
   const failedMessage = document.getElementById("safely-failed-message") as HTMLElement | null;
   const retryBtn = document.getElementById("safely-retry-btn") as HTMLElement | null;
 
@@ -160,6 +174,19 @@ interface PendingTabRegistration {
     togglePanel("subscription-required");
   });
 
+  const scanLimitReachedIcon = document.createElement("div");
+  scanLimitReachedIcon.className = "safely-toolbar-icon";
+  scanLimitReachedIcon.dataset.open = "scan-limit-reached";
+  scanLimitReachedIcon.title = "Scan limit reached";
+  scanLimitReachedIcon.style.display = "none";
+  scanLimitReachedIcon.innerHTML =
+    '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M12 6v6l4 2"></path></svg>';
+  toolbarInner.insertBefore(scanLimitReachedIcon, collapseBtn);
+  scanLimitReachedIcon.addEventListener("click", (e) => {
+    e.stopPropagation();
+    togglePanel("scan-limit-reached");
+  });
+
   const analysisFailedIcon = document.createElement("div");
   analysisFailedIcon.className = "safely-toolbar-icon";
   analysisFailedIcon.dataset.open = "analysis-failed";
@@ -180,6 +207,7 @@ interface PendingTabRegistration {
       "signin-required",
       "subscription-required",
       "analysis-failed",
+      "scan-limit-reached",
     ];
     if (specialStates.indexOf(tab) !== -1) {
       panelTitle.textContent = "Safely";
@@ -192,6 +220,7 @@ interface PendingTabRegistration {
       subscriptionRequiredContent.style.display =
         tab === "subscription-required" ? "block" : "none";
       analysisFailedContent.style.display = tab === "analysis-failed" ? "block" : "none";
+      scanLimitReachedContent.style.display = tab === "scan-limit-reached" ? "block" : "none";
     } else {
       panelTitle.textContent = tabTitles[tab] || tab;
       unsupportedContent.style.display = "none";
@@ -487,6 +516,34 @@ interface PendingTabRegistration {
         if (iconSlots[id]) iconSlots[id].style.display = "none";
       });
       switchTab("signin-required");
+      return;
+    }
+
+    if (
+      reason === "scan_limit_reached" ||
+      reason === "subscription_required" ||
+      reason === "trial_scan_limit_reached"
+    ) {
+      if (scanLimitMessage) {
+        if (reason === "trial_scan_limit_reached" && e.detail.scanLimit) {
+          scanLimitMessage.textContent =
+            "You've used all " +
+            e.detail.scanLimit +
+            " scans included in your free trial. Your subscription will begin billing and unlock your full plan limit once the trial period ends.";
+        } else if (reason === "scan_limit_reached" && e.detail.scanLimit) {
+          scanLimitMessage.textContent =
+            "You've used all " +
+            e.detail.scanLimit +
+            " scans included in your plan this billing period.";
+        } else {
+          scanLimitMessage.textContent = "An active subscription is required to analyze listings.";
+        }
+      }
+      scanLimitReachedIcon.style.display = "flex";
+      TAB_ORDER.forEach((id) => {
+        if (iconSlots[id]) iconSlots[id].style.display = "none";
+      });
+      switchTab("scan-limit-reached");
       return;
     }
 

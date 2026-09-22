@@ -10,6 +10,7 @@ use crate::{
         auth::extract_user_id,
         b2b_scrapers::{B2bListingProfile, B2bSupplierProfile, check_b2b_page},
         b2c_scrapers::check_store_page,
+        billing::{ScanLimitError, check_and_increment_scan_usage},
         claude::{
             CallB2bClaudeArguments, CallClaudeArguments, ClaudeAnalysis, call_b2b_claude,
             call_b2c_claude,
@@ -101,6 +102,16 @@ pub async fn authorize_request(
         .ok_or(AnalyzeError::Unauthorized)?;
 
     check_rate_limit(user_id)?;
+
+    check_and_increment_scan_usage(pool, user_id)
+        .await
+        .map_err(|e| match e {
+            ScanLimitError::NoActiveSubscription => AnalyzeError::SubscriptionRequired,
+            ScanLimitError::LimitReached { limit } => AnalyzeError::ScanLimitReached(limit),
+            ScanLimitError::TrialLimitReached { limit } => {
+                AnalyzeError::TrialScanLimitReached(limit)
+            }
+        })?;
 
     Ok(user_id)
 }

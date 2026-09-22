@@ -26,6 +26,13 @@ pub enum CreateCheckoutError {
     CreemRejected(String),
 }
 
+#[derive(Debug)]
+pub enum ScanLimitError {
+    NoActiveSubscription,
+    LimitReached { limit: i32 },
+    TrialLimitReached { limit: i32 },
+}
+
 /// It's the one real step that actually talks to Creem — building a real,
 /// working checkout session for a specific plan, tied to a specific
 /// person, so Creem knows exactly who to bill and where to send them once
@@ -216,17 +223,34 @@ pub async fn upsert_subscription(
         .and_then(|s| DateTime::parse_from_rfc3339(s).ok())
         .map(|dt| dt.with_timezone(&Utc));
 
+    let existing_period_end: Option<Option<DateTime<Utc>>> = query_scalar(
+        "SELECT current_period_end FROM subscriptions WHERE creem_subscription_id = $1",
+    )
+    .bind(&parsed.id)
+    .fetch_optional(pool)
+    .await
+    .unwrap_or(None);
+
+    let is_new_period = match existing_period_end {
+        None => true,
+        Some(old_end) => match (old_end, current_period_end) {
+            (Some(old), Some(new)) => new > old,
+            _ => false,
+        },
+    };
+
     query(
         "INSERT INTO subscriptions (
             id, user_id, creem_subscription_id, creem_customer_id,
             creem_product_id, plan_name, status, current_period_end,
-            canceled_at, created_at, updated_at
+            canceled_at, scans_used_this_period, created_at, updated_at
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7::subscription_status, $8, $9, NOW(), NOW())
+        VALUES ($1, $2, $3, $4, $5, $6, $7::subscription_status, $8, $9, 0, NOW(), NOW())
         ON CONFLICT (creem_subscription_id) DO UPDATE SET
             status = EXCLUDED.status,
             current_period_end = EXCLUDED.current_period_end,
             canceled_at = EXCLUDED.canceled_at,
+            scans_used_this_period = CASE WHEN $10 THEN 0 ELSE subscriptions.scans_used_this_period END,
             updated_at = NOW()",
     )
     .bind(Uuid::now_v7())
@@ -238,6 +262,7 @@ pub async fn upsert_subscription(
     .bind(status)
     .bind(current_period_end)
     .bind(canceled_at)
+    .bind(is_new_period)
     .execute(pool)
     .await?;
 
@@ -533,6 +558,90 @@ pub async fn mark_event_processed_if_new(pool: &Pool<Postgres>, event_id: &str) 
         Err(e) => {
             eprintln!("Failed to record webhook event {}: {}", event_id, e);
             true
+        }
+    }
+}
+
+/// Real, known plan -> monthly scan limit. None means unlimited.
+/// Checks trial status FIRST, before plan name - this is what closes
+/// the real exploit where an Enterprise trial (otherwise unlimited)
+/// could be ridden out for far more scans than any real customer
+/// would ever need, regardless of whether they later downgrade,
+/// cancel, or just let the trial lapse. A trial of ANY plan gets this
+/// same, small cap; only a genuinely paid, non-trialing subscription
+/// uses the real per-plan limit.
+pub fn scan_limit_for_plan_and_status(plan_name: &str, status: &str) -> Option<i32> {
+    if status == "trialing" {
+        return Some(100);
+    }
+    match plan_name {
+        "Team" => Some(750),
+        "Enterprise" => None,
+        _ => Some(0),
+    }
+}
+
+/// Checks whether this user can run one more scan right now, and if
+/// so, atomically increments their count in the same query - this
+/// avoids a genuine race where two near-simultaneous requests could
+/// both read "under the limit" and both proceed.
+pub async fn check_and_increment_scan_usage(
+    pool: &Pool<Postgres>,
+    user_id: Uuid,
+) -> Result<(), ScanLimitError> {
+    let row: Option<(String, String, i32)> = sqlx::query_as(
+        "SELECT plan_name, status::text, scans_used_this_period FROM subscriptions
+         WHERE user_id = $1 AND status IN ('active', 'trialing')
+         ORDER BY updated_at DESC LIMIT 1",
+    )
+    .bind(user_id)
+    .fetch_optional(pool)
+    .await
+    .unwrap_or(None);
+
+    let Some((plan_name, status, used)) = row else {
+        return Err(ScanLimitError::NoActiveSubscription);
+    };
+
+    let is_trial = status == "trialing";
+
+    match scan_limit_for_plan_and_status(&plan_name, &status) {
+        None => {
+            let _ = query(
+                "UPDATE subscriptions SET scans_used_this_period = scans_used_this_period + 1
+                 WHERE user_id = $1 AND status IN ('active', 'trialing')",
+            )
+            .bind(user_id)
+            .execute(pool)
+            .await;
+            Ok(())
+        }
+        Some(limit) => {
+            if used >= limit {
+                return Err(if is_trial {
+                    ScanLimitError::TrialLimitReached { limit }
+                } else {
+                    ScanLimitError::LimitReached { limit }
+                });
+            }
+            let result = query(
+                "UPDATE subscriptions SET scans_used_this_period = scans_used_this_period + 1
+                 WHERE user_id = $1 AND status IN ('active', 'trialing')
+                   AND scans_used_this_period < $2",
+            )
+            .bind(user_id)
+            .bind(limit)
+            .execute(pool)
+            .await;
+
+            match result {
+                Ok(res) if res.rows_affected() > 0 => Ok(()),
+                _ => Err(if is_trial {
+                    ScanLimitError::TrialLimitReached { limit }
+                } else {
+                    ScanLimitError::LimitReached { limit }
+                }),
+            }
         }
     }
 }

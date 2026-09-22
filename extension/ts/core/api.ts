@@ -43,6 +43,7 @@ interface PlatformCheckResult {
 interface AnalyzeResponse {
   error?: string;
   retryAfterSeconds?: number | null;
+  scanLimit?: number | null;
   analysis_id: string;
   risk_score: number;
   fraud_report_count: number;
@@ -130,6 +131,23 @@ function formatPlatformName(platform: string | null | undefined): string {
           }
           if (response.status === 401) {
             return { error: "unauthorized" } as AnalyzeResponse;
+          }
+          if (response.status === 402) {
+            try {
+              const parsed = JSON.parse(rawText);
+              if (parsed.error === "scan_limit_reached") {
+                return { error: "scan_limit_reached", scanLimit: parsed.limit || null } as AnalyzeResponse;
+              }
+              if (parsed.error === "trial_scan_limit_reached") {
+                return {
+                  error: "trial_scan_limit_reached",
+                  scanLimit: parsed.limit || null,
+                } as AnalyzeResponse;
+              }
+              return { error: "subscription_required" } as AnalyzeResponse;
+            } catch (e) {
+              return { error: "subscription_required" } as AnalyzeResponse;
+            }
           }
           return null;
         }
@@ -297,6 +315,7 @@ function formatPlatformName(platform: string | null | undefined): string {
             detail: {
               error: data && data.error ? data.error : "generic",
               retryAfterSeconds: data && data.retryAfterSeconds,
+              scanLimit: data && data.scanLimit,
             },
           }),
         );

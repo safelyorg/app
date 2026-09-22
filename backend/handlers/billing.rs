@@ -299,9 +299,9 @@ pub async fn change_plan_handler(
     let is_upgrade = current_plan == "Team" && body.plan_name == "Enterprise";
     let is_downgrade = current_plan == "Enterprise" && body.plan_name == "Team";
 
-    if current_status == "trialing" {
+    if current_status == "trialing" && is_upgrade {
         return Err(BillingError::Conflict(
-            "Plan changes aren't available during your trial".to_string(),
+            "Upgrades aren't available during your trial - this will be possible once your trial ends.".to_string(),
         ));
     }
 

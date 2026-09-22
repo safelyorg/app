@@ -39,6 +39,7 @@
   "dash.settings.choose_plan": "Escolha um plano abaixo para começar",
   "dash.settings.no_active_plan": "Nenhum plano ativo",
   "dash.settings.active_badge": "Ativo",
+  "dash.settings.trial_badge": "Em Teste",
   "dash.plan.team": "Team",
   "dash.plan.enterprise": "Enterprise",
   "dash.common.continue": "Continuar",

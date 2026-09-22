@@ -50,6 +50,24 @@ function formatPlatformName(platform) {
                     if (response.status === 401) {
                         return { error: "unauthorized" };
                     }
+                    if (response.status === 402) {
+                        try {
+                            const parsed = JSON.parse(rawText);
+                            if (parsed.error === "scan_limit_reached") {
+                                return { error: "scan_limit_reached", scanLimit: parsed.limit || null };
+                            }
+                            if (parsed.error === "trial_scan_limit_reached") {
+                                return {
+                                    error: "trial_scan_limit_reached",
+                                    scanLimit: parsed.limit || null,
+                                };
+                            }
+                            return { error: "subscription_required" };
+                        }
+                        catch (e) {
+                            return { error: "subscription_required" };
+                        }
+                    }
                     return null;
                 }
                 return JSON.parse(rawText);
@@ -206,6 +224,7 @@ function formatPlatformName(platform) {
                     detail: {
                         error: data && data.error ? data.error : "generic",
                         retryAfterSeconds: data && data.retryAfterSeconds,
+                        scanLimit: data && data.scanLimit,
                     },
                 }));
                 return;

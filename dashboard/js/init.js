@@ -243,8 +243,13 @@ document.addEventListener("DOMContentLoaded", async () => {
                         : t("dash.settings.renews_at", "Renews at");
                     priceEl.textContent = label + " " + formatted;
                 }
-                if (currentPlanBadge)
+                if (currentPlanBadge) {
                     currentPlanBadge.classList.remove("hidden");
+                    currentPlanBadge.textContent =
+                        data.status === "trialing"
+                            ? t("dash.settings.trial_badge", "In Trial")
+                            : t("dash.settings.active_badge", "Active");
+                }
             }
             else {
                 if (nameEl)
