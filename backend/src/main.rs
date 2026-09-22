@@ -39,7 +39,9 @@ fn build_cors_layer() -> CorsLayer {
 }
 
 fn build_router(app_pool: Pool<Postgres>) -> Router {
-    Router::new()
+    // API + dashboard: genuinely dynamic, often authenticated, per-user
+    // data - this must never be cached by Cloudflare or the browser.
+    let dynamic_routes = Router::new()
         .merge(analyze::analyze_routes())
         .merge(fraud_reports::fraud_reports_routes())
         .merge(auth::auth_routes())
@@ -57,6 +59,17 @@ fn build_router(app_pool: Pool<Postgres>) -> Router {
             ServeDir::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../dashboard"))
                 .append_index_html_on_directories(true),
         )
+        .layer(SetResponseHeaderLayer::overriding(
+            header::CACHE_CONTROL,
+            HeaderValue::from_static("no-cache, no-store, must-revalidate"),
+        ));
+
+    // Public marketing pages + static extension files: safe, genuinely
+    // cacheable content - a real Cache-Control here (instead of the
+    // no-store above) is what lets Cloudflare's Cache Rule actually
+    // hold and serve these from its edge, instead of round-tripping
+    // to the origin on every single visit.
+    let public_routes = Router::new()
         .nest_service(
             "/extension",
             ServeDir::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../extension")),
@@ -88,8 +101,11 @@ fn build_router(app_pool: Pool<Postgres>) -> Router {
         )
         .layer(SetResponseHeaderLayer::overriding(
             header::CACHE_CONTROL,
-            HeaderValue::from_static("no-cache, no-store, must-revalidate"),
-        ))
+            HeaderValue::from_static("public, max-age=600"),
+        ));
+
+    dynamic_routes
+        .merge(public_routes)
         .layer(build_cors_layer())
         .with_state(app_pool)
 }
