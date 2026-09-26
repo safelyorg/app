@@ -2,6 +2,7 @@ use backend::errors::claude::ClaudeError;
 use backend::services::claude::{
     CallB2bClaudeArguments, CallClaudeArguments, b2b_content, b2c_content, call_b2b_claude,
 };
+use serial_test::serial;
 use std::env::{remove_var, set_var, var};
 
 fn make_b2b_args() -> CallB2bClaudeArguments<'static> {
@@ -15,6 +16,7 @@ fn make_b2b_args() -> CallB2bClaudeArguments<'static> {
         product_title: "Test Product",
         product_description: "Test description",
         image_urls: &[],
+        language: "en",
     }
 }
 // ─────────────────────────────────────────────────────────
@@ -64,9 +66,40 @@ fn b2c_content_constrains_image_authenticity_to_exact_words() {
         price: 1000,
         description: "Test",
         image_urls: &image_urls,
+        language: "en",
     };
     let prompt = b2c_content(&args);
     assert!(prompt.contains("not verified"));
+}
+
+// ─────────────────────────────────────────────────────────
+// language - confirming today's language instruction is genuinely
+// present in both prompts, not just accepted as a parameter
+// ─────────────────────────────────────────────────────────
+
+#[test]
+fn b2b_content_writes_the_real_portuguese_instruction_when_requested() {
+    let mut args = make_b2b_args();
+    args.language = "pt-br";
+    let prompt = b2b_content(&args);
+    assert!(prompt.contains("Portuguese (Brazil)"));
+}
+
+#[test]
+fn b2c_content_writes_the_real_portuguese_instruction_when_requested() {
+    let image_urls: Vec<String> = vec![];
+    let args = CallClaudeArguments {
+        platform: "olx",
+        seller_name: "Test",
+        seller_account_age: "1 year",
+        title: "Test",
+        price: 1000,
+        description: "Test",
+        image_urls: &image_urls,
+        language: "pt-br",
+    };
+    let prompt = b2c_content(&args);
+    assert!(prompt.contains("Portuguese (Brazil)"));
 }
 
 // ─────────────────────────────────────────────────────────
@@ -74,6 +107,7 @@ fn b2c_content_constrains_image_authenticity_to_exact_words() {
 // ─────────────────────────────────────────────────────────
 
 #[tokio::test]
+#[serial]
 async fn call_b2b_claude_missing_api_key() {
     dotenvy::dotenv().ok();
     let original_key = var("ANTHROPIC_API_KEY").ok();

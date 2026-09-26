@@ -8,15 +8,16 @@ use crate::common::{
 use axum::{
     Json,
     body::Body,
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::{HeaderMap, Request, StatusCode},
     response::IntoResponse,
 };
 use backend::{
     errors::dashboard::DashboardError,
     handlers::dashboard::{
-        UpdateMeRequest, delete_account, disconnect_google, get_avatar, get_history,
-        get_history_html, get_history_item, get_me, get_reports, get_reports_html, update_me,
+        HistoryItemQuery, UpdateMeRequest, delete_account, disconnect_google, get_avatar,
+        get_history, get_history_html, get_history_item, get_me, get_reports, get_reports_html,
+        update_me,
     },
     models::fraud_reports::ReportTypes,
     routes::dashboard::dashboard_routes,
@@ -530,7 +531,13 @@ async fn get_history_item_unauthorized() {
     let headers = HeaderMap::new();
     let fake_id = Uuid::new_v4();
 
-    let result = get_history_item(State(pool), headers, Path(fake_id)).await;
+    let result = get_history_item(
+        State(pool),
+        headers,
+        Path(fake_id),
+        Query(HistoryItemQuery { language: None }),
+    )
+    .await;
     match result {
         Err(DashboardError::Unauthorized) => {}
         Err(other) => panic!("expected Unauthorized, got a different error: {:?}", other),
@@ -561,10 +568,15 @@ async fn get_history_item_success() {
         .await
         .expect("expected to find the real analysis id");
 
-    let result = get_history_item(State(pool.clone()), headers, Path(analysis_id))
-        .await
-        .expect("expected the request to succeed")
-        .0;
+    let result = get_history_item(
+        State(pool.clone()),
+        headers,
+        Path(analysis_id),
+        Query(HistoryItemQuery { language: None }),
+    )
+    .await
+    .expect("expected the request to succeed")
+    .0;
 
     assert_eq!(result["listing_title"], json!("Test Listing For Detail"));
     assert_eq!(result["platform"], json!("olx"));
@@ -583,7 +595,13 @@ async fn get_history_item_not_found_nonexistent() {
     let headers = auth_headers_for(&pool, user.id).await;
     let fake_id = Uuid::new_v4();
 
-    let result = get_history_item(State(pool.clone()), headers, Path(fake_id)).await;
+    let result = get_history_item(
+        State(pool.clone()),
+        headers,
+        Path(fake_id),
+        Query(HistoryItemQuery { language: None }),
+    )
+    .await;
     match result {
         Err(DashboardError::NotFound(_)) => {}
         Err(other) => panic!("expected NotFound, got a different error: {:?}", other),
@@ -620,7 +638,13 @@ async fn get_history_item_not_found_belongs_to_another_user() {
         .await
         .expect("expected to find the real analysis id");
 
-    let result = get_history_item(State(pool.clone()), headers_b, Path(analysis_id)).await;
+    let result = get_history_item(
+        State(pool.clone()),
+        headers_b,
+        Path(analysis_id),
+        Query(HistoryItemQuery { language: None }),
+    )
+    .await;
     match result {
         Err(DashboardError::NotFound(_)) => {}
         Err(other) => panic!("expected NotFound, got a different error: {:?}", other),
@@ -632,6 +656,52 @@ async fn get_history_item_not_found_belongs_to_another_user() {
     cleanup_test_seller_chain(&pool, "olx", "history_item_owned_by_a_001").await;
     cleanup_test_user(&pool, email_a).await;
     cleanup_test_user(&pool, email_b).await;
+}
+
+#[tokio::test]
+async fn get_history_item_accepts_a_language_query_param() {
+    let pool = test_pool().await;
+    let email = "get_history_item_language_test@example.com";
+    let (user, _) = create_test_user(&pool, email).await;
+    let headers = auth_headers_for(&pool, user.id).await;
+
+    cleanup_test_seller_chain(&pool, "olx", "history_item_language_001").await;
+    let (listing_id, _seller_id) = insert_test_history_chain(
+        &pool,
+        user.id,
+        "olx",
+        "history_item_language_001",
+        "Language Param Test Listing",
+    )
+    .await;
+
+    let analysis_id: Uuid = query_scalar("SELECT id FROM analysis WHERE listing_id = $1")
+        .bind(listing_id)
+        .fetch_one(&pool)
+        .await
+        .expect("expected to find the real analysis id");
+
+    // "en" is a genuine no-op path here - it still goes through
+    // get_or_create_translation, but should return the same, original
+    // English content rather than triggering a real Claude call.
+    let result = get_history_item(
+        State(pool.clone()),
+        headers,
+        Path(analysis_id),
+        Query(HistoryItemQuery {
+            language: Some("en".to_string()),
+        }),
+    )
+    .await
+    .expect("expected the request to succeed with an explicit language param");
+
+    assert_eq!(
+        result.0["listing_title"],
+        json!("Language Param Test Listing")
+    );
+
+    cleanup_test_seller_chain(&pool, "olx", "history_item_language_001").await;
+    cleanup_test_user(&pool, email).await;
 }
 
 // Get History Detail Tests

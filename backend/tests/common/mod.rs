@@ -549,3 +549,24 @@ pub fn load_env_once() {
         dotenvy::dotenv().ok();
     });
 }
+
+#[allow(dead_code)]
+pub async fn insert_active_subscription(pool: &Pool<Postgres>, user_id: Uuid, plan_name: &str) {
+    query(
+        "INSERT INTO subscriptions (
+            id, user_id, creem_subscription_id, creem_customer_id,
+            creem_product_id, plan_name, status, scans_used_this_period,
+            created_at, updated_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, 'active'::subscription_status, 0, NOW(), NOW())
+        ON CONFLICT (creem_subscription_id) DO NOTHING",
+    )
+    .bind(Uuid::now_v7())
+    .bind(user_id)
+    .bind(format!("test_sub_{}", user_id))
+    .bind(format!("test_cust_{}", user_id))
+    .bind(format!("test_prod_{}", plan_name))
+    .bind(plan_name)
+    .execute(pool)
+    .await
+    .expect("expected to insert a real test subscription");
+}

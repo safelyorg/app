@@ -83,6 +83,7 @@ async fn check_b2b_page_returns_none_for_a_genuinely_broken_url() {
 //         domain_check_current_domain: None,
 //         domain_check_current_html: None,
 //         domain_check_real_html: None,
+//         language: None,
 //     };
 
 //     let result = build_b2b_analysis_path(&pool, &request, 0, Uuid::new_v4()).await;
@@ -135,6 +136,7 @@ async fn build_b2b_analysis_path_fails_gracefully_for_a_genuinely_broken_url() {
         domain_check_current_domain: None,
         domain_check_current_html: None,
         domain_check_real_html: None,
+        language: None,
     };
 
     let result = build_b2b_analysis_path(&pool, &request, 0, Uuid::new_v4()).await;
@@ -177,6 +179,7 @@ async fn build_b2b_analysis_path_fails_gracefully_for_a_genuinely_broken_url() {
 //         domain_check_current_domain: None,
 //         domain_check_current_html: None,
 //         domain_check_real_html: None,
+//         language: None,
 //     };
 
 //     let result = build_b2b_analysis_path(&pool, &request, 0, Uuid::new_v4())
