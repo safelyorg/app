@@ -352,17 +352,25 @@ interface PlatformCheckResult {
     return str.charAt(0).toUpperCase() + str.slice(1);
   }
 
+  // Same ###CHECKLIST### parsing the signal rows already use above -
+  // a risk factor's description is very often copied straight from
+  // the signal.sub it was derived from (e.g. "Listing completeness"),
+  // so without this same parsing step, the raw marker and the raw
+  // "Name|true;Name|false" data was leaking straight into the visible
+  // text instead of becoming a real, clickable checklist dropdown.
   function buildRiskFactorsSection(riskFactors: any[]): string {
     if (!riskFactors || riskFactors.length === 0) return "";
 
     const rows = riskFactors
-      .map((factor) => {
+      .map((factor, idx) => {
         const color = SEVERITY_COLORS[factor.severity] || "#8e8e93";
         const severityLabel = SEVERITY_LABELS[factor.severity] || factor.severity;
         const shortTitle =
           factor.contributing_signals && factor.contributing_signals.length > 0
             ? factor.contributing_signals.join(" + ")
             : capitalizeFirst(factor.name.replace(/_/g, " "));
+        const { realSub, checklist } = parseChecklistSignal(factor.description || "");
+        const dropdownId = "safely-riskfactor-checklist-" + idx;
         return (
           '<div class="safely-check-card">' +
           '<div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;">' +
@@ -375,8 +383,10 @@ interface PlatformCheckResult {
           (window as any).escapeHtml(severityLabel) +
           "</div></div>" +
           '<div class="safely-check-body">' +
-          (window as any).escapeHtml(factor.description) +
-          "</div></div>"
+          (window as any).escapeHtml(capitalizeFirst(realSub) || "") +
+          "</div>" +
+          buildChecklistDropdown(dropdownId, checklist) +
+          "</div>"
         );
       })
       .join("");
@@ -393,6 +403,9 @@ interface PlatformCheckResult {
     const pageData = (window as any).__safelyData;
     (pageData.signals || []).forEach((_: SafelySignal, idx: number) => {
       attachChecklistListener("safely-checklist-" + idx);
+    });
+    (pageData.riskFactors || []).forEach((_: any, idx: number) => {
+      attachChecklistListener("safely-riskfactor-checklist-" + idx);
     });
   }
 

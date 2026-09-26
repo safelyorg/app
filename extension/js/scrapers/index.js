@@ -176,6 +176,12 @@
             requiresClientSideScraping: false,
             isListingUrl: (url) => url.includes("/product/"),
         },
+        {
+            name: "thomasnet",
+            matchesHostname: (hostname) => hostname.includes("thomasnet.com"),
+            requiresClientSideScraping: false,
+            isListingUrl: (url) => url.includes("/company/") && url.includes("/profile"),
+        },
     ];
     function detectPlatform() {
         const hostname = window.location.hostname;

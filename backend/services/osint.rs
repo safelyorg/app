@@ -2,7 +2,7 @@ use crate::models::analysis::Signal;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use std::{env::var, sync::Arc};
+use std::{collections::HashSet, env::var, sync::Arc};
 use tokio::{sync::Semaphore, task::JoinSet};
 
 #[derive(Debug)]
@@ -192,16 +192,33 @@ fn is_own_platform_domain(url: &str) -> bool {
         .any(|domain| url.contains(domain))
 }
 
-/// Builds the real, complete matrix of OSINT queries - every real
-/// name variant (first word, first two words, full name), checked
-/// separately against every real platform. Nothing is combined into
-/// one OR-query; each variant+platform pair is its own, distinct,
-/// honest search, so the final result can report exactly which
-/// combinations found something and which genuinely didn't.
+/// Real, shared name-variant builder - first-two-words and full-name,
+/// deduplicated - used by both the primary and the location-fallback
+/// query builders below, so the two tiers always search the exact
+/// same set of name variants.
+fn build_name_variants(company_name: &str) -> Vec<String> {
+    let words: Vec<&str> = company_name.split_whitespace().collect();
+    let mut variants: Vec<String> = Vec::new();
+    if words.len() >= 2 {
+        variants.push(format!("{} {}", words[0], words[1]));
+    }
+    variants.push(company_name.to_string());
+    variants.dedup();
+    variants
+}
+
+/// TIER 1 - the real, name-ONLY matrix. Deliberately never combines
+/// the company name with the location as a mandatory AND term inside
+/// one query - a real company's own Facebook/LinkedIn page almost
+/// never has its city+state indexed verbatim next to its name, so
+/// forcing that combination silently throws away genuine matches
+/// (confirmed on Deva Inc / ThomasNet: 0 of 40 checks found anything,
+/// purely because every query required "Deva Inc" AND "Tustin, CA"
+/// together). This tier runs for every listing, on every platform,
+/// always - location is handled separately, as a fallback, below.
 pub fn build_osint_query_matrix(
     company_name: Option<&str>,
     contact_name: Option<&str>,
-    location: Option<&str>,
     phone: Option<&str>,
 ) -> Vec<(String, String, String)> {
     let mut queries = Vec::new();
@@ -209,22 +226,7 @@ pub fn build_osint_query_matrix(
         return queries;
     };
 
-    let clean_location = location
-        .and_then(|l| l.split(['/', '|']).next())
-        .map(|s| s.trim())
-        .filter(|s| !s.is_empty());
-    let location_part = clean_location
-        .map(|l| format!(" \"{}\"", l))
-        .unwrap_or_default();
-
-    let words: Vec<&str> = name.split_whitespace().collect();
-    let mut variants: Vec<String> = Vec::new();
-
-    if words.len() >= 2 {
-        variants.push(format!("{} {}", words[0], words[1]));
-    }
-    variants.push(name.to_string());
-    variants.dedup();
+    let variants = build_name_variants(name);
 
     let platforms: Vec<(&str, &str)> = vec![
         ("Facebook", "site:facebook.com"),
@@ -239,7 +241,7 @@ pub fn build_osint_query_matrix(
         for (platform_label, site_filter) in &platforms {
             queries.push((
                 platform_label.to_string(),
-                format!("{} \"{}\"{}", site_filter, variant, location_part),
+                format!("{} \"{}\"", site_filter, variant),
                 variant.clone(),
             ));
             let phone_part = phone.map(|p| format!(" \"{}\"", p)).unwrap_or_default();
@@ -266,7 +268,10 @@ pub fn build_osint_query_matrix(
 
     // A real, strong, dedicated search for the individual contact
     // person, when their name and a genuine, unmasked phone number
-    // are both available - the strongest possible combination.
+    // are both available - the strongest possible combination. Kept
+    // as-is: a phone number is a hard identifier, not a soft one
+    // like a city name, so it's fine for this pairing to stay
+    // mandatory.
     if let (Some(contact), Some(real_phone)) = (contact_name, phone) {
         if !contact.trim().is_empty() && !real_phone.trim().is_empty() {
             for (platform_label, site_filter) in &[
@@ -290,57 +295,86 @@ pub fn build_osint_query_matrix(
     queries
 }
 
-/// Runs the REAL, complete matrix - every name variant, against
-/// every platform - and reports back EVERY result, found or not, so
-/// the final signal can honestly show exactly what was checked, not
-/// just what happened to succeed.
-pub async fn build_social_presence_matrix(
-    company_name: Option<&str>,
-    contact_name: Option<&str>,
-    location: Option<&str>,
-    phone: Option<&str>,
-) -> Result<(Signal, Vec<PlatformCheckResult>), String> {
-    let queries = build_osint_query_matrix(company_name, contact_name, location, phone);
-    if queries.is_empty() {
-        return Ok((
-            Signal {
-                label: "Social presence check".to_string(),
-                sub: "No company name was available to search with.".to_string(),
-                value: "Not checked".to_string(),
-                signal_type: "info".to_string(),
-                category: "external_intelligence".to_string(),
-                check_type: "existence".to_string(),
-            },
-            Vec::new(),
-        ));
+/// TIER 2 - the real location-FALLBACK matrix. Only ever built for
+/// the specific (platform, variant) pairs Tier 1 genuinely came up
+/// empty on - never run blind, since re-searching everything with
+/// location attached would just reintroduce the same problem this
+/// whole split exists to fix. Same platform list, same name variants
+/// - the only difference is the location is now appended, used here
+/// as a genuine disambiguation refinement, not a gate.
+pub fn build_location_fallback_queries(
+    company_name: &str,
+    raw_location: &str,
+    needed: &HashSet<(String, String)>,
+) -> Vec<(String, String, String)> {
+    let mut queries = Vec::new();
+
+    let clean_location = raw_location
+        .split(['/', '|'])
+        .next()
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty());
+    let Some(location) = clean_location else {
+        return queries;
+    };
+
+    let variants = build_name_variants(company_name);
+
+    let platforms: Vec<(&str, &str)> = vec![
+        ("Facebook", "site:facebook.com"),
+        ("LinkedIn", "site:linkedin.com"),
+        ("TikTok", "site:tiktok.com"),
+        ("Instagram", "site:instagram.com"),
+        ("Reddit", "site:reddit.com"),
+        ("Trustpilot", "site:trustpilot.com"),
+    ];
+
+    for variant in &variants {
+        for (platform_label, site_filter) in &platforms {
+            let key = (platform_label.to_string(), variant.clone());
+            if !needed.contains(&key) {
+                continue;
+            }
+            queries.push((
+                platform_label.to_string(),
+                format!("{} \"{}\" \"{}\"", site_filter, variant, location),
+                variant.clone(),
+            ));
+        }
     }
 
-    // Run real, live searches in parallel, but genuinely LIMITED to
-    // a real, small number at once (10) - not one at a time (slow),
-    // and not all ~70+ at the exact same instant (triggers Serper's
-    // own rate limiting, silently dropping results). A semaphore
-    // acts like a real, honest "only 10 people through this door at
-    // once" rule - the 11th request genuinely waits for a slot to
-    // free up, rather than being sent immediately and getting
-    // rejected.
-    let queries_len = queries.len();
+    queries
+}
+
+/// Runs one batch of (platform, query, variant) jobs against Serper,
+/// in parallel (bounded by a shared semaphore), and reports back a
+/// PlatformCheckResult per job plus whether the underlying Serper
+/// call itself succeeded - shared by both Tier 1 and Tier 2 so the
+/// two tiers behave identically and failures are counted the same
+/// way in both.
+async fn run_query_batch(
+    queries: Vec<(String, String, String)>,
+    country_code: &str,
+) -> (Vec<PlatformCheckResult>, u32) {
     let semaphore = Arc::new(Semaphore::new(10));
     let mut join_set = JoinSet::new();
     for (platform_label, query, variant) in queries {
         let permit_holder = semaphore.clone();
+        let country_code = country_code.to_string();
         join_set.spawn(async move {
             let _permit = permit_holder.acquire().await.ok();
-            let real_results = run_serper_search(&query, Some("br")).await;
+            let real_results = run_serper_search(&query, Some(&country_code)).await;
             let search_succeeded = real_results.is_some();
             let mut real_candidates = Vec::new();
             if let Some(response) = real_results {
-                for r in response.organic.iter().take(3) {
+                for r in response.organic.iter().take(5) {
                     if is_own_platform_domain(&r.link) {
                         continue;
                     }
-                    let title_lower = r.title.to_lowercase();
+                    let haystack = format!("{} {}", r.title, r.snippet.as_deref().unwrap_or(""))
+                        .to_lowercase();
                     let variant_lower = variant.to_lowercase();
-                    if !title_lower.contains(&variant_lower) {
+                    if !haystack.contains(&variant_lower) {
                         continue;
                     }
                     real_candidates.push(SocialCandidateLink {
@@ -362,15 +396,103 @@ pub async fn build_social_presence_matrix(
         });
     }
 
-    let total_queries = queries_len;
-    let mut results: Vec<PlatformCheckResult> = Vec::new();
-    let mut real_search_failures = 0u32;
+    let mut results = Vec::new();
+    let mut failures = 0u32;
     while let Some(joined) = join_set.join_next().await {
         if let Ok((result, search_succeeded)) = joined {
             if !search_succeeded {
-                real_search_failures += 1;
+                failures += 1;
             }
             results.push(result);
+        }
+    }
+    (results, failures)
+}
+
+/// Runs the REAL, complete, two-tier matrix - every name variant
+/// against every platform, name-only first, with location genuinely
+/// held back and only spent on the specific platform+variant pairs
+/// that came up empty - and reports back EVERY result, found or not,
+/// so the final signal can honestly show exactly what was checked.
+pub async fn build_social_presence_matrix(
+    company_name: Option<&str>,
+    contact_name: Option<&str>,
+    location: Option<&str>,
+    phone: Option<&str>,
+    platform: &str,
+) -> Result<(Signal, Vec<PlatformCheckResult>), String> {
+    let primary_queries = build_osint_query_matrix(company_name, contact_name, phone);
+    if primary_queries.is_empty() {
+        return Ok((
+            Signal {
+                label: "Social presence check".to_string(),
+                sub: "No company name was available to search with.".to_string(),
+                value: "Not checked".to_string(),
+                signal_type: "info".to_string(),
+                category: "external_intelligence".to_string(),
+                check_type: "existence".to_string(),
+            },
+            Vec::new(),
+        ));
+    }
+
+    // Real, per-platform region for OSINT searches - a company
+    // listed on a US-focused directory like ThomasNet should be
+    // searched with US-region results, not Brazil's. Applies to
+    // BOTH tiers, for every platform, not just ThomasNet.
+    let country_code = match platform {
+        "b2brazil" => "br",
+        _ => "us",
+    };
+
+    let total_primary = primary_queries.len();
+    let (mut results, mut real_search_failures) =
+        run_query_batch(primary_queries, country_code).await;
+    let mut total_queries = total_primary;
+
+    // TIER 2 - only for the platform+variant pairs Tier 1 genuinely
+    // found nothing on, and only when we actually have a location to
+    // try. This is the real fallback: location refines an already-
+    // empty result, it never gates the first attempt.
+    let clean_location = location
+        .and_then(|l| l.split(['/', '|']).next())
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty());
+
+    if let (Some(name), Some(loc)) = (
+        company_name.filter(|n| !n.trim().is_empty()),
+        clean_location,
+    ) {
+        let needed: HashSet<(String, String)> = results
+            .iter()
+            .filter(|r| !r.found)
+            .map(|r| (r.platform.clone(), r.variant_searched.clone()))
+            .collect();
+
+        if !needed.is_empty() {
+            let fallback_queries = build_location_fallback_queries(name, loc, &needed);
+            if !fallback_queries.is_empty() {
+                total_queries += fallback_queries.len();
+                let (fallback_results, fallback_failures) =
+                    run_query_batch(fallback_queries, country_code).await;
+                real_search_failures += fallback_failures;
+
+                // Merge: a Tier 2 hit fills in the matching Tier 1
+                // row (same platform + same variant) instead of
+                // adding a duplicate row.
+                for fallback in fallback_results {
+                    if !fallback.found {
+                        continue;
+                    }
+                    if let Some(existing) = results.iter_mut().find(|r| {
+                        r.platform == fallback.platform
+                            && r.variant_searched == fallback.variant_searched
+                    }) {
+                        existing.found = true;
+                        existing.candidates = fallback.candidates;
+                    }
+                }
+            }
         }
     }
 

@@ -37,7 +37,10 @@ use backend::{
         fraud_reports::{build_network_summary, count_fraud_reports},
         listings::{create_listing, get_monthly_visit_activity},
         network_memory::build_network_memory_signal,
-        osint::{build_osint_query_matrix, run_serper_search, score_identifier_match},
+        osint::{
+            build_location_fallback_queries, build_osint_query_matrix, run_serper_search,
+            score_identifier_match,
+        },
         risk_factors::{derive_risk_factors, find_signal, is_new_account},
         scoring::calculate_risk_score,
         sellers::{create_seller, find_seller},
@@ -50,7 +53,7 @@ use serde_json::json;
 use serial_test::serial;
 use sqlx::{query, query_as};
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     env::{remove_var, set_var, var},
     sync::Mutex,
     time::{Duration, Instant},
@@ -4407,7 +4410,7 @@ async fn verify_social_link_fails_gracefully_for_a_genuinely_unreachable_url() {
 
 #[test]
 fn build_osint_query_matrix_returns_empty_when_no_company_name() {
-    let queries = build_osint_query_matrix(None, None, None, None);
+    let queries = build_osint_query_matrix(None, None, None);
     assert!(
         queries.is_empty(),
         "expected genuinely no queries without a company name"
@@ -4416,7 +4419,7 @@ fn build_osint_query_matrix_returns_empty_when_no_company_name() {
 
 #[test]
 fn build_osint_query_matrix_skips_the_single_word_variant() {
-    let queries = build_osint_query_matrix(Some("SILTI MODA PRAIA"), None, None, None);
+    let queries = build_osint_query_matrix(Some("SILTI MODA PRAIA"), None, None);
     let single_word_query = queries.iter().find(|(_, _, variant)| variant == "SILTI");
     assert!(
         single_word_query.is_none(),
@@ -4426,7 +4429,7 @@ fn build_osint_query_matrix_skips_the_single_word_variant() {
 
 #[test]
 fn build_osint_query_matrix_builds_two_word_and_full_name_variants() {
-    let queries = build_osint_query_matrix(Some("SILTI MODA PRAIA"), None, None, None);
+    let queries = build_osint_query_matrix(Some("SILTI MODA PRAIA"), None, None);
     let has_two_word = queries.iter().any(|(_, _, v)| v == "SILTI MODA");
     let has_full_name = queries.iter().any(|(_, _, v)| v == "SILTI MODA PRAIA");
     assert!(
@@ -4444,7 +4447,7 @@ fn build_osint_query_matrix_falls_back_to_the_single_word_for_a_one_word_name() 
     // A genuinely single-word company name has no real "2-word"
     // variant to build - it should still search using that one,
     // real word, rather than producing zero queries.
-    let queries = build_osint_query_matrix(Some("Trustco"), None, None, None);
+    let queries = build_osint_query_matrix(Some("Trustco"), None, None);
     assert!(
         queries.iter().any(|(_, _, v)| v == "Trustco"),
         "expected a genuinely single-word name to still be searched"
@@ -4453,7 +4456,7 @@ fn build_osint_query_matrix_falls_back_to_the_single_word_for_a_one_word_name() 
 
 #[test]
 fn build_osint_query_matrix_includes_scam_word_groups_per_platform() {
-    let queries = build_osint_query_matrix(Some("Real Company Name"), None, None, None);
+    let queries = build_osint_query_matrix(Some("Real Company Name"), None, None);
     let scam_queries: Vec<_> = queries
         .iter()
         .filter(|(_, q, _)| q.contains("golpe") || q.contains("scam"))
@@ -4466,14 +4469,9 @@ fn build_osint_query_matrix_includes_scam_word_groups_per_platform() {
 
 #[test]
 fn build_osint_query_matrix_includes_contact_queries_only_when_name_and_phone_both_present() {
-    let with_both = build_osint_query_matrix(
-        Some("Company"),
-        Some("Contact Person"),
-        None,
-        Some("03001234567"),
-    );
-    let without_phone =
-        build_osint_query_matrix(Some("Company"), Some("Contact Person"), None, None);
+    let with_both =
+        build_osint_query_matrix(Some("Company"), Some("Contact Person"), Some("03001234567"));
+    let without_phone = build_osint_query_matrix(Some("Company"), Some("Contact Person"), None);
 
     assert!(
         with_both.iter().any(|(p, _, _)| p.starts_with("Contact")),
@@ -4488,9 +4486,25 @@ fn build_osint_query_matrix_includes_contact_queries_only_when_name_and_phone_bo
 }
 
 #[test]
-fn build_osint_query_matrix_cleans_the_real_location_before_using_it() {
-    let queries =
-        build_osint_query_matrix(Some("Company"), None, Some("Juruaia / MG | Brazil"), None);
+fn build_osint_query_matrix_never_bakes_location_into_the_query() {
+    let queries = build_osint_query_matrix(Some("Deva Inc"), None, None);
+    let facebook_query = queries
+        .iter()
+        .find(|(p, _, _)| p == "Facebook")
+        .map(|(_, q, _)| q.clone())
+        .unwrap_or_default();
+    assert_eq!(
+        facebook_query, "site:facebook.com \"Deva Inc\"",
+        "expected a plain name-only query with no location baked in"
+    );
+}
+
+#[test]
+fn build_location_fallback_queries_cleans_the_real_location_before_using_it() {
+    let mut needed = HashSet::new();
+    needed.insert(("Facebook".to_string(), "Company".to_string()));
+
+    let queries = build_location_fallback_queries("Company", "Juruaia / MG | Brazil", &needed);
     let facebook_query = queries
         .iter()
         .find(|(p, _, _)| p == "Facebook")
@@ -4504,6 +4518,40 @@ fn build_osint_query_matrix_cleans_the_real_location_before_using_it() {
     assert!(
         !facebook_query.contains("MG"),
         "expected the state/country parts to be genuinely stripped out"
+    );
+}
+
+#[test]
+fn build_location_fallback_queries_returns_empty_when_location_is_genuinely_blank() {
+    let mut needed = HashSet::new();
+    needed.insert(("Facebook".to_string(), "Company".to_string()));
+
+    let queries = build_location_fallback_queries("Company", "   ", &needed);
+    assert!(
+        queries.is_empty(),
+        "expected no fallback queries when there is no real location to add"
+    );
+}
+
+#[test]
+fn build_location_fallback_queries_only_builds_queries_for_needed_pairs() {
+    // Tier 2 must never re-search a (platform, variant) pair that
+    // Tier 1 already found something on - only the pairs that
+    // genuinely came up empty should ever spend a fallback query.
+    let mut needed = HashSet::new();
+    needed.insert(("Facebook".to_string(), "Company".to_string()));
+
+    let queries = build_location_fallback_queries("Company", "Karachi", &needed);
+
+    assert!(
+        queries
+            .iter()
+            .any(|(p, _, v)| p == "Facebook" && v == "Company"),
+        "expected the one, genuinely needed pair to be searched"
+    );
+    assert!(
+        !queries.iter().any(|(p, _, _)| p == "LinkedIn"),
+        "expected platforms not marked as needed to be genuinely skipped"
     );
 }
 

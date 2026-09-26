@@ -221,6 +221,12 @@ type DomainCheckResult = LegitimateDomainResult | SuspiciousDomainResult | null;
       requiresClientSideScraping: false,
       isListingUrl: (url) => url.includes("/product/"),
     },
+    {
+      name: "thomasnet",
+      matchesHostname: (hostname) => hostname.includes("thomasnet.com"),
+      requiresClientSideScraping: false,
+      isListingUrl: (url) => url.includes("/company/") && url.includes("/profile"),
+    },
   ];
 
   function detectPlatform(): string {

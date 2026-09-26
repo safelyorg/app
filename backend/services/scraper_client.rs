@@ -24,6 +24,7 @@ fn country_code_for_platform(platform: &str) -> Option<&'static str> {
         "exporthub" => Some("us"),
         "b2brazil" => Some("us"),
         "alibaba" => Some("us"),
+        "thomasnet" => Some("us"),
         "olx" => Some("pk"),
         _ => None,
     }
@@ -40,10 +41,20 @@ pub fn wrap_scraper_url(target_url: &str) -> String {
 pub fn wrap_scraper_url_for_platform(target_url: &str, platform: &str) -> String {
     if let Ok(api_key) = var("SCRAPERAPI_KEY") {
         let encoded_url = encode(target_url);
+        // ThomasNet's real content is already server-rendered (confirmed
+        // by inspecting its actual HTML) - render=true spins up a full
+        // headless browser for no real benefit here, and may be exactly
+        // what's triggering ThomasNet's own anti-bot detection, given
+        // the consistent 500s with no other explanation (credits and
+        // country targeting both checked out fine).
+        let needs_render = platform != "thomasnet";
         let mut url = format!(
-            "https://api.scraperapi.com/?api_key={}&url={}&render=true&premium=true",
+            "https://api.scraperapi.com/?api_key={}&url={}&premium=true",
             api_key, encoded_url
         );
+        if needs_render {
+            url.push_str("&render=true");
+        }
         if let Some(country) = country_code_for_platform(platform) {
             url.push_str("&country_code=");
             url.push_str(country);

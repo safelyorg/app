@@ -1,6 +1,7 @@
 pub mod alibaba;
 pub mod b2brazil;
 pub mod exporthub;
+pub mod thomasnet;
 pub mod tradewheel;
 
 use crate::services::scraper_client::{build_scraper_client, wrap_scraper_url_for_platform};
@@ -75,6 +76,7 @@ pub fn get_scraper_for_platform(platform: &str) -> Option<Box<dyn B2bScraper>> {
         Box::new(alibaba::AlibabaScraper),
         Box::new(tradewheel::TradewheelScraper),
         Box::new(exporthub::ExporthubScraper),
+        Box::new(thomasnet::ThomasnetScraper),
     ];
     scrapers.into_iter().find(|s| s.matches_platform(platform))
 }

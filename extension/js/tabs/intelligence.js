@@ -283,16 +283,24 @@
             return str;
         return str.charAt(0).toUpperCase() + str.slice(1);
     }
+    // Same ###CHECKLIST### parsing the signal rows already use above -
+    // a risk factor's description is very often copied straight from
+    // the signal.sub it was derived from (e.g. "Listing completeness"),
+    // so without this same parsing step, the raw marker and the raw
+    // "Name|true;Name|false" data was leaking straight into the visible
+    // text instead of becoming a real, clickable checklist dropdown.
     function buildRiskFactorsSection(riskFactors) {
         if (!riskFactors || riskFactors.length === 0)
             return "";
         const rows = riskFactors
-            .map((factor) => {
+            .map((factor, idx) => {
             const color = SEVERITY_COLORS[factor.severity] || "#8e8e93";
             const severityLabel = SEVERITY_LABELS[factor.severity] || factor.severity;
             const shortTitle = factor.contributing_signals && factor.contributing_signals.length > 0
                 ? factor.contributing_signals.join(" + ")
                 : capitalizeFirst(factor.name.replace(/_/g, " "));
+            const { realSub, checklist } = parseChecklistSignal(factor.description || "");
+            const dropdownId = "safely-riskfactor-checklist-" + idx;
             return ('<div class="safely-check-card">' +
                 '<div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;">' +
                 '<div class="safely-check-title">' +
@@ -304,8 +312,10 @@
                 window.escapeHtml(severityLabel) +
                 "</div></div>" +
                 '<div class="safely-check-body">' +
-                window.escapeHtml(factor.description) +
-                "</div></div>");
+                window.escapeHtml(capitalizeFirst(realSub) || "") +
+                "</div>" +
+                buildChecklistDropdown(dropdownId, checklist) +
+                "</div>");
         })
             .join("");
         return ('<div class="safely-section-label" style="margin-top:18px">Risk Factors</div><div style="display:flex;flex-direction:column;gap:8px">' +
@@ -317,6 +327,9 @@
         const pageData = window.__safelyData;
         (pageData.signals || []).forEach((_, idx) => {
             attachChecklistListener("safely-checklist-" + idx);
+        });
+        (pageData.riskFactors || []).forEach((_, idx) => {
+            attachChecklistListener("safely-riskfactor-checklist-" + idx);
         });
     }
     window.__safelyAddTab("intelligence", "Intelligence", buildIntelligenceTab(), '<svg viewBox="0 0 24 24" fill="none" stroke="#8e8e93" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="2"/><path d="M16.24 7.76a6 6 0 010 8.48"/><path d="M19.07 4.93a10 10 0 010 14.14"/><path d="M7.76 16.24a6 6 0 010-8.48"/><path d="M4.93 19.07a10 10 0 010-14.14"/></svg>', attachAllChecklistListeners);

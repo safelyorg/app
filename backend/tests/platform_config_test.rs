@@ -12,7 +12,7 @@ fn returns_exactly_the_platforms_currently_configured_no_more_no_less() {
     let domains = get_all_platform_domains();
     assert_eq!(
         domains.len(),
-        5,
+        6,
         "expected exactly the platforms currently in platform_domains.json - \
          update this test if a new platform is genuinely added"
     );
@@ -43,7 +43,7 @@ fn returns_a_genuine_clone_not_a_shared_mutable_reference() {
         None,
         "expected the static, real data to remain genuinely unaffected by mutating a returned clone"
     );
-    assert_eq!(second_call.len(), 5);
+    assert_eq!(second_call.len(), 6);
 }
 
 #[test]
