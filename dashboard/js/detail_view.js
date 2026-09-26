@@ -411,11 +411,20 @@ function renderDetailBody(data) {
                     t("dash.detail.risk_factors", "Risk factors") +
                     "</div>" +
                     riskFactors
-                        .map((f) => {
+                        .map((f, idx) => {
                         const colorClass = severityColors[f.severity] || "text-muted";
                         const severityLabel = severityLabels[f.severity] || f.severity;
                         const displayName = translateRiskFactorName(f.name);
-                        const displayDescription = RISK_FACTOR_DESCRIPTIONS[f.description] || f.description;
+                        // Same ###CHECKLIST### parsing the signals list above
+                        // already uses - a risk factor's description is very
+                        // often the exact same text as the signal.sub it was
+                        // derived from (e.g. "Listing completeness"), so without
+                        // this, the raw marker and "Name|true;Name|false" data
+                        // was leaking straight into the visible text here
+                        // instead of becoming a real, clickable checklist.
+                        const { realSub, checklist } = parseChecklistSignal(f.description);
+                        const dropdownId = "detail-rf-checklist-" + idx;
+                        const displayDescription = RISK_FACTOR_DESCRIPTIONS[realSub] || translateCompletenessSub(realSub);
                         return ('<div class="bg-surface border border-line rounded-xl p-4 mb-2.5 last:mb-0">' +
                             '<div class="flex justify-between items-baseline gap-3">' +
                             '<div class="font-semibold text-[13px]">' +
@@ -428,9 +437,12 @@ function renderDetailBody(data) {
                             "</div></div>" +
                             '<div class="text-[12px] text-muted mt-1.5">' +
                             escapeHtml(displayDescription) +
-                            "</div></div>");
+                            "</div>" +
+                            buildChecklistDropdown(dropdownId, checklist) +
+                            "</div>");
                     })
                         .join("");
+            riskFactors.forEach((_, idx) => attachChecklistListener("detail-rf-checklist-" + idx));
         }
         else {
             riskFactorsSection.classList.add("hidden");
