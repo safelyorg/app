@@ -30,3 +30,40 @@ impl Display for ClaudeError {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn quota_exceeded_displays_the_real_dependency_down_message() {
+        assert_eq!(
+            ClaudeError::QuotaExceeded.to_string(),
+            "DEPENDENCY DOWN: Anthropic API credits/quota exhausted"
+        );
+    }
+
+    #[test]
+    fn unauthorized_displays_the_real_dependency_down_message() {
+        assert_eq!(
+            ClaudeError::Unauthorized.to_string(),
+            "DEPENDENCY DOWN: Anthropic API key rejected (401/403)"
+        );
+    }
+
+    #[test]
+    fn service_unavailable_displays_the_real_status_code_it_was_given() {
+        assert_eq!(
+            ClaudeError::ServiceUnavailable(503).to_string(),
+            "DEPENDENCY DOWN: Anthropic API returned status 503"
+        );
+    }
+
+    #[test]
+    fn service_unavailable_correctly_interpolates_a_different_code_too() {
+        assert_eq!(
+            ClaudeError::ServiceUnavailable(500).to_string(),
+            "DEPENDENCY DOWN: Anthropic API returned status 500"
+        );
+    }
+}

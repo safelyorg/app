@@ -7,7 +7,8 @@ use backend::{
         analysis::build_b2b_analysis_path,
         b2b_scrapers::{
             B2bScraper, B2bSupplierProfile, alibaba::AlibabaScraper, b2brazil::B2brazilScraper,
-            check_b2b_page, tradewheel::TradewheelScraper,
+            check_b2b_page, exporthub::ExporthubScraper, looks_like_a_real_page,
+            tradewheel::TradewheelScraper,
         },
     },
 };
@@ -1228,5 +1229,481 @@ fn tradewheel_enrich_from_company_profile_never_touches_other_fields() {
     assert_eq!(
         enriched.company_name,
         Some("Existing Name Should Survive".to_string())
+    );
+}
+
+// --- ExportHub scraper: matches_platform ---
+
+#[test]
+#[serial]
+fn exporthub_matches_platform_correctly_identifies_exporthub_only() {
+    let scraper = ExporthubScraper;
+    assert!(scraper.matches_platform("exporthub"));
+    assert!(!scraper.matches_platform("tradewheel"));
+    assert!(!scraper.matches_platform("alibaba"));
+}
+
+// --- ExportHub scraper: parse_supplier ---
+
+#[test]
+#[serial]
+fn exporthub_parse_supplier_reads_company_name_and_a_genuine_logo() {
+    let html = r#"
+        <html><body>
+        <div class="product-del_sidebar__comp-ttl">Real Exporter Co.</div>
+        <div class="product-del_sidebar__comp-imgspn"><img src="https://cdn.exporthub.com/logo123.png"></div>
+        </body></html>
+    "#;
+
+    let supplier = ExporthubScraper.parse_supplier(html, "https://exporthub.com/company/x");
+
+    assert_eq!(supplier.company_name, Some("Real Exporter Co.".to_string()));
+    assert_eq!(
+        supplier.logo_url,
+        Some("https://cdn.exporthub.com/logo123.png".to_string())
+    );
+    assert_eq!(supplier.source_platform, "exporthub");
+}
+
+#[test]
+#[serial]
+fn exporthub_parse_supplier_filters_out_the_real_placeholder_logo() {
+    let html = r#"
+        <html><body>
+        <div class="product-del_sidebar__comp-ttl">No Real Logo Co.</div>
+        <div class="product-del_sidebar__comp-imgspn"><img src="https://cdn.exporthub.com/noimg.png"></div>
+        </body></html>
+    "#;
+
+    let supplier = ExporthubScraper.parse_supplier(html, "https://exporthub.com/company/x");
+    assert_eq!(
+        supplier.logo_url, None,
+        "expected the genuine noimg placeholder to never be captured as a real logo"
+    );
+}
+
+#[test]
+#[serial]
+fn exporthub_parse_supplier_reads_the_real_about_box_fields() {
+    let html = r#"
+        <html><body>
+        <div class="prod-dtl_desp__abt-atr"><span>Year of Establishment: </span>2010</div>
+        <div class="prod-dtl_desp__abt-atr"><span>Country / Region: </span>Pakistan</div>
+        <div class="prod-dtl_desp__abt-atr"><span>Total Annual Revenue: </span>US$5 Million - US$10 Million</div>
+        </body></html>
+    "#;
+
+    let supplier = ExporthubScraper.parse_supplier(html, "https://exporthub.com/company/x");
+
+    assert_eq!(supplier.year_established, Some("2010".to_string()));
+    assert_eq!(supplier.country, Some("Pakistan".to_string()));
+    assert_eq!(
+        supplier.sales_revenue,
+        Some("US$5 Million - US$10 Million".to_string())
+    );
+}
+
+#[test]
+#[serial]
+fn exporthub_parse_supplier_treats_not_provided_about_box_values_as_genuinely_absent() {
+    let html = r#"
+        <html><body>
+        <div class="prod-dtl_desp__abt-atr"><span>Year of Establishment: </span>Not Provided</div>
+        </body></html>
+    "#;
+
+    let supplier = ExporthubScraper.parse_supplier(html, "https://exporthub.com/company/x");
+    assert_eq!(supplier.year_established, None);
+}
+
+#[test]
+#[serial]
+fn exporthub_parse_supplier_detects_a_genuine_premium_membership_seal() {
+    let html = r#"
+        <html><body>
+        <div class="product-del_sidebar__seal"><img alt="Premium Membership" src="https://cdn.exporthub.com/seal.png"></div>
+        </body></html>
+    "#;
+
+    let supplier = ExporthubScraper.parse_supplier(html, "https://exporthub.com/company/x");
+    assert_eq!(
+        supplier.badge_honorific,
+        Some("Premium Membership".to_string())
+    );
+    assert!(supplier.platform_verified_badge);
+}
+
+#[test]
+#[serial]
+fn exporthub_parse_supplier_handles_a_genuinely_empty_page_without_panicking() {
+    let html = "<html><body><p>Not an ExportHub listing at all</p></body></html>";
+    let supplier = ExporthubScraper.parse_supplier(html, "https://exporthub.com/company/none");
+    assert_eq!(supplier.company_name, None);
+    assert_eq!(supplier.badge_honorific, None);
+    assert!(!supplier.platform_verified_badge);
+}
+
+// --- ExportHub scraper: parse_listing ---
+
+#[test]
+#[serial]
+fn exporthub_parse_listing_reads_title_price_and_description() {
+    let html = r#"
+        <html><body>
+        <h1 class="prod-dtl_ttl">Bulk Industrial Fasteners</h1>
+        <div class="prod-dtl_sl__pr">$0.10 - $0.50 / piece</div>
+        <div id="detail"><p>High-grade steel fasteners for industrial use.</p></div>
+        </body></html>
+    "#;
+
+    let listing = ExporthubScraper.parse_listing(html, "https://exporthub.com/x");
+
+    assert_eq!(listing.title, Some("Bulk Industrial Fasteners".to_string()));
+    assert_eq!(
+        listing.unit_price,
+        Some("$0.10 - $0.50 / piece".to_string())
+    );
+    assert_eq!(
+        listing.description,
+        Some("High-grade steel fasteners for industrial use.".to_string())
+    );
+}
+
+#[test]
+#[serial]
+fn exporthub_parse_listing_reads_colon_separated_attribute_fields() {
+    let html = r#"
+        <html><body>
+        <div class="prod-dtl_atr__box">Minimum Order Quantity: 500 pieces</div>
+        <div class="prod-dtl_atr__box">Shipment Port: Karachi</div>
+        <div class="prod-dtl_atr__box">Packaging: Cartons</div>
+        </body></html>
+    "#;
+
+    let listing = ExporthubScraper.parse_listing(html, "https://exporthub.com/x");
+
+    assert_eq!(
+        listing.minimum_order_quantity,
+        Some("500 pieces".to_string())
+    );
+    assert_eq!(listing.preferred_port, Some("Karachi".to_string()));
+    assert_eq!(listing.packaging_details, Some("Cartons".to_string()));
+}
+
+#[test]
+#[serial]
+fn exporthub_parse_listing_joins_multiple_payment_method_icons() {
+    let html = r#"
+        <html><body>
+        <span class="pm-icon" aria-label="Bank Transfer"></span>
+        <span class="pm-icon" aria-label="Letter of Credit"></span>
+        </body></html>
+    "#;
+
+    let listing = ExporthubScraper.parse_listing(html, "https://exporthub.com/x");
+    assert_eq!(
+        listing.payment_type,
+        Some("Bank Transfer, Letter of Credit".to_string())
+    );
+}
+
+#[test]
+#[serial]
+fn exporthub_parse_listing_payment_type_is_none_when_genuinely_no_icons_present() {
+    let listing =
+        ExporthubScraper.parse_listing("<html><body></body></html>", "https://exporthub.com/x");
+    assert_eq!(listing.payment_type, None);
+}
+
+#[test]
+#[serial]
+fn exporthub_parse_listing_extracts_the_real_image_and_filters_the_noimage_placeholder() {
+    let real_html =
+        r#"<html><body><img id="show-img" src="https://cdn.exporthub.com/real.jpg"></body></html>"#;
+    let placeholder_html = r#"<html><body><img id="show-img" src="https://cdn.exporthub.com/noimage.png"></body></html>"#;
+
+    let real_listing = ExporthubScraper.parse_listing(real_html, "https://exporthub.com/x");
+    let placeholder_listing =
+        ExporthubScraper.parse_listing(placeholder_html, "https://exporthub.com/x");
+
+    assert_eq!(
+        real_listing.image_urls,
+        vec!["https://cdn.exporthub.com/real.jpg".to_string()]
+    );
+    assert_eq!(
+        placeholder_listing.image_urls,
+        Vec::<String>::new(),
+        "expected the genuine noimage placeholder to be excluded"
+    );
+}
+
+// --- ExportHub scraper: extract_company_profile_url / build_extended_profile_url ---
+
+#[test]
+#[serial]
+fn exporthub_extracts_the_real_company_profile_link() {
+    let html = r#"<html><body><div class="product-del_sidebar__comp-nm"><a href="https://exporthub.com/company/real-exporter/">Real Exporter</a></div></body></html>"#;
+    let url = ExporthubScraper.extract_company_profile_url(html);
+    assert_eq!(
+        url,
+        Some("https://exporthub.com/company/real-exporter/".to_string())
+    );
+}
+
+#[test]
+#[serial]
+fn exporthub_build_extended_profile_url_appends_correctly_when_the_profile_url_already_ends_in_a_slash()
+ {
+    let url =
+        ExporthubScraper.build_extended_profile_url("https://exporthub.com/company/real-exporter/");
+    assert_eq!(
+        url,
+        Some("https://exporthub.com/company/real-exporter/profile.html".to_string())
+    );
+}
+
+#[test]
+#[serial]
+fn exporthub_build_extended_profile_url_inserts_a_slash_when_the_profile_url_genuinely_has_none() {
+    let url =
+        ExporthubScraper.build_extended_profile_url("https://exporthub.com/company/real-exporter");
+    assert_eq!(
+        url,
+        Some("https://exporthub.com/company/real-exporter/profile.html".to_string())
+    );
+}
+
+// --- ExportHub scraper: enrich_from_extended_profile ---
+// (written against the CORRECTED version - see exporthub_prof_table_fix.rs)
+
+#[test]
+#[serial]
+fn exporthub_enrich_from_extended_profile_reads_the_real_longer_description() {
+    let html = r#"
+        <html><body>
+        <div class="rmp-comp--desp_cont">
+            <p>Founded in 1998, we specialize in high-quality industrial exports. Name: Real Exporter Co.</p>
+        </div>
+        </body></html>
+    "#;
+
+    let supplier = B2bSupplierProfile::default();
+    let enriched = ExporthubScraper.enrich_from_extended_profile(supplier, html);
+
+    assert_eq!(
+        enriched.company_description,
+        Some("Founded in 1998, we specialize in high-quality industrial exports.".to_string()),
+        "expected the description to be cut off cleanly before the trailing ' Name:' segment"
+    );
+}
+
+#[test]
+#[serial]
+fn exporthub_enrich_from_extended_profile_keeps_the_full_paragraph_when_there_is_no_name_marker() {
+    let html = r#"
+        <html><body>
+        <div class="rmp-comp--desp_cont">
+            <p>A real, clean description with no trailing name marker at all.</p>
+        </div>
+        </body></html>
+    "#;
+
+    let supplier = B2bSupplierProfile::default();
+    let enriched = ExporthubScraper.enrich_from_extended_profile(supplier, html);
+
+    assert_eq!(
+        enriched.company_description,
+        Some("A real, clean description with no trailing name marker at all.".to_string())
+    );
+}
+
+#[test]
+#[serial]
+fn exporthub_enrich_from_extended_profile_reads_total_workforce_and_year_incorporated_from_the_table()
+ {
+    let html = r#"
+        <html><body>
+        <table class="rmp-comp--prof_table">
+            <tr><td>Total Workforce</td><td>51-100</td></tr>
+            <tr><td>Year Incorporated</td><td>2005</td></tr>
+        </table>
+        </body></html>
+    "#;
+
+    let supplier = B2bSupplierProfile::default();
+    let enriched = ExporthubScraper.enrich_from_extended_profile(supplier, html);
+
+    assert_eq!(enriched.employee_count, Some("51-100".to_string()));
+    assert_eq!(enriched.year_established, Some("2005".to_string()));
+}
+
+#[test]
+#[serial]
+fn exporthub_enrich_from_extended_profile_never_overwrites_a_value_already_found_on_the_main_profile()
+ {
+    let mut supplier = B2bSupplierProfile::default();
+    supplier.employee_count = Some("Already Found: 200+".to_string());
+
+    let html = r#"
+        <html><body>
+        <table class="rmp-comp--prof_table">
+            <tr><td>Total Workforce</td><td>51-100</td></tr>
+        </table>
+        </body></html>
+    "#;
+
+    let enriched = ExporthubScraper.enrich_from_extended_profile(supplier, html);
+    assert_eq!(
+        enriched.employee_count,
+        Some("Already Found: 200+".to_string())
+    );
+}
+
+#[test]
+#[serial]
+fn exporthub_enrich_from_extended_profile_table_ignores_not_provided_values() {
+    let html = r#"
+        <html><body>
+        <table class="rmp-comp--prof_table">
+            <tr><td>Total Workforce</td><td>Not Provided</td></tr>
+        </table>
+        </body></html>
+    "#;
+
+    let supplier = B2bSupplierProfile::default();
+    let enriched = ExporthubScraper.enrich_from_extended_profile(supplier, html);
+    assert_eq!(enriched.employee_count, None);
+}
+
+// --- ExportHub scraper: enrich_from_company_profile ---
+
+#[test]
+#[serial]
+fn exporthub_enrich_from_company_profile_reads_comp_dtl_ic_box_fields() {
+    let html = r#"
+        <html><body>
+        <div class="comp-dtl-ic_box">
+            <h4 class="comp-dtl_rgtnm">No. Employees</h4>
+            <p class="comp-dtl_rgtp">201-500</p>
+        </div>
+        <div class="comp-dtl-ic_box">
+            <h4 class="comp-dtl_rgtnm">Annual Turnover</h4>
+            <p class="comp-dtl_rgtp">US$10M - US$50M</p>
+        </div>
+        </body></html>
+    "#;
+
+    let supplier = B2bSupplierProfile::default();
+    let enriched = ExporthubScraper.enrich_from_company_profile(supplier, html);
+
+    assert_eq!(enriched.employee_count, Some("201-500".to_string()));
+    assert_eq!(enriched.sales_revenue, Some("US$10M - US$50M".to_string()));
+}
+
+#[test]
+#[serial]
+fn exporthub_enrich_from_company_profile_reads_export_percentage_and_estimated_employees_from_list_divs()
+ {
+    let html = r#"
+        <html><body>
+        <p class="list-div">Export Percentage: 60%</p>
+        <p class="list-div">Estimated Employees: 100-200</p>
+        </body></html>
+    "#;
+
+    let supplier = B2bSupplierProfile::default();
+    let enriched = ExporthubScraper.enrich_from_company_profile(supplier, html);
+
+    assert_eq!(enriched.export_percentage, Some("60%".to_string()));
+    assert_eq!(enriched.employee_count, Some("100-200".to_string()));
+}
+
+#[test]
+#[serial]
+fn exporthub_enrich_from_company_profile_never_overwrites_export_percentage_already_found() {
+    let mut supplier = B2bSupplierProfile::default();
+    supplier.export_percentage = Some("Already Found: 90%".to_string());
+
+    let html = r#"<html><body><p class="list-div">Export Percentage: 60%</p></body></html>"#;
+    let enriched = ExporthubScraper.enrich_from_company_profile(supplier, html);
+    assert_eq!(
+        enriched.export_percentage,
+        Some("Already Found: 90%".to_string())
+    );
+}
+
+// --- looks_like_a_real_page ---
+
+#[test]
+#[serial]
+fn looks_like_a_real_page_rejects_html_under_the_real_byte_threshold() {
+    let small_html = format!(
+        "<!doctype html><html><body>{}</body></html>",
+        "x".repeat(10)
+    );
+    assert!(!looks_like_a_real_page(&small_html));
+}
+
+#[test]
+#[serial]
+fn looks_like_a_real_page_accepts_a_genuinely_large_page_with_an_html_tag() {
+    let real_html = format!("<html><body>{}</body></html>", "x".repeat(2200));
+    assert!(looks_like_a_real_page(&real_html));
+}
+
+#[test]
+#[serial]
+fn looks_like_a_real_page_accepts_a_genuinely_large_page_with_a_doctype_only() {
+    let real_html = format!("<!doctype html>{}", "x".repeat(2200));
+    assert!(looks_like_a_real_page(&real_html));
+}
+
+#[test]
+#[serial]
+fn looks_like_a_real_page_rejects_a_large_but_genuinely_non_html_body() {
+    // Guards the "likely ScraperAPI garbage" case directly - a large
+    // JSON error blob with no real markers at all must still be
+    // rejected, size alone isn't enough.
+    let fake_html = format!("{{\"error\": \"{}\"}}", "x".repeat(2200));
+    assert!(!looks_like_a_real_page(&fake_html));
+}
+
+#[test]
+#[serial]
+fn looks_like_a_real_page_marker_check_is_case_insensitive() {
+    let real_html = format!("<HTML><BODY>{}</BODY></HTML>", "x".repeat(2200));
+    assert!(looks_like_a_real_page(&real_html));
+}
+
+// --- B2bScraper trait defaults: build_extended_profile_url / enrich_from_extended_profile ---
+// Alibaba and B2Brazil don't override these, so they exercise the
+// trait's real default implementations directly.
+
+#[test]
+#[serial]
+fn scrapers_that_do_not_override_build_extended_profile_url_genuinely_return_none() {
+    assert_eq!(
+        AlibabaScraper.build_extended_profile_url("https://alibaba.com/company/x"),
+        None
+    );
+    assert_eq!(
+        B2brazilScraper.build_extended_profile_url("https://b2brazil.com/hotsite/x"),
+        None
+    );
+}
+
+#[test]
+#[serial]
+fn scrapers_that_do_not_override_enrich_from_extended_profile_genuinely_leave_the_supplier_unchanged()
+ {
+    let mut supplier = B2bSupplierProfile::default();
+    supplier.company_name = Some("Should Survive Untouched".to_string());
+
+    let enriched =
+        AlibabaScraper.enrich_from_extended_profile(supplier, "<html><body>anything</body></html>");
+
+    assert_eq!(
+        enriched.company_name,
+        Some("Should Survive Untouched".to_string())
     );
 }

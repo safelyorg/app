@@ -150,10 +150,9 @@ impl B2bScraper for ExporthubScraper {
         // the supplier's own ExportHub profile, not a real, external
         // site) - deliberately never extracted.
         if let Ok(row_sel) = Selector::parse(".rmp-comp--prof_table tr") {
-            for row in document.select(&row_sel) {
-                let fragment = Html::parse_fragment(&row.html());
-                if let Ok(td_sel) = Selector::parse("td") {
-                    let cells: Vec<String> = fragment
+            if let Ok(td_sel) = Selector::parse("td") {
+                for row in document.select(&row_sel) {
+                    let cells: Vec<String> = row
                         .select(&td_sel)
                         .map(|c| c.text().collect::<String>().trim().to_string())
                         .collect();
