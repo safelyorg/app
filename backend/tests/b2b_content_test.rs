@@ -146,3 +146,56 @@ fn b2b_content_defaults_to_english_for_an_unrecognized_language_code() {
         "expected an unrecognized language code to safely fall back to English"
     );
 }
+
+// Shared, minimal set of otherwise-required arguments, so each test
+// below only has to override the one field it's actually about.
+fn base_args<'a>(company_description: &'a str) -> CallB2bClaudeArguments<'a> {
+    CallB2bClaudeArguments {
+        platform: "b2brazil",
+        company_name: "Acme Corp",
+        year_established: "2010",
+        platform_verified: true,
+        employee_count: "51-100",
+        company_description,
+        product_title: "Industrial Widgets",
+        product_description: "Bulk widgets for export.",
+        image_urls: &[],
+        language: "en",
+    }
+}
+
+#[test]
+fn b2b_content_shows_not_provided_when_company_description_is_genuinely_empty() {
+    let content = b2b_content(&base_args(""));
+    assert!(
+        content.contains("Company description: Not provided"),
+        "expected the real 'Not provided' fallback when no description was scraped, got:\n{}",
+        content
+    );
+}
+
+#[test]
+fn b2b_content_includes_the_real_company_description_when_present() {
+    let content = b2b_content(&base_args(
+        "Founded in 1998, specializing in industrial equipment.",
+    ));
+    assert!(
+        content.contains(
+            "Company description: Founded in 1998, specializing in industrial equipment."
+        ),
+        "expected the real, actual scraped description to appear verbatim in the prompt, got:\n{}",
+        content
+    );
+}
+
+#[test]
+fn b2b_content_never_shows_not_provided_when_a_real_description_exists() {
+    // Guards against the empty-check being backwards (e.g. checking
+    // is_some() on a &str instead of is_empty()).
+    let content = b2b_content(&base_args("A real, non-empty description."));
+    assert!(
+        !content.contains("Company description: Not provided"),
+        "expected the real description to replace the fallback text entirely, got:\n{}",
+        content
+    );
+}
