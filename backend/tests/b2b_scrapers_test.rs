@@ -7,7 +7,7 @@ use backend::{
         analysis::build_b2b_analysis_path,
         b2b_scrapers::{
             B2bScraper, B2bSupplierProfile, alibaba::AlibabaScraper, b2brazil::B2brazilScraper,
-            check_b2b_page,
+            check_b2b_page, tradewheel::TradewheelScraper,
         },
     },
 };
@@ -789,7 +789,7 @@ async fn check_b2b_page_genuinely_never_retries_a_failed_primary_fetch() {
     // removal: a 500 on the primary fetch must be requested EXACTLY
     // once, not up to 3 times like the old behavior.
     unsafe {
-        std::env::remove_var("SCRAPERAPI_KEY");
+        remove_var("SCRAPERAPI_KEY");
     }
     let mock_server = MockServer::start().await;
     Mock::given(method("GET"))
@@ -803,4 +803,384 @@ async fn check_b2b_page_genuinely_never_retries_a_failed_primary_fetch() {
     let _ = check_b2b_page("b2brazil", &listing_url).await;
 
     mock_server.verify().await;
+}
+
+// --- TradeWheel scraper: matches_platform ---
+
+#[test]
+fn tradewheel_matches_platform_correctly_identifies_tradewheel_only() {
+    let scraper = TradewheelScraper;
+    assert!(scraper.matches_platform("tradewheel"));
+    assert!(!scraper.matches_platform("alibaba"));
+    assert!(!scraper.matches_platform("b2brazil"));
+}
+
+// --- TradeWheel scraper: parse_supplier ---
+
+#[test]
+fn tradewheel_parse_supplier_reads_the_real_company_name_and_country() {
+    let html = r#"
+        <html><body>
+        <div class="comp-info">
+            <h2>Global Textiles Trading Co.</h2>
+            <div class="bo-flag"><i class="flag-icon"></i> United Kingdom</div>
+        </div>
+        </body></html>
+    "#;
+
+    let supplier = TradewheelScraper.parse_supplier(html, "https://tradewheel.com/p/company/x");
+
+    assert_eq!(
+        supplier.company_name,
+        Some("Global Textiles Trading Co.".to_string())
+    );
+    assert_eq!(supplier.country, Some("United Kingdom".to_string()));
+    assert_eq!(supplier.source_platform, "tradewheel");
+    assert_eq!(supplier.profile_url, "https://tradewheel.com/p/company/x");
+}
+
+#[test]
+fn tradewheel_parse_supplier_detects_a_genuine_gold_badge() {
+    let html = r#"
+        <html><body>
+        <div class="comp-info">
+            <h2>Gold Member Supplier</h2>
+            <img src="https://cdn.tradewheel.com/badges/gold-txt1.png" />
+        </div>
+        </body></html>
+    "#;
+
+    let supplier = TradewheelScraper.parse_supplier(html, "https://tradewheel.com/p/company/gold");
+
+    assert_eq!(supplier.badge_honorific, Some("Gold".to_string()));
+    assert!(
+        supplier.platform_verified_badge,
+        "expected a real gold badge to also count as platform_verified_badge"
+    );
+}
+
+#[test]
+fn tradewheel_parse_supplier_leaves_badge_none_when_the_image_is_not_a_gold_badge() {
+    let html = r#"
+        <html><body>
+        <div class="comp-info">
+            <h2>Regular Supplier</h2>
+            <img src="https://cdn.tradewheel.com/badges/silver-txt1.png" />
+        </div>
+        </body></html>
+    "#;
+
+    let supplier =
+        TradewheelScraper.parse_supplier(html, "https://tradewheel.com/p/company/silver");
+
+    assert_eq!(supplier.badge_honorific, None);
+    assert!(
+        !supplier.platform_verified_badge,
+        "expected no verified badge when the badge image genuinely isn't the gold one"
+    );
+}
+
+#[test]
+fn tradewheel_parse_supplier_badge_detection_is_case_insensitive() {
+    let html = r#"
+        <html><body>
+        <div class="comp-info">
+            <h2>Cased Differently Co.</h2>
+            <img src="https://cdn.tradewheel.com/badges/GOLD-TXT1.PNG" />
+        </div>
+        </body></html>
+    "#;
+
+    let supplier = TradewheelScraper.parse_supplier(html, "https://tradewheel.com/p/company/cased");
+    assert_eq!(supplier.badge_honorific, Some("Gold".to_string()));
+}
+
+#[test]
+fn tradewheel_parse_supplier_handles_a_genuinely_empty_page_without_panicking() {
+    let html = "<html><body><p>Not a TradeWheel listing at all</p></body></html>";
+    let supplier = TradewheelScraper.parse_supplier(html, "https://tradewheel.com/p/company/none");
+
+    assert_eq!(supplier.company_name, None);
+    assert_eq!(supplier.country, None);
+    assert_eq!(supplier.badge_honorific, None);
+    assert!(!supplier.platform_verified_badge);
+}
+
+// --- TradeWheel scraper: parse_listing ---
+
+#[test]
+fn tradewheel_parse_listing_reads_the_real_title() {
+    let html = r#"<html><body><h1 class="pd-heading">Bulk Cotton Yarn</h1></body></html>"#;
+    let listing = TradewheelScraper.parse_listing(html, "https://tradewheel.com/p/x");
+    assert_eq!(listing.title, Some("Bulk Cotton Yarn".to_string()));
+}
+
+#[test]
+fn tradewheel_parse_listing_joins_multiple_description_paragraphs() {
+    let html = r#"
+        <html><body>
+        <div class="product-details-container">
+            <p>High quality cotton yarn.</p>
+            <p>Available in bulk quantities.</p>
+        </div>
+        </body></html>
+    "#;
+
+    let listing = TradewheelScraper.parse_listing(html, "https://tradewheel.com/p/x");
+
+    assert_eq!(
+        listing.description,
+        Some("High quality cotton yarn. Available in bulk quantities.".to_string())
+    );
+}
+
+#[test]
+fn tradewheel_parse_listing_prefers_po_box_table_value_when_the_same_label_is_in_multiple_tables() {
+    let html = r#"
+        <html><body>
+        <div class="po-box"><table><tr><td>Price</td><td>$5.00/kg</td></tr></table></div>
+        <table class="attr_table"><tr><td>Price</td><td>$9.99/kg</td></tr></table>
+        </body></html>
+    "#;
+
+    let listing = TradewheelScraper.parse_listing(html, "https://tradewheel.com/p/x");
+    assert_eq!(
+        listing.unit_price,
+        Some("$5.00/kg".to_string()),
+        "expected the po-box table's value to win over attr_table's for the same label"
+    );
+}
+
+#[test]
+fn tradewheel_parse_listing_falls_back_to_quick_details_table_when_a_label_is_only_there() {
+    let html = r#"
+        <html><body>
+        <table class="quick_details_table"><tr><td>Lead Time</td><td>15 days</td></tr></table>
+        </body></html>
+    "#;
+
+    let listing = TradewheelScraper.parse_listing(html, "https://tradewheel.com/p/x");
+    assert_eq!(listing.delivery_timeframe, Some("15 days".to_string()));
+}
+
+#[test]
+fn tradewheel_parse_listing_reads_multiple_label_value_pairs_from_a_single_row() {
+    // Quick Details rows can hold two label/value pairs side by side
+    // in one <tr> - the chunks(2) walk must pick up both, not just
+    // the first pair.
+    let html = r#"
+        <html><body>
+        <table class="quick_details_table">
+            <tr><td>Port</td><td>Shanghai</td><td>Packaging</td><td>Cartons</td></tr>
+        </table>
+        </body></html>
+    "#;
+
+    let listing = TradewheelScraper.parse_listing(html, "https://tradewheel.com/p/x");
+    assert_eq!(listing.preferred_port, Some("Shanghai".to_string()));
+    assert_eq!(listing.packaging_details, Some("Cartons".to_string()));
+}
+
+#[test]
+fn tradewheel_parse_listing_extracts_images_preferring_data_zoom_image_over_data_image() {
+    let html = r#"
+        <html><body>
+        <div class="pd-thumbs">
+            <a data-zoom-image="https://cdn.tradewheel.com/zoom1.jpg" data-image="https://cdn.tradewheel.com/thumb1.jpg"></a>
+            <a data-image="https://cdn.tradewheel.com/thumb2.jpg"></a>
+        </div>
+        </body></html>
+    "#;
+
+    let listing = TradewheelScraper.parse_listing(html, "https://tradewheel.com/p/x");
+
+    assert_eq!(
+        listing.image_urls,
+        vec![
+            "https://cdn.tradewheel.com/zoom1.jpg".to_string(),
+            "https://cdn.tradewheel.com/thumb2.jpg".to_string(),
+        ],
+        "expected data-zoom-image to win when present, and data-image used as fallback otherwise"
+    );
+}
+
+#[test]
+fn tradewheel_parse_listing_caps_image_urls_at_three_even_when_more_are_present() {
+    let html = r#"
+        <html><body>
+        <div class="pd-thumbs">
+            <a data-image="https://cdn.tradewheel.com/1.jpg"></a>
+            <a data-image="https://cdn.tradewheel.com/2.jpg"></a>
+            <a data-image="https://cdn.tradewheel.com/3.jpg"></a>
+            <a data-image="https://cdn.tradewheel.com/4.jpg"></a>
+        </div>
+        </body></html>
+    "#;
+
+    let listing = TradewheelScraper.parse_listing(html, "https://tradewheel.com/p/x");
+    assert_eq!(listing.image_urls.len(), 3);
+}
+
+// --- TradeWheel scraper: extract_company_profile_url ---
+
+#[test]
+fn tradewheel_extracts_the_real_company_profile_link_from_a_listing_page() {
+    let html = r#"<html><body><div class="comp-info"><a href="https://tradewheel.com/company/acme">Acme</a></div></body></html>"#;
+    let url = TradewheelScraper.extract_company_profile_url(html);
+    assert_eq!(url, Some("https://tradewheel.com/company/acme".to_string()));
+}
+
+#[test]
+fn tradewheel_extract_company_profile_url_returns_none_when_genuinely_absent() {
+    let html = "<html><body><a href=\"/other-link\">Contact</a></body></html>";
+    assert_eq!(TradewheelScraper.extract_company_profile_url(html), None);
+}
+
+// --- TradeWheel scraper: enrich_from_company_profile ---
+
+#[test]
+fn tradewheel_enrich_from_company_profile_reads_company_information_section() {
+    let html = r#"
+        <html><body>
+        <div class="co-specification-container">
+            <h3 class="secondary-heading">Company Information</h3>
+            <table>
+                <tr><td>Established Year</td><td>2005</td></tr>
+                <tr><td>Total Employees</td><td>101-200</td></tr>
+            </table>
+        </div>
+        </body></html>
+    "#;
+
+    let supplier = B2bSupplierProfile::default();
+    let enriched = TradewheelScraper.enrich_from_company_profile(supplier, html);
+
+    assert_eq!(enriched.year_established, Some("2005".to_string()));
+    assert_eq!(enriched.employee_count, Some("101-200".to_string()));
+}
+
+#[test]
+fn tradewheel_enrich_from_company_profile_reads_trading_information_section() {
+    let html = r#"
+        <html><body>
+        <div class="co-specification-container">
+            <h3 class="secondary-heading">Trading Information</h3>
+            <table>
+                <tr><td>Total Revenue</td><td>US$1M - US$5M</td></tr>
+                <tr><td>Export Percentage</td><td>70%</td></tr>
+            </table>
+        </div>
+        </body></html>
+    "#;
+
+    let supplier = B2bSupplierProfile::default();
+    let enriched = TradewheelScraper.enrich_from_company_profile(supplier, html);
+
+    assert_eq!(enriched.sales_revenue, Some("US$1M - US$5M".to_string()));
+    assert_eq!(enriched.export_percentage, Some("70%".to_string()));
+}
+
+#[test]
+fn tradewheel_enrich_from_company_profile_reads_contact_details_name_logo_and_website() {
+    let html = r#"
+        <html><body>
+        <div class="co-specification-container">
+            <h3 class="secondary-heading">Contact Details</h3>
+            <div class="contact_p_txt1">Jane Doe</div>
+            <img id="m_img" src="https://cdn.tradewheel.com/logo.png" />
+            <div class="contact_details">
+                <table><tr><td>Website: https://real-supplier.example.com</td></tr></table>
+            </div>
+        </div>
+        </body></html>
+    "#;
+
+    let supplier = B2bSupplierProfile::default();
+    let enriched = TradewheelScraper.enrich_from_company_profile(supplier, html);
+
+    assert_eq!(enriched.contact_name, Some("Jane Doe".to_string()));
+    assert_eq!(
+        enriched.logo_url,
+        Some("https://cdn.tradewheel.com/logo.png".to_string())
+    );
+    assert_eq!(
+        enriched.website_url,
+        Some("https://real-supplier.example.com".to_string())
+    );
+}
+
+#[test]
+fn tradewheel_enrich_from_company_profile_never_sets_a_website_when_the_value_is_genuinely_just_show()
+ {
+    let html = r#"
+        <html><body>
+        <div class="co-specification-container">
+            <h3 class="secondary-heading">Contact Details</h3>
+            <div class="contact_details">
+                <table><tr><td>Website: Show</td></tr></table>
+            </div>
+        </div>
+        </body></html>
+    "#;
+
+    let supplier = B2bSupplierProfile::default();
+    let enriched = TradewheelScraper.enrich_from_company_profile(supplier, html);
+    assert_eq!(enriched.website_url, None);
+}
+
+#[test]
+fn tradewheel_enrich_from_company_profile_show_filter_is_case_insensitive() {
+    let html = r#"
+        <html><body>
+        <div class="co-specification-container">
+            <h3 class="secondary-heading">Contact Details</h3>
+            <div class="contact_details">
+                <table><tr><td>Website: SHOW</td></tr></table>
+            </div>
+        </div>
+        </body></html>
+    "#;
+
+    let supplier = B2bSupplierProfile::default();
+    let enriched = TradewheelScraper.enrich_from_company_profile(supplier, html);
+    assert_eq!(enriched.website_url, None);
+}
+
+#[test]
+fn tradewheel_enrich_from_company_profile_ignores_sections_with_an_unrecognized_heading() {
+    let html = r#"
+        <html><body>
+        <div class="co-specification-container">
+            <h3 class="secondary-heading">Some Other Section</h3>
+            <table><tr><td>Established Year</td><td>1999</td></tr></table>
+        </div>
+        </body></html>
+    "#;
+
+    let supplier = B2bSupplierProfile::default();
+    let enriched = TradewheelScraper.enrich_from_company_profile(supplier, html);
+    assert_eq!(
+        enriched.year_established, None,
+        "expected fields under an unrecognized heading to be genuinely ignored, not merged in"
+    );
+}
+
+#[test]
+fn tradewheel_enrich_from_company_profile_never_touches_other_fields() {
+    let mut supplier = B2bSupplierProfile::default();
+    supplier.company_name = Some("Existing Name Should Survive".to_string());
+    let html = r#"
+        <html><body>
+        <div class="co-specification-container">
+            <h3 class="secondary-heading">Company Information</h3>
+            <table><tr><td>Established Year</td><td>2020</td></tr></table>
+        </div>
+        </body></html>
+    "#;
+
+    let enriched = TradewheelScraper.enrich_from_company_profile(supplier, html);
+    assert_eq!(
+        enriched.company_name,
+        Some("Existing Name Should Survive".to_string())
+    );
 }

@@ -157,23 +157,15 @@ impl B2bScraper for TradewheelScraper {
     }
 }
 
-/// Real, shared table-row parser: for each <tr>, takes its <td>
-/// cells in order and treats the first as the label, the second as
-/// the value - matching TradeWheel's real, consistent "td.td1 label,
-/// plain td value" pattern used across every info table on the site.
 fn extract_label_value_pairs(document: &Html, row_selector: &str) -> HashMap<String, String> {
     let mut fields = HashMap::new();
     if let Ok(row_sel) = Selector::parse(row_selector) {
-        for row in document.select(&row_sel) {
-            let fragment = Html::parse_fragment(&row.html());
-            if let Ok(td_sel) = Selector::parse("td") {
-                let cells: Vec<String> = fragment
+        if let Ok(td_sel) = Selector::parse("td") {
+            for row in document.select(&row_sel) {
+                let cells: Vec<String> = row
                     .select(&td_sel)
                     .map(|td| td.text().collect::<String>().trim().to_string())
                     .collect();
-                // Real rows may hold two label/value pairs side by
-                // side (Quick Details), so walk every consecutive
-                // pair, not just the first two cells.
                 for pair in cells.chunks(2) {
                     if pair.len() == 2 && !pair[0].is_empty() {
                         fields.insert(pair[0].clone(), pair[1].clone());
