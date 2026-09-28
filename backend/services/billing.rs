@@ -189,6 +189,26 @@ pub fn extract_metadata_user_id(parsed: &ParsedSubscription) -> Option<Uuid> {
         .and_then(|s| Uuid::parse_str(s).ok())
 }
 
+/// Whether Creem's webhook is reporting a genuinely NEW billing
+/// period rolling over (vs. just re-sending an update for the period
+/// already on file) - this is what decides whether
+/// scans_used_this_period gets reset to 0. A subscription with no
+/// existing row yet always counts as a new period (there's nothing
+/// to compare against); otherwise it's only new when the incoming
+/// period end is genuinely later than the one already stored.
+pub fn is_new_billing_period(
+    existing_period_end: Option<Option<DateTime<Utc>>>,
+    current_period_end: Option<DateTime<Utc>>,
+) -> bool {
+    match existing_period_end {
+        None => true,
+        Some(old_end) => match (old_end, current_period_end) {
+            (Some(old), Some(new)) => new > old,
+            _ => false,
+        },
+    }
+}
+
 /// Creates or updates a subscription row for a user, matched by
 /// Creem's own subscription ID. This one function handles every real
 /// state a subscription can be in - active, past_due, canceled, and so
@@ -231,13 +251,7 @@ pub async fn upsert_subscription(
     .await
     .unwrap_or(None);
 
-    let is_new_period = match existing_period_end {
-        None => true,
-        Some(old_end) => match (old_end, current_period_end) {
-            (Some(old), Some(new)) => new > old,
-            _ => false,
-        },
-    };
+    let is_new_period = is_new_billing_period(existing_period_end, current_period_end);
 
     query(
         "INSERT INTO subscriptions (

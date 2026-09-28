@@ -8,11 +8,13 @@ use crate::common::{
 };
 use axum::{
     Json,
+    body::to_bytes,
     extract::State,
     http::{HeaderMap, HeaderValue},
+    response::IntoResponse,
 };
 use backend::{
-    errors::claude::ClaudeError,
+    errors::{analyze::AnalyzeError, claude::ClaudeError},
     handlers::analyze::{VerifySocialLinkRequest, analyze, verify_social_link_handler},
     models::{
         analysis::{AnalyzeRequest, RiskLevel, Signal},
@@ -50,7 +52,8 @@ use backend::{
 };
 use chrono::{Datelike, Duration as chrono_duration, NaiveDate, Utc};
 use common::{cleanup_test_seller, cleanup_test_user, test_pool};
-use serde_json::json;
+use reqwest::StatusCode;
+use serde_json::{Value, json};
 use serial_test::serial;
 use sqlx::{query, query_as};
 use std::{
@@ -4673,4 +4676,84 @@ fn resolve_supplier_website_never_touches_other_supplier_fields() {
         resolved.company_name,
         Some("Existing Name Should Survive".to_string())
     );
+}
+
+async fn response_json(err: AnalyzeError) -> (StatusCode, Value) {
+    let response = err.into_response();
+    let status = response.status();
+    let bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let json: Value = serde_json::from_slice(&bytes).unwrap();
+    (status, json)
+}
+
+#[tokio::test]
+async fn scan_limit_reached_returns_payment_required_with_the_real_limit() {
+    let (status, body) = response_json(AnalyzeError::ScanLimitReached(50)).await;
+
+    assert_eq!(status, StatusCode::PAYMENT_REQUIRED);
+    assert_eq!(body["error"], "scan_limit_reached");
+    assert_eq!(body["limit"], 50);
+    assert!(
+        body["message"].as_str().unwrap().contains("50"),
+        "expected the real limit to appear in the human-readable message too, got: {}",
+        body["message"]
+    );
+}
+
+#[tokio::test]
+async fn trial_scan_limit_reached_returns_payment_required_with_the_real_limit_and_mentions_trial()
+{
+    let (status, body) = response_json(AnalyzeError::TrialScanLimitReached(20)).await;
+
+    assert_eq!(status, StatusCode::PAYMENT_REQUIRED);
+    assert_eq!(body["error"], "trial_scan_limit_reached");
+    assert_eq!(body["limit"], 20);
+    let message = body["message"].as_str().unwrap();
+    assert!(message.contains("20"));
+    assert!(
+        message.to_lowercase().contains("trial"),
+        "expected the trial-specific message to actually mention the trial, got: {}",
+        message
+    );
+}
+
+#[tokio::test]
+async fn subscription_required_returns_payment_required() {
+    let (status, body) = response_json(AnalyzeError::SubscriptionRequired).await;
+
+    assert_eq!(status, StatusCode::PAYMENT_REQUIRED);
+    assert_eq!(body["error"], "subscription_required");
+}
+
+#[tokio::test]
+async fn unauthorized_still_returns_401_after_the_new_variants_were_added() {
+    // Regression guard - confirms the new ScanLimitReached/
+    // TrialScanLimitReached arms being pulled out ahead of the
+    // catch-all `other` match didn't accidentally change any
+    // pre-existing error's real status code.
+    let (status, body) = response_json(AnalyzeError::Unauthorized).await;
+
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    assert_eq!(body["error"], "unauthorized");
+}
+
+#[tokio::test]
+async fn database_error_passes_the_real_message_straight_through() {
+    let (status, body) =
+        response_json(AnalyzeError::Database("connection refused".to_string())).await;
+
+    assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+    assert_eq!(body["error"], "database_error");
+    assert_eq!(body["message"], "connection refused");
+}
+
+#[tokio::test]
+async fn scan_limit_reached_and_trial_scan_limit_reached_use_genuinely_different_error_codes() {
+    // Guards against the two payment-required paths being merged or
+    // mixed up - a trial user and a paid user hitting their
+    // respective limits must be distinguishable by the extension.
+    let (_, scan_body) = response_json(AnalyzeError::ScanLimitReached(10)).await;
+    let (_, trial_body) = response_json(AnalyzeError::TrialScanLimitReached(10)).await;
+
+    assert_ne!(scan_body["error"], trial_body["error"]);
 }

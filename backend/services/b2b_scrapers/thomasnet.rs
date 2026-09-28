@@ -247,3 +247,179 @@ pub fn is_thomasnet_profile_url(path: &str) -> bool {
 pub fn matches_thomasnet_hostname(hostname: &str) -> bool {
     hostname == "www.thomasnet.com" || hostname == "thomasnet.com"
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn matches_platform_is_true_only_for_thomasnet() {
+        let scraper = ThomasnetScraper;
+        assert!(scraper.matches_platform("thomasnet"));
+        assert!(!scraper.matches_platform("alibaba"));
+    }
+
+    #[test]
+    fn is_thomasnet_profile_url_requires_both_segments() {
+        assert!(is_thomasnet_profile_url("/company/acme-corp/profile"));
+        assert!(!is_thomasnet_profile_url("/company/acme-corp/products"));
+        assert!(!is_thomasnet_profile_url("/profile"));
+    }
+
+    #[test]
+    fn matches_thomasnet_hostname_accepts_both_www_and_bare_forms() {
+        assert!(matches_thomasnet_hostname("www.thomasnet.com"));
+        assert!(matches_thomasnet_hostname("thomasnet.com"));
+        assert!(!matches_thomasnet_hostname("thomasnet.co.uk"));
+    }
+
+    fn claimed_verified_html() -> &'static str {
+        r#"
+        <html><body>
+        <h1>Acme Fasteners Inc</h1>
+        <h3>Thomas Verified Supplier</h3>
+        <div><div class="txt-label">Year Founded:</div><ul><li>2005</li></ul></div>
+        <div><div class="txt-label">No of Employees:</div><ul><li>50-99</li></ul></div>
+        <div><div class="txt-label">Annual Sales:</div><ul><li>Not available</li></ul></div>
+        <div data-sentry-component="SupplierLocations"><a>Tustin, CA</a></div>
+        <div><h3>Company Description by Thomasnet</h3><p>A ThomasNet-authored blurb.</p></div>
+        <div><h3>Company Description by Acme Fasteners Inc</h3><p>Our own, self-authored description.</p></div>
+        <div data-sentry-component="BusinessDetailsSectionColumn"><p class="mar-0">Jane Doe</p></div>
+        <a href="tel:+15551234567">(555) 123-4567</a>
+        <div><div class="txt-label">Website</div><ul><li><a href="https://acmefasteners.com">acmefasteners.com</a></li></ul></div>
+        </body></html>
+        "#
+    }
+
+    #[test]
+    fn parse_supplier_extracts_the_real_fields_from_a_claimed_verified_profile() {
+        let scraper = ThomasnetScraper;
+        let profile = scraper.parse_supplier(
+            claimed_verified_html(),
+            "https://www.thomasnet.com/company/acme/profile",
+        );
+
+        assert_eq!(profile.company_name.as_deref(), Some("Acme Fasteners Inc"));
+        assert!(
+            profile.platform_verified_badge,
+            "expected the Thomas Verified badge to be recognized"
+        );
+        assert_eq!(
+            profile.badge_honorific.as_deref(),
+            Some("Thomas Verified Supplier")
+        );
+        assert_eq!(profile.year_established.as_deref(), Some("2005"));
+        assert_eq!(profile.employee_count.as_deref(), Some("50-99"));
+        assert_eq!(
+            profile.sales_revenue, None,
+            "expected the literal 'Not available' text to become a real None, not a string"
+        );
+        assert_eq!(profile.country.as_deref(), Some("Tustin, CA"));
+        assert_eq!(profile.contact_name.as_deref(), Some("Jane Doe"));
+        assert!(profile.contact_phone.as_deref().unwrap().contains("555"));
+        assert_eq!(
+            profile.website_url.as_deref(),
+            Some("https://acmefasteners.com")
+        );
+        assert_eq!(
+            profile.export_percentage, None,
+            "ThomasNet is US-focused - never populated"
+        );
+    }
+
+    #[test]
+    fn parse_supplier_prefers_the_self_authored_description_over_thomasnets_own() {
+        let scraper = ThomasnetScraper;
+        let profile = scraper.parse_supplier(
+            claimed_verified_html(),
+            "https://www.thomasnet.com/company/acme/profile",
+        );
+        assert_eq!(
+            profile.company_description.as_deref(),
+            Some("Our own, self-authored description."),
+            "expected the self-authored description to win when both exist"
+        );
+    }
+
+    #[test]
+    fn parse_supplier_falls_back_to_thomasnets_description_when_no_self_authored_one_exists() {
+        let html = r#"
+        <html><body>
+        <h1>Beta Supply Co</h1>
+        <div><h3>Company Description by Thomasnet</h3><p>Only the Thomasnet-authored blurb exists here.</p></div>
+        </body></html>
+        "#;
+        let scraper = ThomasnetScraper;
+        let profile =
+            scraper.parse_supplier(html, "https://www.thomasnet.com/company/beta/profile");
+        assert_eq!(
+            profile.company_description.as_deref(),
+            Some("Only the Thomasnet-authored blurb exists here.")
+        );
+    }
+
+    #[test]
+    fn parse_supplier_recognizes_an_unclaimed_profile() {
+        let html = r#"
+        <html><body>
+        <h1>Gamma Industrial</h1>
+        <div data-sentry-component="Unclaimed"></div>
+        </body></html>
+        "#;
+        let scraper = ThomasnetScraper;
+        let profile =
+            scraper.parse_supplier(html, "https://www.thomasnet.com/company/gamma/profile");
+        assert_eq!(profile.badge_honorific.as_deref(), Some("Unclaimed"));
+        assert!(!profile.platform_verified_badge);
+    }
+
+    #[test]
+    fn parse_supplier_recognizes_a_claimed_but_unverified_profile() {
+        let html = r#"
+        <html><body>
+        <h1>Delta Machining</h1>
+        <span class="txt-label">Claimed</span>
+        </body></html>
+        "#;
+        let scraper = ThomasnetScraper;
+        let profile =
+            scraper.parse_supplier(html, "https://www.thomasnet.com/company/delta/profile");
+        assert_eq!(profile.badge_honorific.as_deref(), Some("Claimed"));
+        assert!(
+            !profile.platform_verified_badge,
+            "expected 'Claimed' alone to NOT count as the stronger Verified badge"
+        );
+    }
+
+    #[test]
+    fn parse_listing_extracts_the_title_and_description_from_the_details_tab() {
+        let html = r#"
+        <html><body>
+        <div id="businessDescDetailsTab">Fasteners: Hook &amp; Loop Details</div>
+        <div aria-labelledby="businessDescDetailsTab"><p>Custom hook-and-loop fastener manufacturing.</p></div>
+        </body></html>
+        "#;
+        let scraper = ThomasnetScraper;
+        let listing = scraper.parse_listing(html, "https://www.thomasnet.com/company/acme/profile");
+
+        assert_eq!(listing.title.as_deref(), Some("Fasteners: Hook & Loop"));
+        assert_eq!(
+            listing.description.as_deref(),
+            Some("Custom hook-and-loop fastener manufacturing.")
+        );
+    }
+
+    #[test]
+    fn parse_listing_never_populates_price_or_moq_fields_since_thomasnet_has_none() {
+        let scraper = ThomasnetScraper;
+        let listing = scraper.parse_listing(
+            "<html><body></body></html>",
+            "https://www.thomasnet.com/company/x/profile",
+        );
+
+        assert_eq!(listing.unit_price, None);
+        assert_eq!(listing.fob_price, None);
+        assert_eq!(listing.minimum_order_quantity, None);
+        assert_eq!(listing.incoterms, None);
+    }
+}

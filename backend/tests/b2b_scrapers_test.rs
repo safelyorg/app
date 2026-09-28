@@ -1707,3 +1707,26 @@ fn scrapers_that_do_not_override_enrich_from_extended_profile_genuinely_leave_th
         Some("Should Survive Untouched".to_string())
     );
 }
+
+#[test]
+fn get_scraper_for_platform_finds_the_newly_registered_thomasnet_scraper() {
+    let scraper = backend::services::b2b_scrapers::get_scraper_for_platform("thomasnet");
+    assert!(
+        scraper.is_some(),
+        "expected thomasnet to be registered in the real scraper list"
+    );
+    assert!(scraper.unwrap().matches_platform("thomasnet"));
+}
+
+#[test]
+fn get_scraper_for_platform_still_finds_every_other_registered_scraper() {
+    // Regression guard - confirms adding thomasnet to the Vec didn't
+    // accidentally push out or shadow any existing B2B entry.
+    for platform in ["alibaba", "tradewheel", "exporthub", "b2brazil"] {
+        assert!(
+            backend::services::b2b_scrapers::get_scraper_for_platform(platform).is_some(),
+            "expected '{}' to still be found after thomasnet was added",
+            platform
+        );
+    }
+}

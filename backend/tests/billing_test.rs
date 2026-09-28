@@ -3,7 +3,8 @@ mod common;
 use crate::common::{
     TestSubscriptionOptions, auth_headers_for, cleanup_test_subscription, cleanup_test_user,
     compute_creem_signature, create_test_user, get_subscription_status_text,
-    insert_test_subscription, insert_test_subscription_full, load_env_once, test_pool,
+    insert_active_subscription, insert_test_subscription, insert_test_subscription_full,
+    load_env_once, test_pool,
 };
 use axum::{
     Json,
@@ -28,8 +29,9 @@ use backend::{
             cancel_with_creem, change_creem_subscription_product, create_checkout,
             extract_metadata_user_id, extract_subscription, fetch_subscriber_email,
             handle_subscription_granted, handle_subscription_lost, handle_subscription_past_due,
-            handle_subscription_update, mark_event_processed_if_new, upsert_subscription,
-            verify_and_parse_webhook, verify_creem_signature,
+            handle_subscription_update, is_new_billing_period, mark_event_processed_if_new,
+            scan_limit_for_plan_and_status, upsert_subscription, verify_and_parse_webhook,
+            verify_creem_signature,
         },
         email::{
             send_payment_failed_email, send_subscription_canceled_email,
@@ -3237,4 +3239,199 @@ async fn mark_event_processed_correctly_handles_two_genuinely_simultaneous_attem
         .execute(&pool)
         .await
         .ok();
+}
+
+#[test]
+fn team_plan_on_an_active_subscription_gets_the_real_750_limit() {
+    assert_eq!(scan_limit_for_plan_and_status("Team", "active"), Some(750));
+}
+
+#[test]
+fn enterprise_plan_on_an_active_subscription_is_genuinely_unlimited() {
+    assert_eq!(scan_limit_for_plan_and_status("Enterprise", "active"), None);
+}
+
+#[test]
+fn an_unrecognized_plan_name_gets_zero_scans_rather_than_silently_being_unlimited() {
+    assert_eq!(
+        scan_limit_for_plan_and_status("SomeFuturePlan", "active"),
+        Some(0)
+    );
+}
+
+#[test]
+fn a_trialing_team_subscription_is_capped_at_the_real_trial_limit_not_the_full_plan_limit() {
+    assert_eq!(
+        scan_limit_for_plan_and_status("Team", "trialing"),
+        Some(100)
+    );
+}
+
+#[test]
+fn a_trialing_enterprise_subscription_is_still_capped_this_is_the_whole_point_of_this_function() {
+    assert_eq!(
+        scan_limit_for_plan_and_status("Enterprise", "trialing"),
+        Some(100),
+        "a trialing Enterprise subscription must be capped, never genuinely unlimited"
+    );
+}
+
+#[test]
+fn a_trialing_subscription_on_an_unrecognized_plan_still_gets_the_real_trial_cap_not_zero() {
+    assert_eq!(
+        scan_limit_for_plan_and_status("SomeFuturePlan", "trialing"),
+        Some(100),
+        "trial status must win over the unknown-plan fallback of Some(0) too"
+    );
+}
+
+fn dt(offset_days: i64) -> DateTime<Utc> {
+    Utc::now() + Duration::days(offset_days)
+}
+
+#[test]
+fn a_genuinely_brand_new_subscription_with_no_existing_row_always_counts_as_a_new_period() {
+    assert!(is_new_billing_period(None, Some(dt(30))));
+}
+
+#[test]
+fn a_genuinely_later_period_end_is_a_real_new_period() {
+    let existing = Some(Some(dt(0)));
+    let incoming = dt(30);
+    assert!(is_new_billing_period(existing, Some(incoming)));
+}
+
+#[test]
+fn the_same_period_end_repeated_is_never_treated_as_a_new_period() {
+    let same = dt(0);
+    assert!(!is_new_billing_period(Some(Some(same)), Some(same)));
+}
+
+#[test]
+fn an_earlier_incoming_period_end_is_never_treated_as_a_new_period() {
+    // Guards against an out-of-order or replayed webhook resetting
+    // usage backwards.
+    let existing = Some(Some(dt(30)));
+    let incoming = dt(0);
+    assert!(!is_new_billing_period(existing, Some(incoming)));
+}
+
+#[test]
+fn a_genuinely_missing_incoming_period_end_is_never_treated_as_a_new_period() {
+    let existing = Some(Some(dt(0)));
+    assert!(!is_new_billing_period(existing, None));
+}
+
+#[test]
+fn an_existing_row_with_a_genuinely_missing_stored_period_end_is_never_treated_as_a_new_period() {
+    let existing = Some(None);
+    assert!(!is_new_billing_period(existing, Some(dt(30))));
+}
+
+// Insert Active Subscription Tests
+#[tokio::test]
+async fn insert_active_subscription_creates_a_real_row_thats_genuinely_active_with_zero_scans_used()
+{
+    let pool = test_pool().await;
+    let email = "insert_active_subscription_create_test@example.com";
+    let (user, _) = create_test_user(&pool, email).await;
+    let sub_id = format!("test_sub_{}", user.id);
+    cleanup_test_subscription(&pool, &sub_id).await;
+
+    insert_active_subscription(&pool, user.id, "Team").await;
+
+    let (plan_name, status, scans_used_this_period): (String, String, i32) = query_as(
+        "SELECT plan_name, status::text, scans_used_this_period
+         FROM subscriptions WHERE creem_subscription_id = $1",
+    )
+    .bind(&sub_id)
+    .fetch_one(&pool)
+    .await
+    .expect("expected a real row to exist");
+
+    assert_eq!(plan_name, "Team");
+    assert_eq!(status, "active");
+    assert_eq!(
+        scans_used_this_period, 0,
+        "expected a genuinely fresh subscription to start with zero scans used"
+    );
+
+    cleanup_test_subscription(&pool, &sub_id).await;
+    cleanup_test_user(&pool, email).await;
+}
+
+#[tokio::test]
+async fn insert_active_subscription_ties_the_row_to_the_real_user_it_was_inserted_for() {
+    let pool = test_pool().await;
+    let email = "insert_active_subscription_user_link_test@example.com";
+    let (user, _) = create_test_user(&pool, email).await;
+    let sub_id = format!("test_sub_{}", user.id);
+    cleanup_test_subscription(&pool, &sub_id).await;
+
+    insert_active_subscription(&pool, user.id, "Enterprise").await;
+
+    let saved_user_id: Uuid =
+        query_scalar("SELECT user_id FROM subscriptions WHERE creem_subscription_id = $1")
+            .bind(&sub_id)
+            .fetch_one(&pool)
+            .await
+            .expect("expected the row to exist");
+
+    assert_eq!(
+        saved_user_id, user.id,
+        "expected the inserted row to be genuinely tied to the user it was created for"
+    );
+
+    cleanup_test_subscription(&pool, &sub_id).await;
+    cleanup_test_user(&pool, email).await;
+}
+
+#[tokio::test]
+async fn insert_active_subscription_is_a_genuine_no_op_the_second_time_for_the_same_user() {
+    let pool = test_pool().await;
+    let email = "insert_active_subscription_conflict_test@example.com";
+    let (user, _) = create_test_user(&pool, email).await;
+    let sub_id = format!("test_sub_{}", user.id);
+    cleanup_test_subscription(&pool, &sub_id).await;
+
+    insert_active_subscription(&pool, user.id, "Team").await;
+    insert_active_subscription(&pool, user.id, "Enterprise").await;
+
+    let plan_name: String =
+        query_scalar("SELECT plan_name FROM subscriptions WHERE creem_subscription_id = $1")
+            .bind(&sub_id)
+            .fetch_one(&pool)
+            .await
+            .expect("expected the row to exist");
+
+    assert_eq!(
+        plan_name, "Team",
+        "expected the ON CONFLICT DO NOTHING to leave the first row genuinely untouched"
+    );
+
+    let row_count: i64 =
+        query_scalar("SELECT COUNT(*) FROM subscriptions WHERE creem_subscription_id = $1")
+            .bind(&sub_id)
+            .fetch_one(&pool)
+            .await
+            .expect("expected the count query to succeed");
+
+    assert_eq!(
+        row_count, 1,
+        "expected exactly one row, not a duplicate, for the same deterministic subscription id"
+    );
+
+    cleanup_test_subscription(&pool, &sub_id).await;
+    cleanup_test_user(&pool, email).await;
+}
+
+#[tokio::test]
+#[should_panic(expected = "expected to insert a real test subscription")]
+async fn insert_active_subscription_panics_for_a_genuinely_nonexistent_user() {
+    let pool = test_pool().await;
+    let fake_user_id = Uuid::new_v4();
+    let sub_id = format!("test_sub_{}", fake_user_id);
+    cleanup_test_subscription(&pool, &sub_id).await;
+
+    insert_active_subscription(&pool, fake_user_id, "Team").await;
 }

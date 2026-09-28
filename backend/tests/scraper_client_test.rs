@@ -173,3 +173,43 @@ fn wrap_scraper_url_for_platform_percent_encodes_special_characters_in_the_targe
         result
     );
 }
+
+#[test]
+#[serial]
+fn wrap_scraper_url_for_platform_omits_render_for_thomasnet_to_avoid_its_own_anti_bot_detection() {
+    // ThomasNet's content is server-rendered already - render=true spins
+    // up a full headless browser for no benefit and was suspected of
+    // triggering ThomasNet's own anti-bot detection (consistent 500s
+    // with no other explanation).
+    unsafe {
+        std::env::set_var("SCRAPERAPI_KEY", "test-key-123");
+    }
+    let result = wrap_scraper_url_for_platform("https://thomasnet.com/x", "thomasnet");
+    unsafe {
+        std::env::remove_var("SCRAPERAPI_KEY");
+    }
+    assert!(
+        !result.contains("render=true"),
+        "expected render=true to be genuinely omitted for thomasnet, got: {}",
+        result
+    );
+    assert!(result.contains("premium=true"));
+    assert!(result.contains("country_code=us"));
+}
+
+#[test]
+#[serial]
+fn wrap_scraper_url_for_platform_still_includes_render_for_every_other_platform() {
+    unsafe {
+        std::env::set_var("SCRAPERAPI_KEY", "test-key-123");
+    }
+    let result = wrap_scraper_url_for_platform("https://alibaba.com/x", "alibaba");
+    unsafe {
+        std::env::remove_var("SCRAPERAPI_KEY");
+    }
+    assert!(
+        result.contains("render=true"),
+        "expected render=true to still be present for a platform other than thomasnet, got: {}",
+        result
+    );
+}
