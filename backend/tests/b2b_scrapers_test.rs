@@ -120,6 +120,7 @@ async fn check_b2b_page_returns_none_for_a_genuinely_broken_url() {
 // }
 
 #[tokio::test]
+#[serial]
 async fn build_b2b_analysis_path_fails_gracefully_for_a_genuinely_broken_url() {
     let pool = test_pool().await;
     let request = AnalyzeRequest {
@@ -214,6 +215,7 @@ async fn build_b2b_analysis_path_fails_gracefully_for_a_genuinely_broken_url() {
 // }
 
 #[test]
+#[serial]
 fn alibaba_parse_supplier_reads_an_unbadged_listing_correctly() {
     let html = r#"
         <html><body>
@@ -251,6 +253,7 @@ fn alibaba_parse_supplier_reads_an_unbadged_listing_correctly() {
 }
 
 #[test]
+#[serial]
 fn alibaba_parse_supplier_reads_a_badged_listing_correctly() {
     let html = r#"
         <html><body>
@@ -285,6 +288,7 @@ fn alibaba_parse_supplier_reads_a_badged_listing_correctly() {
 }
 
 #[test]
+#[serial]
 fn alibaba_parse_supplier_prefers_the_real_overview_year_over_the_years_estimate() {
     let html = r#"
         <html><body>
@@ -312,6 +316,7 @@ fn alibaba_parse_supplier_prefers_the_real_overview_year_over_the_years_estimate
 }
 
 #[test]
+#[serial]
 fn alibaba_extract_overview_field_reads_sales_revenue_from_the_overview_panel() {
     let html = r#"
         <html><body>
@@ -335,6 +340,7 @@ fn alibaba_extract_overview_field_reads_sales_revenue_from_the_overview_panel() 
 }
 
 #[test]
+#[serial]
 fn alibaba_parse_supplier_handles_a_genuinely_empty_page_without_panicking() {
     let html = "<html><body><p>Not an Alibaba listing at all</p></body></html>";
     let supplier =
@@ -348,6 +354,7 @@ fn alibaba_parse_supplier_handles_a_genuinely_empty_page_without_panicking() {
 }
 
 #[test]
+#[serial]
 fn alibaba_parse_listing_reads_ladder_pricing_as_joined_tiers() {
     let html = r#"
         <html><body>
@@ -377,6 +384,7 @@ fn alibaba_parse_listing_reads_ladder_pricing_as_joined_tiers() {
 }
 
 #[test]
+#[serial]
 fn alibaba_parse_listing_falls_back_to_range_pricing_and_splits_out_the_moq() {
     let html = r#"
         <html><body>
@@ -396,6 +404,7 @@ fn alibaba_parse_listing_falls_back_to_range_pricing_and_splits_out_the_moq() {
 }
 
 #[test]
+#[serial]
 fn alibaba_parse_listing_builds_description_from_key_attributes() {
     let html = r#"
         <html><body>
@@ -417,6 +426,7 @@ fn alibaba_parse_listing_builds_description_from_key_attributes() {
 }
 
 #[test]
+#[serial]
 fn alibaba_parse_listing_extracts_real_image_urls_and_skips_play_icons() {
     let html = r#"
         <html><body>
@@ -440,6 +450,7 @@ fn alibaba_parse_listing_extracts_real_image_urls_and_skips_play_icons() {
 }
 
 #[test]
+#[serial]
 fn alibaba_extracts_the_real_company_profile_link_from_a_listing_page() {
     let html = r#"
         <html><body>
@@ -455,12 +466,14 @@ fn alibaba_extracts_the_real_company_profile_link_from_a_listing_page() {
 }
 
 #[test]
+#[serial]
 fn alibaba_extract_company_profile_url_returns_none_when_the_link_is_genuinely_absent() {
     let html = "<html><body><a href=\"/other-link.html\">Contact supplier</a></body></html>";
     assert_eq!(AlibabaScraper.extract_company_profile_url(html), None);
 }
 
 #[test]
+#[serial]
 fn alibaba_enrich_from_company_profile_reads_the_older_vd_item_template() {
     let html = r#"
         <html><body>
@@ -475,6 +488,7 @@ fn alibaba_enrich_from_company_profile_reads_the_older_vd_item_template() {
 }
 
 #[test]
+#[serial]
 fn alibaba_enrich_from_company_profile_reads_the_newer_span_pair_template() {
     let html = r#"
         <html><body>
@@ -492,6 +506,7 @@ fn alibaba_enrich_from_company_profile_reads_the_newer_span_pair_template() {
 }
 
 #[test]
+#[serial]
 fn alibaba_enrich_from_company_profile_prefers_the_older_template_when_both_are_present() {
     let html = r#"
         <html><body>
@@ -514,6 +529,7 @@ fn alibaba_enrich_from_company_profile_prefers_the_older_template_when_both_are_
 }
 
 #[test]
+#[serial]
 fn alibaba_enrich_from_company_profile_leaves_employee_count_none_when_genuinely_absent() {
     let html = "<html><body><p>No employee data on this page</p></body></html>";
     let supplier = B2bSupplierProfile::default();
@@ -527,6 +543,7 @@ fn alibaba_enrich_from_company_profile_leaves_employee_count_none_when_genuinely
 // something wrong, unnoticed.
 
 #[test]
+#[serial]
 fn alibaba_parse_supplier_never_sets_a_company_description() {
     let html = r#"
         <html><body>
@@ -542,6 +559,7 @@ fn alibaba_parse_supplier_never_sets_a_company_description() {
 // --- B2Brazil: extract_company_profile_url ---
 
 #[test]
+#[serial]
 fn b2brazil_extract_company_profile_url_keeps_an_absolute_href_as_is() {
     let html = r#"<html><body><a class="nav-home" href="https://b2brazil.com/hotsite/acme">Home</a></body></html>"#;
     let url = B2brazilScraper.extract_company_profile_url(html);
@@ -549,6 +567,7 @@ fn b2brazil_extract_company_profile_url_keeps_an_absolute_href_as_is() {
 }
 
 #[test]
+#[serial]
 fn b2brazil_extract_company_profile_url_prefixes_a_relative_href_with_the_real_domain() {
     let html = r#"<html><body><a class="nav-home" href="/hotsite/acme">Home</a></body></html>"#;
     let url = B2brazilScraper.extract_company_profile_url(html);
@@ -556,6 +575,7 @@ fn b2brazil_extract_company_profile_url_prefixes_a_relative_href_with_the_real_d
 }
 
 #[test]
+#[serial]
 fn b2brazil_extract_company_profile_url_returns_none_when_the_link_is_genuinely_absent() {
     let html = "<html><body><a href=\"/something-else\">Not it</a></body></html>";
     assert_eq!(B2brazilScraper.extract_company_profile_url(html), None);
@@ -564,6 +584,7 @@ fn b2brazil_extract_company_profile_url_returns_none_when_the_link_is_genuinely_
 // --- B2Brazil: enrich_from_company_profile ---
 
 #[test]
+#[serial]
 fn b2brazil_enrich_from_company_profile_reads_the_real_about_text() {
     let html = r#"
         <html><body>
@@ -584,6 +605,7 @@ fn b2brazil_enrich_from_company_profile_reads_the_real_about_text() {
 }
 
 #[test]
+#[serial]
 fn b2brazil_enrich_from_company_profile_leaves_description_none_when_the_about_block_is_genuinely_empty()
  {
     let html =
@@ -597,6 +619,7 @@ fn b2brazil_enrich_from_company_profile_leaves_description_none_when_the_about_b
 }
 
 #[test]
+#[serial]
 fn b2brazil_enrich_from_company_profile_leaves_description_none_when_the_section_is_genuinely_absent()
  {
     let html = "<html><body><p>No about section on this page</p></body></html>";
@@ -606,6 +629,7 @@ fn b2brazil_enrich_from_company_profile_leaves_description_none_when_the_section
 }
 
 #[test]
+#[serial]
 fn b2brazil_enrich_from_company_profile_never_touches_other_fields() {
     // Guard against a careless future edit widening this function's
     // scope - it should only ever write company_description.
@@ -808,6 +832,7 @@ async fn check_b2b_page_genuinely_never_retries_a_failed_primary_fetch() {
 // --- TradeWheel scraper: matches_platform ---
 
 #[test]
+#[serial]
 fn tradewheel_matches_platform_correctly_identifies_tradewheel_only() {
     let scraper = TradewheelScraper;
     assert!(scraper.matches_platform("tradewheel"));
@@ -818,6 +843,7 @@ fn tradewheel_matches_platform_correctly_identifies_tradewheel_only() {
 // --- TradeWheel scraper: parse_supplier ---
 
 #[test]
+#[serial]
 fn tradewheel_parse_supplier_reads_the_real_company_name_and_country() {
     let html = r#"
         <html><body>
@@ -840,6 +866,7 @@ fn tradewheel_parse_supplier_reads_the_real_company_name_and_country() {
 }
 
 #[test]
+#[serial]
 fn tradewheel_parse_supplier_detects_a_genuine_gold_badge() {
     let html = r#"
         <html><body>
@@ -860,6 +887,7 @@ fn tradewheel_parse_supplier_detects_a_genuine_gold_badge() {
 }
 
 #[test]
+#[serial]
 fn tradewheel_parse_supplier_leaves_badge_none_when_the_image_is_not_a_gold_badge() {
     let html = r#"
         <html><body>
@@ -881,6 +909,7 @@ fn tradewheel_parse_supplier_leaves_badge_none_when_the_image_is_not_a_gold_badg
 }
 
 #[test]
+#[serial]
 fn tradewheel_parse_supplier_badge_detection_is_case_insensitive() {
     let html = r#"
         <html><body>
@@ -896,6 +925,7 @@ fn tradewheel_parse_supplier_badge_detection_is_case_insensitive() {
 }
 
 #[test]
+#[serial]
 fn tradewheel_parse_supplier_handles_a_genuinely_empty_page_without_panicking() {
     let html = "<html><body><p>Not a TradeWheel listing at all</p></body></html>";
     let supplier = TradewheelScraper.parse_supplier(html, "https://tradewheel.com/p/company/none");
@@ -909,6 +939,7 @@ fn tradewheel_parse_supplier_handles_a_genuinely_empty_page_without_panicking() 
 // --- TradeWheel scraper: parse_listing ---
 
 #[test]
+#[serial]
 fn tradewheel_parse_listing_reads_the_real_title() {
     let html = r#"<html><body><h1 class="pd-heading">Bulk Cotton Yarn</h1></body></html>"#;
     let listing = TradewheelScraper.parse_listing(html, "https://tradewheel.com/p/x");
@@ -916,6 +947,7 @@ fn tradewheel_parse_listing_reads_the_real_title() {
 }
 
 #[test]
+#[serial]
 fn tradewheel_parse_listing_joins_multiple_description_paragraphs() {
     let html = r#"
         <html><body>
@@ -935,6 +967,7 @@ fn tradewheel_parse_listing_joins_multiple_description_paragraphs() {
 }
 
 #[test]
+#[serial]
 fn tradewheel_parse_listing_prefers_po_box_table_value_when_the_same_label_is_in_multiple_tables() {
     let html = r#"
         <html><body>
@@ -952,6 +985,7 @@ fn tradewheel_parse_listing_prefers_po_box_table_value_when_the_same_label_is_in
 }
 
 #[test]
+#[serial]
 fn tradewheel_parse_listing_falls_back_to_quick_details_table_when_a_label_is_only_there() {
     let html = r#"
         <html><body>
@@ -964,6 +998,7 @@ fn tradewheel_parse_listing_falls_back_to_quick_details_table_when_a_label_is_on
 }
 
 #[test]
+#[serial]
 fn tradewheel_parse_listing_reads_multiple_label_value_pairs_from_a_single_row() {
     // Quick Details rows can hold two label/value pairs side by side
     // in one <tr> - the chunks(2) walk must pick up both, not just
@@ -982,6 +1017,7 @@ fn tradewheel_parse_listing_reads_multiple_label_value_pairs_from_a_single_row()
 }
 
 #[test]
+#[serial]
 fn tradewheel_parse_listing_extracts_images_preferring_data_zoom_image_over_data_image() {
     let html = r#"
         <html><body>
@@ -1005,6 +1041,7 @@ fn tradewheel_parse_listing_extracts_images_preferring_data_zoom_image_over_data
 }
 
 #[test]
+#[serial]
 fn tradewheel_parse_listing_caps_image_urls_at_three_even_when_more_are_present() {
     let html = r#"
         <html><body>
@@ -1024,6 +1061,7 @@ fn tradewheel_parse_listing_caps_image_urls_at_three_even_when_more_are_present(
 // --- TradeWheel scraper: extract_company_profile_url ---
 
 #[test]
+#[serial]
 fn tradewheel_extracts_the_real_company_profile_link_from_a_listing_page() {
     let html = r#"<html><body><div class="comp-info"><a href="https://tradewheel.com/company/acme">Acme</a></div></body></html>"#;
     let url = TradewheelScraper.extract_company_profile_url(html);
@@ -1031,6 +1069,7 @@ fn tradewheel_extracts_the_real_company_profile_link_from_a_listing_page() {
 }
 
 #[test]
+#[serial]
 fn tradewheel_extract_company_profile_url_returns_none_when_genuinely_absent() {
     let html = "<html><body><a href=\"/other-link\">Contact</a></body></html>";
     assert_eq!(TradewheelScraper.extract_company_profile_url(html), None);
@@ -1039,6 +1078,7 @@ fn tradewheel_extract_company_profile_url_returns_none_when_genuinely_absent() {
 // --- TradeWheel scraper: enrich_from_company_profile ---
 
 #[test]
+#[serial]
 fn tradewheel_enrich_from_company_profile_reads_company_information_section() {
     let html = r#"
         <html><body>
@@ -1060,6 +1100,7 @@ fn tradewheel_enrich_from_company_profile_reads_company_information_section() {
 }
 
 #[test]
+#[serial]
 fn tradewheel_enrich_from_company_profile_reads_trading_information_section() {
     let html = r#"
         <html><body>
@@ -1081,6 +1122,7 @@ fn tradewheel_enrich_from_company_profile_reads_trading_information_section() {
 }
 
 #[test]
+#[serial]
 fn tradewheel_enrich_from_company_profile_reads_contact_details_name_logo_and_website() {
     let html = r#"
         <html><body>
@@ -1110,6 +1152,7 @@ fn tradewheel_enrich_from_company_profile_reads_contact_details_name_logo_and_we
 }
 
 #[test]
+#[serial]
 fn tradewheel_enrich_from_company_profile_never_sets_a_website_when_the_value_is_genuinely_just_show()
  {
     let html = r#"
@@ -1129,6 +1172,7 @@ fn tradewheel_enrich_from_company_profile_never_sets_a_website_when_the_value_is
 }
 
 #[test]
+#[serial]
 fn tradewheel_enrich_from_company_profile_show_filter_is_case_insensitive() {
     let html = r#"
         <html><body>
@@ -1147,6 +1191,7 @@ fn tradewheel_enrich_from_company_profile_show_filter_is_case_insensitive() {
 }
 
 #[test]
+#[serial]
 fn tradewheel_enrich_from_company_profile_ignores_sections_with_an_unrecognized_heading() {
     let html = r#"
         <html><body>
@@ -1166,6 +1211,7 @@ fn tradewheel_enrich_from_company_profile_ignores_sections_with_an_unrecognized_
 }
 
 #[test]
+#[serial]
 fn tradewheel_enrich_from_company_profile_never_touches_other_fields() {
     let mut supplier = B2bSupplierProfile::default();
     supplier.company_name = Some("Existing Name Should Survive".to_string());

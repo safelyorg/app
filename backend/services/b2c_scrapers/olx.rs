@@ -327,6 +327,15 @@ fn select_attr(document: &Html, selector: &str, attr: &str) -> Option<String> {
 mod tests {
     use super::*;
 
+    const SOLD_BY_WITH_LOGO_HTML: &str = r#"
+        <div id="soldBy">
+            <a href="/seller/test">
+                <h4>Test Shop</h4>
+            </a>
+        </div>
+        <img class="sellerCard_sellerPic__65feA" src="https://images.olx.com.pk/avatar123.jpeg">
+    "#;
+
     #[test]
     fn olx_listing_scraper_matches_only_olx() {
         let scraper = OlxListingScraper;
@@ -555,5 +564,30 @@ mod tests {
         assert_eq!(result.title, None);
         assert_eq!(result.price, None);
         assert_eq!(result.image_urls, Vec::<String>::new());
+    }
+
+    #[test]
+    fn parse_extracts_the_real_seller_logo_when_genuinely_uploaded() {
+        let result = OlxListingScraper.parse(SOLD_BY_WITH_LOGO_HTML);
+        assert_eq!(
+            result.seller_logo_url,
+            Some("https://images.olx.com.pk/avatar123.jpeg".to_string())
+        );
+    }
+
+    #[test]
+    fn parse_leaves_seller_logo_none_when_the_seller_never_uploaded_one() {
+        // POSTED_BY_SAMPLE_HTML is a regular, non-verified seller with no
+        // sellerCard_sellerPic element at all - the generic shared SVG
+        // fallback icon the real site shows in this case is a client-side
+        // concern, not something this scraper should invent a URL for.
+        let result = OlxListingScraper.parse(POSTED_BY_SAMPLE_HTML);
+        assert_eq!(result.seller_logo_url, None);
+    }
+
+    #[test]
+    fn parse_leaves_seller_logo_none_on_genuinely_empty_html() {
+        let result = OlxListingScraper.parse("");
+        assert_eq!(result.seller_logo_url, None);
     }
 }

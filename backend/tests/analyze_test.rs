@@ -24,9 +24,10 @@ use backend::{
         analysis::{
             BuildResponseData, CreateAnalysisData, RATE_LIMITS, authorize_request,
             build_all_signals, build_requests, check_rate_limit, create_analysis, resolve_seller,
-            run_claude_analysis, save_and_build_response,
+            resolve_supplier_website, run_claude_analysis, save_and_build_response,
         },
         auth::{create_session, find_or_create_user_by_email},
+        b2b_scrapers::B2bSupplierProfile,
         claude::{
             CallClaudeArguments, ClaudeAnalysis, Finding, ImageAssessment, PriceAssessment,
             b2c_content, call_b2c_claude,
@@ -4587,4 +4588,89 @@ async fn run_serper_search_returns_none_for_a_missing_api_key() {
             std::env::set_var("SERPER_API_KEY", key);
         }
     }
+}
+
+#[test]
+fn resolve_supplier_website_fills_in_the_client_website_when_the_server_found_none() {
+    let supplier = B2bSupplierProfile::default();
+    let (resolved, signal) =
+        resolve_supplier_website(supplier, Some("https://real-supplier.example.com"));
+
+    assert_eq!(
+        resolved.website_url,
+        Some("https://real-supplier.example.com".to_string())
+    );
+    assert_eq!(signal.value, "Website found");
+    assert_eq!(
+        signal.sub,
+        "This supplier's website was found: https://real-supplier.example.com"
+    );
+}
+
+#[test]
+fn resolve_supplier_website_never_overwrites_a_website_the_server_already_found() {
+    let mut supplier = B2bSupplierProfile::default();
+    supplier.website_url = Some("https://server-found-this.example.com".to_string());
+
+    let (resolved, signal) =
+        resolve_supplier_website(supplier, Some("https://client-side-guess.example.com"));
+
+    assert_eq!(
+        resolved.website_url,
+        Some("https://server-found-this.example.com".to_string()),
+        "expected the server-side fetch's own real website to win over the client-side fallback"
+    );
+    assert_eq!(
+        signal.sub,
+        "This supplier's website was found: https://server-found-this.example.com"
+    );
+}
+
+#[test]
+fn resolve_supplier_website_ignores_a_genuinely_empty_client_website() {
+    let supplier = B2bSupplierProfile::default();
+    let (resolved, signal) = resolve_supplier_website(supplier, Some(""));
+
+    assert_eq!(
+        resolved.website_url, None,
+        "expected an empty string to be treated as genuinely no website, not a real value"
+    );
+    assert_eq!(signal.value, "No website found");
+}
+
+#[test]
+fn resolve_supplier_website_reports_none_found_when_neither_source_has_one() {
+    let supplier = B2bSupplierProfile::default();
+    let (resolved, signal) = resolve_supplier_website(supplier, None);
+
+    assert_eq!(resolved.website_url, None);
+    assert_eq!(signal.value, "No website found");
+    assert_eq!(
+        signal.sub,
+        "No website was found for this supplier on this platform."
+    );
+}
+
+#[test]
+fn resolve_supplier_website_signal_always_has_the_real_fixed_metadata() {
+    let supplier = B2bSupplierProfile::default();
+    let (_, signal) = resolve_supplier_website(supplier, None);
+
+    assert_eq!(signal.label, "Seller website check");
+    assert_eq!(signal.signal_type, "info");
+    assert_eq!(signal.category, "website");
+    assert_eq!(signal.check_type, "existence");
+}
+
+#[test]
+fn resolve_supplier_website_never_touches_other_supplier_fields() {
+    let mut supplier = B2bSupplierProfile::default();
+    supplier.company_name = Some("Existing Name Should Survive".to_string());
+
+    let (resolved, _) = resolve_supplier_website(supplier, Some("https://example.com"));
+
+    assert_eq!(
+        resolved.company_name,
+        Some("Existing Name Should Survive".to_string())
+    );
 }
