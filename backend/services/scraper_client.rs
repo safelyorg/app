@@ -24,6 +24,7 @@ fn country_code_for_platform(platform: &str) -> Option<&'static str> {
         "exporthub" => Some("us"),
         "b2brazil" => Some("us"),
         "alibaba" => Some("us"),
+        "tradewheel" => Some("us"),
         "thomasnet" => Some("us"),
         "olx" => Some("pk"),
         _ => None,
