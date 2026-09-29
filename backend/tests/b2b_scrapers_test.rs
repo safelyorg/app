@@ -1719,6 +1719,41 @@ fn get_scraper_for_platform_finds_the_newly_registered_thomasnet_scraper() {
 }
 
 #[test]
+fn get_scraper_for_platform_finds_the_newly_registered_b2bmap_scraper() {
+    let scraper = backend::services::b2b_scrapers::get_scraper_for_platform("b2bmap");
+    assert!(
+        scraper.is_some(),
+        "expected b2bmap to be registered in the real scraper list"
+    );
+    assert!(scraper.unwrap().matches_platform("b2bmap"));
+}
+
+#[test]
+fn get_scraper_for_platform_still_finds_every_other_registered_scraper_after_b2bmap_was_added() {
+    for platform in [
+        "alibaba",
+        "tradewheel",
+        "exporthub",
+        "b2brazil",
+        "thomasnet",
+    ] {
+        assert!(
+            backend::services::b2b_scrapers::get_scraper_for_platform(platform).is_some(),
+            "expected '{}' to still be found after b2bmap was added",
+            platform
+        );
+    }
+}
+
+#[test]
+fn country_code_for_platform_returns_us_for_b2bmap() {
+    assert_eq!(
+        backend::services::scraper_client::country_code_for_platform("b2bmap"),
+        Some("us")
+    );
+}
+
+#[test]
 fn get_scraper_for_platform_still_finds_every_other_registered_scraper() {
     // Regression guard - confirms adding thomasnet to the Vec didn't
     // accidentally push out or shadow any existing B2B entry.

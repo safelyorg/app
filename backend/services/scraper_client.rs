@@ -19,7 +19,7 @@ pub fn build_scraper_client() -> Client {
 /// so one hardcoded country_code would be wrong for the others.
 /// Returns None for platforms where no specific country genuinely
 /// helps (ScraperAPI then picks its own default automatically).
-fn country_code_for_platform(platform: &str) -> Option<&'static str> {
+pub fn country_code_for_platform(platform: &str) -> Option<&'static str> {
     match platform {
         "exporthub" => Some("us"),
         "b2brazil" => Some("us"),
