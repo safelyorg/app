@@ -41,20 +41,19 @@ pub fn wrap_scraper_url(target_url: &str) -> String {
 /// going forward. wrap_scraper_url() above is kept only so any
 /// not-yet-updated call site keeps compiling; it applies no country
 /// targeting at all.
+///
+/// Each platform's required ScraperAPI tier is decided upfront here,
+/// not discovered live - Kompass is known to need ultra_premium=true
+/// (ScraperAPI's own error message for it explicitly asks for it:
+/// "Protected domains may require adding premium=true OR
+/// ultra_premium=true"), and render=true is skipped for ThomasNet and
+/// Kompass since both serve already-rendered HTML and render=true
+/// risked triggering their own anti-bot detection with no benefit.
+/// Every other platform stays on plain premium=true + render=true.
 pub fn wrap_scraper_url_for_platform(target_url: &str, platform: &str) -> String {
     if let Ok(api_key) = var("SCRAPERAPI_KEY") {
         let encoded_url = encode(target_url);
-        // ThomasNet's real content is already server-rendered (confirmed
-        // by inspecting its actual HTML) - render=true spins up a full
-        // headless browser for no real benefit here, and may be exactly
-        // what's triggering ThomasNet's own anti-bot detection, given
-        // the consistent 500s with no other explanation (credits and
-        // country targeting both checked out fine).
         let needs_render = platform != "thomasnet" && platform != "kompass";
-        // Kompass sits behind stronger bot protection than plain premium=true
-        // clears - ScraperAPI's own error message for it explicitly asks for
-        // ultra_premium=true ("Protected domains may require adding
-        // premium=true OR ultra_premium=true").
         let needs_ultra_premium = platform == "kompass";
 
         let mut url = format!(
