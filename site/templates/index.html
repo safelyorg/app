@@ -4,10 +4,7 @@
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <title>Safely</title>
-        <meta
-            name="description"
-            content="Safely detects fraud signals in real time, before you send a single payment. Live on OLX today, with more marketplaces on the way."
-        />
+        <meta name="description" content="Safely detects fraud signals in real time, before you send a single payment on any B2B sourcing platform — with more marketplaces added regularly." />
         <link rel="preload" as="font" type="font/woff2" href="/fonts/ClashDisplay-Bold.woff2" crossorigin>
         <link rel="icon" type="image/x-icon" href="images/favicon.ico" />
         <link rel="icon" type="image/png" sizes="32x32" href="images/favicon-32x32.png" />
@@ -38,6 +35,7 @@
         <link rel="stylesheet" href="css/signin.css" />
         <link rel="stylesheet" href="css/modals.css" />
         <link rel="stylesheet" href="css/responsive.css" />
+        <link rel="stylesheet" href="css/marquee.css">
     </head>
     <body>
         <!-- pure-CSS state toggles (no JS needed to open/close menu or sign-in) -->
@@ -139,7 +137,7 @@
         <section class="hero">
             <div class="wrap">
                 <span class="badge r"
-                    ><span class="bd"></span><span data-i18n="hero.badge">Live on Alibaba, TradeWheel, ExportHub &amp; B2Brazil</span></span
+                    ><span class="bd"></span><span data-i18n="hero.badge">Live across every major B2B sourcing platform</span></span
                 >
                 <div class="hero-title">
                     <svg
@@ -312,24 +310,28 @@
             </div>
         </section>
 
-        <!-- ============ LOGOS ============ -->
-        <section class="sec" style="padding-block: clamp(40px, 5vw, 60px)">
+        <!-- ============ PLATFORM MARQUEE ============ -->
+        <section class="sec platforms-sec" style="padding-block: clamp(40px, 5vw, 60px)">
             <div class="wrap">
                 <p class="lblabel reveal" data-i18n="logos.label">Live today — verifying suppliers on these platforms</p>
-                <div class="logos reveal d1">
-                    <span class="mp"><span class="ic" style="background: #16a085"><svg viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17l-5-5" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" /></svg></span>Alibaba</span>
-                    <span class="mp"><span class="ic" style="background: #16a085"><svg viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17l-5-5" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" /></svg></span>TradeWheel</span>
-                    <span class="mp"><span class="ic" style="background: #16a085"><svg viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17l-5-5" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" /></svg></span>ExportHub</span>
-                    <span class="mp"><span class="ic" style="background: #16a085"><svg viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17l-5-5" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" /></svg></span>B2Brazil</span>
-                    <span class="mp"
-                        ><span class="ic" style="background: #3b6fe5"
-                            ><svg viewBox="0 0 24 24" fill="none">
-                                <path
-                                    d="M14 8h2V5h-2a4 4 0 00-4 4v2H9v3h1v6h3v-6h2l1-3h-3V9a1 1 0 011-1z"
-                                    fill="#fff"
-                                /></svg></span
-                        >SAP Ariba <span style="font-weight: 700; color: var(--muted); font-size: 12px"> · <span data-i18n="logos.soon">Soon</span></span> </span
-                    >
+            </div>
+            <div class="marquee reveal d1" role="list" aria-label="Supported marketplaces">
+                <div class="marquee-track">
+                    <span class="mp" role="listitem"><span class="ic"><svg viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17l-5-5" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" /></svg></span>Alibaba</span>
+                    <span class="mp" role="listitem"><span class="ic"><svg viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17l-5-5" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" /></svg></span>TradeWheel</span>
+                    <span class="mp" role="listitem"><span class="ic"><svg viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17l-5-5" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" /></svg></span>ExportHub</span>
+                    <span class="mp" role="listitem"><span class="ic"><svg viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17l-5-5" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" /></svg></span>B2Brazil</span>
+                    <span class="mp" role="listitem"><span class="ic"><svg viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17l-5-5" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" /></svg></span>ThomasNet</span>
+                    <span class="mp" role="listitem"><span class="ic"><svg viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17l-5-5" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" /></svg></span>B2BMap</span>
+                    <span class="mp soon" role="listitem"><span class="ic soon-dot" aria-hidden="true"></span><span data-i18n="logos.more_soon">More platforms coming soon</span></span>
+                    <!-- duplicate set for a seamless loop -->
+                    <span class="mp" aria-hidden="true"><span class="ic"><svg viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17l-5-5" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" /></svg></span>Alibaba</span>
+                    <span class="mp" aria-hidden="true"><span class="ic"><svg viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17l-5-5" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" /></svg></span>TradeWheel</span>
+                    <span class="mp" aria-hidden="true"><span class="ic"><svg viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17l-5-5" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" /></svg></span>ExportHub</span>
+                    <span class="mp" aria-hidden="true"><span class="ic"><svg viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17l-5-5" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" /></svg></span>B2Brazil</span>
+                    <span class="mp" aria-hidden="true"><span class="ic"><svg viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17l-5-5" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" /></svg></span>ThomasNet</span>
+                    <span class="mp" aria-hidden="true"><span class="ic"><svg viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17l-5-5" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" /></svg></span>B2BMap</span>
+                    <span class="mp soon" aria-hidden="true"><span class="ic soon-dot"></span><span>More platforms coming soon</span></span>
                 </div>
             </div>
         </section>
@@ -938,7 +940,7 @@
                     <article class="bcard reveal d2">
                         <div class="bviz c4">
                             <div class="vmkts">
-                                <span>Alibaba ✓</span><span>TradeWheel ✓</span><span>ExportHub ✓</span><span>B2Brazil ✓</span><span>SAP Ariba · Soon</span>
+                                <span>Alibaba ✓</span><span>TradeWheel ✓</span><span>ExportHub ✓</span><span>B2Brazil ✓</span><span>ThomasNet ✓</span><span>B2BMap ✓</span><span class="soon">More soon</span>
                             </div>
                         </div>
                         <div class="btxt">
@@ -960,9 +962,9 @@
                             <h3 data-i18n="features.bento4.title">Expanding across B2B platforms</h3>
                             <p data-i18n="features.bento4.body">
                                 Live today on Alibaba, TradeWheel, ExportHub,
-                                and B2Brazil. SAP Ariba is next — one extension
-                                will eventually cover every major B2B sourcing
-                                platform.
+                                B2Brazil, ThomasNet, and B2BMap — one extension
+                                that keeps growing to cover every major B2B
+                                sourcing platform.
                             </p>
                         </div>
                     </article>
@@ -1061,7 +1063,7 @@
                     <ul class="plist">
                         <li>
                             <span class="ck"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5" /></svg></span>
-                            <span data-i18n="pricing.team.li1">750 supplier scans/month on Alibaba, TradeWheel, ExportHub &amp; B2Brazil</span>
+                            <span data-i18n="pricing.team.li1">750 supplier scans/month across Alibaba, TradeWheel, ExportHub, B2Brazil, ThomasNet &amp; B2BMap</span>
                         </li>
                         <li>
                             <span class="ck"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5" /></svg></span>
@@ -1151,7 +1153,7 @@
                         <tbody>
                             <tr class="comp-cat"><td colspan="3" data-i18n="pricing.comp.core_access">Core Access</td></tr>
                             <tr>
-                                <td data-i18n="pricing.comp.row1">Supplier scans (Alibaba, TradeWheel, ExportHub, B2Brazil)</td>
+                                <td data-i18n="pricing.comp.row1">Supplier scans (Alibaba, TradeWheel, ExportHub, B2Brazil, ThomasNet, B2BMap)</td>
                                 <td><span class="tval" data-i18n="pricing.comp.team_scans">750/month</span></td>
                                 <td><span class="tval" data-i18n="pricing.comp.unlimited">Unlimited</span></td>
                             </tr>
@@ -1504,9 +1506,10 @@
                         <div class="ans">
                             <p data-i18n="faq.q2.a">
                                 Safely is fully live on Alibaba, TradeWheel,
-                                ExportHub, and B2Brazil. SAP Ariba is next on
-                                our roadmap. See the next question for exactly
-                                which pages currently trigger an analysis.
+                                ExportHub, B2Brazil, ThomasNet, and B2BMap —
+                                with more B2B marketplaces added regularly.
+                                See the next question for exactly which pages
+                                currently trigger an analysis.
                             </p>
                         </div>
                     </details>
@@ -1620,11 +1623,11 @@
                             <p data-i18n="faq.q7.a">
                                 Right now, Safely actively reads supplier and
                                 listing pages on Alibaba, TradeWheel, ExportHub,
-                                and B2Brazil. Safely only activates on
-                                individual listing pages — simply browsing a
-                                platform's homepage or search results won't
-                                trigger an analysis. Support for SAP Ariba and
-                                other B2B platforms is on our roadmap.
+                                B2Brazil, ThomasNet, and B2BMap. Safely only
+                                activates on individual listing pages — simply
+                                browsing a platform's homepage or search results
+                                won't trigger an analysis. We're continuously
+                                adding support for more B2B platforms.
                             </p>
                         </div>
                     </details>
