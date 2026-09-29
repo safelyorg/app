@@ -36,8 +36,10 @@ interface PendingTabRegistration {
     '<div class="safely-tabs-area" id="safely-tabs-area"></div>' +
     '<div class="safely-loading-overlay" id="safely-loading-overlay"><div class="safely-loading-dots"><span></span><span></span><span></span></div></div>' +
     '<div class="safely-tab-content" id="safely-tab-unsupported" style="display:none; padding: 20px; font-size: 13px; line-height: 1.5; color: #8a8a93;">' +
+    '<span id="safely-unsupported-message">' +
     "Safely doesn't check this page — open a listing on a supported " +
     "marketplace to scan it." +
+    "</span>" +
     "</div>" +
     '<div class="safely-tab-content" id="safely-tab-signin-required" style="display:none; padding: 20px; text-align: center;">' +
     '<div style="font-size:13px; line-height:1.6; color:#8a8a93; margin-bottom:16px;">' +
@@ -90,6 +92,9 @@ interface PendingTabRegistration {
   const loadingOverlay = document.getElementById("safely-loading-overlay") as HTMLElement | null;
   const toolbarInner = document.getElementById("safely-toolbar-inner") as HTMLElement;
   const unsupportedContent = document.getElementById("safely-tab-unsupported") as HTMLElement;
+  const unsupportedMessageEl = document.getElementById(
+    "safely-unsupported-message",
+  ) as HTMLElement | null;
   const signinRequiredContent = document.getElementById(
     "safely-tab-signin-required",
   ) as HTMLElement;
@@ -397,6 +402,14 @@ interface PendingTabRegistration {
       analysisFailedIcon.style.display = "none";
       subscriptionRequiredIcon.style.display = "none";
       unsupportedIcon.style.display = "flex";
+
+      if (unsupportedMessageEl) {
+        const customMessage = (window as any).__safelyScrapers.getUnsupportedMessage?.();
+        unsupportedMessageEl.textContent =
+          customMessage ||
+          "Safely doesn't check this page — open a listing on a supported marketplace to scan it.";
+      }
+
       switchTab("unsupported");
     }
   }

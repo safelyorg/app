@@ -2,6 +2,7 @@ pub mod alibaba;
 pub mod b2bmap;
 pub mod b2brazil;
 pub mod exporthub;
+pub mod kompass;
 pub mod thomasnet;
 pub mod tradewheel;
 
@@ -79,6 +80,7 @@ pub fn get_scraper_for_platform(platform: &str) -> Option<Box<dyn B2bScraper>> {
         Box::new(exporthub::ExporthubScraper),
         Box::new(thomasnet::ThomasnetScraper),
         Box::new(b2bmap::B2bmapScraper),
+        Box::new(kompass::KompassScraper),
     ];
     scrapers.into_iter().find(|s| s.matches_platform(platform))
 }

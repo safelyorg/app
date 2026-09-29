@@ -183,6 +183,20 @@
             isListingUrl: (url) => url.includes("/products/"),
         },
         {
+            name: "kompass",
+            matchesHostname: (hostname) => hostname.includes("kompass.com"),
+            requiresClientSideScraping: false,
+            isListingUrl: (url) => {
+                try {
+                    return new URL(url).pathname.startsWith("/p/");
+                }
+                catch {
+                    return false;
+                }
+            },
+            nonListingMessage: "Safely can only check a specific product page on Kompass. Open a product listing to scan it.",
+        },
+        {
             name: "thomasnet",
             matchesHostname: (hostname) => hostname.includes("thomasnet.com"),
             requiresClientSideScraping: false,
@@ -203,10 +217,19 @@
         const config = platformRegistry.find((p) => p.name === platform);
         return config ? config.isListingUrl(url) : false;
     }
+    function getUnsupportedMessage() {
+        const hostname = window.location.hostname;
+        const config = platformRegistry.find((p) => p.matchesHostname(hostname));
+        if (config && !config.isListingUrl(window.location.href)) {
+            return config.nonListingMessage || null;
+        }
+        return null;
+    }
     window.__safelyScrapers = window.__safelyScrapers || {};
     window.__safelyScrapers.detectPlatform = detectPlatform;
     window.__safelyScrapers.loadProtectedDomains = loadProtectedDomains;
     window.__safelyScrapers.isListingPage = isListingPage;
+    window.__safelyScrapers.getUnsupportedMessage = getUnsupportedMessage;
     window.__safelyScrapers.requiresClientSideScraping = requiresClientSideScraping;
     window.__safelyScrapers.checkDomain = checkDomain;
     window.__safelyScrapers.normalize = normalize;

@@ -29,6 +29,7 @@ interface PlatformConfig {
   matchesHostname: (hostname: string) => boolean;
   requiresClientSideScraping: boolean;
   isListingUrl: (url: string) => boolean;
+  nonListingMessage?: string;
 }
 
 type DomainCheckResult = LegitimateDomainResult | SuspiciousDomainResult | null;
@@ -228,6 +229,20 @@ type DomainCheckResult = LegitimateDomainResult | SuspiciousDomainResult | null;
       isListingUrl: (url) => url.includes("/products/"),
     },
     {
+      name: "kompass",
+      matchesHostname: (hostname) => hostname.includes("kompass.com"),
+      requiresClientSideScraping: false,
+      isListingUrl: (url) => {
+        try {
+          return new URL(url).pathname.startsWith("/p/");
+        } catch {
+          return false;
+        }
+      },
+      nonListingMessage:
+        "Safely can only check a specific product page on Kompass. Open a product listing to scan it.",
+    },
+    {
       name: "thomasnet",
       matchesHostname: (hostname) => hostname.includes("thomasnet.com"),
       requiresClientSideScraping: false,
@@ -252,10 +267,20 @@ type DomainCheckResult = LegitimateDomainResult | SuspiciousDomainResult | null;
     return config ? config.isListingUrl(url) : false;
   }
 
+  function getUnsupportedMessage(): string | null {
+    const hostname = window.location.hostname;
+    const config = platformRegistry.find((p) => p.matchesHostname(hostname));
+    if (config && !config.isListingUrl(window.location.href)) {
+      return config.nonListingMessage || null;
+    }
+    return null;
+  }
+
   (window as any).__safelyScrapers = (window as any).__safelyScrapers || {};
   (window as any).__safelyScrapers.detectPlatform = detectPlatform;
   (window as any).__safelyScrapers.loadProtectedDomains = loadProtectedDomains;
   (window as any).__safelyScrapers.isListingPage = isListingPage;
+  (window as any).__safelyScrapers.getUnsupportedMessage = getUnsupportedMessage;
   (window as any).__safelyScrapers.requiresClientSideScraping = requiresClientSideScraping;
   (window as any).__safelyScrapers.checkDomain = checkDomain;
   (window as any).__safelyScrapers.normalize = normalize;

@@ -27,6 +27,7 @@ pub fn country_code_for_platform(platform: &str) -> Option<&'static str> {
         "tradewheel" => Some("us"),
         "b2bmap" => Some("us"),
         "thomasnet" => Some("us"),
+        "kompass" => Some("us"),
         "olx" => Some("pk"),
         _ => None,
     }
@@ -49,11 +50,20 @@ pub fn wrap_scraper_url_for_platform(target_url: &str, platform: &str) -> String
         // what's triggering ThomasNet's own anti-bot detection, given
         // the consistent 500s with no other explanation (credits and
         // country targeting both checked out fine).
-        let needs_render = platform != "thomasnet";
+        let needs_render = platform != "thomasnet" && platform != "kompass";
+        // Kompass sits behind stronger bot protection than plain premium=true
+        // clears - ScraperAPI's own error message for it explicitly asks for
+        // ultra_premium=true ("Protected domains may require adding
+        // premium=true OR ultra_premium=true").
+        let needs_ultra_premium = platform == "kompass";
+
         let mut url = format!(
             "https://api.scraperapi.com/?api_key={}&url={}&premium=true",
             api_key, encoded_url
         );
+        if needs_ultra_premium {
+            url.push_str("&ultra_premium=true");
+        }
         if needs_render {
             url.push_str("&render=true");
         }

@@ -101,7 +101,6 @@ pub struct B2bClaudeAnalysis {
     pub overall_risk_notes: String,
 }
 
-#[derive(Debug)]
 pub struct CallB2bClaudeArguments<'a> {
     pub platform: &'a str,
     pub company_name: &'a str,
@@ -113,6 +112,9 @@ pub struct CallB2bClaudeArguments<'a> {
     pub product_description: &'a str,
     pub image_urls: &'a [String],
     pub language: &'a str,
+    pub contact_name: &'a str,
+    pub contact_phone: &'a str,
+    pub website_url: &'a str,
 }
 
 /// The ONE, shared place that builds the real content blocks sent to
@@ -364,6 +366,9 @@ pub fn b2b_content(arg: &CallB2bClaudeArguments) -> String {
         Platform-verified badge: {platform_verified}
         Employee count: {employee_count}
         Company description: {company_description}
+        Contact name: {contact_name}
+        Contact phone: {contact_phone}
+        Website: {website_url}
         Product title: {product_title}
         Product description: {product_description}
 
@@ -424,6 +429,21 @@ pub fn b2b_content(arg: &CallB2bClaudeArguments) -> String {
         year_established = arg.year_established,
         platform_verified = arg.platform_verified,
         employee_count = arg.employee_count,
+        contact_name = if arg.contact_name.is_empty() {
+            "Not provided"
+        } else {
+            arg.contact_name
+        },
+        contact_phone = if arg.contact_phone.is_empty() {
+            "Not provided"
+        } else {
+            arg.contact_phone
+        },
+        website_url = if arg.website_url.is_empty() {
+            "Not provided"
+        } else {
+            arg.website_url
+        },
         company_description = if arg.company_description.is_empty() {
             "Not provided"
         } else {
