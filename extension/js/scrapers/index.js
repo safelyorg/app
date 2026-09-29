@@ -177,6 +177,12 @@
             isListingUrl: (url) => url.includes("/product/"),
         },
         {
+            name: "b2bmap",
+            matchesHostname: (hostname) => hostname.includes("b2bmap.com"),
+            requiresClientSideScraping: false,
+            isListingUrl: (url) => url.includes("/products/"),
+        },
+        {
             name: "thomasnet",
             matchesHostname: (hostname) => hostname.includes("thomasnet.com"),
             requiresClientSideScraping: false,
