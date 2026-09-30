@@ -130,8 +130,14 @@ pub async fn analyze(
     let mut social_candidates: Vec<PlatformCheckResult> = Vec::new();
     let (signals, risk_score, overall_risk_notes) = if is_b2b {
         let (signals, risk_score, notes, supplier, listing_data, candidates_from_b2b) =
-            build_b2b_analysis_path(&pool, &request, resolved.fraud_count, resolved.seller.id)
-                .await?;
+            build_b2b_analysis_path(
+                &pool,
+                &request,
+                resolved.fraud_count,
+                resolved.seller.id,
+                resolved.seller.handle.as_deref(),
+            )
+            .await?;
         let join_date = supplier.year_established.as_deref().and_then(|y| {
             y.trim()
                 .parse::<i32>()
@@ -177,9 +183,7 @@ pub async fn analyze(
             resolved.seller.handle = Some(name.replace('*', "").trim().to_string());
         }
         if let Some(phone) = &supplier.contact_phone {
-            if !phone.contains('*') {
-                resolved.seller.phone = Some(phone.clone());
-            }
+            resolved.seller.phone = Some(phone.clone());
         }
         social_candidates = candidates_from_b2b;
         (signals, risk_score, notes)

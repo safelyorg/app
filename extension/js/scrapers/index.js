@@ -272,4 +272,12 @@
         }
     }
     window.__safelyScrapers.fetchTradewheelWebsite = fetchTradewheelWebsite;
+    function extractB2bmapPhone() {
+        const el = document.querySelector("span.d-flex.mb-3.align-items-center span.text-muted");
+        const text = el?.textContent?.trim() || "";
+        if (!text || text.toLowerCase().includes("x"))
+            return null;
+        return text;
+    }
+    window.__safelyScrapers.extractB2bmapPhone = extractB2bmapPhone;
 })();

@@ -324,4 +324,15 @@ type DomainCheckResult = LegitimateDomainResult | SuspiciousDomainResult | null;
   }
 
   (window as any).__safelyScrapers.fetchTradewheelWebsite = fetchTradewheelWebsite;
+
+  function extractB2bmapPhone(): string | null {
+    const el = document.querySelector<HTMLElement>(
+      "span.d-flex.mb-3.align-items-center span.text-muted",
+    );
+    const text = el?.textContent?.trim() || "";
+    if (!text || text.toLowerCase().includes("x")) return null;
+    return text;
+  }
+
+  (window as any).__safelyScrapers.extractB2bmapPhone = extractB2bmapPhone;
 })();

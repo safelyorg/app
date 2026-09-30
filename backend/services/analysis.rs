@@ -523,6 +523,55 @@ pub fn resolve_supplier_website(
     (supplier, signal)
 }
 
+/// Same category of problem as resolve_supplier_website - b2bmap only
+/// ever shows a masked phone number to an anonymous fetch (e.g.
+/// "+8618217xxxxx"), so a server-side scrape can look like it found a
+/// phone that isn't actually usable. Prefers the server-scraped
+/// number when it doesn't look masked; otherwise falls back to
+/// whatever the client (a genuinely signed-in visitor) read directly
+/// off the page. If neither is real, drops it entirely rather than
+/// analyzing or displaying a masked value as if it were genuine.
+pub fn resolve_supplier_phone(
+    mut supplier: B2bSupplierProfile,
+    client_phone: Option<&str>,
+) -> B2bSupplierProfile {
+    let scraped_is_usable = supplier
+        .contact_phone
+        .as_deref()
+        .map(|p| !looks_masked(p))
+        .unwrap_or(false);
+
+    if !scraped_is_usable {
+        let usable_client_phone = client_phone
+            .map(|p| p.trim())
+            .filter(|p| !p.is_empty() && !looks_masked(p));
+
+        supplier.contact_phone = usable_client_phone.map(|p| p.to_string());
+    }
+
+    supplier
+}
+
+fn looks_masked(value: &str) -> bool {
+    value.contains('*') || value.to_lowercase().contains('x')
+}
+
+/// It makes sure "Contact info" never disagrees with "Username" — if this scan's
+/// server-side scrape didn't find a contact name (the enrichment fetch can fail
+/// independently of the main page fetch), it falls back to the same handle the
+/// extension already scraped client-side and that "Username" displays, instead
+/// of telling Claude no name was found when one actually is known.
+pub fn resolve_supplier_contact_name(
+    mut supplier: B2bSupplierProfile,
+    client_handle: Option<&str>,
+) -> B2bSupplierProfile {
+    if supplier.contact_name.is_none() {
+        let usable_handle = client_handle.map(|h| h.trim()).filter(|h| !h.is_empty());
+        supplier.contact_name = usable_handle.map(|h| h.to_string());
+    }
+    supplier
+}
+
 /// The complete, separate B2B analysis path - fetches the real
 /// supplier page, calls Claude with B2B-specific due-diligence
 /// questions, and builds an entirely separate set of signals. This
@@ -534,6 +583,7 @@ pub async fn build_b2b_analysis_path(
     request: &AnalyzeRequest,
     fraud_count: i64,
     seller_id: Uuid,
+    known_seller_handle: Option<&str>,
 ) -> Result<
     (
         Vec<Signal>,
@@ -571,6 +621,9 @@ pub async fn build_b2b_analysis_path(
     let (supplier, website_signal) =
         resolve_supplier_website(supplier, request.seller_website.as_deref());
     signals.push(website_signal);
+
+    let supplier = resolve_supplier_phone(supplier, request.seller_phone.as_deref());
+    let supplier = resolve_supplier_contact_name(supplier, known_seller_handle);
 
     let claude_result = call_b2b_claude(CallB2bClaudeArguments {
         platform: &request.platform,

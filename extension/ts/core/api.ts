@@ -269,6 +269,13 @@ function formatPlatformName(platform: string | null | undefined): string {
         }
       }
 
+      if (platform === "b2bmap" && (window as any).__safelyScrapers.extractB2bmapPhone) {
+        const phone = (window as any).__safelyScrapers.extractB2bmapPhone();
+        if (phone) {
+          scraped.seller_phone = phone;
+        }
+      }
+
       const domainCheck = (window as any).__safelyScrapers.checkDomain();
       const payload: AnalyzePayload = {
         platform,
@@ -284,7 +291,7 @@ function formatPlatformName(platform: string | null | undefined): string {
         platform_id: scraped.platform_id || null,
         seller_name: scraped.seller_name || null,
         seller_handle: null,
-        seller_phone: null,
+        seller_phone: scraped.seller_phone || null,
         seller_profile_url: scraped.seller_profile_url || null,
         seller_join_date: scraped.seller_join_date || null,
         seller_location: scraped.seller_location || null,
