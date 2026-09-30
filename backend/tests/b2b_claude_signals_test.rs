@@ -54,6 +54,34 @@ fn produces_exactly_eight_signals() {
 }
 
 #[test]
+fn found_false_maps_to_caution_for_b2b_finding_signals() {
+    let analysis = make_analysis(false, false, false, false);
+    let signals = build_b2b_claude_signals(&analysis);
+
+    for label in [
+        "Overall legitimacy check",
+        "Registration consistency",
+        "Duplicate listing",
+        "Contact info",
+    ] {
+        let signal = signals.iter().find(|s| s.label == label).unwrap();
+        assert_eq!(
+            signal.signal_type, "caution",
+            "expected 'caution' for {}",
+            label
+        );
+        // Duplicate listing reads like the B2C card ("Detected" = templated
+        // listing); the other three keep "Not confirmed".
+        let expected = if label == "Duplicate listing" {
+            "Detected"
+        } else {
+            "Not confirmed"
+        };
+        assert_eq!(signal.value, expected, "wrong value for {}", label);
+    }
+}
+
+#[test]
 fn found_true_maps_to_good_for_b2b_finding_signals() {
     let analysis = make_analysis(true, true, true, true);
     let signals = build_b2b_claude_signals(&analysis);
@@ -66,24 +94,14 @@ fn found_true_maps_to_good_for_b2b_finding_signals() {
     ] {
         let signal = signals.iter().find(|s| s.label == label).unwrap();
         assert_eq!(signal.signal_type, "good", "expected 'good' for {}", label);
-        assert_eq!(signal.value, "Confirmed");
-    }
-}
-
-#[test]
-fn found_false_maps_to_caution_for_b2b_finding_signals() {
-    let analysis = make_analysis(false, false, false, false);
-    let signals = build_b2b_claude_signals(&analysis);
-
-    for label in [
-        "Overall legitimacy check",
-        "Registration consistency",
-        "Duplicate listing",
-        "Contact info",
-    ] {
-        let signal = signals.iter().find(|s| s.label == label).unwrap();
-        assert_eq!(signal.signal_type, "caution", "expected 'caution' for {}", label);
-        assert_eq!(signal.value, "Not confirmed");
+        // Duplicate listing reads like the B2C card ("None found" = specific,
+        // original listing); the other three keep "Confirmed".
+        let expected = if label == "Duplicate listing" {
+            "None found"
+        } else {
+            "Confirmed"
+        };
+        assert_eq!(signal.value, expected, "wrong value for {}", label);
     }
 }
 
@@ -92,9 +110,18 @@ fn mixed_results_are_each_scored_independently() {
     let analysis = make_analysis(true, false, true, false);
     let signals = build_b2b_claude_signals(&analysis);
 
-    let legitimacy = signals.iter().find(|s| s.label == "Overall legitimacy check").unwrap();
-    let consistency = signals.iter().find(|s| s.label == "Registration consistency").unwrap();
-    let specificity = signals.iter().find(|s| s.label == "Duplicate listing").unwrap();
+    let legitimacy = signals
+        .iter()
+        .find(|s| s.label == "Overall legitimacy check")
+        .unwrap();
+    let consistency = signals
+        .iter()
+        .find(|s| s.label == "Registration consistency")
+        .unwrap();
+    let specificity = signals
+        .iter()
+        .find(|s| s.label == "Duplicate listing")
+        .unwrap();
     let contact = signals.iter().find(|s| s.label == "Contact info").unwrap();
 
     assert_eq!(legitimacy.signal_type, "good");
@@ -108,7 +135,10 @@ fn each_signal_carries_the_real_evidence_text() {
     let analysis = make_analysis(true, true, true, true);
     let signals = build_b2b_claude_signals(&analysis);
 
-    let legitimacy = signals.iter().find(|s| s.label == "Overall legitimacy check").unwrap();
+    let legitimacy = signals
+        .iter()
+        .find(|s| s.label == "Overall legitimacy check")
+        .unwrap();
     assert_eq!(legitimacy.sub, "legitimacy evidence");
 }
 
@@ -117,15 +147,24 @@ fn each_signal_has_the_correct_real_category_and_check_type() {
     let analysis = make_analysis(true, true, true, true);
     let signals = build_b2b_claude_signals(&analysis);
 
-    let legitimacy = signals.iter().find(|s| s.label == "Overall legitimacy check").unwrap();
+    let legitimacy = signals
+        .iter()
+        .find(|s| s.label == "Overall legitimacy check")
+        .unwrap();
     assert_eq!(legitimacy.category, "company");
     assert_eq!(legitimacy.check_type, "existence");
 
-    let consistency = signals.iter().find(|s| s.label == "Registration consistency").unwrap();
+    let consistency = signals
+        .iter()
+        .find(|s| s.label == "Registration consistency")
+        .unwrap();
     assert_eq!(consistency.category, "company");
     assert_eq!(consistency.check_type, "consistency");
 
-    let specificity = signals.iter().find(|s| s.label == "Duplicate listing").unwrap();
+    let specificity = signals
+        .iter()
+        .find(|s| s.label == "Duplicate listing")
+        .unwrap();
     assert_eq!(specificity.category, "listing");
     assert_eq!(specificity.check_type, "pattern");
 
@@ -138,7 +177,10 @@ fn each_signal_has_the_correct_real_category_and_check_type() {
 fn price_analysis_signal_uses_pricing_transparency_verdict_directly() {
     let analysis = make_analysis(true, true, true, true);
     let signals = build_b2b_claude_signals(&analysis);
-    let price = signals.iter().find(|s| s.label == "Price analysis").unwrap();
+    let price = signals
+        .iter()
+        .find(|s| s.label == "Price analysis")
+        .unwrap();
     assert_eq!(price.value, "normal");
     assert_eq!(price.signal_type, "good");
     assert_eq!(price.sub, "pricing reasoning");
@@ -151,11 +193,20 @@ fn urgency_and_advance_payment_use_the_opposite_polarity_from_the_other_four() {
     analysis.advance_payment_request.found = true;
     let signals = build_b2b_claude_signals(&analysis);
 
-    let urgency = signals.iter().find(|s| s.label == "Urgency language").unwrap();
-    assert_eq!(urgency.signal_type, "caution", "found=true must mean CAUTION here, not good");
+    let urgency = signals
+        .iter()
+        .find(|s| s.label == "Urgency language")
+        .unwrap();
+    assert_eq!(
+        urgency.signal_type, "caution",
+        "found=true must mean CAUTION here, not good"
+    );
     assert_eq!(urgency.value, "Detected");
 
-    let advance_payment = signals.iter().find(|s| s.label == "Advance payment request").unwrap();
+    let advance_payment = signals
+        .iter()
+        .find(|s| s.label == "Advance payment request")
+        .unwrap();
     assert_eq!(advance_payment.signal_type, "caution");
     assert_eq!(advance_payment.value, "Detected");
 }
@@ -164,7 +215,10 @@ fn urgency_and_advance_payment_use_the_opposite_polarity_from_the_other_four() {
 fn urgency_and_advance_payment_show_good_when_not_found() {
     let analysis = make_analysis(true, true, true, true);
     let signals = build_b2b_claude_signals(&analysis);
-    let urgency = signals.iter().find(|s| s.label == "Urgency language").unwrap();
+    let urgency = signals
+        .iter()
+        .find(|s| s.label == "Urgency language")
+        .unwrap();
     assert_eq!(urgency.signal_type, "good");
     assert_eq!(urgency.value, "None found");
 }
@@ -173,7 +227,10 @@ fn urgency_and_advance_payment_show_good_when_not_found() {
 fn image_authenticity_signal_correctly_maps_not_verified_to_caution() {
     let analysis = make_analysis(true, true, true, true);
     let signals = build_b2b_claude_signals(&analysis);
-    let image = signals.iter().find(|s| s.label == "Image authenticity").unwrap();
+    let image = signals
+        .iter()
+        .find(|s| s.label == "Image authenticity")
+        .unwrap();
     assert_eq!(image.value, "not verified");
     assert_eq!(image.signal_type, "caution");
 }
@@ -183,6 +240,9 @@ fn image_authenticity_signal_maps_original_to_good() {
     let mut analysis = make_analysis(true, true, true, true);
     analysis.image_authenticity.verdict = "original".to_string();
     let signals = build_b2b_claude_signals(&analysis);
-    let image = signals.iter().find(|s| s.label == "Image authenticity").unwrap();
+    let image = signals
+        .iter()
+        .find(|s| s.label == "Image authenticity")
+        .unwrap();
     assert_eq!(image.signal_type, "good");
 }

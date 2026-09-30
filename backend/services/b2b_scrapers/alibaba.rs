@@ -1,8 +1,110 @@
 use crate::services::b2b_scrapers::{B2bListingProfile, B2bScraper, B2bSupplierProfile};
-use chrono::Datelike;
 use scraper::{Html, Selector};
+use serde_json::Value;
 
 pub struct AlibabaScraper;
+
+/// Alibaba server-renders the whole product page's data into one
+/// `window.detailData = {...};` script block. Some fields only exist
+/// there and never appear as visible text - the supplier's contact
+/// name is the main one. Returns `globalData.seller` if present.
+fn extract_detail_data(html: &str) -> Option<Value> {
+    let start = html.find("window.detailData")?;
+    let rest = &html[start + "window.detailData".len()..];
+    let rest = rest.trim_start().strip_prefix('=')?.trim_start();
+    // Streaming parse: stops at the end of the JSON object and ignores
+    // the `;` and whatever script follows it.
+    let data: Value = serde_json::Deserializer::from_str(rest)
+        .into_iter::<Value>()
+        .next()?
+        .ok()?;
+    Some(data)
+}
+
+fn extract_detail_seller(html: &str) -> Option<Value> {
+    extract_detail_data(html)?
+        .get("globalData")?
+        .get("seller")
+        .cloned()
+}
+
+/// "Year founded" from the company card's performance fields in
+/// window.detailData. Same value the visible overview panel shows, but
+/// present in the raw HTML even when that panel's markup is not.
+fn detail_year_founded(data: &Value) -> Option<String> {
+    data.get("nodeMap")?
+        .get("module_unifed_company_card")?
+        .get("privateData")?
+        .get("onlinePerformance")?
+        .get("fields")?
+        .as_array()?
+        .iter()
+        .find(|f| {
+            f.get("title")
+                .and_then(|t| t.as_str())
+                .map_or(false, |t| t.trim_start().starts_with("Year founded"))
+        })
+        .and_then(|f| match f.get("value")? {
+            Value::String(s) if !s.trim().is_empty() => Some(s.trim().to_string()),
+            Value::Number(n) => Some(n.to_string()),
+            _ => None,
+        })
+}
+
+/// Product photo URLs from window.detailData (videos skipped).
+fn detail_image_urls(data: &Value) -> Vec<String> {
+    data.get("globalData")
+        .and_then(|g| g.get("product"))
+        .and_then(|p| p.get("mediaItems"))
+        .and_then(|m| m.as_array())
+        .map(|items| {
+            items
+                .iter()
+                .filter(|m| m.get("group").and_then(|g| g.as_str()) == Some("photos"))
+                .filter_map(|m| m.get("imageUrl")?.get("big")?.as_str())
+                .map(absolute_url)
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn json_str(value: &Value, key: &str) -> Option<String> {
+    value
+        .get(key)?
+        .as_str()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+}
+
+fn absolute_url(url: &str) -> String {
+    if url.starts_with("//") {
+        format!("https:{}", url)
+    } else {
+        url.to_string()
+    }
+}
+
+/// Normalises an Alibaba shop host to one canonical form, so every
+/// source for it yields exactly the same key: lowercase, no "www.",
+/// the mobile ".m.en." variant folded into ".en.", and only real
+/// "<shop>.en.alibaba.com" hosts accepted (never www.alibaba.com
+/// itself, which every page links to).
+fn normalize_shop_host(raw: &str) -> Option<String> {
+    let s = raw.trim().to_lowercase();
+    let s = s
+        .trim_start_matches("https://")
+        .trim_start_matches("http://")
+        .trim_start_matches("//");
+    let host = s.split(|c| c == '/' || c == '?' || c == '#').next()?.trim();
+    let host = host
+        .trim_start_matches("www.")
+        .replace(".m.en.alibaba.com", ".en.alibaba.com");
+    let shop = host.strip_suffix(".en.alibaba.com")?;
+    if shop.is_empty() || shop.contains('.') {
+        return None;
+    }
+    Some(host)
+}
 
 fn extract_overview_field(document: &Html, label: &str) -> Option<String> {
     let button_sel = Selector::parse("button.id-cursor-default").ok()?;
@@ -50,7 +152,6 @@ impl B2bScraper for AlibabaScraper {
         // classifies each by its real, actual content pattern, rather
         // than assuming a fixed position.
         let mut country = None;
-        let mut years_text = None;
         let mut badge_honorific = None;
         if let Ok(sel) =
             Selector::parse("[data-testid='three-column-mini-company-card'] .id-mt-1 span")
@@ -61,7 +162,9 @@ impl B2bScraper for AlibabaScraper {
                     continue;
                 }
                 if text.ends_with("yrs") {
-                    years_text = Some(text);
+                    // Years on Alibaba, not company age - deliberately
+                    // not used as a founding year (see below).
+                    continue;
                 } else if text == "CN" || text.contains(", CN") || text.len() <= 4 {
                     // A bare country code, or "City, CC" - both count
                     // as the real, genuine location field.
@@ -88,23 +191,48 @@ impl B2bScraper for AlibabaScraper {
             .next()
             .is_some();
 
+        // The company logo is the card image whose alt text is
+        // "<Company name> logo". Taking the first <img> in the card was
+        // wrong for badged suppliers: that one is the verified-badge
+        // icon, not the logo.
+        let seller_json = extract_detail_seller(html);
         let logo_url = select_attr(
             &document,
-            "[data-testid='three-column-mini-company-card'] img",
+            "[data-testid='three-column-mini-company-card'] img[alt$=' logo']",
             "src",
-        );
+        )
+        .or_else(|| {
+            seller_json
+                .as_ref()
+                .and_then(|s| json_str(s, "companyLogoFileUrlSmall"))
+        })
+        .map(|u| absolute_url(&u));
 
         let overview_year = extract_overview_field(&document, "Year founded");
         let sales_revenue = extract_overview_field(&document, "Online revenue");
 
+        // Only a real founding year is used here. "N yrs" in the card is
+        // how long the supplier has been on Alibaba, not how old the
+        // company is, so it is no longer turned into a year. The company
+        // profile page fills this in later where Alibaba shows it.
         let year_established = overview_year.or_else(|| {
-            years_text.as_deref().and_then(|t| {
-                let digits: String = t.chars().take_while(|c| c.is_ascii_digit()).collect();
-                digits
-                    .parse::<i32>()
-                    .ok()
-                    .map(|years| (chrono::Utc::now().year() - years).to_string())
-            })
+            extract_detail_data(html)
+                .as_ref()
+                .and_then(detail_year_founded)
+        });
+
+        let contact_name = seller_json
+            .as_ref()
+            .and_then(|s| json_str(s, "contactName"));
+        let employee_count = seller_json
+            .as_ref()
+            .and_then(|s| json_str(s, "employeesCount"));
+        let sales_revenue = sales_revenue.or_else(|| {
+            seller_json
+                .as_ref()
+                .and_then(|s| s.get("tradeHalfYear"))
+                .and_then(|t| json_str(t, "ordAmt"))
+                .map(|amt| format!("US$ {}", amt))
         });
 
         B2bSupplierProfile {
@@ -113,12 +241,12 @@ impl B2bScraper for AlibabaScraper {
             year_established,
             country,
             platform_verified_badge,
-            employee_count: None,
+            employee_count,
             sales_revenue,
             export_percentage: None,
             profile_url: profile_url.to_string(),
             source_platform: "alibaba".to_string(),
-            contact_name: None,
+            contact_name,
             contact_phone: None,
             badge_honorific,
             company_description: None,
@@ -137,6 +265,22 @@ impl B2bScraper for AlibabaScraper {
             }
         }
         None
+    }
+
+    /// The company's shop address, e.g. "youhuan.en.alibaba.com" - the
+    /// same on every product that company lists. Read from the page's
+    /// hidden data first (globalData.seller.subDomain), then from the
+    /// visible "Company profile" link, so it's found on either page
+    /// layout.
+    fn company_key(&self, listing_html: &str) -> Option<String> {
+        extract_detail_seller(listing_html)
+            .as_ref()
+            .and_then(|s| json_str(s, "subDomain"))
+            .and_then(|d| normalize_shop_host(&d))
+            .or_else(|| {
+                self.extract_company_profile_url(listing_html)
+                    .and_then(|u| normalize_shop_host(&u))
+            })
     }
 
     fn enrich_from_company_profile(
@@ -195,6 +339,44 @@ impl B2bScraper for AlibabaScraper {
             }
         }
 
+        // Company pages ship their data as URL-encoded JSON in each
+        // module's `module-data` attribute; the visible tables are drawn
+        // from it by JavaScript after load. A plain server fetch
+        // (no rendering) only gets the attribute, so this is the primary
+        // source. The rendered <td> table below is only a fallback for
+        // HTML that was already rendered in a browser.
+        let module_data = collect_module_data(&document);
+        let field = |key: &str| -> Option<String> {
+            module_data.iter().find_map(|d| {
+                let v = d.get(key)?;
+                let v = v.get("value").unwrap_or(v);
+                match v {
+                    Value::String(s) if !s.trim().is_empty() => Some(s.trim().to_string()),
+                    Value::Number(n) => Some(n.to_string()),
+                    _ => None,
+                }
+            })
+        };
+
+        let year = field("companyEstablishedYear")
+            .or_else(|| extract_profile_table_field(&document, "Year established"));
+        if let Some(year) = year {
+            // The profile page states the real founding year; it wins
+            // over anything taken from the listing page.
+            supplier.year_established = Some(year);
+        }
+        if supplier.employee_count.is_none() {
+            supplier.employee_count = field("companyNumberOfEmployees")
+                .or_else(|| extract_profile_table_field(&document, "Total employees"));
+        }
+        if supplier.company_description.is_none() {
+            supplier.company_description = field("companyDescription").map(|d| {
+                d.replace("<br>", "\n")
+                    .replace("<br/>", "\n")
+                    .replace("<br />", "\n")
+            });
+        }
+
         supplier
     }
 
@@ -203,7 +385,12 @@ impl B2bScraper for AlibabaScraper {
 
         let title = select_attr_or_text(&document, "h1[title]");
         let description = build_description_from_attributes(&document);
-        let image_urls = extract_image_urls(&document);
+        let mut image_urls = extract_image_urls(&document);
+        if image_urls.is_empty() {
+            if let Some(data) = extract_detail_data(html) {
+                image_urls = detail_image_urls(&data);
+            }
+        }
 
         // Try ladder pricing first (multiple tiers); fall back to
         // range pricing (one price + separate MOQ) if that's genuinely
@@ -230,7 +417,139 @@ impl B2bScraper for AlibabaScraper {
     }
 }
 
+/// Every `module-data` attribute on the page, percent-decoded and parsed,
+/// reduced to its `mds.moduleData.data` object. Modules that fail to
+/// decode are skipped, never fatal.
+fn collect_module_data(document: &Html) -> Vec<Value> {
+    let Ok(sel) = Selector::parse("[module-data]") else {
+        return Vec::new();
+    };
+    document
+        .select(&sel)
+        .filter_map(|el| el.value().attr("module-data"))
+        .filter_map(|raw| serde_json::from_str::<Value>(&percent_decode(raw)).ok())
+        .filter_map(|v| v.get("mds")?.get("moduleData")?.get("data").cloned())
+        .filter(|v| v.is_object())
+        .collect()
+}
+
+/// Minimal %XX decoder. Invalid sequences are kept as-is. '+' is left
+/// alone on purpose: Alibaba encodes spaces as %20 or leaves them raw.
+fn percent_decode(input: &str) -> String {
+    let bytes = input.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' && i + 2 < bytes.len() {
+            // Work on bytes, not &str slices: slicing a str mid-character
+            // would panic on non-ASCII input.
+            let hi = (bytes[i + 1] as char).to_digit(16);
+            let lo = (bytes[i + 2] as char).to_digit(16);
+            if let (Some(hi), Some(lo)) = (hi, lo) {
+                out.push((hi * 16 + lo) as u8);
+                i += 3;
+                continue;
+            }
+        }
+        out.push(bytes[i]);
+        i += 1;
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
+fn extract_profile_table_field(document: &Html, label: &str) -> Option<String> {
+    let title_sel = Selector::parse("td.field-title").ok()?;
+    let value_sel = Selector::parse(".content-value").ok()?;
+    for title in document.select(&title_sel) {
+        if !title
+            .text()
+            .collect::<String>()
+            .trim()
+            .eq_ignore_ascii_case(label)
+        {
+            continue;
+        }
+        let value_td = title
+            .next_siblings()
+            .filter_map(scraper::ElementRef::wrap)
+            .next()?;
+        let value = value_td
+            .select(&value_sel)
+            .next()
+            .map(|v| v.text().collect::<String>().trim().to_string())
+            .filter(|v| !v.is_empty());
+        if value.is_some() {
+            return value;
+        }
+    }
+    None
+}
+
 fn extract_price(document: &Html) -> (Option<String>, Option<String>) {
+    // Current markup (2026): tiers live in
+    // [data-testid='pc-purchase-price-tiers'], one
+    // [data-testid='pc-purchase-price-tier'] per tier holding the price
+    // and its quantity range, e.g. "US$250" + "5-99 cartons". Alibaba
+    // renders the whole block twice (main + sticky panel), so only the
+    // first block is read.
+    if let (Ok(block_sel), Ok(tier_sel), Ok(price_sel)) = (
+        Selector::parse("[data-testid='pc-purchase-price-tiers']"),
+        Selector::parse("[data-testid='pc-purchase-price-tier']"),
+        Selector::parse("[data-testid='pc-purchase-price-tier-current']"),
+    ) {
+        if let Some(block) = document.select(&block_sel).next() {
+            let mut tiers = Vec::new();
+            let mut first_range = None;
+            for tier in block.select(&tier_sel) {
+                let price = tier
+                    .select(&price_sel)
+                    .next()
+                    .map(|p| p.text().collect::<String>().trim().to_string())
+                    .unwrap_or_default();
+                let full = tier.text().collect::<String>();
+                let range = full
+                    .trim()
+                    .strip_prefix(price.as_str())
+                    .unwrap_or("")
+                    .trim()
+                    .to_string();
+                if price.is_empty() {
+                    continue;
+                }
+                if first_range.is_none() && !range.is_empty() {
+                    first_range = Some(range.clone());
+                }
+                tiers.push(if range.is_empty() {
+                    price
+                } else {
+                    format!("{} ({})", price, range)
+                });
+            }
+            if !tiers.is_empty() {
+                let moq = first_range.as_deref().and_then(moq_from_range);
+                return (Some(tiers.join(" | ")), moq);
+            }
+        }
+    }
+
+    // Current markup, single price: [data-testid='pc-purchase-current-price']
+    // with the MOQ in [data-testid='pc-purchase-effective-moq'].
+    if let Ok(sel) = Selector::parse("[data-testid='pc-purchase-current-price']") {
+        if let Some(el) = document.select(&sel).next() {
+            let price = el.text().collect::<String>().trim().to_string();
+            if !price.is_empty() {
+                let moq = Selector::parse("[data-testid='pc-purchase-effective-moq']")
+                    .ok()
+                    .and_then(|s| document.select(&s).next())
+                    .map(|m| m.text().collect::<String>())
+                    .map(|t| t.replace("Minimum order quantity:", "").trim().to_string())
+                    .filter(|t| !t.is_empty());
+                return (Some(price), moq);
+            }
+        }
+    }
+
+    // Older markup, kept as a fallback.
     // Ladder pricing - real, multiple price tiers.
     if let Ok(sel) = Selector::parse("[data-testid='ladder-price'] .price-item") {
         let tiers: Vec<String> = document
@@ -273,6 +592,24 @@ fn extract_price(document: &Html) -> (Option<String>, Option<String>) {
     }
 
     (None, None)
+}
+
+/// "5-99 cartons" -> "5 cartons"; "≥500 pieces" -> "500 pieces".
+fn moq_from_range(range: &str) -> Option<String> {
+    let trimmed = range.trim().trim_start_matches('≥').trim();
+    let qty: String = trimmed
+        .chars()
+        .take_while(|c| c.is_ascii_digit() || *c == ',')
+        .collect();
+    if qty.is_empty() {
+        return None;
+    }
+    let unit = trimmed.split_whitespace().last().unwrap_or("");
+    if unit.is_empty() || unit.chars().next().map_or(false, |c| c.is_ascii_digit()) {
+        Some(qty)
+    } else {
+        Some(format!("{} {}", qty, unit))
+    }
 }
 
 fn build_description_from_attributes(document: &Html) -> Option<String> {
@@ -346,4 +683,245 @@ fn select_attr(document: &Html, selector: &str, attr: &str) -> Option<String> {
         .next()
         .and_then(|el| el.value().attr(attr))
         .map(|s| s.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Snippets below are trimmed from real Alibaba pages (Sep 2026).
+
+    fn product_page(card: &str, price: &str, script: &str) -> String {
+        format!(
+            "<!DOCTYPE html><html><head></head><body>\
+             <h1 title=\"Test Product\">Test Product</h1>\
+             <div data-testid=\"three-column-mini-company-card\">{card}</div>\
+             {price}{script}</body></html>"
+        )
+    }
+
+    const BADGED_CARD: &str = r#"<img data-testid="three-column-mini-company-card-verify-icon" src="//s.alicdn.com/@img/imgextra/i2/O1CN01PkPfW11Tz4AyzYFnc_!!6000000002452-2-tps-145-42.png" alt="">
+    <img src="//s.alicdn.com/@sc04/kf/H8eabaf2a5a4a441eb3af28c88c779b09z.png" alt="Ningbo Youhuan Automation Technology Co., Ltd. logo">
+    <a class="id-underline" title="Ningbo Youhuan Automation Technology Co., Ltd.">Ningbo Youhuan Automation Technology Co., Ltd.</a>
+    <div class="id-mt-1"><span>Ningbo, CN</span><span>7 yrs</span><span>Multispecialty Supplier</span></div>"#;
+
+    const TIERS: &str = r#"<div data-testid="pc-purchase-price"><div data-testid="pc-purchase-price-tiers">
+    <div data-testid="pc-purchase-price-tier"><div data-testid="pc-purchase-price-tier-prices"><strong data-testid="pc-purchase-price-tier-current">US$250</strong></div><div>5-99 cartons</div></div>
+    <div data-testid="pc-purchase-price-tier"><div data-testid="pc-purchase-price-tier-prices"><strong data-testid="pc-purchase-price-tier-current">US$240</strong></div><div>100-499 cartons</div></div>
+    <div data-testid="pc-purchase-price-tier"><div data-testid="pc-purchase-price-tier-prices"><strong data-testid="pc-purchase-price-tier-current">US$230</strong></div><div>≥500 cartons</div></div>
+    </div></div>
+    <div data-testid="pc-purchase-price"><div data-testid="pc-purchase-price-tiers">
+    <div data-testid="pc-purchase-price-tier"><div data-testid="pc-purchase-price-tier-prices"><strong data-testid="pc-purchase-price-tier-current">US$250</strong></div><div>5-99 cartons</div></div>
+    </div></div>"#;
+
+    const SINGLE_PRICE: &str = r#"<div data-testid="pc-purchase-price"><div><div><span data-testid="pc-purchase-current-price">US$0.73</span></div><div data-testid="pc-purchase-effective-moq">Minimum order quantity: 2 pieces</div></div></div>"#;
+
+    const DETAIL_SCRIPT: &str = r#"<script>
+    window.__global_config__ = { deviceType: 'pc' };
+    window.detailData = {"globalData":{"seller":{"companyName":"Ningbo Youhuan Automation Technology Co., Ltd.","contactName":"Mr. Xu","employeesCount":"11-50","companyLogoFileUrlSmall":"https://sc04.alicdn.com/kf/H8eabaf2a5a4a441eb3af28c88c779b09z.png_80x80.png","tradeHalfYear":{"ordAmt":"1,900,000+","ordAmt6m":1970280.07,"ordCnt6m":87}}},"nodeMap":{}};
+    window.somethingElse = 1;
+    </script>"#;
+
+    #[test]
+    fn contact_name_comes_from_detail_data_script() {
+        let html = product_page(BADGED_CARD, TIERS, DETAIL_SCRIPT);
+        let s =
+            AlibabaScraper.parse_supplier(&html, "https://www.alibaba.com/product-detail/x.html");
+        assert_eq!(s.contact_name.as_deref(), Some("Mr. Xu"));
+    }
+
+    #[test]
+    fn contact_name_is_none_without_detail_data() {
+        let html = product_page(BADGED_CARD, TIERS, "");
+        let s = AlibabaScraper.parse_supplier(&html, "u");
+        assert_eq!(s.contact_name, None);
+    }
+
+    #[test]
+    fn blank_contact_name_is_treated_as_missing() {
+        let script = r#"<script>window.detailData = {"globalData":{"seller":{"contactName":"  "}}};</script>"#;
+        let s = AlibabaScraper.parse_supplier(&product_page(BADGED_CARD, TIERS, script), "u");
+        assert_eq!(s.contact_name, None);
+    }
+
+    #[test]
+    fn malformed_detail_data_does_not_panic() {
+        let script =
+            r#"<script>window.detailData = {"globalData":{"seller":{"contactName":</script>"#;
+        let s = AlibabaScraper.parse_supplier(&product_page(BADGED_CARD, TIERS, script), "u");
+        assert_eq!(s.contact_name, None);
+        assert_eq!(
+            s.company_name.as_deref(),
+            Some("Ningbo Youhuan Automation Technology Co., Ltd.")
+        );
+    }
+
+    #[test]
+    fn logo_is_company_logo_not_verified_badge() {
+        let s = AlibabaScraper.parse_supplier(&product_page(BADGED_CARD, TIERS, ""), "u");
+        assert_eq!(
+            s.logo_url.as_deref(),
+            Some("https://s.alicdn.com/@sc04/kf/H8eabaf2a5a4a441eb3af28c88c779b09z.png")
+        );
+        assert!(s.platform_verified_badge);
+    }
+
+    #[test]
+    fn years_on_alibaba_is_not_used_as_founding_year() {
+        let s = AlibabaScraper.parse_supplier(&product_page(BADGED_CARD, TIERS, ""), "u");
+        assert_eq!(s.year_established, None);
+    }
+
+    #[test]
+    fn employees_and_revenue_fall_back_to_detail_data() {
+        let s =
+            AlibabaScraper.parse_supplier(&product_page(BADGED_CARD, TIERS, DETAIL_SCRIPT), "u");
+        assert_eq!(s.employee_count.as_deref(), Some("11-50"));
+        assert_eq!(s.sales_revenue.as_deref(), Some("US$ 1,900,000+"));
+    }
+
+    #[test]
+    fn tiered_price_reads_first_block_only_and_derives_moq() {
+        let l = AlibabaScraper.parse_listing(&product_page(BADGED_CARD, TIERS, ""), "u");
+        assert_eq!(
+            l.unit_price.as_deref(),
+            Some("US$250 (5-99 cartons) | US$240 (100-499 cartons) | US$230 (≥500 cartons)")
+        );
+        assert_eq!(l.minimum_order_quantity.as_deref(), Some("5 cartons"));
+    }
+
+    #[test]
+    fn single_price_reads_effective_moq() {
+        let l = AlibabaScraper.parse_listing(&product_page(BADGED_CARD, SINGLE_PRICE, ""), "u");
+        assert_eq!(l.unit_price.as_deref(), Some("US$0.73"));
+        assert_eq!(l.minimum_order_quantity.as_deref(), Some("2 pieces"));
+    }
+
+    const PROFILE_TABLE: &str = r#"<!DOCTYPE html><html><body><table><tbody>
+    <tr><td class="field-title">Business type</td><td class="field-content-wrap"><div class="field-content"><div class="content-value" title="Manufacturer, Trading Company">Manufacturer, Trading Company</div></div></td>
+    <td class="field-title">Country / Region</td><td class="field-content-wrap"><div class="field-content"><div class="content-value">Guangdong, China</div></div></td></tr>
+    <tr><td class="field-title">Total employees</td><td class="field-content-wrap"><div class="field-content"><div class="content-value">11 - 50 People</div></div></td>
+    <td class="field-title">Year established</td><td class="field-content-wrap"><div class="field-content"><div class="content-value">2013</div></div></td></tr>
+    </tbody></table></body></html>"#;
+
+    #[test]
+    fn profile_table_fills_year_and_employees() {
+        let supplier = AlibabaScraper.parse_supplier(&product_page(BADGED_CARD, TIERS, ""), "u");
+        let s = AlibabaScraper.enrich_from_company_profile(supplier, PROFILE_TABLE);
+        assert_eq!(s.year_established.as_deref(), Some("2013"));
+        assert_eq!(s.employee_count.as_deref(), Some("11 - 50 People"));
+    }
+
+    #[test]
+    fn profile_table_year_overrides_listing_year_but_keeps_listing_employees() {
+        let card = BADGED_CARD;
+        let html = product_page(card, TIERS, DETAIL_SCRIPT);
+        let mut supplier = AlibabaScraper.parse_supplier(&html, "u");
+        supplier.year_established = Some("2019".into());
+        let s = AlibabaScraper.enrich_from_company_profile(supplier, PROFILE_TABLE);
+        assert_eq!(s.year_established.as_deref(), Some("2013"));
+        assert_eq!(s.employee_count.as_deref(), Some("11-50"));
+    }
+
+    // Trimmed from the raw (unrendered) source of a real company page:
+    // the data lives only in the URL-encoded module-data attribute.
+    const PROFILE_MODULE_DATA: &str = r#"<!DOCTYPE html><html><body>
+<div module-name="icbu-pc-cpCompanyOverview" module-data='%7B%22mds%22%3A%7B%22moduleData%22%3A%7B%22data%22%3A%7B%22companyEstablishedYear%22%3A%7B%22authType%22%3A%22onsite%22%2C%22title%22%3A%22Year Established%22%2C%22value%22%3A2013%7D%2C%22companyNumberOfEmployees%22%3A%7B%22title%22%3A%22Total Employees%22%2C%22value%22%3A%2211 - 50 People%22%7D%2C%22companyDescription%22%3A%7B%22title%22%3A%22Company Description%22%2C%22value%22%3A%22Founded in 2013%2C the company is a SSD%2F memory manufacturer.%3Cbr%3E%3Cbr%3EBrand %5C%22Wicgtyp%5C%22 %E2%89%A4 FCC%2C CE.%22%7D%7D%7D%7D%7D' render="false"></div>
+<div module-name="broken" module-data='%7B%22mds%22%3A%7Bnot json'></div>
+</body></html>"#;
+
+    #[test]
+    fn profile_module_data_fills_year_employees_and_description() {
+        let supplier = AlibabaScraper.parse_supplier(&product_page(BADGED_CARD, TIERS, ""), "u");
+        let s = AlibabaScraper.enrich_from_company_profile(supplier, PROFILE_MODULE_DATA);
+        assert_eq!(s.year_established.as_deref(), Some("2013"));
+        assert_eq!(s.employee_count.as_deref(), Some("11 - 50 People"));
+        let d = s.company_description.unwrap();
+        assert!(d.starts_with("Founded in 2013"));
+        assert!(d.contains("\n\nBrand \"Wicgtyp\" ≤ FCC"));
+        assert!(!d.contains("<br>"));
+    }
+
+    #[test]
+    fn percent_decode_handles_utf8_and_bad_sequences() {
+        assert_eq!(percent_decode("%E2%89%A42h"), "≤2h");
+        assert_eq!(percent_decode("100%"), "100%");
+        assert_eq!(percent_decode("%zz≤%4"), "%zz≤%4");
+    }
+
+    const DETAIL_YEAR_AND_IMAGES: &str = r#"<script>window.detailData = {"globalData":{"seller":{},"product":{"mediaItems":[{"group":"photos","imageUrl":{"big":"https://sc04.alicdn.com/kf/A.jpg"}},{"group":"video","imageUrl":{"big":"https://x/v.jpg"}},{"group":"photos","imageUrl":{"big":"//sc04.alicdn.com/kf/B.jpg"}}]}},"nodeMap":{"module_unifed_company_card":{"privateData":{"onlinePerformance":{"fields":[{"title":"Response time","value":"≤2h"},{"title":"Year founded","value":"2019"}]}}}}};</script>"#;
+
+    #[test]
+    fn year_falls_back_to_detail_data_when_overview_panel_missing() {
+        let s = AlibabaScraper.parse_supplier(
+            &product_page(BADGED_CARD, TIERS, DETAIL_YEAR_AND_IMAGES),
+            "u",
+        );
+        assert_eq!(s.year_established.as_deref(), Some("2019"));
+    }
+
+    #[test]
+    fn images_fall_back_to_detail_data_photos_only() {
+        let l = AlibabaScraper.parse_listing(
+            &product_page(BADGED_CARD, TIERS, DETAIL_YEAR_AND_IMAGES),
+            "u",
+        );
+        assert_eq!(
+            l.image_urls,
+            vec![
+                "https://sc04.alicdn.com/kf/A.jpg",
+                "https://sc04.alicdn.com/kf/B.jpg"
+            ]
+        );
+    }
+
+    #[test]
+    fn company_key_from_detail_data() {
+        let script = r#"<script>window.detailData = {"globalData":{"seller":{"subDomain":"youhuan.en.alibaba.com"}}};</script>"#;
+        let html = product_page(BADGED_CARD, TIERS, script);
+        assert_eq!(
+            AlibabaScraper.company_key(&html).as_deref(),
+            Some("youhuan.en.alibaba.com")
+        );
+    }
+
+    #[test]
+    fn company_key_falls_back_to_company_profile_link() {
+        let link = r#"<a href="https://youhuan.en.alibaba.com/company_profile.html?spm=a2700.details.0.0">Company profile</a>"#;
+        let html = product_page(BADGED_CARD, TIERS, link);
+        assert_eq!(
+            AlibabaScraper.company_key(&html).as_deref(),
+            Some("youhuan.en.alibaba.com")
+        );
+    }
+
+    #[test]
+    fn company_key_is_same_from_both_sources() {
+        assert_eq!(
+            normalize_shop_host("youhuan.en.alibaba.com"),
+            normalize_shop_host("https://YouHuan.m.en.alibaba.com/company_profile.html?x=1")
+        );
+    }
+
+    #[test]
+    fn company_key_rejects_non_shop_hosts() {
+        assert_eq!(
+            normalize_shop_host("https://www.alibaba.com/product-detail/x.html"),
+            None
+        );
+        assert_eq!(
+            normalize_shop_host("https://evil.com/youhuan.en.alibaba.com"),
+            None
+        );
+        assert_eq!(normalize_shop_host("a.b.en.alibaba.com"), None);
+        assert_eq!(normalize_shop_host(""), None);
+    }
+
+    #[test]
+    fn company_key_none_when_page_has_neither() {
+        assert_eq!(
+            AlibabaScraper.company_key(&product_page(BADGED_CARD, TIERS, "")),
+            None
+        );
+    }
 }

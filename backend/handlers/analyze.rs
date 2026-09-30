@@ -9,7 +9,7 @@ use crate::{
             BuildResponseData, authorize_request, build_all_signals, build_b2b_analysis_path,
             build_requests, resolve_seller, run_claude_analysis, save_and_build_response,
         },
-        b2b_scrapers::get_scraper_for_platform,
+        b2b_scrapers::{fetch_b2b_page, get_scraper_for_platform},
         b2c_scrapers::{check_listing_page, requires_client_side_scraping},
         listings::{create_listing, update_listing_from_b2b},
         osint::{PlatformCheckResult, SellerIdentifiers, verify_social_link},
@@ -103,18 +103,42 @@ pub async fn analyze(
         }
     }
 
+    let is_b2b = get_scraper_for_platform(&request.platform).is_some();
+
+    // B2B: fetch the supplier page BEFORE choosing the seller record, so
+    // the record can be picked by company rather than by product link.
+    // Platforms whose scraper implements company_key (Alibaba so far)
+    // get one seller record per company; the rest return None and keep
+    // the old per-listing ID below, unchanged.
+    let b2b_page = if is_b2b {
+        Some(
+            fetch_b2b_page(&request.platform, &request.listing_url)
+                .await
+                .ok_or_else(|| {
+                    AnalyzeError::ClaudeAnalysisFailed(
+                        "Could not fetch B2B supplier page".to_string(),
+                    )
+                })?,
+        )
+    } else {
+        None
+    };
+    let company_key = b2b_page.as_ref().and_then(|p| p.company_key.clone());
+
     let (mut seller_req, listing_req) = build_requests(&request);
     if seller_req.platform_id.is_none() {
-        seller_req.platform_id = match request.platform.as_str() {
-            "b2brazil" => request
-                .listing_url
-                .split("/hotsite/")
-                .nth(1)
-                .and_then(|rest| rest.split('/').next())
-                .map(|s| s.to_string()),
-            "exporthub" | "tradewheel" | "alibaba" => Some(request.listing_url.clone()),
-            _ => None,
-        };
+        seller_req.platform_id = company_key
+            .clone()
+            .or_else(|| match request.platform.as_str() {
+                "b2brazil" => request
+                    .listing_url
+                    .split("/hotsite/")
+                    .nth(1)
+                    .and_then(|rest| rest.split('/').next())
+                    .map(|s| s.to_string()),
+                "exporthub" | "tradewheel" | "alibaba" => Some(request.listing_url.clone()),
+                _ => None,
+            });
     }
     let platform_id = seller_req.platform_id.as_deref().unwrap_or("unknown");
     let resolved = resolve_seller(&pool, &seller_req, &request.platform, platform_id).await?;
@@ -123,12 +147,10 @@ pub async fn analyze(
         .await
         .map_err(|e| AnalyzeError::Database(e.to_string()))?;
 
-    let is_b2b = get_scraper_for_platform(&request.platform).is_some();
-
     let mut resolved = resolved;
 
     let mut social_candidates: Vec<PlatformCheckResult> = Vec::new();
-    let (signals, risk_score, overall_risk_notes) = if is_b2b {
+    let (signals, risk_score, overall_risk_notes) = if let Some(page) = b2b_page {
         let (signals, risk_score, notes, supplier, listing_data, candidates_from_b2b) =
             build_b2b_analysis_path(
                 &pool,
@@ -136,6 +158,9 @@ pub async fn analyze(
                 resolved.fraud_count,
                 resolved.seller.id,
                 resolved.seller.handle.as_deref(),
+                resolved.seller.join_date,
+                page.supplier,
+                page.listing,
             )
             .await?;
         let join_date = supplier.year_established.as_deref().and_then(|y| {
@@ -144,6 +169,13 @@ pub async fn analyze(
                 .ok()
                 .and_then(|year| NaiveDate::from_ymd_opt(year, 1, 1))
         });
+        // With a company key, the seller record is the company, so its
+        // profile link is the company's shop, not whichever product page
+        // happened to be scanned last.
+        let seller_profile_url = company_key
+            .as_deref()
+            .map(|k| format!("https://{}", k))
+            .unwrap_or_else(|| request.listing_url.clone());
         let clean_contact_name = supplier
             .contact_name
             .as_deref()
@@ -156,7 +188,7 @@ pub async fn analyze(
             join_date,
             clean_contact_name.as_deref(),
             supplier.contact_phone.as_deref(),
-            Some(&request.listing_url),
+            Some(&seller_profile_url),
         )
         .await;
         let _ = update_listing_from_b2b(

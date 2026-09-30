@@ -227,6 +227,44 @@
             });
         }
     }
+    // Labels only the backend's B2B path produces. Used to tell a B2B
+    // supplier scan apart from a consumer (OLX-style) scan without
+    // relying on a separate platform list here that could drift out of
+    // sync with the backend's scraper registry.
+    const B2B_ONLY_LABELS = [
+        "Company profile completeness",
+        "Listing completeness",
+        "Registration consistency",
+    ];
+    function isB2bScan(signals) {
+        return signals.some((s) => B2B_ONLY_LABELS.includes(s.label));
+    }
+    const B2C_CHECKS = [
+        ["Ask for a live video call", "Verify the item is physically in the seller's hands before sending any payment."],
+        ["Check IMEI on delivery", "Dial *#06# on the device and confirm the number matches what the seller declared at deal creation."],
+        ["Do not pay to number in listing", "A phone number in the listing could route your payment outside Safely escrow protection."],
+    ];
+    const B2B_CHECKS = [
+        ["Pay through the platform's buyer protection", "Use the platform's protected payment (e.g. Trade Assurance on Alibaba) rather than a direct bank transfer, so the order is covered if it goes wrong."],
+        ["Match the business licence to the bank account", "Ask for the business licence and check that the company name on it matches the listing and the name on the bank account exactly."],
+        ["Confirm bank details by phone or video", "Before the first payment, and whenever bank details change, confirm them live with a contact you already know. Never act on changed details sent only by email."],
+        ["Order a sample first", "Pay for a sample and check its quality before placing a bulk order."],
+        ["Ask for a video call from the factory", "Ask the supplier to show the production line and your product live, to confirm they make it themselves."],
+    ];
+    function buildRecommendedChecks(signals) {
+        const checks = isB2bScan(signals) ? B2B_CHECKS : B2C_CHECKS;
+        const cards = checks
+            .map(([title, body]) => '<div class="safely-check-card"><div class="safely-check-title">' +
+            window.escapeHtml(title) +
+            '</div><div class="safely-check-body">' +
+            window.escapeHtml(body) +
+            "</div></div>")
+            .join("");
+        return ('<div class="safely-section-label" style="margin-top:18px">Recommended checks</div>' +
+            '<div style="display:flex;flex-direction:column;gap:8px">' +
+            cards +
+            "</div>");
+    }
     function buildIntelligenceTab() {
         const pageData = window.__safelyData;
         const sigResult = JSON.parse(wasm.analyze_signals(JSON.stringify(pageData.signals)));
@@ -262,10 +300,7 @@
                     "</div>" +
                     "</div>");
             })() +
-            '<div class="safely-section-label" style="margin-top:18px">Recommended checks</div><div style="display:flex;flex-direction:column;gap:8px">' +
-            '<div class="safely-check-card"><div class="safely-check-title">Ask for a live video call</div><div class="safely-check-body">Verify the item is physically in the seller\'s hands before sending any payment.</div></div>' +
-            '<div class="safely-check-card"><div class="safely-check-title">Check IMEI on delivery</div><div class="safely-check-body">Dial *#06# on the device and confirm the number matches what the seller declared at deal creation.</div></div>' +
-            '<div class="safely-check-card"><div class="safely-check-title">Do not pay to number in listing</div><div class="safely-check-body">A phone number in the listing could route your payment outside Safely escrow protection.</div></div></div>' +
+            buildRecommendedChecks(pageData.signals || []) +
             buildRiskFactorsSection(pageData.riskFactors));
     }
     const SEVERITY_COLORS = {

@@ -115,6 +115,25 @@ pub struct CallB2bClaudeArguments<'a> {
     pub contact_name: &'a str,
     pub contact_phone: &'a str,
     pub website_url: &'a str,
+    /// Scraped price text (e.g. "US$250 (5-99 cartons) | ..."), "" if none.
+    pub unit_price: &'a str,
+    /// Scraped MOQ text (e.g. "5 cartons"), "" if none.
+    pub minimum_order_quantity: &'a str,
+}
+
+/// Platforms that never show a supplier's phone number or website to
+/// buyers (contact goes through the platform's own messaging instead).
+/// For these, a missing phone/website says nothing about the supplier.
+fn platform_hides_direct_contact(platform: &str) -> bool {
+    matches!(platform, "alibaba")
+}
+
+fn or_not_provided<'a>(value: &'a str) -> &'a str {
+    if value.trim().is_empty() {
+        "Not provided"
+    } else {
+        value
+    }
 }
 
 /// The ONE, shared place that builds the real content blocks sent to
@@ -340,21 +359,43 @@ pub fn b2b_content(arg: &CallB2bClaudeArguments) -> String {
             arg.image_urls.len()
         )
     };
+
+    let hides_contact = platform_hides_direct_contact(arg.platform);
+    let hidden_note = "Not published - this platform never shows it to buyers";
+    let contact_phone = if arg.contact_phone.trim().is_empty() && hides_contact {
+        hidden_note
+    } else {
+        or_not_provided(arg.contact_phone)
+    };
+    let website_url = if arg.website_url.trim().is_empty() && hides_contact {
+        hidden_note
+    } else {
+        or_not_provided(arg.website_url)
+    };
+    let platform_contact_rule = if hides_contact {
+        format!(
+            "On {} the platform itself never publishes supplier phone numbers or websites; buyers contact suppliers through the platform's messaging. A missing phone or website here is normal and must NOT count against the supplier. Judge contact_verifiability on what the platform does show (e.g. a named contact person, a verified badge).",
+            arg.platform
+        )
+    } else {
+        String::new()
+    };
+
     format!(
         r#"
         You are a B2B supplier due-diligence assistant helping a procurement
         team evaluate a potential vendor. This is NOT a consumer marketplace -
+        do not apply consumer fraud patterns like "urgency language" or
+        "advance payment scams." B2B listings routinely omit pricing, MOQ,
+        and shipping terms (these are typically negotiated privately after
+        an inquiry) - this is completely normal and must NOT be treated as
+        suspicious on its own.
 
         IMPORTANT: Write every text value in the JSON below (all
         "evidence" and "reasoning" fields, and "overall_risk_notes") in
         {language}. Keep every JSON key name and every "verdict" value
         exactly as specified in English - only the free-text explanations
         should be in {language}.
-        do not apply consumer fraud patterns like "urgency language" or
-        "advance payment scams." B2B listings routinely omit pricing, MOQ,
-        and shipping terms (these are typically negotiated privately after
-        an inquiry) - this is completely normal and must NOT be treated as
-        suspicious on its own.
 
         Analyze this supplier and product listing, then return ONLY a raw
         JSON object with no markdown, no code fences, no backticks, no
@@ -371,41 +412,66 @@ pub fn b2b_content(arg: &CallB2bClaudeArguments) -> String {
         Website: {website_url}
         Product title: {product_title}
         Product description: {product_description}
+        Unit price: {unit_price}
+        Minimum order quantity: {moq}
 
-        For business_legitimacy: does this look like a genuine, established
-        business with real operational details, or does it show signs of
-        being a shell, front, or fabricated entity (e.g. no real company
-        details, generic or nonsensical company name, inconsistent
-        information)?
+        {platform_contact_rule}
 
-        For registration_consistency: does the company's stated information
-        (name, founding year, scale) hang together coherently, or are there
-        real, concrete inconsistencies?
+        MEANING OF "found" - read carefully, it differs by field:
+        - For business_legitimacy, registration_consistency,
+          listing_specificity and contact_verifiability, "found": true
+          means the GOOD thing was found (the business looks genuine / the
+          details are consistent / the listing is specific / contact is
+          verifiable). "found": false means a real concern exists.
+        - For urgency_language and advance_payment_request, "found": true
+          means the BAD thing was found (pressure tactics / an unusual
+          upfront payment demand). "found": false means none was found.
+        The example values in the JSON shape at the end show the format
+        only - they are not the answer.
 
-        For listing_specificity: does the product listing describe a real,
-        specific product with genuine, plausible details, or is it
-        template-like, vague, or nonsensical for the stated industry?
+        For business_legitimacy: set found to true if this looks like a
+        genuine, established business with real operational details; false
+        if it shows signs of being a shell, front, or fabricated entity
+        (e.g. no real company details, generic or nonsensical company name,
+        inconsistent information).
 
-        For pricing_transparency: assess ONLY whether provided pricing
-        information (if any) seems plausible for this product type -
-        missing pricing/MOQ/Incoterms is NORMAL in B2B and should verdict
-        as "normal" unless something provided is actually implausible.
+        For registration_consistency: set found to true if the company's
+        stated information (name, founding year, scale) hangs together
+        coherently; false ONLY if you can name a real, concrete
+        inconsistency. Missing fields alone are not an inconsistency.
 
-        For contact_verifiability: does the company provide genuine,
-        checkable contact information?
+        For listing_specificity: set found to true if the listing describes
+        a real, specific product with genuine, plausible details (concrete
+        attributes, specs, materials, origin); false if it is template-like,
+        vague, or nonsensical for the stated industry. Keyword-heavy titles
+        are standard practice on B2B platforms for search visibility and
+        are NOT on their own a sign of a template listing - judge the
+        attributes and description instead.
 
-        For urgency_language: does the listing or company description use
-        artificial pressure tactics inconsistent with normal B2B
-        relationship-building - e.g. "deal expires today," "must decide
-        now," discouraging normal due diligence or sample requests? Note
-        that reasonable business urgency (limited stock, seasonal demand)
-        is normal and should NOT be flagged.
+        For pricing_transparency: assess ONLY whether the unit price and
+        MOQ above (if provided) seem plausible for this product type.
+        Missing pricing/MOQ/Incoterms is NORMAL in B2B and should verdict
+        as "normal" unless something provided is actually implausible. If
+        a price is provided, say in the reasoning what it is and whether it
+        is plausible - do not claim pricing is missing when it is provided.
 
-        For advance_payment_request: does the listing demand full,
-        100% upfront payment before any samples, verification, or
-        standard partial-deposit terms - genuinely unusual for
-        legitimate B2B trade, where partial deposits and post-inspection
-        payment terms are standard?
+        For contact_verifiability: set found to true if the company provides
+        genuine, checkable contact information, taking into account what
+        this platform actually publishes; false if contact details are
+        absent in a way that is unusual for this platform.
+
+        For urgency_language: set found to true only if the listing or
+        company description uses artificial pressure tactics inconsistent
+        with normal B2B relationship-building - e.g. "deal expires today,"
+        "must decide now," discouraging normal due diligence or sample
+        requests. Reasonable business urgency (limited stock, seasonal
+        demand) is normal and should NOT be flagged.
+
+        For advance_payment_request: set found to true only if the listing
+        demands full, 100% upfront payment before any samples,
+        verification, or standard partial-deposit terms - genuinely unusual
+        for legitimate B2B trade, where partial deposits and
+        post-inspection payment terms are standard.
 
         For image_authenticity: {image_context}
         Verdict must be exactly "original" or "not verified" - no other
@@ -413,11 +479,11 @@ pub fn b2b_content(arg: &CallB2bClaudeArguments) -> String {
 
         Return JSON in exactly this shape:
         {{
-        "business_legitimacy": {{ "found": false, "evidence": "" }},
-        "registration_consistency": {{ "found": false, "evidence": "" }},
-        "listing_specificity": {{ "found": false, "evidence": "" }},
+        "business_legitimacy": {{ "found": true, "evidence": "" }},
+        "registration_consistency": {{ "found": true, "evidence": "" }},
+        "listing_specificity": {{ "found": true, "evidence": "" }},
         "pricing_transparency": {{ "verdict": "normal", "reasoning": "" }},
-        "contact_verifiability": {{ "found": false, "evidence": "" }},
+        "contact_verifiability": {{ "found": true, "evidence": "" }},
         "urgency_language": {{ "found": false, "evidence": "" }},
         "advance_payment_request": {{ "found": false, "evidence": "" }},
         "image_authenticity": {{ "verdict": "not verified", "reasoning": "" }},
@@ -426,32 +492,79 @@ pub fn b2b_content(arg: &CallB2bClaudeArguments) -> String {
         "#,
         platform = arg.platform,
         company_name = arg.company_name,
-        year_established = arg.year_established,
+        year_established = or_not_provided(arg.year_established),
         platform_verified = arg.platform_verified,
-        employee_count = arg.employee_count,
-        contact_name = if arg.contact_name.is_empty() {
-            "Not provided"
-        } else {
-            arg.contact_name
-        },
-        contact_phone = if arg.contact_phone.is_empty() {
-            "Not provided"
-        } else {
-            arg.contact_phone
-        },
-        website_url = if arg.website_url.is_empty() {
-            "Not provided"
-        } else {
-            arg.website_url
-        },
-        company_description = if arg.company_description.is_empty() {
-            "Not provided"
-        } else {
-            arg.company_description
-        },
+        employee_count = or_not_provided(arg.employee_count),
+        contact_name = or_not_provided(arg.contact_name),
+        contact_phone = contact_phone,
+        website_url = website_url,
+        company_description = or_not_provided(arg.company_description),
         product_title = arg.product_title,
-        product_description = arg.product_description,
+        product_description = or_not_provided(arg.product_description),
+        unit_price = or_not_provided(arg.unit_price),
+        moq = or_not_provided(arg.minimum_order_quantity),
+        platform_contact_rule = platform_contact_rule,
         image_context = image_context,
         language = language_instruction(arg.language),
     )
+}
+
+#[cfg(test)]
+mod b2b_prompt_tests {
+    use super::*;
+
+    fn args<'a>(platform: &'a str, phone: &'a str, price: &'a str) -> CallB2bClaudeArguments<'a> {
+        CallB2bClaudeArguments {
+            platform,
+            company_name: "Ningbo Youhuan Automation Technology Co., Ltd.",
+            year_established: "2019",
+            platform_verified: true,
+            employee_count: "11-50",
+            company_description: "",
+            product_title: "Electric Wheelchair",
+            product_description: "Material: steel",
+            image_urls: &[],
+            language: "English",
+            contact_name: "Mr. Xu",
+            contact_phone: phone,
+            website_url: "",
+            unit_price: price,
+            minimum_order_quantity: "5 cartons",
+        }
+    }
+
+    #[test]
+    fn price_and_moq_reach_the_prompt() {
+        let p = b2b_content(&args("alibaba", "", "US$250 (5-99 cartons)"));
+        assert!(p.contains("Unit price: US$250 (5-99 cartons)"));
+        assert!(p.contains("Minimum order quantity: 5 cartons"));
+    }
+
+    #[test]
+    fn missing_price_says_not_provided() {
+        let p = b2b_content(&args("alibaba", "", ""));
+        assert!(p.contains("Unit price: Not provided"));
+    }
+
+    #[test]
+    fn alibaba_missing_contact_is_marked_as_platform_policy() {
+        let p = b2b_content(&args("alibaba", "", ""));
+        assert!(p.contains("Contact phone: Not published - this platform never shows it"));
+        assert!(p.contains("Website: Not published - this platform never shows it"));
+        assert!(p.contains("must NOT count against the supplier"));
+    }
+
+    #[test]
+    fn other_platforms_keep_plain_not_provided() {
+        let p = b2b_content(&args("b2brazil", "", ""));
+        assert!(p.contains("Contact phone: Not provided"));
+        assert!(!p.contains("must NOT count against the supplier"));
+    }
+
+    #[test]
+    fn found_meaning_is_spelled_out() {
+        let p = b2b_content(&args("alibaba", "", ""));
+        assert!(p.contains("\"found\": true\n          means the GOOD thing was found"));
+        assert!(p.contains("\"found\": true\n          means the BAD thing was found"));
+    }
 }

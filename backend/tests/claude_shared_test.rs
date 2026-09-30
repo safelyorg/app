@@ -20,6 +20,8 @@ fn make_b2b_args() -> CallB2bClaudeArguments<'static> {
         product_description: "Test description",
         image_urls: &[],
         language: "en",
+        unit_price: "",
+        minimum_order_quantity: "",
     }
 }
 

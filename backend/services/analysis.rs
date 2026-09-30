@@ -8,7 +8,7 @@ use crate::{
     },
     services::{
         auth::extract_user_id,
-        b2b_scrapers::{B2bListingProfile, B2bSupplierProfile, check_b2b_page},
+        b2b_scrapers::{B2bListingProfile, B2bSupplierProfile},
         b2c_scrapers::check_store_page,
         billing::{ScanLimitError, check_and_increment_scan_usage},
         claude::{
@@ -34,6 +34,7 @@ use crate::{
     },
 };
 use axum::{Json, http::HeaderMap};
+use chrono::{Datelike, NaiveDate};
 use serde_json::{Value, to_value};
 use sqlx::{Error, Pool, Postgres, query_as};
 use std::{
@@ -572,8 +573,31 @@ pub fn resolve_supplier_contact_name(
     supplier
 }
 
-/// The complete, separate B2B analysis path - fetches the real
-/// supplier page, calls Claude with B2B-specific due-diligence
+/// Same idea as resolve_supplier_contact_name, for the founding year.
+/// A scan doesn't always find the year (Alibaba serves more than one
+/// page layout), but an earlier scan of the same seller may have saved
+/// it. Falls back to that saved year so "Account age" never shows
+/// "Not provided" when Safely already knows the answer. A year found by
+/// this scan always wins over the saved one.
+pub fn resolve_supplier_year(
+    mut supplier: B2bSupplierProfile,
+    saved_join_date: Option<NaiveDate>,
+) -> B2bSupplierProfile {
+    let has_year = supplier
+        .year_established
+        .as_deref()
+        .map_or(false, |y| !y.trim().is_empty());
+    if !has_year {
+        if let Some(date) = saved_join_date {
+            supplier.year_established = Some(date.year().to_string());
+        }
+    }
+    supplier
+}
+
+/// The complete, separate B2B analysis path - takes the already-fetched
+/// supplier page (analyze.rs fetches it first, so it can pick the
+/// seller record by company), calls Claude with B2B-specific due-diligence
 /// questions, and builds an entirely separate set of signals. This
 /// never touches build_signals or ClaudeAnalysis at all, since B2B
 /// due diligence asks fundamentally different questions than
@@ -584,6 +608,9 @@ pub async fn build_b2b_analysis_path(
     fraud_count: i64,
     seller_id: Uuid,
     known_seller_handle: Option<&str>,
+    known_join_date: Option<NaiveDate>,
+    supplier: B2bSupplierProfile,
+    listing: B2bListingProfile,
 ) -> Result<
     (
         Vec<Signal>,
@@ -612,18 +639,13 @@ pub async fn build_b2b_analysis_path(
         signals.push(domain_signal);
     }
 
-    let (supplier, listing) = check_b2b_page(&request.platform, &request.listing_url)
-        .await
-        .ok_or_else(|| {
-            AnalyzeError::ClaudeAnalysisFailed("Could not fetch B2B supplier page".to_string())
-        })?;
-
     let (supplier, website_signal) =
         resolve_supplier_website(supplier, request.seller_website.as_deref());
     signals.push(website_signal);
 
     let supplier = resolve_supplier_phone(supplier, request.seller_phone.as_deref());
     let supplier = resolve_supplier_contact_name(supplier, known_seller_handle);
+    let supplier = resolve_supplier_year(supplier, known_join_date);
 
     let claude_result = call_b2b_claude(CallB2bClaudeArguments {
         platform: &request.platform,
@@ -639,6 +661,8 @@ pub async fn build_b2b_analysis_path(
         product_description: listing.description.as_deref().unwrap_or("None provided"),
         image_urls: &listing.image_urls,
         language: request.language.as_deref().unwrap_or("en"),
+        unit_price: listing.unit_price.as_deref().unwrap_or(""),
+        minimum_order_quantity: listing.minimum_order_quantity.as_deref().unwrap_or(""),
     })
     .await
     .map_err(|e| AnalyzeError::ClaudeAnalysisFailed(e.to_string()))?;

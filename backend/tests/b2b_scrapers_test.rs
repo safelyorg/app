@@ -1,21 +1,12 @@
 mod common;
 
-use crate::common::test_pool;
-use backend::{
-    models::analysis::AnalyzeRequest,
-    services::{
-        analysis::build_b2b_analysis_path,
-        b2b_scrapers::{
-            B2bScraper, B2bSupplierProfile, alibaba::AlibabaScraper, b2brazil::B2brazilScraper,
-            check_b2b_page, exporthub::ExporthubScraper, looks_like_a_real_page,
-            tradewheel::TradewheelScraper,
-        },
-    },
+use backend::services::b2b_scrapers::{
+    B2bScraper, B2bSupplierProfile, alibaba::AlibabaScraper, b2brazil::B2brazilScraper,
+    check_b2b_page, exporthub::ExporthubScraper, fetch_b2b_page, looks_like_a_real_page,
+    tradewheel::TradewheelScraper,
 };
-use chrono::{Datelike, Utc};
 use serial_test::serial;
 use std::env::remove_var;
-use uuid::Uuid;
 use wiremock::{
     Mock, MockServer, ResponseTemplate,
     matchers::{method, path},
@@ -122,44 +113,15 @@ async fn check_b2b_page_returns_none_for_a_genuinely_broken_url() {
 
 #[tokio::test]
 #[serial]
-async fn build_b2b_analysis_path_fails_gracefully_for_a_genuinely_broken_url() {
-    let pool = test_pool().await;
-    let request = AnalyzeRequest {
-        platform: "b2brazil".to_string(),
-        listing_url: "https://this-domain-genuinely-does-not-exist-xyz789.com".to_string(),
-        seller_id: None,
-        listing_id: None,
-        title: None,
-        price: None,
-        description: None,
-        category: None,
-        image_urls: None,
-        posted_date: None,
-        platform_id: None,
-        seller_name: None,
-        seller_handle: None,
-        seller_phone: None,
-        seller_profile_url: None,
-        seller_join_date: None,
-        seller_location: None,
-        seller_last_active: None,
-        seller_website: None,
-        seller_verified: None,
-        seller_rating: None,
-        seller_total_products: None,
-        domain_check_status: None,
-        domain_check_real_name: None,
-        domain_check_real_domain: None,
-        domain_check_current_domain: None,
-        domain_check_current_html: None,
-        domain_check_real_html: None,
-        language: None,
-    };
-
-    let result = build_b2b_analysis_path(&pool, &request, 0, Uuid::new_v4()).await;
+async fn fetch_b2b_page_fails_gracefully_for_a_genuinely_broken_url() {
+    let result = fetch_b2b_page(
+        "b2brazil",
+        "https://this-domain-genuinely-does-not-exist-xyz789.com",
+    )
+    .await;
     assert!(
-        result.is_err(),
-        "expected the analysis to fail gracefully for a genuinely broken URL, but it succeeded"
+        result.is_none(),
+        "expected the fetch to fail gracefully for a genuinely broken URL, but it succeeded"
     );
 }
 
@@ -217,44 +179,6 @@ async fn build_b2b_analysis_path_fails_gracefully_for_a_genuinely_broken_url() {
 
 #[test]
 #[serial]
-fn alibaba_parse_supplier_reads_an_unbadged_listing_correctly() {
-    let html = r#"
-        <html><body>
-        <div data-testid="three-column-mini-company-card">
-            <a class="id-underline">Shenzhen Trustco Electronics Co., Ltd.</a>
-            <img src="https://img.alibaba.com/logo.png" />
-            <div class="id-mt-1">
-                <span>CN</span>
-                <span>10 yrs</span>
-            </div>
-        </div>
-        </body></html>
-    "#;
-
-    let supplier = AlibabaScraper.parse_supplier(html, "https://alibaba.com/product-detail/x.html");
-
-    assert_eq!(
-        supplier.company_name,
-        Some("Shenzhen Trustco Electronics Co., Ltd.".to_string())
-    );
-    assert_eq!(supplier.country, Some("CN".to_string()));
-    assert_eq!(supplier.badge_honorific, None);
-    assert!(
-        !supplier.platform_verified_badge,
-        "expected no verify badge when the verify-icon element is genuinely absent"
-    );
-    assert_eq!(
-        supplier.logo_url,
-        Some("https://img.alibaba.com/logo.png".to_string())
-    );
-    assert_eq!(supplier.source_platform, "alibaba");
-
-    let expected_year = (Utc::now().year() - 10).to_string();
-    assert_eq!(supplier.year_established, Some(expected_year));
-}
-
-#[test]
-#[serial]
 fn alibaba_parse_supplier_reads_a_badged_listing_correctly() {
     let html = r#"
         <html><body>
@@ -284,8 +208,48 @@ fn alibaba_parse_supplier_reads_a_badged_listing_correctly() {
         "expected a real verify badge when the verify-icon element is genuinely present"
     );
 
-    let expected_year = (chrono::Utc::now().year() - 8).to_string();
-    assert_eq!(supplier.year_established, Some(expected_year));
+    assert_eq!(supplier.year_established, None);
+}
+
+#[test]
+#[serial]
+fn alibaba_parse_supplier_reads_an_unbadged_listing_correctly() {
+    // Real Alibaba pages give the company logo alt="<Company name> logo";
+    // that alt text is how the scraper tells the logo apart from the
+    // verified-badge image.
+    let html = r#"
+        <html><body>
+        <div data-testid="three-column-mini-company-card">
+            <a class="id-underline">Shenzhen Trustco Electronics Co., Ltd.</a>
+            <img src="https://img.alibaba.com/logo.png" alt="Shenzhen Trustco Electronics Co., Ltd. logo" />
+            <div class="id-mt-1">
+                <span>CN</span>
+                <span>10 yrs</span>
+            </div>
+        </div>
+        </body></html>
+    "#;
+
+    let supplier = AlibabaScraper.parse_supplier(html, "https://alibaba.com/product-detail/x.html");
+
+    assert_eq!(
+        supplier.company_name,
+        Some("Shenzhen Trustco Electronics Co., Ltd.".to_string())
+    );
+    assert_eq!(supplier.country, Some("CN".to_string()));
+    assert_eq!(supplier.badge_honorific, None);
+    assert!(
+        !supplier.platform_verified_badge,
+        "expected no verify badge when the verify-icon element is genuinely absent"
+    );
+    assert_eq!(
+        supplier.logo_url,
+        Some("https://img.alibaba.com/logo.png".to_string())
+    );
+    assert_eq!(supplier.source_platform, "alibaba");
+
+    // "10 yrs" is years on Alibaba, not company age - no founding year.
+    assert_eq!(supplier.year_established, None);
 }
 
 #[test]

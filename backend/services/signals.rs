@@ -48,7 +48,7 @@ pub fn build_signals(analysis: &ClaudeAnalysis, seller: &Sellers) -> Vec<Signal>
     ));
 
     signals.push(Signal {
-        label: "Entity age".to_string(),
+        label: "Account age".to_string(),
         sub: "Cross-referenced with Safely records".to_string(),
         value: seller
             .join_date
@@ -360,7 +360,7 @@ pub fn build_b2b_verification_signal(supplier: &B2bSupplierProfile) -> Signal {
 pub fn build_b2b_company_age_signal(supplier: &B2bSupplierProfile) -> Signal {
     let Some(year_str) = supplier.year_established.as_deref() else {
         return Signal {
-            label: "Entity age".to_string(),
+            label: "Account age".to_string(),
             sub: "No founding year was provided by this company.".to_string(),
             value: "Not provided".to_string(),
             signal_type: "info".to_string(),
@@ -370,7 +370,7 @@ pub fn build_b2b_company_age_signal(supplier: &B2bSupplierProfile) -> Signal {
     };
     let Ok(established_year) = year_str.trim().parse::<i32>() else {
         return Signal {
-            label: "Entity age".to_string(),
+            label: "Account age".to_string(),
             sub: format!(
                 "The stated founding year ('{}') could not be understood.",
                 year_str
@@ -385,7 +385,7 @@ pub fn build_b2b_company_age_signal(supplier: &B2bSupplierProfile) -> Signal {
     let current_year = Utc::now().year();
     if established_year > current_year {
         return Signal {
-            label: "Entity age".to_string(),
+            label: "Account age".to_string(),
             sub: format!(
                 "The stated founding year ('{}') is in the future.",
                 established_year
@@ -403,7 +403,7 @@ pub fn build_b2b_company_age_signal(supplier: &B2bSupplierProfile) -> Signal {
     let age_years = current_year - established_year;
     let signal_type = if age_years <= 1 { "caution" } else { "good" };
     Signal {
-        label: "Entity age".to_string(),
+        label: "Account age".to_string(),
         sub: format!(
             "This company states it was established in {}.",
             established_year
@@ -515,6 +515,30 @@ fn b2b_finding_to_signal(
     }
 }
 
+/// B2B's "Duplicate listing" card is fed by Claude's listing_specificity
+/// finding, whose `found: true` means the listing IS specific (good).
+/// The card must read the same way as the B2C one ("None found" =
+/// good, "Detected" = templated/generic), not "Confirmed", which a user
+/// reads as "yes, this is a duplicate".
+fn b2b_listing_specificity_signal(finding: &Finding) -> Signal {
+    Signal {
+        label: "Duplicate listing".to_string(),
+        sub: finding.evidence.clone(),
+        value: if finding.found {
+            "None found".to_string()
+        } else {
+            "Detected".to_string()
+        },
+        signal_type: if finding.found {
+            "good".to_string()
+        } else {
+            "caution".to_string()
+        },
+        category: "listing".to_string(),
+        check_type: "pattern".to_string(),
+    }
+}
+
 pub fn build_b2b_claude_signals(analysis: &B2bClaudeAnalysis) -> Vec<Signal> {
     vec![
         b2b_finding_to_signal(
@@ -529,12 +553,7 @@ pub fn build_b2b_claude_signals(analysis: &B2bClaudeAnalysis) -> Vec<Signal> {
             "consistency",
             &analysis.registration_consistency,
         ),
-        b2b_finding_to_signal(
-            "Duplicate listing",
-            "listing",
-            "pattern",
-            &analysis.listing_specificity,
-        ),
+        b2b_listing_specificity_signal(&analysis.listing_specificity),
         Signal {
             label: "Price analysis".to_string(),
             sub: analysis.pricing_transparency.reasoning.clone(),
@@ -592,7 +611,7 @@ fn table_rank(label: &str) -> u8 {
         "Price analysis" => 1,
         "Urgency language" => 2,
         "Advance payment request" => 3,
-        "Entity age" => 4,
+        "Account age" => 4,
         "Duplicate listing" => 5,
         "Image authenticity" => 6,
         "Overall legitimacy check" => 7,
@@ -612,4 +631,71 @@ fn table_rank(label: &str) -> u8 {
 
 pub fn sort_signals_by_table(signals: &mut [Signal]) {
     signals.sort_by_key(|s| table_rank(&s.label));
+}
+
+#[cfg(test)]
+mod b2b_signal_tests {
+    use super::*;
+    use crate::services::claude::{ImageAssessment, PriceAssessment};
+
+    fn f(found: bool) -> Finding {
+        Finding {
+            found,
+            evidence: "e".into(),
+        }
+    }
+
+    fn analysis(specific: bool, consistent: bool) -> B2bClaudeAnalysis {
+        B2bClaudeAnalysis {
+            business_legitimacy: f(true),
+            registration_consistency: f(consistent),
+            listing_specificity: f(specific),
+            pricing_transparency: PriceAssessment {
+                verdict: "normal".into(),
+                reasoning: "r".into(),
+            },
+            contact_verifiability: f(true),
+            urgency_language: f(false),
+            advance_payment_request: f(false),
+            image_authenticity: ImageAssessment {
+                verdict: "not verified".into(),
+                reasoning: "r".into(),
+            },
+            overall_risk_notes: String::new(),
+        }
+    }
+
+    fn get<'a>(signals: &'a [Signal], label: &str) -> &'a Signal {
+        signals.iter().find(|s| s.label == label).unwrap()
+    }
+
+    #[test]
+    fn specific_listing_reads_none_found_and_good() {
+        let s = build_b2b_claude_signals(&analysis(true, true));
+        let d = get(&s, "Duplicate listing");
+        assert_eq!(
+            (d.value.as_str(), d.signal_type.as_str()),
+            ("None found", "good")
+        );
+    }
+
+    #[test]
+    fn templated_listing_reads_detected_and_caution() {
+        let s = build_b2b_claude_signals(&analysis(false, true));
+        let d = get(&s, "Duplicate listing");
+        assert_eq!(
+            (d.value.as_str(), d.signal_type.as_str()),
+            ("Detected", "caution")
+        );
+    }
+
+    #[test]
+    fn consistent_registration_is_good() {
+        let s = build_b2b_claude_signals(&analysis(true, true));
+        let r = get(&s, "Registration consistency");
+        assert_eq!(
+            (r.value.as_str(), r.signal_type.as_str()),
+            ("Confirmed", "good")
+        );
+    }
 }

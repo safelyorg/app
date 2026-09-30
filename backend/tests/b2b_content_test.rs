@@ -16,6 +16,8 @@ fn b2b_content_includes_the_real_company_name() {
         product_description: "Test description",
         image_urls: &[],
         language: "en",
+        unit_price: "",
+        minimum_order_quantity: "",
     };
     let prompt = b2b_content(&args);
     assert!(prompt.contains("Akurat Consultoria Empresarial"));
@@ -37,6 +39,8 @@ fn b2b_content_includes_the_real_year_and_employee_count() {
         product_description: "Test description",
         image_urls: &[],
         language: "en",
+        unit_price: "",
+        minimum_order_quantity: "",
     };
     let prompt = b2b_content(&args);
     assert!(prompt.contains("2013"));
@@ -60,6 +64,8 @@ fn b2b_content_includes_the_real_product_details() {
         product_description: "Industrial casting components",
         image_urls: &[],
         language: "en",
+        unit_price: "",
+        minimum_order_quantity: "",
     };
     let prompt = b2b_content(&args);
     assert!(prompt.contains("Precision Microcast Parts"));
@@ -82,6 +88,8 @@ fn b2b_content_explicitly_tells_claude_not_to_apply_consumer_fraud_patterns() {
         product_description: "Test",
         image_urls: &[],
         language: "en",
+        unit_price: "",
+        minimum_order_quantity: "",
     };
     let prompt = b2b_content(&args);
     assert!(prompt.to_lowercase().contains("not a consumer marketplace"));
@@ -104,6 +112,8 @@ fn b2b_content_produces_genuinely_different_text_for_different_inputs() {
         product_description: "Description A",
         image_urls: &[],
         language: "en",
+        unit_price: "",
+        minimum_order_quantity: "",
     };
     let args_b = CallB2bClaudeArguments {
         platform: "b2brazil",
@@ -119,6 +129,8 @@ fn b2b_content_produces_genuinely_different_text_for_different_inputs() {
         product_description: "Description B",
         image_urls: &[],
         language: "en",
+        unit_price: "",
+        minimum_order_quantity: "",
     };
     assert_ne!(b2b_content(&args_a), b2b_content(&args_b));
 }
@@ -139,6 +151,8 @@ fn b2b_content_includes_the_portuguese_instruction_when_language_is_pt_br() {
         product_description: "Test",
         image_urls: &[],
         language: "pt-br",
+        unit_price: "",
+        minimum_order_quantity: "",
     };
     let prompt = b2b_content(&args);
     assert!(
@@ -163,6 +177,8 @@ fn b2b_content_defaults_to_english_for_an_unrecognized_language_code() {
         product_description: "Test",
         image_urls: &[],
         language: "xx-unknown",
+        unit_price: "",
+        minimum_order_quantity: "",
     };
     let prompt = b2b_content(&args);
     assert!(
@@ -188,6 +204,8 @@ fn base_args<'a>(company_description: &'a str) -> CallB2bClaudeArguments<'a> {
         product_description: "Bulk widgets for export.",
         image_urls: &[],
         language: "en",
+        unit_price: "",
+        minimum_order_quantity: "",
     }
 }
 
@@ -246,6 +264,8 @@ fn base_args_with_contact<'a>(
         product_description: "Bulk widgets for export.",
         image_urls: &[],
         language: "en",
+        unit_price: "",
+        minimum_order_quantity: "",
     }
 }
 

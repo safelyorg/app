@@ -70,6 +70,17 @@ pub trait B2bScraper: Send + Sync {
     ) -> B2bSupplierProfile {
         supplier
     }
+    /// A stable ID for the COMPANY behind this listing, read from the
+    /// listing page - the same for every product that company sells.
+    /// Used as the seller's platform_id, so fraud reports and Safely
+    /// history belong to the company, not to one product page.
+    ///
+    /// Default: None, meaning "this platform doesn't know yet". Safely
+    /// then falls back to the old per-listing ID, so platforms that
+    /// haven't implemented this keep working exactly as before.
+    fn company_key(&self, _listing_html: &str) -> Option<String> {
+        None
+    }
 }
 
 pub fn get_scraper_for_platform(platform: &str) -> Option<Box<dyn B2bScraper>> {
@@ -92,10 +103,26 @@ pub fn looks_like_a_real_page(html: &str) -> bool {
         && (html.to_lowercase().contains("<html") || html.to_lowercase().contains("<!doctype"))
 }
 
+/// Everything one B2B page fetch produces: the supplier, the listing,
+/// and (if the platform supports it) the company's stable ID.
+pub struct B2bPageResult {
+    pub supplier: B2bSupplierProfile,
+    pub listing: B2bListingProfile,
+    pub company_key: Option<String>,
+}
+
+/// Unchanged signature, kept so existing callers and tests keep
+/// working. Same fetch as fetch_b2b_page, minus the company key.
 pub async fn check_b2b_page(
     platform: &str,
     page_url: &str,
 ) -> Option<(B2bSupplierProfile, B2bListingProfile)> {
+    fetch_b2b_page(platform, page_url)
+        .await
+        .map(|r| (r.supplier, r.listing))
+}
+
+pub async fn fetch_b2b_page(platform: &str, page_url: &str) -> Option<B2bPageResult> {
     let scraper = get_scraper_for_platform(platform)?;
     let client = build_scraper_client();
     let fetch_url = wrap_scraper_url_for_platform(page_url, platform);
@@ -125,6 +152,7 @@ pub async fn check_b2b_page(
 
     let mut supplier = scraper.parse_supplier(&html, page_url);
     let listing = scraper.parse_listing(&html, page_url);
+    let company_key = scraper.company_key(&html);
 
     if supplier.company_name.is_none() && listing.title.is_none() {
         eprintln!(
@@ -175,5 +203,9 @@ pub async fn check_b2b_page(
         }
     }
 
-    Some((supplier, listing))
+    Some(B2bPageResult {
+        supplier,
+        listing,
+        company_key,
+    })
 }
