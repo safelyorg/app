@@ -23,15 +23,20 @@ impl B2bScraper for B2brazilScraper {
             })
             .unwrap_or(false);
 
-        let mut year_established = None;
+        // The header shows "Since 2026" then the country. "Since" is the
+        // year the supplier JOINED B2Brazil, not the company's founding
+        // year, so it is only used here to locate the country that
+        // follows it. The real founding year is the "Established" item
+        // further down (read below).
         let mut country = None;
+        let mut saw_since = false;
         if let Ok(sel) = Selector::parse(".actions-item h4") {
             for el in document.select(&sel) {
                 let text = el.text().collect::<String>();
                 let trimmed = text.trim();
-                if let Some(year) = trimmed.strip_prefix("Since ") {
-                    year_established = Some(year.trim().to_string());
-                } else if !trimmed.is_empty() && year_established.is_some() && country.is_none() {
+                if trimmed.starts_with("Since ") {
+                    saw_since = true;
+                } else if !trimmed.is_empty() && saw_since && country.is_none() {
                     country = Some(trimmed.to_string());
                 }
             }
@@ -39,8 +44,10 @@ impl B2bScraper for B2brazilScraper {
 
         let (contact_name, contact_phone, contact_location) =
             extract_contact_and_location(&document);
+        let contact_name = contact_name.and_then(|n| clean_masked_name(&n));
         let country = contact_location.or(country);
 
+        let mut year_established = None;
         let mut employee_count = None;
         let mut sales_revenue = None;
         let mut export_percentage = None;
@@ -50,6 +57,15 @@ impl B2bScraper for B2brazilScraper {
                     select_text(&Html::parse_fragment(&item.html()), "p").unwrap_or_default();
                 let value = select_text(&Html::parse_fragment(&item.html()), "h4");
                 match label.as_str() {
+                    // "Established" keeps its value in a <span> inside
+                    // the icon box; its <h4> just says "Year".
+                    "Established" => {
+                        year_established = select_text(
+                            &Html::parse_fragment(&item.html()),
+                            ".section-content-more-info-item-img span",
+                        )
+                        .filter(|y| y.len() == 4 && y.chars().all(|c| c.is_ascii_digit()));
+                    }
                     "Employees" => employee_count = value,
                     "Sales volume (USD)" => sales_revenue = value,
                     "% Export sales" => export_percentage = value,
@@ -76,7 +92,6 @@ impl B2bScraper for B2brazilScraper {
             website_url: None,
         }
     }
-
     fn parse_listing(&self, html: &str, listing_url: &str) -> B2bListingProfile {
         let document = Html::parse_document(html);
 
@@ -139,7 +154,6 @@ impl B2bScraper for B2brazilScraper {
             source_platform: "b2brazil".to_string(),
         }
     }
-
     fn extract_company_profile_url(&self, listing_html: &str) -> Option<String> {
         let document = Html::parse_document(listing_html);
         let sel = Selector::parse("a.nav-home").ok()?;
@@ -168,12 +182,64 @@ impl B2bScraper for B2brazilScraper {
                 let text = el.text().collect::<String>();
                 let trimmed = text.trim();
                 if !trimmed.is_empty() {
-                    supplier.company_description = Some(trimmed.to_string());
+                    supplier.company_description = Some(decode_leftover_entities(trimmed));
                 }
             }
         }
         supplier
     }
+
+    /// The company's hotsite slug, e.g. "asmetecgmbh" from
+    /// "/hotsite/asmetecgmbh" - the same on every product that company
+    /// lists. It is the exact value analyze.rs already derived from the
+    /// listing URL, so existing B2Brazil seller records keep matching.
+    fn company_key(&self, listing_html: &str) -> Option<String> {
+        let url = self.extract_company_profile_url(listing_html)?;
+        hotsite_slug(&url)
+    }
+}
+
+/// "https://b2brazil.com/hotsite/asmetecgmbh/tractor" -> "asmetecgmbh".
+fn hotsite_slug(url: &str) -> Option<String> {
+    let rest = url.split("/hotsite/").nth(1)?;
+    let slug = rest
+        .split(|c| c == '/' || c == '?' || c == '#')
+        .next()?
+        .trim();
+    if slug.is_empty() {
+        None
+    } else {
+        Some(slug.to_string())
+    }
+}
+
+/// B2Brazil masks contact names for non-paying visitors, e.g.
+/// "Smith ********". Keeps the part the platform does show ("Smith")
+/// so it never reaches Claude, the database or the social search with
+/// the asterisks in it; a name that is entirely masked becomes None.
+fn clean_masked_name(raw: &str) -> Option<String> {
+    let cleaned = raw.replace('*', "");
+    let cleaned = cleaned.split_whitespace().collect::<Vec<_>>().join(" ");
+    if cleaned.is_empty() {
+        None
+    } else {
+        Some(cleaned)
+    }
+}
+
+/// B2Brazil double-encodes some characters in company descriptions, so
+/// after normal HTML parsing text like "&ldquo;" or "Hot&amp;Cold" is
+/// still left behind. Decodes the ones seen on real pages; "&amp;" goes
+/// last so it can't create new entities.
+fn decode_leftover_entities(text: &str) -> String {
+    text.replace("&ldquo;", "\u{201c}")
+        .replace("&rdquo;", "\u{201d}")
+        .replace("&lsquo;", "\u{2018}")
+        .replace("&rsquo;", "\u{2019}")
+        .replace("&#39;", "'")
+        .replace("&quot;", "\"")
+        .replace("&nbsp;", " ")
+        .replace("&amp;", "&")
 }
 
 fn select_text(document: &Html, selector: &str) -> Option<String> {
@@ -196,7 +262,6 @@ fn select_attr(document: &Html, selector: &str, attr: &str) -> Option<String> {
         .attr(attr)
         .map(|s| s.to_string())
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -209,6 +274,7 @@ mod tests {
         </div>
         <div class="actions-item"><h4>Since 2013</h4></div>
         <div class="actions-item"><h4>Brazil</h4></div>
+        <div class="section-content-more-info-item"><div class="section-content-more-info-item-img"><span>2009</span></div><h4>Year</h4><p>Established</p></div>
         <div class="section-content-more-info-item"><h4>0-10</h4><p>Employees</p></div>
         <div class="section-content-more-info-item"><h4>200K - 500K</h4><p>Sales volume (USD)</p></div>
         <div class="section-content-more-info-item"><h4>10%</h4><p>% Export sales</p></div>
@@ -255,14 +321,15 @@ mod tests {
             result.company_name,
             Some("Akurat Consultoria Empresarial".to_string())
         );
-        assert_eq!(result.year_established, Some("2013".to_string()));
+        // "Since 2013" is when they joined B2Brazil; the founding year is
+        // the separate "Established" item.
+        assert_eq!(result.year_established, Some("2009".to_string()));
         assert_eq!(result.country, Some("Brazil".to_string()));
         assert_eq!(result.platform_verified_badge, false);
         assert_eq!(result.employee_count, Some("0-10".to_string()));
         assert_eq!(result.sales_revenue, Some("200K - 500K".to_string()));
         assert_eq!(result.export_percentage, Some("10%".to_string()));
     }
-
     #[test]
     fn parse_listing_filters_out_not_informed_but_keeps_real_values() {
         let scraper = B2brazilScraper;
@@ -348,6 +415,64 @@ mod tests {
         assert_eq!(supplier.source_platform, "b2brazil");
         assert_eq!(listing.listing_url, "https://b2brazil.com/real-listing");
         assert_eq!(listing.source_platform, "b2brazil");
+    }
+
+    #[test]
+    fn since_year_alone_is_not_used_as_founding_year() {
+        let html = r#"<div class="actions-item"><h4>Since 2026</h4></div><div class="actions-item"><h4>Germany</h4></div>"#;
+        let s = B2brazilScraper.parse_supplier(html, "u");
+        assert_eq!(s.year_established, None);
+        assert_eq!(s.country.as_deref(), Some("Germany"));
+    }
+
+    #[test]
+    fn masked_contact_name_keeps_only_the_visible_part() {
+        let html = r#"<ul class="section-content-more-info-list">
+            <li><img data-src="//cdn.b2brazil.com/assets/images/user-icon-x.svg"> Smith ********</li>
+            <li><img data-src="//cdn.b2brazil.com/assets/images/phone-x.svg"> +49  1********</li>
+            <li><img data-src="//cdn.b2brazil.com/assets/images/map-marker-x.svg"> Kirchheimbolanden / Rheinland-Pfalz | Germany</li>
+        </ul>"#;
+        let s = B2brazilScraper.parse_supplier(html, "u");
+        assert_eq!(s.contact_name.as_deref(), Some("Smith"));
+        assert_eq!(s.contact_phone, None);
+        assert_eq!(
+            s.country.as_deref(),
+            Some("Kirchheimbolanden / Rheinland-Pfalz | Germany")
+        );
+    }
+
+    #[test]
+    fn fully_masked_contact_name_is_none() {
+        assert_eq!(clean_masked_name("********"), None);
+        assert_eq!(
+            clean_masked_name("  SHOUNAN   ******** "),
+            Some("SHOUNAN".to_string())
+        );
+    }
+
+    #[test]
+    fn company_key_is_the_hotsite_slug() {
+        let html = r#"<a class="nav-home" href="/hotsite/asmetecgmbh">Home</a>"#;
+        assert_eq!(
+            B2brazilScraper.company_key(html).as_deref(),
+            Some("asmetecgmbh")
+        );
+        assert_eq!(
+            hotsite_slug(
+                "https://en.b2colombia.com/hotsite/yanbianstatexurong2/hair-styling-wand?x=1"
+            )
+            .as_deref(),
+            Some("yanbianstatexurong2")
+        );
+        assert_eq!(hotsite_slug("https://b2brazil.com/plans"), None);
+    }
+
+    #[test]
+    fn leftover_entities_are_decoded() {
+        assert_eq!(
+            decode_leftover_entities("&ldquo;Hot&amp;Cold&rdquo; China&#39;s"),
+            "\u{201c}Hot&Cold\u{201d} China's"
+        );
     }
 }
 

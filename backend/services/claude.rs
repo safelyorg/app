@@ -121,11 +121,21 @@ pub struct CallB2bClaudeArguments<'a> {
     pub minimum_order_quantity: &'a str,
 }
 
-/// Platforms that never show a supplier's phone number or website to
-/// buyers (contact goes through the platform's own messaging instead).
-/// For these, a missing phone/website says nothing about the supplier.
-fn platform_hides_direct_contact(platform: &str) -> bool {
-    matches!(platform, "alibaba")
+/// Platforms that hide a supplier's direct contact details from
+/// Safely's (anonymous) visitor - buyers are meant to contact suppliers
+/// through the platform itself. For these, a missing phone/website says
+/// nothing about the supplier. Returns the sentence Claude is given,
+/// describing exactly what that platform hides.
+fn platform_contact_policy(platform: &str) -> Option<&'static str> {
+    match platform {
+        "alibaba" => Some(
+            "never publishes supplier phone numbers or websites; buyers contact suppliers through the platform's messaging",
+        ),
+        "b2brazil" => Some(
+            "masks supplier contact names and phone numbers (e.g. \"Smith ********\") and does not show supplier websites to non-paying visitors; buyers contact suppliers through the platform. A contact name shown here may be only the part the platform leaves visible",
+        ),
+        _ => None,
+    }
 }
 
 fn or_not_provided<'a>(value: &'a str) -> &'a str {
@@ -360,7 +370,8 @@ pub fn b2b_content(arg: &CallB2bClaudeArguments) -> String {
         )
     };
 
-    let hides_contact = platform_hides_direct_contact(arg.platform);
+    let contact_policy = platform_contact_policy(arg.platform);
+    let hides_contact = contact_policy.is_some();
     let hidden_note = "Not published - this platform never shows it to buyers";
     let contact_phone = if arg.contact_phone.trim().is_empty() && hides_contact {
         hidden_note
@@ -372,13 +383,12 @@ pub fn b2b_content(arg: &CallB2bClaudeArguments) -> String {
     } else {
         or_not_provided(arg.website_url)
     };
-    let platform_contact_rule = if hides_contact {
-        format!(
-            "On {} the platform itself never publishes supplier phone numbers or websites; buyers contact suppliers through the platform's messaging. A missing phone or website here is normal and must NOT count against the supplier. Judge contact_verifiability on what the platform does show (e.g. a named contact person, a verified badge).",
-            arg.platform
-        )
-    } else {
-        String::new()
+    let platform_contact_rule = match contact_policy {
+        Some(policy) => format!(
+            "On {} the platform itself {}. A missing phone or website here is normal and must NOT count against the supplier. Judge contact_verifiability on what the platform does show (e.g. a named contact person, a verified badge).",
+            arg.platform, policy
+        ),
+        None => String::new(),
     };
 
     format!(
@@ -556,9 +566,17 @@ mod b2b_prompt_tests {
 
     #[test]
     fn other_platforms_keep_plain_not_provided() {
-        let p = b2b_content(&args("b2brazil", "", ""));
+        let p = b2b_content(&args("kompass", "", ""));
         assert!(p.contains("Contact phone: Not provided"));
         assert!(!p.contains("must NOT count against the supplier"));
+    }
+
+    #[test]
+    fn b2brazil_masked_contact_is_marked_as_platform_policy() {
+        let p = b2b_content(&args("b2brazil", "", ""));
+        assert!(p.contains("Contact phone: Not published - this platform never shows it"));
+        assert!(p.contains("masks supplier contact names and phone numbers"));
+        assert!(p.contains("must NOT count against the supplier"));
     }
 
     #[test]
