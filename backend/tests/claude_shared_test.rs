@@ -13,12 +13,16 @@ fn make_b2b_args() -> CallB2bClaudeArguments<'static> {
         platform_verified: true,
         employee_count: "0-10",
         company_description: "Test description",
+        contact_name: "",
+        contact_phone: "",
+        website_url: "",
         product_title: "Test Product",
         product_description: "Test description",
         image_urls: &[],
         language: "en",
     }
 }
+
 // ─────────────────────────────────────────────────────────
 // b2b_content - confirming today's new additions are genuinely present
 // ─────────────────────────────────────────────────────────
