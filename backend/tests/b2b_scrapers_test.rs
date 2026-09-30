@@ -832,7 +832,9 @@ fn tradewheel_parse_supplier_reads_the_real_company_name_and_country() {
 
 #[test]
 #[serial]
-fn tradewheel_parse_supplier_detects_a_genuine_gold_badge() {
+fn tradewheel_parse_supplier_reads_gold_as_a_paid_membership_not_verification() {
+    // Gold and Platinum are paid TradeWheel membership levels. They are
+    // shown to the buyer as a membership, never as "verified".
     let html = r#"
         <html><body>
         <div class="comp-info">
@@ -846,14 +848,33 @@ fn tradewheel_parse_supplier_detects_a_genuine_gold_badge() {
 
     assert_eq!(supplier.badge_honorific, Some("Gold".to_string()));
     assert!(
-        supplier.platform_verified_badge,
-        "expected a real gold badge to also count as platform_verified_badge"
+        !supplier.platform_verified_badge,
+        "a paid Gold membership must never count as platform verification"
     );
 }
 
 #[test]
 #[serial]
-fn tradewheel_parse_supplier_leaves_badge_none_when_the_image_is_not_a_gold_badge() {
+fn tradewheel_parse_supplier_reads_a_platinum_membership() {
+    let html = r#"
+        <html><body>
+        <div class="comp-info">
+            <h2>Platinum Member Supplier</h2>
+            <img src="https://cdn.tradewheel.com/badges/platinum-txt1.png" />
+        </div>
+        </body></html>
+    "#;
+
+    let supplier =
+        TradewheelScraper.parse_supplier(html, "https://tradewheel.com/p/company/platinum");
+
+    assert_eq!(supplier.badge_honorific, Some("Platinum".to_string()));
+    assert!(!supplier.platform_verified_badge);
+}
+
+#[test]
+#[serial]
+fn tradewheel_parse_supplier_leaves_badge_none_when_the_image_is_not_a_membership_badge() {
     let html = r#"
         <html><body>
         <div class="comp-info">
@@ -867,10 +888,7 @@ fn tradewheel_parse_supplier_leaves_badge_none_when_the_image_is_not_a_gold_badg
         TradewheelScraper.parse_supplier(html, "https://tradewheel.com/p/company/silver");
 
     assert_eq!(supplier.badge_honorific, None);
-    assert!(
-        !supplier.platform_verified_badge,
-        "expected no verified badge when the badge image genuinely isn't the gold one"
-    );
+    assert!(!supplier.platform_verified_badge);
 }
 
 #[test]
@@ -914,6 +932,8 @@ fn tradewheel_parse_listing_reads_the_real_title() {
 #[test]
 #[serial]
 fn tradewheel_parse_listing_joins_multiple_description_paragraphs() {
+    // Paragraphs are kept on separate lines (same as ExportHub), so
+    // Claude sees where one ends and the next begins.
     let html = r#"
         <html><body>
         <div class="product-details-container">
@@ -927,7 +947,7 @@ fn tradewheel_parse_listing_joins_multiple_description_paragraphs() {
 
     assert_eq!(
         listing.description,
-        Some("High quality cotton yarn. Available in bulk quantities.".to_string())
+        Some("High quality cotton yarn.\nAvailable in bulk quantities.".to_string())
     );
 }
 
@@ -983,6 +1003,23 @@ fn tradewheel_parse_listing_reads_multiple_label_value_pairs_from_a_single_row()
 
 #[test]
 #[serial]
+fn tradewheel_parse_listing_reads_the_fob_price_headline() {
+    let html = r#"
+        <html><body>
+        <div class="po-box"><div class="pd-price">FOB Price US $60 / Unit</div></div>
+        </body></html>
+    "#;
+
+    let listing = TradewheelScraper.parse_listing(html, "https://tradewheel.com/p/x");
+    assert!(
+        listing.fob_price.as_deref().unwrap_or("").contains("60"),
+        "expected the FOB headline price to be read, got {:?}",
+        listing.fob_price
+    );
+}
+
+#[test]
+#[serial]
 fn tradewheel_parse_listing_extracts_images_preferring_data_zoom_image_over_data_image() {
     let html = r#"
         <html><body>
@@ -1023,14 +1060,45 @@ fn tradewheel_parse_listing_caps_image_urls_at_three_even_when_more_are_present(
     assert_eq!(listing.image_urls.len(), 3);
 }
 
-// --- TradeWheel scraper: extract_company_profile_url ---
+// --- TradeWheel scraper: extract_company_profile_url / company_key ---
+// Real TradeWheel company pages live at /co/{company-slug}/.
 
 #[test]
 #[serial]
 fn tradewheel_extracts_the_real_company_profile_link_from_a_listing_page() {
-    let html = r#"<html><body><div class="comp-info"><a href="https://tradewheel.com/company/acme">Acme</a></div></body></html>"#;
+    let html = r#"<html><body><div class="comp-info"><a href="https://www.tradewheel.com/co/acme-trading/">Acme</a></div></body></html>"#;
     let url = TradewheelScraper.extract_company_profile_url(html);
-    assert_eq!(url, Some("https://tradewheel.com/company/acme".to_string()));
+    assert_eq!(
+        url,
+        Some("https://www.tradewheel.com/co/acme-trading/".to_string())
+    );
+}
+
+#[test]
+#[serial]
+fn tradewheel_extract_company_profile_url_makes_a_relative_link_absolute() {
+    let html = r#"<html><body><div class="comp-info"><a href="/co/acme-trading/">Acme</a></div></body></html>"#;
+    let url = TradewheelScraper.extract_company_profile_url(html);
+    assert_eq!(
+        url,
+        Some("https://www.tradewheel.com/co/acme-trading/".to_string())
+    );
+}
+
+#[test]
+#[serial]
+fn tradewheel_extract_company_profile_url_skips_links_that_are_not_the_company_page() {
+    // The seller card also has links like "Contact Supplier"; only the
+    // /co/ link is the company page.
+    let html = r#"<html><body><div class="comp-info">
+        <a href="/contact-supplier/123">Contact</a>
+        <a href="/co/acme-trading/">Acme</a>
+    </div></body></html>"#;
+    let url = TradewheelScraper.extract_company_profile_url(html);
+    assert_eq!(
+        url,
+        Some("https://www.tradewheel.com/co/acme-trading/".to_string())
+    );
 }
 
 #[test]
@@ -1040,7 +1108,21 @@ fn tradewheel_extract_company_profile_url_returns_none_when_genuinely_absent() {
     assert_eq!(TradewheelScraper.extract_company_profile_url(html), None);
 }
 
+#[test]
+#[serial]
+fn tradewheel_company_key_is_the_company_slug() {
+    // One seller record per company: every product from Acme links to
+    // /co/acme-trading/, so every scan lands on the same record.
+    let html = r#"<html><body><div class="comp-info"><a href="/co/acme-trading/">Acme</a></div></body></html>"#;
+    assert_eq!(
+        TradewheelScraper.company_key(html),
+        Some("acme-trading".to_string())
+    );
+}
+
 // --- TradeWheel scraper: enrich_from_company_profile ---
+// Real company pages are "Label | Value" table rows under Company
+// Information, Trading Information and Contact Details.
 
 #[test]
 #[serial]
@@ -1088,17 +1170,15 @@ fn tradewheel_enrich_from_company_profile_reads_trading_information_section() {
 
 #[test]
 #[serial]
-fn tradewheel_enrich_from_company_profile_reads_contact_details_name_logo_and_website() {
+fn tradewheel_enrich_from_company_profile_reads_contact_name_logo_and_a_real_website() {
     let html = r#"
         <html><body>
-        <div class="co-specification-container">
-            <h3 class="secondary-heading">Contact Details</h3>
-            <div class="contact_p_txt1">Jane Doe</div>
-            <img id="m_img" src="https://cdn.tradewheel.com/logo.png" />
-            <div class="contact_details">
-                <table><tr><td>Website: https://real-supplier.example.com</td></tr></table>
-            </div>
-        </div>
+        <div class="comp_logo"><img src="https://cdn.tradewheel.com/logo.png" /></div>
+        <div class="contact_p_txt1">Jane Doe</div>
+        <div class="contact_p_txt2">Sales Manager</div>
+        <table>
+            <tr><th>Website</th><td>https://real-supplier.example.com</td></tr>
+        </table>
         </body></html>
     "#;
 
@@ -1114,20 +1194,35 @@ fn tradewheel_enrich_from_company_profile_reads_contact_details_name_logo_and_we
         enriched.website_url,
         Some("https://real-supplier.example.com".to_string())
     );
+    assert!(
+        enriched
+            .company_description
+            .unwrap_or_default()
+            .contains("Contact person's role: Sales Manager"),
+        "expected the contact person's role to be passed on in the description"
+    );
+}
+
+#[test]
+#[serial]
+fn tradewheel_enrich_from_company_profile_falls_back_to_the_m_img_logo() {
+    let html = r#"<html><body><img id="m_img" src="https://cdn.tradewheel.com/logo2.png" /></body></html>"#;
+    let enriched =
+        TradewheelScraper.enrich_from_company_profile(B2bSupplierProfile::default(), html);
+    assert_eq!(
+        enriched.logo_url,
+        Some("https://cdn.tradewheel.com/logo2.png".to_string())
+    );
 }
 
 #[test]
 #[serial]
 fn tradewheel_enrich_from_company_profile_never_sets_a_website_when_the_value_is_genuinely_just_show()
  {
+    // Logged-out visitors see a "Show" button instead of the address.
     let html = r#"
         <html><body>
-        <div class="co-specification-container">
-            <h3 class="secondary-heading">Contact Details</h3>
-            <div class="contact_details">
-                <table><tr><td>Website: Show</td></tr></table>
-            </div>
-        </div>
+        <table><tr><th>Website</th><td>Show</td></tr></table>
         </body></html>
     "#;
 
@@ -1141,12 +1236,7 @@ fn tradewheel_enrich_from_company_profile_never_sets_a_website_when_the_value_is
 fn tradewheel_enrich_from_company_profile_show_filter_is_case_insensitive() {
     let html = r#"
         <html><body>
-        <div class="co-specification-container">
-            <h3 class="secondary-heading">Contact Details</h3>
-            <div class="contact_details">
-                <table><tr><td>Website: SHOW</td></tr></table>
-            </div>
-        </div>
+        <table><tr><th>Website</th><td>SHOW</td></tr></table>
         </body></html>
     "#;
 
@@ -1157,22 +1247,42 @@ fn tradewheel_enrich_from_company_profile_show_filter_is_case_insensitive() {
 
 #[test]
 #[serial]
-fn tradewheel_enrich_from_company_profile_ignores_sections_with_an_unrecognized_heading() {
+fn tradewheel_enrich_from_company_profile_builds_description_from_business_type_and_products() {
+    // TradeWheel company pages have no "about" text - business type and
+    // main products are what Claude uses to check the name fits the goods.
     let html = r#"
         <html><body>
-        <div class="co-specification-container">
-            <h3 class="secondary-heading">Some Other Section</h3>
-            <table><tr><td>Established Year</td><td>1999</td></tr></table>
-        </div>
+        <table>
+            <tr><td>Business Type</td><td>Manufacturer</td></tr>
+            <tr><td>Main Products</td><td>Jackets, Coats</td></tr>
+        </table>
         </body></html>
     "#;
 
-    let supplier = B2bSupplierProfile::default();
-    let enriched = TradewheelScraper.enrich_from_company_profile(supplier, html);
+    let enriched =
+        TradewheelScraper.enrich_from_company_profile(B2bSupplierProfile::default(), html);
     assert_eq!(
-        enriched.year_established, None,
-        "expected fields under an unrecognized heading to be genuinely ignored, not merged in"
+        enriched.company_description,
+        Some("Business type: Manufacturer. Main products: Jackets, Coats.".to_string())
     );
+}
+
+#[test]
+#[serial]
+fn tradewheel_enrich_from_company_profile_ignores_placeholder_values() {
+    let html = r#"
+        <html><body>
+        <table>
+            <tr><td>Total Employees</td><td>-</td></tr>
+            <tr><td>Export Percentage</td><td>Not Provided</td></tr>
+        </table>
+        </body></html>
+    "#;
+
+    let enriched =
+        TradewheelScraper.enrich_from_company_profile(B2bSupplierProfile::default(), html);
+    assert_eq!(enriched.employee_count, None);
+    assert_eq!(enriched.export_percentage, None);
 }
 
 #[test]

@@ -23,6 +23,25 @@ fn is_flagged(signal: &Signal) -> bool {
     signal.signal_type == "caution" || signal.signal_type == "bad"
 }
 
+/// How many earlier Safely checks are needed before a high average
+/// score is treated as a Serious, network-confirmed problem.
+const MIN_PRIOR_CHECKS_FOR_SERIOUS: u32 = 3;
+
+/// Reads the number of earlier checks from the Safely history signal
+/// ("1 prior checks", "4 prior checks. Average risk score: 70").
+/// Returns 0 when no number can be found.
+fn prior_check_count(signal: &Signal) -> u32 {
+    let text = format!("{} {}", signal.value, signal.sub).to_lowercase();
+    let Some(pos) = text.find("prior check") else {
+        return 0;
+    };
+    text[..pos]
+        .split_whitespace()
+        .last()
+        .and_then(|w| w.parse::<u32>().ok())
+        .unwrap_or(0)
+}
+
 /// Claude's own explanation when there is one, otherwise the fallback.
 fn evidence_or(signal: &Signal, fallback: &str) -> String {
     if signal.sub.trim().is_empty() {
@@ -74,8 +93,14 @@ pub fn derive_risk_factors(signals: &[Signal]) -> Vec<RiskFactor> {
             covered_labels.push("Overall legitimacy check");
         }
     }
+    // Safely's own past scores only become a Serious flag when there is
+    // a real track record (several earlier checks). A single earlier
+    // scan is just Safely's own opinion from one run - it may even have
+    // been a wrong result - so on its own it stays "Worth noting" at
+    // most (it falls through to the soft factors below).
     if let Some(s) = find_signal(signals, "Safely history") {
-        if s.signal_type == "bad" {
+        let enough_history = prior_check_count(s) >= MIN_PRIOR_CHECKS_FOR_SERIOUS;
+        if s.signal_type == "bad" && enough_history {
             factors.push(RiskFactor {
                 severity: "hard".to_string(),
                 name: "network_confirmed_high_risk_seller".to_string(),
@@ -257,5 +282,36 @@ mod tests {
             sig("Image authenticity", "Not checked", "info", ""),
         ];
         assert!(derive_risk_factors(&s).is_empty());
+    }
+
+    #[test]
+    fn one_prior_scan_is_never_serious() {
+        let signals = vec![sig(
+            "Safely history",
+            "1 prior checks",
+            "bad",
+            "Average risk score: 67",
+        )];
+        let f = derive_risk_factors(&signals);
+        assert!(find(&f, "network_confirmed_high_risk_seller").is_none());
+        let soft = find(&f, "safely_history_flagged").expect("still worth noting");
+        assert_eq!(soft.severity, "soft");
+    }
+
+    #[test]
+    fn several_high_prior_scans_are_serious() {
+        let signals = vec![sig(
+            "Safely history",
+            "4 prior checks. Average risk score: 72",
+            "bad",
+            "",
+        )];
+        let f = derive_risk_factors(&signals);
+        assert_eq!(
+            find(&f, "network_confirmed_high_risk_seller")
+                .unwrap()
+                .severity,
+            "hard"
+        );
     }
 }

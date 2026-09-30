@@ -139,6 +139,9 @@ fn platform_contact_policy(platform: &str) -> Option<&'static str> {
         "exporthub" => Some(
             "does not show supplier websites, and hides phone numbers from non-paying visitors (a phone listed above was still published by the supplier and is usable); buyers contact suppliers through the platform's inquiry form. ExportHub also does not verify companies, so a missing verified badge is normal there",
         ),
+        "tradewheel" => Some(
+            "never shows supplier phone numbers, and shows supplier websites only to logged-in members (a website listed above came from the buyer's own logged-in view); buyers contact suppliers through the platform's inquiry form. A contact name with no phone is the normal level of detail there. TradeWheel's Gold and Platinum badges are paid membership levels, not company verification",
+        ),
         _ => None,
     }
 }
@@ -419,6 +422,12 @@ pub fn b2b_content(arg: &CallB2bClaudeArguments) -> String {
         an inquiry) - this is completely normal and must NOT be treated as
         suspicious on its own.
 
+        DATES: Judge every year against today's date given below, not
+        against what you assume the current year is. A founding year equal
+        to the current year means the company is brand new - you may note
+        that it is new, but it is NOT a future, impossible or fabricated
+        date. Only a year later than today's date is impossible.
+
         IMPORTANT: Write every text value in the JSON below (all
         "evidence" and "reasoning" fields, and "overall_risk_notes") in
         {language}. Keep every JSON key name and every "verdict" value
@@ -429,6 +438,7 @@ pub fn b2b_content(arg: &CallB2bClaudeArguments) -> String {
         JSON object with no markdown, no code fences, no backticks, no
         explanation. Start your response with {{ and end with }}.
 
+        Today's date: {today}
         Platform: {platform}
         Company name: {company_name}
         Year established: {year_established}
@@ -532,6 +542,7 @@ pub fn b2b_content(arg: &CallB2bClaudeArguments) -> String {
         "overall_risk_notes": ""
         }}
         "#,
+        today = chrono::Utc::now().format("%Y-%m-%d"),
         platform = arg.platform,
         company_name = arg.company_name,
         year_established = or_not_provided(arg.year_established),
@@ -555,6 +566,32 @@ pub fn b2b_content(arg: &CallB2bClaudeArguments) -> String {
 #[cfg(test)]
 mod b2b_prompt_tests {
     use super::*;
+
+    #[test]
+    fn prompt_carries_todays_date() {
+        let args = CallB2bClaudeArguments {
+            platform: "tradewheel",
+            company_name: "Dadal General Trading",
+            year_established: "2026",
+            platform_verified: false,
+            employee_count: "",
+            company_description: "",
+            contact_name: "",
+            contact_phone: "",
+            website_url: "",
+            product_title: "Opal",
+            product_description: "",
+            image_urls: &[],
+            language: "en",
+            unit_price: "",
+            minimum_order_quantity: "",
+            payment_type: "",
+        };
+        let prompt = b2b_content(&args);
+        let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
+        assert!(prompt.contains(&format!("Today's date: {}", today)));
+        assert!(prompt.contains("NOT a future, impossible or fabricated"));
+    }
 
     fn args<'a>(platform: &'a str, phone: &'a str, price: &'a str) -> CallB2bClaudeArguments<'a> {
         CallB2bClaudeArguments {

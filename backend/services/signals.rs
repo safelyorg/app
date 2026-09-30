@@ -348,6 +348,36 @@ pub fn build_b2b_verification_signal(supplier: &B2bSupplierProfile) -> Signal {
         };
     }
 
+    // TradeWheel's badges (Gold, Platinum) are paid membership levels.
+    // Shown for information only, never as verification and never as
+    // a caution - a company without one has simply not paid for it.
+    if supplier.source_platform == "tradewheel" {
+        let (value, sub) = match supplier.badge_honorific.as_deref() {
+            Some(tier) => (
+                format!("{} member", tier),
+                format!(
+                    "{} is a {} member on TradeWheel. This is a paid membership level, not a check on the company.",
+                    name, tier
+                ),
+            ),
+            None => (
+                "No badge".to_string(),
+                format!(
+                    "{} has no membership badge on TradeWheel. TradeWheel's badges are paid membership levels, so this says little about the company.",
+                    name
+                ),
+            ),
+        };
+        return Signal {
+            label: "Platform verification".to_string(),
+            sub,
+            value,
+            signal_type: "info".to_string(),
+            category: "identity".to_string(),
+            check_type: "existence".to_string(),
+        };
+    }
+
     if supplier.platform_verified_badge {
         Signal {
             label: "Platform verification".to_string(),
@@ -788,6 +818,21 @@ mod b2b_signal_tests {
             build_b2b_verification_signal(&supplier("exporthub", false, Some("Free Member")));
         assert!(free.sub.contains("free membership level"));
         assert!(!free.sub.contains("paid"));
+    }
+
+    #[test]
+    fn tradewheel_tier_is_info_never_verified_or_caution() {
+        let gold = build_b2b_verification_signal(&supplier("tradewheel", false, Some("Gold")));
+        assert_eq!(
+            (gold.value.as_str(), gold.signal_type.as_str()),
+            ("Gold member", "info")
+        );
+        assert!(gold.sub.contains("paid membership level"));
+        let none = build_b2b_verification_signal(&supplier("tradewheel", false, None));
+        assert_eq!(
+            (none.value.as_str(), none.signal_type.as_str()),
+            ("No badge", "info")
+        );
     }
 
     #[test]
