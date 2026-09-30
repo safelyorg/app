@@ -3,7 +3,9 @@ use crate::{
     services::{
         b2b_scrapers::{B2bListingProfile, B2bSupplierProfile},
         b2c_scrapers::B2cProfileResult,
-        claude::{B2bClaudeAnalysis, ClaudeAnalysis, Finding},
+        claude::{
+            B2bClaudeAnalysis, ClaudeAnalysis, Finding, IMAGE_ANALYSIS_ENABLED, ImageAssessment,
+        },
         whois::WhoisResult,
     },
 };
@@ -67,18 +69,7 @@ pub fn build_signals(analysis: &ClaudeAnalysis, seller: &Sellers) -> Vec<Signal>
         "pattern",
     ));
 
-    signals.push(Signal {
-        label: "Image authenticity".to_string(),
-        sub: analysis.image_authenticity.reasoning.clone(),
-        value: analysis.image_authenticity.verdict.clone(),
-        signal_type: if analysis.image_authenticity.verdict == "original" {
-            "good".to_string()
-        } else {
-            "caution".to_string()
-        },
-        category: "listing".to_string(),
-        check_type: "existence".to_string(),
-    });
+    signals.push(image_authenticity_signal(&analysis.image_authenticity));
 
     signals.push(finding_to_signal(
         "Overall legitimacy check",
@@ -325,6 +316,38 @@ pub fn build_store_page_signal(
 /// real, direct trust indicator, since the platform's own disclaimer
 /// text says an unverified company's info isn't guaranteed accurate.
 pub fn build_b2b_verification_signal(supplier: &B2bSupplierProfile) -> Signal {
+    let name = supplier.company_name.as_deref().unwrap_or("This company");
+
+    // ExportHub has no company verification at all - its seals
+    // ("Standard Membership", "Free Member") are paid tiers. Every
+    // ExportHub seller would otherwise get the same "Unverified"
+    // caution, which says nothing about this particular seller.
+    if supplier.source_platform == "exporthub" {
+        let tier = supplier
+            .badge_honorific
+            .as_deref()
+            .map(|t| {
+                let kind = if t.to_lowercase().contains("free") {
+                    "ExportHub's free membership level"
+                } else {
+                    "a paid membership level"
+                };
+                format!(
+                    " {} shows \"{}\", which is {}, not a check on the company.",
+                    name, t, kind
+                )
+            })
+            .unwrap_or_default();
+        return Signal {
+            label: "Platform verification".to_string(),
+            sub: format!("ExportHub does not verify companies.{}", tier),
+            value: "Not offered".to_string(),
+            signal_type: "info".to_string(),
+            category: "identity".to_string(),
+            check_type: "existence".to_string(),
+        };
+    }
+
     if supplier.platform_verified_badge {
         Signal {
             label: "Platform verification".to_string(),
@@ -341,10 +364,19 @@ pub fn build_b2b_verification_signal(supplier: &B2bSupplierProfile) -> Signal {
     } else {
         Signal {
             label: "Platform verification".to_string(),
-            sub: format!(
-                "{} does not have a verified badge - the platform itself states unverified company info is not guaranteed accurate.",
-                supplier.company_name.as_deref().unwrap_or("This company")
-            ),
+            // The "not guaranteed accurate" wording is B2Brazil's own
+            // disclaimer, so it is only quoted for B2Brazil.
+            sub: if supplier.source_platform == "b2brazil" {
+                format!(
+                    "{} does not have a verified badge - B2Brazil itself states unverified company info is not guaranteed accurate.",
+                    name
+                )
+            } else {
+                format!(
+                    "{} does not have a verified badge on {}.",
+                    name, supplier.source_platform
+                )
+            },
             value: "Unverified".to_string(),
             signal_type: "caution".to_string(),
             category: "identity".to_string(),
@@ -586,19 +618,37 @@ pub fn build_b2b_claude_signals(analysis: &B2bClaudeAnalysis) -> Vec<Signal> {
             "communication",
             "pattern",
         ),
-        Signal {
+        image_authenticity_signal(&analysis.image_authenticity),
+    ]
+}
+
+/// Image authenticity card, shared by B2C and B2B. While image checking
+/// is switched off (IMAGE_ANALYSIS_ENABLED in claude.rs), Claude never
+/// sees the photos, so "not verified" says nothing about the seller -
+/// the card then reads "Not checked" and does not count as a caution.
+fn image_authenticity_signal(assessment: &ImageAssessment) -> Signal {
+    if !IMAGE_ANALYSIS_ENABLED {
+        return Signal {
             label: "Image authenticity".to_string(),
-            sub: analysis.image_authenticity.reasoning.clone(),
-            value: analysis.image_authenticity.verdict.clone(),
-            signal_type: if analysis.image_authenticity.verdict == "original" {
-                "good".to_string()
-            } else {
-                "caution".to_string()
-            },
+            sub: "Image checking is switched off in Safely for now, so this listing's photos were not reviewed. This does not count against the seller.".to_string(),
+            value: "Not checked".to_string(),
+            signal_type: "info".to_string(),
             category: "listing".to_string(),
             check_type: "existence".to_string(),
+        };
+    }
+    Signal {
+        label: "Image authenticity".to_string(),
+        sub: assessment.reasoning.clone(),
+        value: assessment.verdict.clone(),
+        signal_type: if assessment.verdict == "original" {
+            "good".to_string()
+        } else {
+            "caution".to_string()
         },
-    ]
+        category: "listing".to_string(),
+        check_type: "existence".to_string(),
+    }
 }
 
 /// The real, fixed display order: Table 1 (unified signals) always
@@ -687,6 +737,69 @@ mod b2b_signal_tests {
             (d.value.as_str(), d.signal_type.as_str()),
             ("Detected", "caution")
         );
+    }
+
+    #[test]
+    fn image_not_checked_is_info_while_images_are_off() {
+        let s = build_b2b_claude_signals(&analysis(true, true));
+        let i = get(&s, "Image authenticity");
+        if !IMAGE_ANALYSIS_ENABLED {
+            assert_eq!(
+                (i.value.as_str(), i.signal_type.as_str()),
+                ("Not checked", "info")
+            );
+        }
+    }
+
+    fn supplier(platform: &str, verified: bool, tier: Option<&str>) -> B2bSupplierProfile {
+        B2bSupplierProfile {
+            company_name: Some("Acme".into()),
+            logo_url: None,
+            year_established: None,
+            country: None,
+            platform_verified_badge: verified,
+            employee_count: None,
+            sales_revenue: None,
+            export_percentage: None,
+            profile_url: String::new(),
+            source_platform: platform.into(),
+            contact_name: None,
+            contact_phone: None,
+            badge_honorific: tier.map(|t| t.to_string()),
+            company_description: None,
+            website_url: None,
+        }
+    }
+
+    #[test]
+    fn exporthub_verification_is_not_offered() {
+        let v = build_b2b_verification_signal(&supplier(
+            "exporthub",
+            false,
+            Some("Standard Membership"),
+        ));
+        assert_eq!(
+            (v.value.as_str(), v.signal_type.as_str()),
+            ("Not offered", "info")
+        );
+        assert!(v.sub.contains("Standard Membership"));
+        assert!(v.sub.contains("a paid membership level"));
+        let free =
+            build_b2b_verification_signal(&supplier("exporthub", false, Some("Free Member")));
+        assert!(free.sub.contains("free membership level"));
+        assert!(!free.sub.contains("paid"));
+    }
+
+    #[test]
+    fn unverified_elsewhere_is_still_a_caution() {
+        let v = build_b2b_verification_signal(&supplier("alibaba", false, None));
+        assert_eq!(
+            (v.value.as_str(), v.signal_type.as_str()),
+            ("Unverified", "caution")
+        );
+        assert!(!v.sub.contains("B2Brazil"));
+        let b = build_b2b_verification_signal(&supplier("b2brazil", false, None));
+        assert!(b.sub.contains("not guaranteed accurate"));
     }
 
     #[test]

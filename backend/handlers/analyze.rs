@@ -107,7 +107,7 @@ pub async fn analyze(
 
     // B2B: fetch the supplier page BEFORE choosing the seller record, so
     // the record can be picked by company rather than by product link.
-    // Platforms whose scraper implements company_key (Alibaba so far)
+    // Platforms whose scraper implements company_key (Alibaba, B2Brazil, ExportHub)
     // get one seller record per company; the rest return None and keep
     // the old per-listing ID below, unchanged.
     let b2b_page = if is_b2b {
@@ -124,6 +124,7 @@ pub async fn analyze(
         None
     };
     let company_key = b2b_page.as_ref().and_then(|p| p.company_key.clone());
+    let company_url = b2b_page.as_ref().and_then(|p| p.company_url.clone());
 
     let (mut seller_req, listing_req) = build_requests(&request);
     if seller_req.platform_id.is_none() {
@@ -172,9 +173,18 @@ pub async fn analyze(
         // With a company key, the seller record is the company, so its
         // profile link is the company's shop, not whichever product page
         // happened to be scanned last.
-        let seller_profile_url = company_key
-            .as_deref()
-            .map(|k| format!("https://{}", k))
+        // Prefer the company page link the scraper found. The
+        // "https://{key}" form only works for keys that are hosts
+        // (Alibaba's "yheyewear.en.alibaba.com"), not slugs like
+        // B2Brazil's "asmetecgmbh".
+        let seller_profile_url = company_url
+            .clone()
+            .or_else(|| {
+                company_key
+                    .as_deref()
+                    .filter(|k| k.contains('.'))
+                    .map(|k| format!("https://{}", k))
+            })
             .unwrap_or_else(|| request.listing_url.clone());
         let clean_contact_name = supplier
             .contact_name

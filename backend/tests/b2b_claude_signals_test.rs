@@ -1,5 +1,7 @@
 use backend::services::{
-    claude::{B2bClaudeAnalysis, Finding, ImageAssessment, PriceAssessment},
+    claude::{
+        B2bClaudeAnalysis, Finding, IMAGE_ANALYSIS_ENABLED, ImageAssessment, PriceAssessment,
+    },
     signals::build_b2b_claude_signals,
 };
 
@@ -224,7 +226,25 @@ fn urgency_and_advance_payment_show_good_when_not_found() {
 }
 
 #[test]
+fn image_authenticity_is_not_checked_while_images_are_off() {
+    if IMAGE_ANALYSIS_ENABLED {
+        return; // only applies while image checking is switched off
+    }
+    let analysis = make_analysis(true, true, true, true);
+    let signals = build_b2b_claude_signals(&analysis);
+    let image = signals
+        .iter()
+        .find(|s| s.label == "Image authenticity")
+        .unwrap();
+    assert_eq!(image.value, "Not checked");
+    assert_eq!(image.signal_type, "info");
+}
+
+#[test]
 fn image_authenticity_signal_correctly_maps_not_verified_to_caution() {
+    if !IMAGE_ANALYSIS_ENABLED {
+        return; // only applies when image checking is switched on
+    }
     let analysis = make_analysis(true, true, true, true);
     let signals = build_b2b_claude_signals(&analysis);
     let image = signals
@@ -237,6 +257,9 @@ fn image_authenticity_signal_correctly_maps_not_verified_to_caution() {
 
 #[test]
 fn image_authenticity_signal_maps_original_to_good() {
+    if !IMAGE_ANALYSIS_ENABLED {
+        return;
+    }
     let mut analysis = make_analysis(true, true, true, true);
     analysis.image_authenticity.verdict = "original".to_string();
     let signals = build_b2b_claude_signals(&analysis);

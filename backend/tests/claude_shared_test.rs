@@ -22,6 +22,7 @@ fn make_b2b_args() -> CallB2bClaudeArguments<'static> {
         language: "en",
         unit_price: "",
         minimum_order_quantity: "",
+        payment_type: "",
     }
 }
 

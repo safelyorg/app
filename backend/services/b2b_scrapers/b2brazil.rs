@@ -92,6 +92,7 @@ impl B2bScraper for B2brazilScraper {
             website_url: None,
         }
     }
+
     fn parse_listing(&self, html: &str, listing_url: &str) -> B2bListingProfile {
         let document = Html::parse_document(html);
 
@@ -154,6 +155,7 @@ impl B2bScraper for B2brazilScraper {
             source_platform: "b2brazil".to_string(),
         }
     }
+
     fn extract_company_profile_url(&self, listing_html: &str) -> Option<String> {
         let document = Html::parse_document(listing_html);
         let sel = Selector::parse("a.nav-home").ok()?;
@@ -262,6 +264,7 @@ fn select_attr(document: &Html, selector: &str, attr: &str) -> Option<String> {
         .attr(attr)
         .map(|s| s.to_string())
 }
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -330,6 +333,7 @@ mod tests {
         assert_eq!(result.sales_revenue, Some("200K - 500K".to_string()));
         assert_eq!(result.export_percentage, Some("10%".to_string()));
     }
+
     #[test]
     fn parse_listing_filters_out_not_informed_but_keeps_real_values() {
         let scraper = B2brazilScraper;

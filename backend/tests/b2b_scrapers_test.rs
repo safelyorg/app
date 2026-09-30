@@ -1282,7 +1282,7 @@ fn exporthub_parse_supplier_treats_not_provided_about_box_values_as_genuinely_ab
 
 #[test]
 #[serial]
-fn exporthub_parse_supplier_detects_a_genuine_premium_membership_seal() {
+fn exporthub_parse_supplier_reads_the_membership_seal_but_not_as_verification() {
     let html = r#"
         <html><body>
         <div class="product-del_sidebar__seal"><img alt="Premium Membership" src="https://cdn.exporthub.com/seal.png"></div>
@@ -1294,7 +1294,7 @@ fn exporthub_parse_supplier_detects_a_genuine_premium_membership_seal() {
         supplier.badge_honorific,
         Some("Premium Membership".to_string())
     );
-    assert!(supplier.platform_verified_badge);
+    assert!(!supplier.platform_verified_badge);
 }
 
 #[test]

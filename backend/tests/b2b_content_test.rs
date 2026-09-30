@@ -18,6 +18,7 @@ fn b2b_content_includes_the_real_company_name() {
         language: "en",
         unit_price: "",
         minimum_order_quantity: "",
+        payment_type: "",
     };
     let prompt = b2b_content(&args);
     assert!(prompt.contains("Akurat Consultoria Empresarial"));
@@ -41,6 +42,7 @@ fn b2b_content_includes_the_real_year_and_employee_count() {
         language: "en",
         unit_price: "",
         minimum_order_quantity: "",
+        payment_type: "",
     };
     let prompt = b2b_content(&args);
     assert!(prompt.contains("2013"));
@@ -66,6 +68,7 @@ fn b2b_content_includes_the_real_product_details() {
         language: "en",
         unit_price: "",
         minimum_order_quantity: "",
+        payment_type: "",
     };
     let prompt = b2b_content(&args);
     assert!(prompt.contains("Precision Microcast Parts"));
@@ -90,6 +93,7 @@ fn b2b_content_explicitly_tells_claude_not_to_apply_consumer_fraud_patterns() {
         language: "en",
         unit_price: "",
         minimum_order_quantity: "",
+        payment_type: "",
     };
     let prompt = b2b_content(&args);
     assert!(prompt.to_lowercase().contains("not a consumer marketplace"));
@@ -114,6 +118,7 @@ fn b2b_content_produces_genuinely_different_text_for_different_inputs() {
         language: "en",
         unit_price: "",
         minimum_order_quantity: "",
+        payment_type: "",
     };
     let args_b = CallB2bClaudeArguments {
         platform: "b2brazil",
@@ -131,6 +136,7 @@ fn b2b_content_produces_genuinely_different_text_for_different_inputs() {
         language: "en",
         unit_price: "",
         minimum_order_quantity: "",
+        payment_type: "",
     };
     assert_ne!(b2b_content(&args_a), b2b_content(&args_b));
 }
@@ -153,6 +159,7 @@ fn b2b_content_includes_the_portuguese_instruction_when_language_is_pt_br() {
         language: "pt-br",
         unit_price: "",
         minimum_order_quantity: "",
+        payment_type: "",
     };
     let prompt = b2b_content(&args);
     assert!(
@@ -179,6 +186,7 @@ fn b2b_content_defaults_to_english_for_an_unrecognized_language_code() {
         language: "xx-unknown",
         unit_price: "",
         minimum_order_quantity: "",
+        payment_type: "",
     };
     let prompt = b2b_content(&args);
     assert!(
@@ -206,6 +214,7 @@ fn base_args<'a>(company_description: &'a str) -> CallB2bClaudeArguments<'a> {
         language: "en",
         unit_price: "",
         minimum_order_quantity: "",
+        payment_type: "",
     }
 }
 
@@ -266,6 +275,7 @@ fn base_args_with_contact<'a>(
         language: "en",
         unit_price: "",
         minimum_order_quantity: "",
+        payment_type: "",
     }
 }
 

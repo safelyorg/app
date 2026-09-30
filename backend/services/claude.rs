@@ -119,6 +119,8 @@ pub struct CallB2bClaudeArguments<'a> {
     pub unit_price: &'a str,
     /// Scraped MOQ text (e.g. "5 cartons"), "" if none.
     pub minimum_order_quantity: &'a str,
+    /// Accepted payment methods (e.g. "Bank wire (T/T), Western Union (WU)"), "" if none.
+    pub payment_type: &'a str,
 }
 
 /// Platforms that hide a supplier's direct contact details from
@@ -134,6 +136,9 @@ fn platform_contact_policy(platform: &str) -> Option<&'static str> {
         "b2brazil" => Some(
             "masks supplier contact names and phone numbers (e.g. \"Smith ********\") and does not show supplier websites to non-paying visitors; buyers contact suppliers through the platform. A contact name shown here may be only the part the platform leaves visible",
         ),
+        "exporthub" => Some(
+            "does not show supplier websites, and hides phone numbers from non-paying visitors (a phone listed above was still published by the supplier and is usable); buyers contact suppliers through the platform's inquiry form. ExportHub also does not verify companies, so a missing verified badge is normal there",
+        ),
         _ => None,
     }
 }
@@ -146,23 +151,31 @@ fn or_not_provided<'a>(value: &'a str) -> &'a str {
     }
 }
 
+/// Master switch for sending listing photos to Claude (off to save
+/// cost). The Image authenticity card reads this too: while it is off,
+/// the card shows "Not checked" instead of a caution. Set to true to
+/// turn image checking back on - nothing else needs changing.
+pub const IMAGE_ANALYSIS_ENABLED: bool = false;
+
 /// The ONE, shared place that builds the real content blocks sent to
 /// Claude - genuinely unified for both B2C and B2B, so a future
 /// decision to re-enable image analysis only ever needs to happen in
 /// one spot, not two separate, duplicated copies.
-fn build_content_blocks(prompt: String, _image_urls: &[String]) -> Vec<ContentItem> {
-    let content_blocks: Vec<ContentItem> = vec![ContentItem::Text { text: prompt }];
+fn build_content_blocks(prompt: String, image_urls: &[String]) -> Vec<ContentItem> {
+    let mut content_blocks: Vec<ContentItem> = vec![ContentItem::Text { text: prompt }];
 
-    // Image sending disabled for cost reasons, for both B2C and B2B -
-    // commented out here.
-    // for url in _image_urls.iter().take(3) {
-    //     content_blocks.push(ContentItem::Image {
-    //         source: ImageSource {
-    //             source_type: "url".to_string(),
-    //             url: url.clone(),
-    //         },
-    //     });
-    // }
+    // Images are only sent when IMAGE_ANALYSIS_ENABLED is true (off
+    // for cost reasons), for both B2C and B2B.
+    if IMAGE_ANALYSIS_ENABLED {
+        for url in image_urls.iter().take(3) {
+            content_blocks.push(ContentItem::Image {
+                source: ImageSource {
+                    source_type: "url".to_string(),
+                    url: url.clone(),
+                },
+            });
+        }
+    }
 
     content_blocks
 }
@@ -361,7 +374,12 @@ pub fn b2c_content(arg: &CallClaudeArguments) -> String {
 }
 
 pub fn b2b_content(arg: &CallB2bClaudeArguments) -> String {
-    let image_context = if arg.image_urls.is_empty() {
+    let image_context = if IMAGE_ANALYSIS_ENABLED && !arg.image_urls.is_empty() {
+        format!(
+            "{} product image(s) from this listing are attached. Use \"original\" only if they look like genuine photos of this supplier's own product; use \"not verified\" if they look like stock, catalogue or reused images, or if you cannot tell.",
+            arg.image_urls.len().min(3)
+        )
+    } else if arg.image_urls.is_empty() {
         "no actual product images were provided or found for this listing - use \"not verified\" as the verdict, since authenticity cannot genuinely be assessed without any real images.".to_string()
     } else {
         format!(
@@ -385,7 +403,7 @@ pub fn b2b_content(arg: &CallB2bClaudeArguments) -> String {
     };
     let platform_contact_rule = match contact_policy {
         Some(policy) => format!(
-            "On {} the platform itself {}. A missing phone or website here is normal and must NOT count against the supplier. Judge contact_verifiability on what the platform does show (e.g. a named contact person, a verified badge).",
+            "On {} the platform itself {}. A missing phone or website here is normal and must NOT count against the supplier. Judge contact_verifiability on what the platform does show (e.g. a named contact person).",
             arg.platform, policy
         ),
         None => String::new(),
@@ -424,6 +442,7 @@ pub fn b2b_content(arg: &CallB2bClaudeArguments) -> String {
         Product description: {product_description}
         Unit price: {unit_price}
         Minimum order quantity: {moq}
+        Accepted payment methods: {payment_type}
 
         {platform_contact_rule}
 
@@ -465,10 +484,17 @@ pub fn b2b_content(arg: &CallB2bClaudeArguments) -> String {
         a price is provided, say in the reasoning what it is and whether it
         is plausible - do not claim pricing is missing when it is provided.
 
-        For contact_verifiability: set found to true if the company provides
-        genuine, checkable contact information, taking into account what
-        this platform actually publishes; false if contact details are
-        absent in a way that is unusual for this platform.
+        For contact_verifiability: judge ONLY the contact details
+        themselves - can a buyer actually reach and check this company?
+        Set found to true if a named contact person and at least one
+        direct channel (phone, email or website) are given, or if the
+        details shown are all this platform publishes. Set found to false
+        only if contact details are missing in a way that is unusual for
+        this platform, look fake, or contradict the company (e.g. a phone
+        country code that does not match the company's country). Do NOT
+        use the verified badge, founding year, employee count or company
+        size here - those are judged by other checks, and counting them
+        again here would double-count them.
 
         For urgency_language: set found to true only if the listing or
         company description uses artificial pressure tactics inconsistent
@@ -481,7 +507,13 @@ pub fn b2b_content(arg: &CallB2bClaudeArguments) -> String {
         demands full, 100% upfront payment before any samples,
         verification, or standard partial-deposit terms - genuinely unusual
         for legitimate B2B trade, where partial deposits and
-        post-inspection payment terms are standard.
+        post-inspection payment terms are standard. ALSO set found to true
+        if the accepted payment methods above include Western Union,
+        MoneyGram, cryptocurrency or gift cards: these are cash-style
+        transfers that cannot be reversed or traced to a company, and a
+        genuine B2B supplier does not ask for them. Name the method in the
+        evidence. Bank wire (T/T), L/C, D/A, D/P and platform escrow are
+        normal and must not be flagged on their own.
 
         For image_authenticity: {image_context}
         Verdict must be exactly "original" or "not verified" - no other
@@ -513,6 +545,7 @@ pub fn b2b_content(arg: &CallB2bClaudeArguments) -> String {
         product_description = or_not_provided(arg.product_description),
         unit_price = or_not_provided(arg.unit_price),
         moq = or_not_provided(arg.minimum_order_quantity),
+        payment_type = or_not_provided(arg.payment_type),
         platform_contact_rule = platform_contact_rule,
         image_context = image_context,
         language = language_instruction(arg.language),
@@ -540,6 +573,7 @@ mod b2b_prompt_tests {
             website_url: "",
             unit_price: price,
             minimum_order_quantity: "5 cartons",
+            payment_type: "Bank wire (T/T), Western Union (WU)",
         }
     }
 
@@ -577,6 +611,21 @@ mod b2b_prompt_tests {
         assert!(p.contains("Contact phone: Not published - this platform never shows it"));
         assert!(p.contains("masks supplier contact names and phone numbers"));
         assert!(p.contains("must NOT count against the supplier"));
+    }
+
+    #[test]
+    fn payment_methods_reach_the_prompt() {
+        let p = b2b_content(&args("exporthub", "", ""));
+        assert!(p.contains("Accepted payment methods: Bank wire (T/T), Western Union (WU)"));
+        assert!(p.contains("include Western Union,\n        MoneyGram"));
+    }
+
+    #[test]
+    fn contact_check_does_not_reuse_badge_or_company_size() {
+        let p = b2b_content(&args("exporthub", "+8617728195735", ""));
+        assert!(p.contains("judge ONLY the contact details"));
+        assert!(p.contains("Do NOT\n        use the verified badge"));
+        assert!(!p.contains("structured data"));
     }
 
     #[test]

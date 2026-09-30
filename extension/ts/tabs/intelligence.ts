@@ -306,15 +306,28 @@ interface PlatformCheckResult {
   ];
 
   const B2B_CHECKS: [string, string][] = [
-    ["Pay through the platform's buyer protection", "Use the platform's protected payment (e.g. Trade Assurance on Alibaba) rather than a direct bank transfer, so the order is covered if it goes wrong."],
+    ["Use buyer protection if the platform offers it", "If the platform has protected payment (e.g. Trade Assurance on Alibaba), pay through it so the order is covered. If it has none, pay only by bank transfer to an account in the company's own name."],
     ["Match the business licence to the bank account", "Ask for the business licence and check that the company name on it matches the listing and the name on the bank account exactly."],
     ["Confirm bank details by phone or video", "Before the first payment, and whenever bank details change, confirm them live with a contact you already know. Never act on changed details sent only by email."],
     ["Order a sample first", "Pay for a sample and check its quality before placing a bulk order."],
     ["Ask for a video call from the factory", "Ask the supplier to show the production line and your product live, to confirm they make it themselves."],
   ];
 
+  // Shown first on a B2B scan when Claude flagged the payment terms
+  // (e.g. Western Union / MoneyGram listed as accepted methods).
+  const B2B_RISKY_PAYMENT_CHECK: [string, string] = [
+    "Do not pay by Western Union, MoneyGram or crypto",
+    "This supplier lists payment methods that cannot be reversed or traced to a company. Pay only by bank transfer to an account in the company's own name, or through the platform's protected payment.",
+  ];
+
   function buildRecommendedChecks(signals: SafelySignal[]): string {
-    const checks = isB2bScan(signals) ? B2B_CHECKS : B2C_CHECKS;
+    const isB2b = isB2bScan(signals);
+    const riskyPayment =
+      isB2b &&
+      signals.some((s) => s.label === "Advance payment request" && s.type === "caution");
+    const checks = isB2b
+      ? (riskyPayment ? [B2B_RISKY_PAYMENT_CHECK] : []).concat(B2B_CHECKS)
+      : B2C_CHECKS;
     const cards = checks
       .map(
         ([title, body]) =>
@@ -352,6 +365,9 @@ interface PlatformCheckResult {
       "</div>" +
       buildSocialPresenceSection() +
       (function (): string {
+        // On B2B scans the "Price analysis" row above already shows this
+        // exact text, so the separate box would only repeat it.
+        if (isB2bScan(pageData.signals)) return "";
         const priceSignal = pageData.signals.find((s: SafelySignal) => s.label === "Price analysis");
         const verdict = priceSignal ? priceSignal.value : "unknown";
         const reasoning = priceSignal ? priceSignal.sub : "No price data available.";
@@ -387,7 +403,10 @@ interface PlatformCheckResult {
   };
 
   const SEVERITY_LABELS: Record<string, string> = {
-    hard: "Confirmed",
+    // Not "Confirmed": the same check's row above can read "Not
+    // confirmed" (e.g. legitimacy not confirmed), and the two looked
+    // like they contradicted each other.
+    hard: "Serious",
     compound: "Pattern match",
     soft: "Worth noting",
   };

@@ -109,6 +109,8 @@ pub struct B2bPageResult {
     pub supplier: B2bSupplierProfile,
     pub listing: B2bListingProfile,
     pub company_key: Option<String>,
+    /// The company's own page on the platform (not the product page).
+    pub company_url: Option<String>,
 }
 
 /// Unchanged signature, kept so existing callers and tests keep
@@ -153,6 +155,7 @@ pub async fn fetch_b2b_page(platform: &str, page_url: &str) -> Option<B2bPageRes
     let mut supplier = scraper.parse_supplier(&html, page_url);
     let listing = scraper.parse_listing(&html, page_url);
     let company_key = scraper.company_key(&html);
+    let company_url = scraper.extract_company_profile_url(&html);
 
     if supplier.company_name.is_none() && listing.title.is_none() {
         eprintln!(
@@ -207,5 +210,6 @@ pub async fn fetch_b2b_page(platform: &str, page_url: &str) -> Option<B2bPageRes
         supplier,
         listing,
         company_key,
+        company_url,
     })
 }

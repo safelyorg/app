@@ -595,6 +595,26 @@ pub fn resolve_supplier_year(
     supplier
 }
 
+/// B2B risk score: warnings give the base score, and any "Serious"
+/// risk factor lifts it to at least the High band (67), +10 for each
+/// extra one. Capped at 100.
+fn b2b_risk_score(base_score: i16, serious_count: i16) -> i16 {
+    let floor = if serious_count > 0 {
+        67 + (serious_count - 1) * 10
+    } else {
+        0
+    };
+    base_score.max(floor).min(100)
+}
+
+/// Serper (web search for the social presence check) is only called
+/// when SERPER_ENABLED is set to "true" / "1". Default: off.
+fn serper_enabled() -> bool {
+    std::env::var("SERPER_ENABLED")
+        .map(|v| matches!(v.trim().to_ascii_lowercase().as_str(), "true" | "1" | "yes"))
+        .unwrap_or(false)
+}
+
 /// The complete, separate B2B analysis path - takes the already-fetched
 /// supplier page (analyze.rs fetches it first, so it can pick the
 /// seller record by company), calls Claude with B2B-specific due-diligence
@@ -663,6 +683,7 @@ pub async fn build_b2b_analysis_path(
         language: request.language.as_deref().unwrap_or("en"),
         unit_price: listing.unit_price.as_deref().unwrap_or(""),
         minimum_order_quantity: listing.minimum_order_quantity.as_deref().unwrap_or(""),
+        payment_type: listing.payment_type.as_deref().unwrap_or(""),
     })
     .await
     .map_err(|e| AnalyzeError::ClaudeAnalysisFailed(e.to_string()))?;
@@ -672,22 +693,40 @@ pub async fn build_b2b_analysis_path(
     signals.push(build_b2b_company_age_signal(&supplier));
     signals.push(build_b2b_transparency_signal(&supplier));
     signals.push(build_b2b_listing_completeness_signal(&listing));
-    let (social_presence_signal, social_candidates) = build_social_presence_matrix(
-        supplier.company_name.as_deref(),
-        supplier.contact_name.as_deref(),
-        supplier.country.as_deref(),
-        supplier.contact_phone.as_deref(),
-        &request.platform,
-    )
-    .await
-    .map_err(AnalyzeError::ClaudeAnalysisFailed)?;
-    signals.push(social_presence_signal);
+    // Social presence search runs on Serper, which costs credits. It is
+    // OFF unless SERPER_ENABLED=true is set in the environment, so a
+    // scan never calls Serper by accident. When off, the "Social
+    // presence check" row is simply left out of the scan.
+    let social_candidates = if serper_enabled() {
+        let (social_presence_signal, social_candidates) = build_social_presence_matrix(
+            supplier.company_name.as_deref(),
+            supplier.contact_name.as_deref(),
+            supplier.country.as_deref(),
+            supplier.contact_phone.as_deref(),
+            &request.platform,
+        )
+        .await
+        .map_err(AnalyzeError::ClaudeAnalysisFailed)?;
+        signals.push(social_presence_signal);
+        social_candidates
+    } else {
+        Vec::new()
+    };
 
     let caution_count = signals
         .iter()
         .filter(|s| s.signal_type == "caution")
         .count();
-    let risk_score = ((caution_count as i16) * 15).min(100) + (fraud_count as i16 * 5).min(20);
+    let base_score = ((caution_count as i16) * 15).min(100) + (fraud_count as i16 * 5).min(20);
+    // Counting warnings alone treats a Western Union demand the same as
+    // a missing field. Any "Serious" risk factor (legitimacy concern,
+    // unsafe payment terms, a seller Safely already scored high-risk)
+    // puts the scan in the High band (67+), plus 10 for each extra one.
+    let serious_count = derive_risk_factors(&signals)
+        .iter()
+        .filter(|f| f.severity == "hard")
+        .count() as i16;
+    let risk_score = b2b_risk_score(base_score, serious_count);
 
     let overall_risk_notes = claude_result.overall_risk_notes.clone();
     Ok((
@@ -698,4 +737,23 @@ pub async fn build_b2b_analysis_path(
         listing,
         social_candidates,
     ))
+}
+
+#[cfg(test)]
+mod b2b_score_tests {
+    use super::b2b_risk_score;
+
+    #[test]
+    fn no_serious_factor_keeps_the_warning_score() {
+        assert_eq!(b2b_risk_score(15, 0), 15);
+        assert_eq!(b2b_risk_score(60, 0), 60);
+    }
+
+    #[test]
+    fn serious_factors_reach_the_high_band() {
+        assert_eq!(b2b_risk_score(15, 1), 67);
+        assert_eq!(b2b_risk_score(60, 3), 87);
+        assert_eq!(b2b_risk_score(90, 1), 90);
+        assert_eq!(b2b_risk_score(100, 6), 100);
+    }
 }
