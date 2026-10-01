@@ -1,15 +1,19 @@
 use crate::models::{analysis::Signal, risk_factors::RiskFactor};
 
 /// True only for a genuinely young account/company - an age measured in
-/// days, weeks or months ("This month", "3 months"). Anything with
-/// "year" in it is not new, and "Unknown", "Not provided" or
+/// days, weeks or months ("This month", "3 months"), or a company
+/// "Founded this year". Any other age with "year" in it is not new, and "Unknown", "Not provided" or
 /// "Invalid date" mean the age is missing, which is not the same as new.
 pub fn is_new_account(account_age: &str) -> bool {
     let age = account_age.to_lowercase();
-    if age.contains("year") {
+    if age.contains("year") && !age.contains("this year") {
         return false;
     }
-    age == "this month" || age.contains("month") || age.contains("week") || age.contains("day")
+    age == "this month"
+        || age.contains("this year")
+        || age.contains("month")
+        || age.contains("week")
+        || age.contains("day")
 }
 
 pub fn find_signal<'a>(signals: &'a [Signal], label: &str) -> Option<&'a Signal> {
@@ -27,14 +31,23 @@ fn is_flagged(signal: &Signal) -> bool {
 /// score is treated as a Serious, network-confirmed problem.
 const MIN_PRIOR_CHECKS_FOR_SERIOUS: u32 = 3;
 
-/// Reads the number of earlier checks from the Safely history signal
-/// ("1 prior checks", "4 prior checks. Average risk score: 70").
-/// Returns 0 when no number can be found.
+/// Reads the number of earlier checks from the Safely history signal:
+/// "Checked once before" -> 1, "Checked 4 times before" -> 4,
+/// "New to Safely" -> 0. The old wording ("4 prior checks") is still
+/// understood. Returns 0 when no number can be found.
 fn prior_check_count(signal: &Signal) -> u32 {
     let text = format!("{} {}", signal.value, signal.sub).to_lowercase();
-    let Some(pos) = text.find("prior check") else {
+    if text.contains("checked once before") {
+        return 1;
+    }
+    let marker = if text.contains(" times before") {
+        " times before"
+    } else if text.contains("prior check") {
+        "prior check"
+    } else {
         return 0;
     };
+    let pos = text.find(marker).unwrap_or(0);
     text[..pos]
         .split_whitespace()
         .last()
@@ -113,7 +126,10 @@ pub fn derive_risk_factors(signals: &[Signal]) -> Vec<RiskFactor> {
     }
 
     // Compound factors
-    let duplicate = find_signal(signals, "Duplicate listing");
+    // B2C calls this card "Duplicate listing"; B2B calls it "Listing
+    // detail" (vague / templated description).
+    let duplicate = find_signal(signals, "Duplicate listing")
+        .or_else(|| find_signal(signals, "Listing detail"));
     let image_auth = find_signal(signals, "Image authenticity");
     if let (Some(d), Some(i)) = (duplicate, image_auth) {
         // Both must be real problems. An image that was simply not
@@ -123,9 +139,9 @@ pub fn derive_risk_factors(signals: &[Signal]) -> Vec<RiskFactor> {
                 severity: "compound".to_string(),
                 name: "likely_counterfeit_or_nonexistent_product".to_string(),
                 description: "A templated, duplicate-style listing combined with unverifiable images suggests the product itself may not genuinely exist or be authentic.".to_string(),
-                contributing_signals: vec!["Duplicate listing".to_string(), "Image authenticity".to_string()],
+                contributing_signals: vec![d.label.clone(), "Image authenticity".to_string()],
             });
-            covered_labels.push("Duplicate listing");
+            covered_labels.push(d.label.as_str());
             covered_labels.push("Image authenticity");
         }
     }
@@ -206,6 +222,9 @@ mod tests {
         assert!(!is_new_account("15 years 8 months"));
         assert!(is_new_account("This month"));
         assert!(is_new_account("3 months"));
+        assert!(is_new_account("Founded this year"));
+        assert!(!is_new_account("About 1 year"));
+        assert!(!is_new_account("About 11 years"));
     }
 
     #[test]
@@ -313,5 +332,75 @@ mod tests {
                 .severity,
             "hard"
         );
+    }
+
+    #[test]
+    fn reads_the_number_of_earlier_checks_in_every_wording() {
+        let count = |v: &str| prior_check_count(&sig("Safely history", v, "info", ""));
+        assert_eq!(count("New to Safely"), 0);
+        assert_eq!(count("Checked once before"), 1);
+        assert_eq!(count("Checked 2 times before"), 2);
+        assert_eq!(count("Checked 12 times before"), 12);
+        assert_eq!(count("3 prior checks"), 3, "old wording still works");
+    }
+
+    #[test]
+    fn two_high_scans_stay_worth_noting_three_become_serious() {
+        let two = vec![sig("Safely history", "Checked 2 times before", "bad", "")];
+        assert!(
+            find(
+                &derive_risk_factors(&two),
+                "network_confirmed_high_risk_seller"
+            )
+            .is_none()
+        );
+        let three = vec![sig("Safely history", "Checked 3 times before", "bad", "")];
+        assert!(
+            find(
+                &derive_risk_factors(&three),
+                "network_confirmed_high_risk_seller"
+            )
+            .is_some()
+        );
+    }
+
+    #[test]
+    fn new_to_safely_is_never_a_risk_factor() {
+        let s = vec![sig("Safely history", "New to Safely", "info", "")];
+        assert!(derive_risk_factors(&s).is_empty());
+    }
+
+    #[test]
+    fn vague_b2b_listing_plus_flagged_images_is_one_compound_factor() {
+        let s = vec![
+            sig("Listing detail", "Vague", "caution", "v"),
+            sig("Image authenticity", "Unverifiable", "caution", "i"),
+        ];
+        let f = derive_risk_factors(&s);
+        assert_eq!(f.len(), 1);
+        let c = find(&f, "likely_counterfeit_or_nonexistent_product").unwrap();
+        assert_eq!(
+            c.contributing_signals,
+            vec!["Listing detail", "Image authenticity"]
+        );
+    }
+
+    #[test]
+    fn vague_b2b_listing_alone_is_worth_noting() {
+        let s = vec![sig("Listing detail", "Vague", "caution", "v")];
+        let f = derive_risk_factors(&s);
+        assert_eq!(f[0].severity, "soft");
+        assert_eq!(f[0].name, "listing_detail_flagged");
+    }
+
+    #[test]
+    fn founded_this_year_with_a_legitimacy_concern_is_named_together() {
+        let s = vec![
+            sig("Overall legitimacy check", "Not confirmed", "caution", "x"),
+            sig("Account age", "Founded this year", "caution", ""),
+        ];
+        let f = derive_risk_factors(&s);
+        assert_eq!(f.len(), 1);
+        assert!(f[0].description.contains("very new (Founded this year)"));
     }
 }

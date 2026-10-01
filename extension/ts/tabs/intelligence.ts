@@ -310,7 +310,7 @@ interface PlatformCheckResult {
     ["Match the business licence to the bank account", "Ask for the business licence and check that the company name on it matches the listing and the name on the bank account exactly."],
     ["Confirm bank details by phone or video", "Before the first payment, and whenever bank details change, confirm them live with a contact you already know. Never act on changed details sent only by email."],
     ["Order a sample first", "Pay for a sample and check its quality before placing a bulk order."],
-    ["Ask for a video call from the factory", "Ask the supplier to show the production line and your product live, to confirm they make it themselves."],
+    ["Ask for a live video call", "Ask the supplier to show where they work and your goods live: the production line if they are a factory, the warehouse or office if they are a trader or shipping company. This confirms they really operate where they say."],
   ];
 
   // Shown first on a B2B scan when Claude flagged the payment terms

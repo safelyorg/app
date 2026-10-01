@@ -9,7 +9,7 @@ use crate::{
         whois::WhoisResult,
     },
 };
-use chrono::{Datelike, NaiveDate, Utc};
+use chrono::{Datelike, Utc};
 
 /// It takes Claude's raw analysis and turns it into a real, ordered list of
 /// 7 separate signal cards each one representing one specific thing that was checked.
@@ -459,10 +459,11 @@ pub fn build_b2b_company_age_signal(supplier: &B2bSupplierProfile) -> Signal {
         };
     }
 
-    let established_date = NaiveDate::from_ymd_opt(established_year, 1, 1)
-        .unwrap_or_else(|| NaiveDate::from_ymd_opt(current_year, 1, 1).unwrap());
-    let value = format_account_age(established_date);
+    // Only the founding YEAR is known, so the age is shown in whole
+    // years ("About 11 years"), not "11 years 9 months" - the months
+    // would just be counted from 1 January and mean nothing.
     let age_years = current_year - established_year;
+    let value = company_age_from_year(age_years);
     let signal_type = if age_years <= 1 { "caution" } else { "good" };
     Signal {
         label: "Account age".to_string(),
@@ -474,6 +475,15 @@ pub fn build_b2b_company_age_signal(supplier: &B2bSupplierProfile) -> Signal {
         signal_type: signal_type.to_string(),
         category: "company".to_string(),
         check_type: "anomaly".to_string(),
+    }
+}
+
+/// "Founded this year", "About 1 year", "About 11 years".
+pub fn company_age_from_year(age_years: i32) -> String {
+    match age_years {
+        i32::MIN..=0 => "Founded this year".to_string(),
+        1 => "About 1 year".to_string(),
+        n => format!("About {} years", n),
     }
 }
 
@@ -577,19 +587,20 @@ fn b2b_finding_to_signal(
     }
 }
 
-/// B2B's "Duplicate listing" card is fed by Claude's listing_specificity
-/// finding, whose `found: true` means the listing IS specific (good).
-/// The card must read the same way as the B2C one ("None found" =
-/// good, "Detected" = templated/generic), not "Confirmed", which a user
-/// reads as "yes, this is a duplicate".
+/// B2B's listing card is fed by Claude's listing_specificity finding,
+/// whose `found: true` means the listing IS specific (good). Claude
+/// only judges whether the description is specific or vague and
+/// template-like - it never searches for copies of the listing - so on
+/// B2B the card is called "Listing detail" ("Specific" / "Vague"),
+/// not "Duplicate listing", which read as "a copy was found".
 fn b2b_listing_specificity_signal(finding: &Finding) -> Signal {
     Signal {
-        label: "Duplicate listing".to_string(),
+        label: "Listing detail".to_string(),
         sub: finding.evidence.clone(),
         value: if finding.found {
-            "None found".to_string()
+            "Specific".to_string()
         } else {
-            "Detected".to_string()
+            "Vague".to_string()
         },
         signal_type: if finding.found {
             "good".to_string()
@@ -692,7 +703,7 @@ fn table_rank(label: &str) -> u8 {
         "Urgency language" => 2,
         "Advance payment request" => 3,
         "Account age" => 4,
-        "Duplicate listing" => 5,
+        "Duplicate listing" | "Listing detail" => 5,
         "Image authenticity" => 6,
         "Overall legitimacy check" => 7,
         "Safely history" => 8,
@@ -750,23 +761,31 @@ mod b2b_signal_tests {
     }
 
     #[test]
-    fn specific_listing_reads_none_found_and_good() {
+    fn company_age_is_shown_in_whole_years() {
+        assert_eq!(company_age_from_year(0), "Founded this year");
+        assert_eq!(company_age_from_year(1), "About 1 year");
+        assert_eq!(company_age_from_year(11), "About 11 years");
+    }
+
+    #[test]
+    fn specific_listing_reads_specific_and_good() {
         let s = build_b2b_claude_signals(&analysis(true, true));
-        let d = get(&s, "Duplicate listing");
+        let d = get(&s, "Listing detail");
         assert_eq!(
             (d.value.as_str(), d.signal_type.as_str()),
-            ("None found", "good")
+            ("Specific", "good")
         );
     }
 
     #[test]
-    fn templated_listing_reads_detected_and_caution() {
+    fn templated_listing_reads_vague_and_caution() {
         let s = build_b2b_claude_signals(&analysis(false, true));
-        let d = get(&s, "Duplicate listing");
+        let d = get(&s, "Listing detail");
         assert_eq!(
             (d.value.as_str(), d.signal_type.as_str()),
-            ("Detected", "caution")
+            ("Vague", "caution")
         );
+        assert!(s.iter().all(|x| x.label != "Duplicate listing"));
     }
 
     #[test]

@@ -158,19 +158,23 @@ impl B2bScraper for B2brazilScraper {
 
     fn extract_company_profile_url(&self, listing_html: &str) -> Option<String> {
         let document = Html::parse_document(listing_html);
-        let sel = Selector::parse("a.nav-home").ok()?;
-        document
-            .select(&sel)
-            .next()?
-            .value()
-            .attr("href")
-            .map(|href| {
-                if href.starts_with("http") {
-                    href.to_string()
-                } else {
-                    format!("https://b2brazil.com{}", href)
-                }
-            })
+        // 1. The "Home" link in the company's hotsite menu.
+        if let Some(href) = select_attr(&document, "a.nav-home", "href") {
+            return Some(absolute_b2brazil_url(&href));
+        }
+        // 2. Some product pages have no "Home" link. The company page is
+        //    still the /hotsite/{company}/ part of any hotsite link or of
+        //    the page's own address, so it is rebuilt from that. Without
+        //    this, the seller silently became one record per product.
+        let fallbacks = [
+            select_attr(&document, r#"link[rel="canonical"]"#, "href"),
+            select_attr(&document, r#"meta[property="og:url"]"#, "content"),
+            select_attr(&document, r#"a[href*="/hotsite/"]"#, "href"),
+        ];
+        fallbacks
+            .into_iter()
+            .flatten()
+            .find_map(|href| hotsite_home_url(&absolute_b2brazil_url(&href)))
     }
 
     fn enrich_from_company_profile(
@@ -199,6 +203,24 @@ impl B2bScraper for B2brazilScraper {
         let url = self.extract_company_profile_url(listing_html)?;
         hotsite_slug(&url)
     }
+}
+
+fn absolute_b2brazil_url(href: &str) -> String {
+    let href = href.trim();
+    if href.starts_with("http") {
+        href.to_string()
+    } else {
+        format!("https://b2brazil.com{}", href)
+    }
+}
+
+/// "https://b2brazil.com/hotsite/siltimodapraia/some-product" ->
+/// "https://b2brazil.com/hotsite/siltimodapraia" (keeps the site, so
+/// b2colombia and the other sister sites work too).
+fn hotsite_home_url(url: &str) -> Option<String> {
+    let origin = url.split("/hotsite/").next()?;
+    let slug = hotsite_slug(url)?;
+    Some(format!("{}/hotsite/{}", origin, slug))
 }
 
 /// "https://b2brazil.com/hotsite/asmetecgmbh/tractor" -> "asmetecgmbh".
@@ -451,6 +473,40 @@ mod tests {
         assert_eq!(
             clean_masked_name("  SHOUNAN   ******** "),
             Some("SHOUNAN".to_string())
+        );
+    }
+
+    #[test]
+    fn company_link_is_rebuilt_when_the_home_link_is_missing() {
+        let html = r#"<html><head><link rel="canonical" href="https://b2brazil.com/hotsite/siltimodapraia/-set-top-and-legging-fashion-babi-"></head><body></body></html>"#;
+        assert_eq!(
+            B2brazilScraper.extract_company_profile_url(html).as_deref(),
+            Some("https://b2brazil.com/hotsite/siltimodapraia")
+        );
+        assert_eq!(
+            B2brazilScraper.company_key(html).as_deref(),
+            Some("siltimodapraia")
+        );
+
+        let link_only = r#"<a href="/hotsite/siltimodapraia/products">Products</a>"#;
+        assert_eq!(
+            B2brazilScraper
+                .extract_company_profile_url(link_only)
+                .as_deref(),
+            Some("https://b2brazil.com/hotsite/siltimodapraia")
+        );
+
+        let sister_site = r#"<meta property="og:url" content="https://en.b2colombia.com/hotsite/yanbianstatexurong2/hair-styling-wand">"#;
+        assert_eq!(
+            B2brazilScraper
+                .extract_company_profile_url(sister_site)
+                .as_deref(),
+            Some("https://en.b2colombia.com/hotsite/yanbianstatexurong2")
+        );
+
+        assert_eq!(
+            B2brazilScraper.extract_company_profile_url("<a href=\"/plans\">x</a>"),
+            None
         );
     }
 

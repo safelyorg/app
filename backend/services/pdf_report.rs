@@ -9,6 +9,16 @@ const COLOR_HIGH: style::Color = style::Color::Rgb(200, 40, 40);
 const COLOR_MUTED: style::Color = style::Color::Rgb(120, 120, 128);
 const COLOR_INK: style::Color = style::Color::Rgb(25, 25, 30);
 
+/// The marker the completeness checks use to carry their per-field
+/// checklist ("Employee count|true;Sales revenue|false"). The extension
+/// turns it into ticks and crosses; the PDF turns it into plain text.
+const CHECKLIST_MARKER: &str = "###CHECKLIST###";
+
+/// Longest piece of a web address put on one line. The PDF library
+/// only wraps at spaces, so a long address with no spaces would not
+/// fit the column and was left out entirely.
+const URL_LINE_CHARS: usize = 60;
+
 pub fn generate_evidence_pdf(detail: &HistoryDetailResponse) -> Result<Vec<u8>, String> {
     let font_dir = concat!(env!("CARGO_MANIFEST_DIR"), "/fonts");
     let font_family = fonts::from_files(font_dir, "Roboto", None)
@@ -106,7 +116,11 @@ pub fn generate_evidence_pdf(detail: &HistoryDetailResponse) -> Result<Vec<u8>, 
     // Listing + seller info table
     push_section_heading(&mut doc, "LISTING & SELLER");
     let mut info_table = elements::TableLayout::new(vec![1, 2]);
-    push_kv_row(&mut info_table, "Listing URL", &detail.listing_url);
+    push_kv_lines(
+        &mut info_table,
+        "Listing URL",
+        &url_lines(&detail.listing_url, URL_LINE_CHARS),
+    );
     push_kv_row(
         &mut info_table,
         "Seller",
@@ -134,7 +148,8 @@ pub fn generate_evidence_pdf(detail: &HistoryDetailResponse) -> Result<Vec<u8>, 
             .clone()
             .unwrap_or_else(|| "Not found".to_string()),
     );
-    push_kv_row(&mut info_table, "Account age", &detail.seller.account_age);
+    let account_age = report_account_age(detail);
+    push_kv_row(&mut info_table, "Account age", &account_age);
     push_kv_row(
         &mut info_table,
         "Location",
@@ -153,9 +168,12 @@ pub fn generate_evidence_pdf(detail: &HistoryDetailResponse) -> Result<Vec<u8>, 
             .clone()
             .unwrap_or_else(|| "Not found".to_string()),
     );
+    // Safely's own status for this seller (fraud reports), the same as
+    // "Status" in the extension - not the platform's verified badge,
+    // which is the separate "Platform verification" check below.
     push_kv_row(
         &mut info_table,
-        "Verification",
+        "Safely status",
         &format!("{:?}", detail.seller.verification),
     );
     doc.push(info_table);
@@ -340,6 +358,82 @@ fn push_kv_row(table: &mut elements::TableLayout, key: &str, value: &str) {
         .ok();
 }
 
+/// Like push_kv_row, but the value is several lines (a long web address
+/// split into pieces that fit the column).
+fn push_kv_lines(table: &mut elements::TableLayout, key: &str, lines: &[String]) {
+    let mut value = elements::LinearLayout::vertical();
+    for line in lines {
+        value.push(
+            elements::Paragraph::new(line.as_str())
+                .styled(style::Style::new().with_font_size(9).with_color(COLOR_INK)),
+        );
+    }
+    table
+        .row()
+        .element(elements::PaddedElement::new(
+            elements::Paragraph::new(key).styled(
+                style::Style::new()
+                    .bold()
+                    .with_font_size(9)
+                    .with_color(COLOR_INK),
+            ),
+            Margins::trbl(0, 0, 4, 0),
+        ))
+        .element(elements::PaddedElement::new(
+            value,
+            Margins::trbl(0, 0, 4, 0),
+        ))
+        .push()
+        .ok();
+}
+
+/// A web address without its tracking part ("?spm=...") and cut into
+/// pieces of at most `max_chars`, so it fits in the PDF column.
+fn url_lines(url: &str, max_chars: usize) -> Vec<String> {
+    let clean = url.split(['?', '#']).next().unwrap_or("").trim();
+    if clean.is_empty() {
+        return vec!["Not found".to_string()];
+    }
+    let chars: Vec<char> = clean.chars().collect();
+    chars
+        .chunks(max_chars.max(1))
+        .map(|c| c.iter().collect())
+        .collect()
+}
+
+/// Turns a completeness check's hidden checklist into readable text:
+/// "2 of 3 ... filled in.###CHECKLIST###Employee count|true;Export
+/// percentage|false" -> "2 of 3 ... filled in. Provided: Employee
+/// count. Missing: Export percentage."
+fn readable_sub(sub: &str) -> String {
+    let Some((text, checklist)) = sub.split_once(CHECKLIST_MARKER) else {
+        return sub.to_string();
+    };
+    let mut provided = Vec::new();
+    let mut missing = Vec::new();
+    for item in checklist.split(';') {
+        if let Some((name, present)) = item.split_once('|') {
+            let name = name.trim();
+            if name.is_empty() {
+                continue;
+            }
+            if present.trim() == "true" {
+                provided.push(name);
+            } else {
+                missing.push(name);
+            }
+        }
+    }
+    let mut out = text.trim().to_string();
+    if !provided.is_empty() {
+        out.push_str(&format!(" Provided: {}.", provided.join(", ")));
+    }
+    if !missing.is_empty() {
+        out.push_str(&format!(" Missing: {}.", missing.join(", ")));
+    }
+    out
+}
+
 fn push_summary_strip(doc: &mut Document, signals: &[Value]) {
     let watch_list = [
         "Domain check",
@@ -386,16 +480,8 @@ fn build_signal_card(
         .and_then(|v| v.as_str())
         .unwrap_or("Unknown")
         .to_string();
-    let value = signal
-        .get("value")
-        .and_then(|v| v.as_str())
-        .unwrap_or("")
-        .to_string();
-    let sub = signal
-        .get("sub")
-        .and_then(|v| v.as_str())
-        .unwrap_or("")
-        .to_string();
+    let value = capitalize(signal.get("value").and_then(|v| v.as_str()).unwrap_or(""));
+    let sub = readable_sub(signal.get("sub").and_then(|v| v.as_str()).unwrap_or(""));
     let signal_type = signal
         .get("type")
         .and_then(|v| v.as_str())
@@ -513,5 +599,68 @@ pub fn capitalize(s: &str) -> String {
     match chars.next() {
         None => String::new(),
         Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
+    }
+}
+
+/// On a B2B report only the founding YEAR is known, so the age is taken
+/// from the "Account age" check ("About 11 years", "Founded this year")
+/// instead of being counted in months from 1 January. Other reports
+/// (OLX) keep the seller's normal account age.
+fn report_account_age(detail: &HistoryDetailResponse) -> String {
+    let signals = detail.signals.as_array();
+    let is_b2b = signals.map_or(false, |s| {
+        s.iter().any(|x| {
+            matches!(
+                x.get("label").and_then(|v| v.as_str()),
+                Some("Listing completeness") | Some("Company profile completeness")
+            )
+        })
+    });
+    if is_b2b {
+        let check_value = signals
+            .and_then(|s| {
+                s.iter()
+                    .find(|x| x.get("label").and_then(|v| v.as_str()) == Some("Account age"))
+            })
+            .and_then(|x| x.get("value").and_then(|v| v.as_str()))
+            .filter(|v| *v != "Not provided" && *v != "Invalid date");
+        if let Some(age) = check_value {
+            return age.to_string();
+        }
+    }
+    detail.seller.account_age.clone()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn checklist_becomes_readable_text() {
+        let sub = "2 of 3 transparency fields (employees, sales volume, export percentage) are filled in.###CHECKLIST###Employee count|true;Sales revenue|true;Export percentage|false";
+        assert_eq!(
+            readable_sub(sub),
+            "2 of 3 transparency fields (employees, sales volume, export percentage) are filled in. Provided: Employee count, Sales revenue. Missing: Export percentage."
+        );
+        assert_eq!(readable_sub("No checklist here."), "No checklist here.");
+        assert!(!readable_sub(sub).contains("###"));
+    }
+
+    #[test]
+    fn long_url_is_cleaned_and_split_to_fit() {
+        let url = "https://www.alibaba.com/product-detail/Door-to-Door-DHL-FEDEX-UPS_1601630546813.html?spm=a2700.product_home&priceId=e46a";
+        let lines = url_lines(url, 60);
+        assert!(lines.iter().all(|l| l.chars().count() <= 60));
+        assert_eq!(
+            lines.concat(),
+            "https://www.alibaba.com/product-detail/Door-to-Door-DHL-FEDEX-UPS_1601630546813.html"
+        );
+        assert_eq!(url_lines("", 60), vec!["Not found".to_string()]);
+    }
+
+    #[test]
+    fn signal_values_are_capitalized() {
+        assert_eq!(capitalize("normal"), "Normal");
+        assert_eq!(capitalize("Verified"), "Verified");
     }
 }

@@ -9,8 +9,18 @@ use std::env::var;
 pub struct ClaudeRequest {
     pub model: String,
     pub max_tokens: u32,
+    /// How much Claude's answers vary between runs. None = Claude's
+    /// default (1.0, the most varied). The scans use SCAN_TEMPERATURE.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub temperature: Option<f32>,
     pub messages: Vec<Message>,
 }
+
+/// Switch: 0.0 makes Claude give (nearly) the same verdicts every time
+/// the same listing is scanned, instead of flipping between e.g.
+/// "Normal" and "Abnormal" on a borderline price. Set to None to go
+/// back to Claude's default.
+pub const SCAN_TEMPERATURE: Option<f32> = Some(0.0);
 
 #[derive(Serialize)]
 pub struct Message {
@@ -192,6 +202,7 @@ pub async fn call_b2c_claude(args: CallClaudeArguments<'_>) -> Result<ClaudeAnal
     let payload = ClaudeRequest {
         model: String::from("claude-sonnet-4-6"),
         max_tokens: 2048,
+        temperature: SCAN_TEMPERATURE,
         messages: vec![Message {
             role: "user".to_string(),
             content: content_blocks,
@@ -251,6 +262,7 @@ pub async fn call_b2b_claude(
     let payload = ClaudeRequest {
         model: String::from("claude-sonnet-4-6"),
         max_tokens: 2048,
+        temperature: SCAN_TEMPERATURE,
         messages: vec![Message {
             role: "user".to_string(),
             content: content_blocks,
@@ -566,6 +578,28 @@ pub fn b2b_content(arg: &CallB2bClaudeArguments) -> String {
 #[cfg(test)]
 mod b2b_prompt_tests {
     use super::*;
+
+    #[test]
+    fn scan_requests_use_a_fixed_temperature() {
+        let request = ClaudeRequest {
+            model: "m".to_string(),
+            max_tokens: 1,
+            temperature: SCAN_TEMPERATURE,
+            messages: vec![],
+        };
+        let json = serde_json::to_value(&request).unwrap();
+        assert_eq!(json["temperature"], 0.0);
+
+        let default = ClaudeRequest {
+            temperature: None,
+            ..request
+        };
+        let json = serde_json::to_value(&default).unwrap();
+        assert!(
+            json.get("temperature").is_none(),
+            "None leaves Claude's default"
+        );
+    }
 
     #[test]
     fn prompt_carries_todays_date() {

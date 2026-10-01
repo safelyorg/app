@@ -1984,7 +1984,7 @@ async fn build_all_signals_without_domain_check() {
     let signals_without_domain = build_signals(&claude_analysis, &seller);
     let all_signals = build_all_signals(&pool, &claude_analysis, &seller, &analyze_request).await;
 
-    assert_eq!(all_signals.len(), signals_without_domain.len() + 2);
+    assert_eq!(all_signals.len(), signals_without_domain.len() + 3);
 }
 
 #[tokio::test]
@@ -2068,7 +2068,7 @@ async fn build_all_signals_with_domain_check() {
     let signals_without_domain = build_signals(&claude_analysis, &seller);
     let all_signals = build_all_signals(&pool, &claude_analysis, &seller, &analyze_request).await;
 
-    assert_eq!(all_signals.len(), signals_without_domain.len() + 3);
+    assert_eq!(all_signals.len(), signals_without_domain.len() + 4);
     assert_eq!(all_signals[0].label, "Domain check");
 }
 
@@ -2085,8 +2085,8 @@ async fn build_network_memory_signal_uses_singular_phrasing_for_exactly_one_prio
 
     assert!(result.is_some());
     let signal = result.unwrap();
-    assert_eq!(signal.value, "1 prior checks");
-    assert!(signal.sub.contains("1 time before"));
+    assert_eq!(signal.value, "Checked once before");
+    assert!(signal.sub.contains("once before"));
 
     cleanup_seller_and_analysis(&pool, platform_id).await;
 }
@@ -2105,7 +2105,7 @@ async fn build_network_memory_signal_uses_plural_phrasing_for_multiple_prior_che
 
     assert!(result.is_some());
     let signal = result.unwrap();
-    assert_eq!(signal.value, "3 prior checks");
+    assert_eq!(signal.value, "Checked 3 times before");
     assert!(signal.sub.contains("3 times before"));
 
     cleanup_seller_and_analysis(&pool, platform_id).await;
@@ -2124,7 +2124,7 @@ async fn build_network_memory_signal_calculates_the_real_correct_average() {
     let result = build_network_memory_signal(&pool, seller_id).await;
 
     assert!(result.is_some());
-    assert!(result.unwrap().sub.contains("Average risk score: 20."));
+    assert!(result.unwrap().sub.contains("average risk score was 20 out of 100"));
 
     cleanup_seller_and_analysis(&pool, platform_id).await;
 }
@@ -2197,7 +2197,7 @@ async fn build_network_memory_signal_correctly_scopes_to_only_this_specific_sell
     insert_raw_evidence_row(&pool, analysis_b, seller_b, "99").await;
 
     let result = build_network_memory_signal(&pool, seller_a).await;
-    assert_eq!(result.unwrap().value, "1 prior checks");
+    assert_eq!(result.unwrap().value, "Checked once before");
 
     cleanup_seller_and_analysis(&pool, platform_id_a).await;
     cleanup_seller_and_analysis(&pool, platform_id_b).await;
@@ -2215,7 +2215,7 @@ async fn build_network_memory_signal_ignores_a_genuinely_malformed_value_without
     let result = build_network_memory_signal(&pool, seller_id).await;
 
     assert!(result.is_some());
-    assert_eq!(result.unwrap().value, "1 prior checks");
+    assert_eq!(result.unwrap().value, "Checked once before");
 
     cleanup_seller_and_analysis(&pool, platform_id).await;
 }
@@ -3026,7 +3026,7 @@ fn derive_risk_factors_flags_a_confirmed_fraud_pattern_as_hard() {
 
 #[test]
 fn derive_risk_factors_flags_a_bad_safely_history_as_hard() {
-    let signals = vec![make_signals("Safely history", "3 prior checks", "bad")];
+    let signals = vec![make_signals("Safely history", "Checked 3 times before", "bad")];
     let factors = derive_risk_factors(&signals);
     assert_eq!(factors.len(), 1);
     assert_eq!(factors[0].severity, "hard");
@@ -3035,7 +3035,7 @@ fn derive_risk_factors_flags_a_bad_safely_history_as_hard() {
 
 #[test]
 fn derive_risk_factors_does_not_flag_safely_history_when_it_is_not_bad() {
-    let signals = vec![make_signals("Safely history", "1 prior checks", "good")];
+    let signals = vec![make_signals("Safely history", "Checked once before", "good")];
     let factors = derive_risk_factors(&signals);
     assert_eq!(factors.len(), 0);
 }
@@ -4749,11 +4749,23 @@ async fn database_error_passes_the_real_message_straight_through() {
 
 #[tokio::test]
 async fn scan_limit_reached_and_trial_scan_limit_reached_use_genuinely_different_error_codes() {
-    // Guards against the two payment-required paths being merged or
-    // mixed up - a trial user and a paid user hitting their
-    // respective limits must be distinguishable by the extension.
     let (_, scan_body) = response_json(AnalyzeError::ScanLimitReached(10)).await;
     let (_, trial_body) = response_json(AnalyzeError::TrialScanLimitReached(10)).await;
 
     assert_ne!(scan_body["error"], trial_body["error"]);
+}
+
+#[tokio::test]
+async fn build_network_memory_signal_shows_a_neutral_first_check_when_there_is_no_history() {
+    let pool = admin_pool().await;
+    let platform_id = "network_memory_first_check_001";
+    let (_analysis_id, seller_id) = setup_real_seller_and_analysis(&pool, platform_id).await;
+
+    let result = build_network_memory_signal(&pool, seller_id).await;
+
+    let signal = result.expect("a first check should still show the Safely history line");
+    assert_eq!(signal.value, "New to Safely");
+    assert_eq!(signal.signal_type, "info");
+
+    cleanup_seller_and_analysis(&pool, platform_id).await;
 }

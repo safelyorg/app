@@ -63,7 +63,7 @@ fn found_false_maps_to_caution_for_b2b_finding_signals() {
     for label in [
         "Overall legitimacy check",
         "Registration consistency",
-        "Duplicate listing",
+        "Listing detail",
         "Contact info",
     ] {
         let signal = signals.iter().find(|s| s.label == label).unwrap();
@@ -72,10 +72,10 @@ fn found_false_maps_to_caution_for_b2b_finding_signals() {
             "expected 'caution' for {}",
             label
         );
-        // Duplicate listing reads like the B2C card ("Detected" = templated
-        // listing); the other three keep "Not confirmed".
-        let expected = if label == "Duplicate listing" {
-            "Detected"
+        // Listing detail reads "Vague" for a templated listing; the other
+        // three keep "Not confirmed".
+        let expected = if label == "Listing detail" {
+            "Vague"
         } else {
             "Not confirmed"
         };
@@ -91,15 +91,15 @@ fn found_true_maps_to_good_for_b2b_finding_signals() {
     for label in [
         "Overall legitimacy check",
         "Registration consistency",
-        "Duplicate listing",
+        "Listing detail",
         "Contact info",
     ] {
         let signal = signals.iter().find(|s| s.label == label).unwrap();
         assert_eq!(signal.signal_type, "good", "expected 'good' for {}", label);
-        // Duplicate listing reads like the B2C card ("None found" = specific,
-        // original listing); the other three keep "Confirmed".
-        let expected = if label == "Duplicate listing" {
-            "None found"
+        // Listing detail reads "Specific" for a detailed listing; the
+        // other three keep "Confirmed".
+        let expected = if label == "Listing detail" {
+            "Specific"
         } else {
             "Confirmed"
         };
@@ -122,7 +122,7 @@ fn mixed_results_are_each_scored_independently() {
         .unwrap();
     let specificity = signals
         .iter()
-        .find(|s| s.label == "Duplicate listing")
+        .find(|s| s.label == "Listing detail")
         .unwrap();
     let contact = signals.iter().find(|s| s.label == "Contact info").unwrap();
 
@@ -130,6 +130,17 @@ fn mixed_results_are_each_scored_independently() {
     assert_eq!(consistency.signal_type, "caution");
     assert_eq!(specificity.signal_type, "good");
     assert_eq!(contact.signal_type, "caution");
+}
+
+#[test]
+fn b2b_never_shows_a_duplicate_listing_card() {
+    // On B2B, Claude only judges whether the description is specific or
+    // vague - it never looks for copies - so the card is "Listing detail".
+    for found in [true, false] {
+        let signals = build_b2b_claude_signals(&make_analysis(true, true, found, true));
+        assert!(signals.iter().all(|s| s.label != "Duplicate listing"));
+        assert!(signals.iter().any(|s| s.label == "Listing detail"));
+    }
 }
 
 #[test]
@@ -165,7 +176,7 @@ fn each_signal_has_the_correct_real_category_and_check_type() {
 
     let specificity = signals
         .iter()
-        .find(|s| s.label == "Duplicate listing")
+        .find(|s| s.label == "Listing detail")
         .unwrap();
     assert_eq!(specificity.category, "listing");
     assert_eq!(specificity.check_type, "pattern");

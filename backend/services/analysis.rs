@@ -417,6 +417,14 @@ pub async fn save_and_build_response(
         .unwrap_or_else(|_| vec![0i32; 12]);
 
     let mut seller_response = SellersResponse::from(data.seller);
+    // B2B: show the same company age as the "Account age" check
+    // ("About 11 years"), not one counted in months from 1 January -
+    // only the founding year is known.
+    if data.is_b2b {
+        if let Some(age) = b2b_company_age(&data.signals) {
+            seller_response.account_age = age;
+        }
+    }
     seller_response.network_summary = data.network_summary;
     seller_response.monthly_activity = monthly_activity;
 
@@ -595,6 +603,16 @@ pub fn resolve_supplier_year(
     supplier
 }
 
+/// The company age from the B2B "Account age" check, when it has one
+/// (not "Not provided" / "Invalid date").
+fn b2b_company_age(signals: &[Signal]) -> Option<String> {
+    signals
+        .iter()
+        .find(|s| s.label == "Account age")
+        .map(|s| s.value.clone())
+        .filter(|v| v != "Not provided" && v != "Invalid date")
+}
+
 /// B2B risk score: warnings give the base score, and any "Serious"
 /// risk factor lifts it to at least the High band (67), +10 for each
 /// extra one. Capped at 100.
@@ -613,6 +631,28 @@ fn serper_enabled() -> bool {
     std::env::var("SERPER_ENABLED")
         .map(|v| matches!(v.trim().to_ascii_lowercase().as_str(), "true" | "1" | "yes"))
         .unwrap_or(false)
+}
+
+/// What Claude sees as the price: the unit price and, when the listing
+/// also shows one, the FOB price. TradeWheel often shows the real
+/// per-unit price ("60 - 80 USD / Carat") only in the FOB line.
+fn price_for_claude(listing: &B2bListingProfile) -> String {
+    let unit = listing
+        .unit_price
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty());
+    let fob = listing
+        .fob_price
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty());
+    match (unit, fob) {
+        (Some(u), Some(f)) if u != f => format!("{u} (FOB price: {f})"),
+        (Some(u), _) => u.to_string(),
+        (None, Some(f)) => format!("FOB price: {f}"),
+        (None, None) => String::new(),
+    }
 }
 
 /// The complete, separate B2B analysis path - takes the already-fetched
@@ -667,6 +707,8 @@ pub async fn build_b2b_analysis_path(
     let supplier = resolve_supplier_contact_name(supplier, known_seller_handle);
     let supplier = resolve_supplier_year(supplier, known_join_date);
 
+    let price_text = price_for_claude(&listing);
+
     let claude_result = call_b2b_claude(CallB2bClaudeArguments {
         platform: &request.platform,
         company_name: supplier.company_name.as_deref().unwrap_or("Unknown"),
@@ -681,7 +723,7 @@ pub async fn build_b2b_analysis_path(
         product_description: listing.description.as_deref().unwrap_or("None provided"),
         image_urls: &listing.image_urls,
         language: request.language.as_deref().unwrap_or("en"),
-        unit_price: listing.unit_price.as_deref().unwrap_or(""),
+        unit_price: &price_text,
         minimum_order_quantity: listing.minimum_order_quantity.as_deref().unwrap_or(""),
         payment_type: listing.payment_type.as_deref().unwrap_or(""),
     })
@@ -755,5 +797,40 @@ mod b2b_score_tests {
         assert_eq!(b2b_risk_score(60, 3), 87);
         assert_eq!(b2b_risk_score(90, 1), 90);
         assert_eq!(b2b_risk_score(100, 6), 100);
+    }
+}
+
+#[cfg(test)]
+mod b2b_company_age_tests {
+    use super::b2b_company_age;
+    use crate::models::analysis::Signal;
+
+    fn age(value: &str) -> Signal {
+        Signal {
+            label: "Account age".to_string(),
+            sub: String::new(),
+            value: value.to_string(),
+            signal_type: "good".to_string(),
+            category: "company".to_string(),
+            check_type: "anomaly".to_string(),
+        }
+    }
+
+    #[test]
+    fn uses_the_account_age_check_value() {
+        assert_eq!(
+            b2b_company_age(&[age("About 11 years")]).as_deref(),
+            Some("About 11 years")
+        );
+        assert_eq!(
+            b2b_company_age(&[age("Founded this year")]).as_deref(),
+            Some("Founded this year")
+        );
+    }
+
+    #[test]
+    fn keeps_the_old_value_when_no_year_is_known() {
+        assert_eq!(b2b_company_age(&[age("Not provided")]), None);
+        assert_eq!(b2b_company_age(&[]), None);
     }
 }
