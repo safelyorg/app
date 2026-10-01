@@ -3,25 +3,52 @@ use scraper::{ElementRef, Html, Selector};
 
 pub struct B2bmapScraper;
 
+/// Longest product description passed on to the check.
+const MAX_DESCRIPTION_CHARS: usize = 3000;
+
+/// At most this many product photos are kept (same as the other B2B
+/// scrapers).
+const MAX_IMAGES: usize = 3;
+
+/// b2bmap's own pages - never a supplier's website.
+const B2BMAP_HOST: &str = "b2bmap.com";
+
 fn text_of(el: &ElementRef) -> String {
-    el.text().collect::<Vec<_>>().join(" ")
+    collapse_whitespace(&el.text().collect::<Vec<_>>().join(" "))
+}
+
+fn collapse_whitespace(s: &str) -> String {
+    s.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
 fn clean_optional_text(raw: &str) -> Option<String> {
-    let trimmed = raw.trim();
+    let trimmed = collapse_whitespace(raw);
     if trimmed.is_empty() {
         None
     } else {
-        Some(trimmed.to_string())
+        Some(trimmed)
     }
 }
 
-/// Reads a value out of any of b2bmap's real "label / value" tables -
-/// covers both shapes actually used on the site: a plain label with
-/// no colon (the top product-summary table, e.g. "MOQ") and a label
-/// with a trailing colon (the Payment/Packaging/Delivery table and
-/// the Member Information table, e.g. "Employees:") - normalizing
-/// both by trimming a trailing ':' before comparing.
+/// Values b2bmap shows instead of a real value.
+fn non_placeholder(value: Option<String>) -> Option<String> {
+    value.filter(|v| {
+        let lower = v.to_lowercase();
+        !matches!(lower.as_str(), "-" | "n/a" | "not provided" | "negotiable")
+    })
+}
+
+/// A number b2bmap has masked for visitors without a paid account,
+/// e.g. "+848783xxxxx".
+fn looks_masked(value: &str) -> bool {
+    value.contains('*') || value.to_lowercase().contains('x')
+}
+
+/// Reads a value out of any of b2bmap's "label / value" tables. Covers
+/// both shapes used on the site: a 2-cell "label | value" row (the
+/// product summary and payment tables) and a 3-cell "label | : | value"
+/// row (the Member Information table). The value is always the LAST
+/// cell; a trailing ':' on the label is ignored.
 fn find_table_value(document: &Html, table_selector: &str, label: &str) -> Option<String> {
     let table_sel = Selector::parse(table_selector).ok()?;
     let row_sel = Selector::parse("tr").ok()?;
@@ -33,15 +60,8 @@ fn find_table_value(document: &Html, table_selector: &str, label: &str) -> Optio
             if cells.len() < 2 {
                 continue;
             }
-            let row_label = text_of(&cells[0]).trim().trim_end_matches(':').to_string();
+            let row_label = text_of(&cells[0]).trim_end_matches(':').trim().to_string();
             if row_label.eq_ignore_ascii_case(label) {
-                // Real b2bmap tables come in two shapes: a plain
-                // 2-cell "label / value" row (product-summery-table)
-                // and a 3-cell "label / : / value" row (the Member
-                // Information table). The value is always the LAST
-                // cell in the row either way, so read from the end
-                // rather than assuming index 1 - assuming 1 silently
-                // grabbed the ":" separator cell on 3-cell rows.
                 return clean_optional_text(&text_of(cells.last().unwrap()));
             }
         }
@@ -49,12 +69,37 @@ fn find_table_value(document: &Html, table_selector: &str, label: &str) -> Optio
     None
 }
 
+/// Every "label: value" row of a table, in page order (labels without
+/// the trailing ':').
+fn table_pairs(document: &Html, table_selector: &str) -> Vec<(String, String)> {
+    let mut pairs = Vec::new();
+    let (Ok(table_sel), Ok(row_sel), Ok(cell_sel)) = (
+        Selector::parse(table_selector),
+        Selector::parse("tr"),
+        Selector::parse("td"),
+    ) else {
+        return pairs;
+    };
+    for table in document.select(&table_sel) {
+        for row in table.select(&row_sel) {
+            let cells: Vec<_> = row.select(&cell_sel).collect();
+            if cells.len() < 2 {
+                continue;
+            }
+            let label = text_of(&cells[0]).trim_end_matches(':').trim().to_string();
+            let value = text_of(cells.last().unwrap());
+            if !label.is_empty() && !value.is_empty() {
+                pairs.push((label, value));
+            }
+        }
+    }
+    pairs
+}
+
 /// Reads a value out of the Company Overview section on the company
-/// profile page - a real, actual <div> grid rather than a <table>
-/// (unlike every other section on the same page), so it needs its
-/// own, separate lookup.
+/// page - a <div> grid rather than a <table>.
 fn find_overview_field(document: &Html, label: &str) -> Option<String> {
-    let row_sel = Selector::parse("div.d-md-table-row, div.d-flex.d-md-table-row").ok()?;
+    let row_sel = Selector::parse("div.d-md-table-row").ok()?;
     let cell_sel = Selector::parse("div.d-md-table-cell").ok()?;
 
     for row in document.select(&row_sel) {
@@ -62,7 +107,7 @@ fn find_overview_field(document: &Html, label: &str) -> Option<String> {
         if cells.len() < 2 {
             continue;
         }
-        let row_label = text_of(&cells[0]).trim().trim_end_matches(':').to_string();
+        let row_label = text_of(&cells[0]).trim_end_matches(':').trim().to_string();
         if row_label.eq_ignore_ascii_case(label) {
             return clean_optional_text(&text_of(&cells[1]));
         }
@@ -70,14 +115,81 @@ fn find_overview_field(document: &Html, label: &str) -> Option<String> {
     None
 }
 
-/// The real supplier-name link in the product page's sidebar (e.g.
-/// "Wuhan Nice Laser Co., Ltd" linking to
-/// b2bmap.com/wuhan-nice-laser) - this exact selector is what both
-/// the company name AND the company profile URL are read from, since
-/// on b2bmap they're the same element.
+/// The supplier-name link in the product page's sidebar (e.g. "Loyal
+/// Vina Co., Ltd" linking to b2bmap.com/loyal-vina) - both the company
+/// name AND the company page address are read from it.
 fn find_supplier_name_link(document: &Html) -> Option<ElementRef<'_>> {
     let sel = Selector::parse("h4.text-18.text-lg-22 a").ok()?;
     document.select(&sel).next()
+}
+
+/// "https://b2bmap.com/loyal-vina" (or ".../loyal-vina/contact-info")
+/// -> "loyal-vina". None for b2bmap's own sections ("/products/...").
+fn company_slug(url: &str) -> Option<String> {
+    let after_host = url.split(B2BMAP_HOST).nth(1)?;
+    let path = after_host.split(['?', '#']).next()?;
+    let slug = path
+        .split('/')
+        .find(|s| !s.is_empty())?
+        .trim()
+        .to_lowercase();
+    let reserved = [
+        "products",
+        "product-list",
+        "companies",
+        "company-list",
+        "buyleads",
+        "business-directory",
+        "pricing",
+        "myzone",
+        "contact-info",
+    ];
+    if slug.is_empty() || reserved.contains(&slug.as_str()) {
+        None
+    } else {
+        Some(slug)
+    }
+}
+
+/// "Mr. Minh Trung  (Sale Manager)" -> ("Mr. Minh Trung", Some("Sale Manager")).
+fn split_name_and_role(raw: &str) -> (String, Option<String>) {
+    let cleaned = collapse_whitespace(raw);
+    if let (Some(open), true) = (cleaned.find('('), cleaned.ends_with(')')) {
+        let name = cleaned[..open].trim().to_string();
+        let role = cleaned[open + 1..cleaned.len() - 1].trim().to_string();
+        let role = if role.is_empty() { None } else { Some(role) };
+        return (name, role);
+    }
+    (cleaned, None)
+}
+
+/// A real web address, not "Show", not an email, not a b2bmap page.
+fn looks_like_website(value: &str) -> bool {
+    let v = value.trim().to_lowercase();
+    !v.contains(' ')
+        && !v.contains('@')
+        && v.contains('.')
+        && !v.contains(B2BMAP_HOST)
+        && v.len() > 4
+}
+
+/// The list items of the first "Business Type" list in the product
+/// page's sidebar ("Supplier, Exporter").
+fn sidebar_business_type(document: &Html) -> Option<String> {
+    let ul_sel =
+        Selector::parse(".col-lg-4.col-xl-3.d-lg-down-none ul.d-flex.flex-wrap.pl-3").ok()?;
+    let li_sel = Selector::parse("li").ok()?;
+    let ul = document.select(&ul_sel).next()?;
+    let types: Vec<String> = ul
+        .select(&li_sel)
+        .map(|li| text_of(&li))
+        .filter(|t| !t.is_empty())
+        .collect();
+    if types.is_empty() {
+        None
+    } else {
+        Some(types.join(", "))
+    }
 }
 
 impl B2bScraper for B2bmapScraper {
@@ -88,21 +200,16 @@ impl B2bScraper for B2bmapScraper {
     fn parse_supplier(&self, html: &str, profile_url: &str) -> B2bSupplierProfile {
         let document = Html::parse_document(html);
 
-        let company_name =
-            find_supplier_name_link(&document).map(|el| text_of(&el).trim().to_string());
+        let company_name = find_supplier_name_link(&document).map(|el| text_of(&el));
 
-        // Location (e.g. "Hubei, China") - the real, plain-text line
-        // right under the company name in the sidebar; scoped to the
-        // desktop sidebar column specifically so it never picks up
-        // the unrelated "Contact Supplier for..." paragraph further
-        // down the page, which shares the .text-muted class.
+        // "Can Tho, Vietnam" - the line right under the company name in
+        // the desktop sidebar.
         let country = Selector::parse(".col-lg-4.col-xl-3.d-lg-down-none p.text-muted.mb-2")
             .ok()
             .and_then(|s| document.select(&s).next())
-            .map(|el| text_of(&el))
-            .and_then(|t| clean_optional_text(&t));
+            .and_then(|el| clean_optional_text(&text_of(&el)));
 
-        // "Year Established: 2022" - strip the label, keep the year.
+        // "Year Established: 2025" - strip the label, keep the year.
         let year_established = Selector::parse(".col-lg-4.col-xl-3.d-lg-down-none p.mb-2")
             .ok()
             .and_then(|s| {
@@ -114,44 +221,28 @@ impl B2bScraper for B2bmapScraper {
             .and_then(|t| t.split(':').nth(1).map(|s| s.trim().to_string()))
             .filter(|t| !t.is_empty());
 
-        // Business type ("Manufacturer", "Exporter", ...) - the FIRST
-        // matching <ul> only (there's a near-identical, later-in-page
-        // "Supplier Info" section that reuses the same classes), then
-        // every <li> inside that one specific list.
-        let badge_honorific = Selector::parse("ul.d-flex.flex-wrap.pl-3")
-            .ok()
-            .and_then(|ul_sel| document.select(&ul_sel).next())
-            .and_then(|ul| {
-                let li_sel = Selector::parse("li").ok()?;
-                let types: Vec<String> = ul
-                    .select(&li_sel)
-                    .map(|li| text_of(&li).trim().to_string())
-                    .filter(|t| !t.is_empty())
-                    .collect();
-                if types.is_empty() {
-                    None
-                } else {
-                    Some(types.join(", "))
-                }
-            });
+        // The phone in the product page's sidebar is shown in full
+        // (the company page masks it, e.g. "+848783xxxxx").
+        let contact_phone = Selector::parse(
+            ".col-lg-4.col-xl-3.d-lg-down-none span.d-flex.mb-3.align-items-center span.text-muted",
+        )
+        .ok()
+        .and_then(|s| document.select(&s).next())
+        .and_then(|el| clean_optional_text(&text_of(&el)))
+        .filter(|p| !looks_masked(p));
 
-        // The real, unmasked phone number - only ever shown on the
-        // product listing page's sidebar. The company profile page
-        // (enrich_from_company_profile, below) shows this same
-        // number MASKED to anyone not signed in with a paid account
-        // (e.g. "+861538xxxxx"), so that page is never used as a
-        // phone source - only this one, real, complete number is.
-        let contact_phone = Selector::parse("span.d-flex.mb-3.align-items-center span.text-muted")
-            .ok()
-            .and_then(|s| document.select(&s).next())
-            .map(|el| text_of(&el))
-            .and_then(|t| clean_optional_text(&t));
+        // Business type ("Supplier, Exporter") is what the company is,
+        // not a badge - it is passed on in the description instead.
+        let company_description =
+            sidebar_business_type(&document).map(|t| format!("Business type: {}.", t));
 
         B2bSupplierProfile {
             company_name,
             logo_url: None,
             year_established,
             country,
+            // b2bmap's membership levels (Free / paid) are not a check on
+            // the company, so this is never set.
             platform_verified_badge: false,
             employee_count: None,
             sales_revenue: None,
@@ -160,16 +251,33 @@ impl B2bScraper for B2bmapScraper {
             source_platform: "b2bmap".to_string(),
             contact_name: None,
             contact_phone,
-            badge_honorific,
-            company_description: None,
+            badge_honorific: None,
+            company_description,
             website_url: None,
         }
     }
 
     fn extract_company_profile_url(&self, listing_html: &str) -> Option<String> {
         let document = Html::parse_document(listing_html);
-        find_supplier_name_link(&document)
-            .and_then(|el| el.value().attr("href").map(|s| s.to_string()))
+        let href = find_supplier_name_link(&document)?
+            .value()
+            .attr("href")?
+            .trim()
+            .to_string();
+        let absolute = if href.starts_with("http") {
+            href
+        } else {
+            format!("https://{}{}", B2BMAP_HOST, href)
+        };
+        // Keep only "https://b2bmap.com/{company}".
+        company_slug(&absolute).map(|slug| format!("https://{}/{}", B2BMAP_HOST, slug))
+    }
+
+    /// One seller record per company: the company page's slug, e.g.
+    /// "https://b2bmap.com/loyal-vina" -> "loyal-vina". Without this,
+    /// every b2bmap seller landed on one shared "unknown" record.
+    fn company_key(&self, listing_html: &str) -> Option<String> {
+        company_slug(&self.extract_company_profile_url(listing_html)?)
     }
 
     fn enrich_from_company_profile(
@@ -179,47 +287,64 @@ impl B2bScraper for B2bmapScraper {
     ) -> B2bSupplierProfile {
         let document = Html::parse_document(profile_html);
 
-        // The real, fuller company description - the product page
-        // only shows a short, truncated ("...") preview of this same
-        // text, so this page's version always wins when present.
-        if let Ok(sel) = Selector::parse(".clean-link") {
-            if let Some(el) = document.select(&sel).next() {
-                if let Some(description) = clean_optional_text(&text_of(&el)) {
-                    supplier.company_description = Some(description);
-                }
-            }
-        }
+        // The full "About" text - the product page only shows a short,
+        // cut-off preview.
+        let about = Selector::parse(".clean-link")
+            .ok()
+            .and_then(|sel| document.select(&sel).next())
+            .and_then(|el| clean_optional_text(&text_of(&el)));
 
         supplier.employee_count =
-            find_table_value(&document, "table", "Employees").or(supplier.employee_count);
+            non_placeholder(find_table_value(&document, "table", "Employees"))
+                .or(supplier.employee_count);
+        if supplier.year_established.is_none() {
+            supplier.year_established =
+                non_placeholder(find_table_value(&document, "table", "Founded in"));
+        }
 
-        // The real contact PERSON (e.g. "Mr. Mike Huang (CEO)") -
-        // only ever shown here, never on the product listing page.
-        if let Ok(sel) = Selector::parse("a.text-14.text-muted") {
-            if let Some(el) = document.select(&sel).next() {
-                let raw = text_of(&el);
-                let cleaned: String = raw.split_whitespace().collect::<Vec<_>>().join(" ");
-                if !cleaned.is_empty() {
-                    supplier.contact_name = Some(cleaned);
-                }
+        // Contact person, e.g. "Mr. Minh Trung (Sale Manager)" - the name
+        // and the job title are kept apart.
+        let mut role = None;
+        if let Some(el) = Selector::parse("a.text-14.text-muted")
+            .ok()
+            .and_then(|sel| document.select(&sel).next())
+        {
+            let (name, r) = split_name_and_role(&text_of(&el));
+            if !name.is_empty() {
+                supplier.contact_name = Some(name);
             }
+            role = r;
         }
 
-        // Membership tier (e.g. "Free Member") is the closest thing
-        // b2bmap actually shows to a verification badge. Real
-        // caveat: every profile pulled so far has been "Free Member"
-        // - this heuristic (verified = anything NOT containing
-        // "free") is a best guess until a paid-tier profile is seen
-        // to confirm the real wording of that tier.
-        if let Some(membership_type) = find_table_value(&document, "table", "Membership Type") {
-            supplier.platform_verified_badge = !membership_type.to_lowercase().contains("free");
-            supplier.badge_honorific = Some(membership_type);
+        // Membership level ("Free Member", or a paid level). Shown for
+        // information only - it is a paid plan, not a check on the
+        // company, so it never counts as verification.
+        if let Some(membership) =
+            non_placeholder(find_table_value(&document, "table", "Membership Type"))
+        {
+            supplier.badge_honorific = Some(membership);
+        }
+        supplier.platform_verified_badge = false;
+
+        // Website, when the company page shows one (never a b2bmap
+        // page, never a masked or "Show" value).
+        if supplier.website_url.is_none() {
+            supplier.website_url = ["Website", "Web Site", "Company Website"]
+                .iter()
+                .find_map(|label| find_overview_field(&document, label))
+                .filter(|w| looks_like_website(w));
         }
 
-        // Fallback fill only - the listing page's "Hubei, China" style
-        // region text is more specific than this page's bare
-        // "Country: China", so this never overwrites a value already
-        // captured from the listing page.
+        if supplier.logo_url.is_none() {
+            supplier.logo_url = Selector::parse(".company-navbar-brand img")
+                .ok()
+                .and_then(|sel| document.select(&sel).next())
+                .and_then(|img| img.value().attr("src").map(|s| s.to_string()))
+                .filter(|s| s.starts_with("http"));
+        }
+
+        // Fallback fill only - the product page's "Can Tho, Vietnam" is
+        // more specific than this page's bare "Vietnam".
         if supplier.country.is_none() {
             supplier.country = find_overview_field(&document, "Country");
         }
@@ -227,10 +352,42 @@ impl B2bScraper for B2bmapScraper {
             supplier.company_name = find_overview_field(&document, "Company Name");
         }
 
-        // Deliberately NOT reading Contact Number/Whatsapp here -
-        // both are always masked ("+861538xxxxx") without a paid
-        // account, and supplier.contact_phone already holds the real
-        // number captured from the listing page in parse_supplier.
+        // The Contact Number / Whatsapp here are masked ("+848783xxxxx")
+        // without a paid account. Used only if the product page gave no
+        // phone and this one is not masked.
+        if supplier.contact_phone.is_none() {
+            supplier.contact_phone =
+                find_overview_field(&document, "Contact Number").filter(|p| !looks_masked(p));
+        }
+
+        // What Claude needs to judge the company: what it is, what it
+        // sells, who the contact is, how long it has been on b2bmap, and
+        // its own description.
+        let mut parts: Vec<String> = Vec::new();
+        let business_type = find_overview_field(&document, "Business Type");
+        match (&supplier.company_description, business_type) {
+            (Some(existing), _) => parts.push(existing.clone()),
+            (None, Some(t)) => parts.push(format!("Business type: {}.", t)),
+            (None, None) => {}
+        }
+        if let Some(v) = find_overview_field(&document, "Main Products") {
+            parts.push(format!("Main products: {}.", v));
+        }
+        if let Some(r) = role {
+            parts.push(format!("Contact person's role: {}.", r));
+        }
+        if let Some(v) = find_table_value(&document, "table", "Member Since") {
+            parts.push(format!("Member of b2bmap since: {}.", v));
+        }
+        if let Some(v) = find_overview_field(&document, "Register Address") {
+            parts.push(format!("Registered address: {}.", v));
+        }
+        if let Some(a) = about {
+            parts.push(a);
+        }
+        if !parts.is_empty() {
+            supplier.company_description = Some(cap_chars(&parts.join(" "), MAX_DESCRIPTION_CHARS));
+        }
 
         supplier
     }
@@ -241,63 +398,29 @@ impl B2bScraper for B2bmapScraper {
         let title = Selector::parse("h1.text-18.text-md-26.text-strong")
             .ok()
             .and_then(|s| document.select(&s).next())
-            .map(|el| text_of(&el))
-            .and_then(|t| clean_optional_text(&t));
+            .and_then(|el| clean_optional_text(&text_of(&el)));
 
-        let description = Selector::parse(".product-details-content p")
-            .ok()
-            .map(|sel| {
-                document
-                    .select(&sel)
-                    .map(|p| text_of(&p).trim().to_string())
-                    .filter(|t| !t.is_empty())
-                    .collect::<Vec<_>>()
-                    .join(" ")
-            })
-            .and_then(|t| clean_optional_text(&t));
+        let summary = "table.product-summery-table";
+        // "Negotiable" is not a price - it is noted in the description
+        // instead, so it doesn't count as a filled-in price.
+        let raw_price = find_table_value(&document, summary, "Price");
+        let unit_price = non_placeholder(raw_price.clone());
+        let minimum_order_quantity = non_placeholder(find_table_value(&document, summary, "MOQ"));
+        let reference = non_placeholder(find_table_value(&document, summary, "HS Code"));
 
-        let image_urls: Vec<String> = Selector::parse("#viewProductImages img")
-            .ok()
-            .map(|sel| {
-                document
-                    .select(&sel)
-                    .filter_map(|el| el.value().attr("src").map(|s| s.to_string()))
-                    .collect()
-            })
-            .unwrap_or_default();
+        let details = "div.table-responsive.mt-4 table";
+        let payment_type = non_placeholder(find_table_value(&document, details, "Payment Terms"));
+        let packaging_details =
+            non_placeholder(find_table_value(&document, details, "Packaging Info"));
+        let delivery_timeframe =
+            non_placeholder(find_table_value(&document, details, "Delivery Info"));
 
-        let unit_price = find_table_value(&document, "table.product-summery-table", "Price");
-        let minimum_order_quantity =
-            find_table_value(&document, "table.product-summery-table", "MOQ");
-
-        // b2bmap has no dedicated "reference code" field of its own -
-        // HS Code is the closest real match (a genuine, standardized
-        // trade-classification reference for the product). Not seen filled
-        // in on any of the 3 real listings checked so far, but left
-        // querying rather than hardcoded to None, in case another product
-        // category on b2bmap does provide it.
-        let reference = find_table_value(&document, "table.product-summery-table", "HS Code");
-
-        let payment_type = find_table_value(
-            &document,
-            "div.table-responsive.mt-4 table",
-            "Payment Terms",
-        );
-        let packaging_details = find_table_value(
-            &document,
-            "div.table-responsive.mt-4 table",
-            "Packaging Info",
-        );
-        let delivery_timeframe = find_table_value(
-            &document,
-            "div.table-responsive.mt-4 table",
-            "Delivery Info",
-        );
+        let description = extract_description(&document, raw_price.as_deref());
 
         B2bListingProfile {
             title,
             description,
-            image_urls,
+            image_urls: extract_image_urls(&document),
             unit_price,
             fob_price: None,
             minimum_order_quantity,
@@ -314,484 +437,392 @@ impl B2bScraper for B2bmapScraper {
     }
 }
 
+/// The product text (paragraphs AND bullet points - the specification
+/// is usually a bullet list), then the Product Specification table
+/// ("Model Number: LV-DRAGON-001"), the usages, and "Price: Negotiable"
+/// when no price is given.
+fn extract_description(document: &Html, raw_price: Option<&str>) -> Option<String> {
+    let mut parts: Vec<String> = Vec::new();
+
+    if let Ok(sel) = Selector::parse(".product-details-content p, .product-details-content li") {
+        for el in document.select(&sel) {
+            let text = text_of(&el);
+            if !text.is_empty() {
+                parts.push(text);
+            }
+        }
+    }
+
+    let specs: Vec<String> = table_pairs(document, "table.specification-table")
+        .into_iter()
+        .map(|(l, v)| format!("{}: {}", l, v))
+        .collect();
+    if !specs.is_empty() {
+        parts.push(format!("Specification: {}", specs.join("; ")));
+    }
+
+    if let Some(usage) = Selector::parse(".product-usage")
+        .ok()
+        .and_then(|s| document.select(&s).next())
+        .and_then(|el| clean_optional_text(&text_of(&el)))
+    {
+        parts.push(format!("Usage: {}", usage));
+    }
+
+    if let Some(p) = raw_price.filter(|p| p.eq_ignore_ascii_case("negotiable")) {
+        parts.push(format!("Price: {}", p));
+    }
+
+    if parts.is_empty() {
+        None
+    } else {
+        Some(cap_chars(&parts.join("\n"), MAX_DESCRIPTION_CHARS))
+    }
+}
+
+/// The product photos (no duplicates, at most MAX_IMAGES).
+fn extract_image_urls(document: &Html) -> Vec<String> {
+    let mut urls: Vec<String> = Vec::new();
+    if let Ok(sel) = Selector::parse("#viewProductImages img") {
+        for img in document.select(&sel) {
+            let src = img
+                .value()
+                .attr("src")
+                .or_else(|| img.value().attr("data-src"))
+                .unwrap_or("")
+                .trim();
+            if src.starts_with("http") && !urls.iter().any(|u| u == src) && urls.len() < MAX_IMAGES
+            {
+                urls.push(src.to_string());
+            }
+        }
+    }
+    urls
+}
+
+fn cap_chars(s: &str, max: usize) -> String {
+    if s.chars().count() > max {
+        s.chars().take(max).collect()
+    } else {
+        s.to_string()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn listing_html() -> &'static str {
-        r#"
-        <html><body>
-        <div class="col-lg-8 col-xl-9">
-            <h1 class="text-18 text-md-26 text-strong mb-3 d-lg-none">Black Coarse Thread Drywall Screws for Wood Studs - Bulk Supply from China</h1>
-            <div class="table-responsive">
-                <table class="table table-sm table-bordered product-summery-table">
-                    <tbody>
-                        <tr><td>Country of Origin</td><td>China </td></tr>
-                        <tr><td>MOQ</td><td class="min_order_unit"> 1 Tons </td></tr>
-                        <tr><td>Price</td><td class="price_info">USD 2000 / Tons</td></tr>
-                        <tr><td>Category</td><td><a href="https://b2bmap.com/product-list/construction-hardware">Tools &amp; Hardware</a></td></tr>
-                    </tbody>
-                </table>
-            </div>
-            <div class="mb-2 product-details-content">
-                <p>Black coarse thread drywall screws are designed for fastening drywall.</p>
-                <p>The coarse thread provides strong holding power in wood.</p>
-            </div>
-            <div class="table-responsive mt-4">
-                <table class="table table-sm table-bordered text-14">
-                    <tbody></tbody>
-                </table>
-            </div>
-        </div>
+    // Trimmed from the real Loyal Vina dragon fruit product page (Oct 2026).
+    const LISTING: &str = r##"<html><body>
+<div class="col-lg-8 col-xl-9">
+  <h1 class="text-18 text-md-26 text-strong mb-3 d-lg-none">Fresh Vietnamese Dragon Fruit - Red and White Flesh, 350–400 g, Export Grade for Wholesale</h1>
+  <table class="table table-sm table-bordered product-summery-table"><tbody>
+    <tr><td>Brand</td><td>Loyal Vina</td></tr>
+    <tr><td>Country of Origin</td><td>Vietnam </td></tr>
+    <tr><td>MOQ</td><td class="min_order_unit"> 1 Tons </td></tr>
+    <tr><td>Price</td><td class="price_info">Negotiable</td></tr>
+    <tr><td>HS Code</td><td class="price_info">081090</td></tr>
+  </tbody></table>
+</div>
+<div class="col-lg-4 col-xl-3 d-lg-down-none">
+  <h4 class="text-18 text-lg-22">
+    <a href="https://b2bmap.com/loyal-vina" class="d-block text-strong">Loyal Vina Co., Ltd</a>
+  </h4>
+  <p class="text-muted mb-2">
+    <img src="https://b2bmap.com/public/flags/16x16/vn.png" alt="Vietnam" class="mr-1">
+    Can Tho, Vietnam
+  </p>
+  <p class="mb-2"><span>Year Established:</span> 2025
+  </p>
+  <div class="mb-2">
+    <p class="text-strong text-strong mb-1">Business Type:</p>
+    <ul class="d-flex flex-wrap pl-3">
+      <li class="text-muted mr-4 mb-2">Supplier</li>
+      <li class="text-muted mr-4 mb-2">Exporter</li>
+    </ul>
+  </div>
+  <div class="mb-3">
+    <span class="d-flex mb-3 align-items-center">
+      <span class="box-30 border rounded-circle bg-light-white mr-2"><i class="fa fa-phone mr-2 text-13"></i></span>
+      <span class="text-muted">
+          +84878369911
+      </span>
+    </span>
+  </div>
+</div>
+<div class="mb-2 product-details-content" style="word-break: break-word">
+  <p>Fresh Vietnamese Dragon Fruit supplied by Loyal Vina for international wholesale and export markets.</p><p><b>Specification</b></p><ul><li>Product Origin: Vietnam</li><li>Fruit Weight: 350–400 g/fruit</li><li>Shelf Life: 21–30 days</li></ul>
+</div>
+<div class="table-responsive mt-4">
+  <table class="table table-sm table-bordered text-14"><tbody>
+    <tr><td class="text-theme text-nowrap">Payment Terms:</td><td class="text-strong">LC,T/T</td></tr>
+    <tr><td class="text-theme text-nowrap">Packaging Info:</td><td class="text-strong">Individual net bag, carton or customized according to buyer requirements.</td></tr>
+    <tr><td class="text-theme text-nowrap">Delivery Info:</td><td class="text-strong">Delivery schedule arranged according to buyer requirements.</td></tr>
+  </tbody></table>
+</div>
+<table class="table table-sm table-borderless specification-table"><tbody>
+  <tr><td class="text-theme pl-0">Model Number :</td><td class="text-strong"> LV-DRAGON-001 </td></tr>
+  <tr><td class="text-theme pl-0">Grade :</td><td class="text-strong"> Export Grade </td></tr>
+</tbody></table>
+<div class="product-usage line-height-180">
+  Fresh fruit consumption, retail, wholesale distribution.
+</div>
+<div class="bg-lg-white border-lg mb-lg-4" id="viewProductImages"><ul>
+  <li><img src="https://b2bmap.com/product-image/202609/fresh-vietnamese-dragon-fruit-08443.png" class="img-fluid"></li>
+  <li><img src="https://b2bmap.com/product-image/202609/fresh-vietnamese-dragon-fruit-19902.jpg" class="img-fluid"></li>
+  <li><img src="https://b2bmap.com/product-image/202609/fresh-vietnamese-dragon-fruit-29924.png" class="img-fluid"></li>
+  <li><img src="https://b2bmap.com/product-image/202609/fresh-vietnamese-dragon-fruit-4.png" class="img-fluid"></li>
+</ul></div>
+<div class="d-lg-none mb-3">
+  <h4 class="text-18 text-lg-22"><a href="https://b2bmap.com/loyal-vina" class="d-block text-strong">Loyal Vina Co., Ltd</a></h4>
+  <ul class="d-flex flex-wrap pl-3"><li class="text-muted mr-4 mb-2">WRONG_TYPE</li></ul>
+  <span class="d-flex mb-3 align-items-center"><span class="text-muted">+19999999999</span></span>
+</div>
+</body></html>"##;
 
-        <div class="col-lg-4 col-xl-3 d-lg-down-none">
-            <h4 class="text-18 text-lg-22">
-                <a href="https://b2bmap.com/tianjin-huayan-international-trading" class="d-block text-strong">Tianjin Huayan International Trading Co., Ltd.</a>
-            </h4>
-            <p class="text-muted mb-2"><img src="cn.png" class="mr-1">Tianjin, China</p>
-            <p class="mb-2"><span>Year Established:</span> 2001</p>
-            <div class="mb-2">
-                <p class="text-strong text-strong mb-1">Business Type:</p>
-                <ul class="d-flex flex-wrap pl-3">
-                    <li class="text-muted mr-4 mb-2">Manufacturer</li>
-                    <li class="text-muted mr-4 mb-2">Exporter</li>
-                </ul>
-            </div>
-            <div class="mb-3">
-                <span class="d-flex mb-3 align-items-center">
-                    <span class="box-30 border rounded-circle bg-light-white mr-2"><i class="fa fa-phone mr-2 text-13"></i></span>
-                    <span class="text-muted">+8613389057831</span>
-                </span>
-            </div>
-        </div>
+    // Trimmed from the real Loyal Vina company page.
+    const PROFILE: &str = r##"<html><body>
+<div class="company-header bg-white py-3">
+  <a href="https://b2bmap.com/loyal-vina" class="company-navbar-brand ">
+    <img src="https://b2bmap.com/public/uploads/companylogo/2026/loyal-vina-co-ltd-1786331571.png" alt="Loyal Vina Co., Ltd" class="img-fluid">
+  </a>
+</div>
+<div class="border-left border-4px border-business-secondary-close px-3 py-2">
+  <a href="https://b2bmap.com/loyal-vina" class="d-block text-strong">Loyal Vina Co., Ltd</a>
+  <a href="https://b2bmap.com/loyal-vina/contact-info" class="text-14 text-muted"> Mr. Minh Trung  (Sale Manager)  <i class="fa fa-envelope ml-1"></i></a>
+</div>
+<div class="clean-link">
+  <p>From Vietnamese origin to global opportunity,     Loyal Vina Co.,     Ltd was formed from the desire to bring Vietnamese agricultural value closer to international markets.</p>
+</div>
+<table class="table table-sm table-borderless w-auto mb-0"><tbody>
+  <tr><td >Business Type</td><td class="px-2">:</td><td><ul class="list-inline mb-0"><li class="list-inline-item">Supplier</li><li class="list-inline-item">Exporter</li></ul></td></tr>
+  <tr><td >Founded in</td><td class="px-2 ">:</td><td >2025</td></tr>
+  <tr><td >Employees</td><td class="px-2 ">:</td><td >1-5</td></tr>
+</tbody></table>
+<table class="table table-sm table-borderless w-auto mb-0"><tbody>
+  <tr><td >Member Since</td><td class="px-2 text-muted">:</td><td >10 Aug 2026</td></tr>
+  <tr><td >Membership Type</td><td class="px-2 text-muted">:</td><td >
+      Free Member
+  </td></tr>
+</tbody></table>
+<div class="d-md-table d-company-info-table w-100">
+  <div class="d-flex d-md-table-row">
+    <div class="d-md-table-cell"><span class="d-md-down-none text-nowrap">Company Name:</span></div>
+    <div class="d-md-table-cell"><span class="d-inline-block">Loyal Vina Co., Ltd</span></div>
+  </div>
+  <div class="d-flex d-md-table-row">
+    <div class="d-md-table-cell"><span class="d-md-down-none text-nowrap">Business Type:</span></div>
+    <div class="d-md-table-cell"><ul class="list-inline mb-0"><li>Supplier</li><li>Exporter</li></ul></div>
+  </div>
+  <div class="d-md-table-row">
+    <div class="d-md-table-cell text-nowrap pb-0 pb-md-2">Main Products:</div>
+    <div class="d-md-table-cell pt-1 pt-md-2">Fresh Seedless Lime, Fresh Pomelo, Fresh Coconut, Hoa Loc Mango, Fresh Tropical Fruits</div>
+  </div>
+  <div class="d-flex d-md-table-row">
+    <div class="d-md-table-cell"><span class="d-md-down-none">Product List:</span></div>
+    <div class="d-md-table-cell"><a href="https://b2bmap.com/loyal-vina/products" class="text-link">https://b2bmap.com/loyal-vina/products</a></div>
+  </div>
+  <div class="d-flex d-md-table-row">
+    <div class="d-md-table-cell"><span class="d-md-down-none text-nowrap">Contact Number:</span></div>
+    <div class="d-md-table-cell"><span data-toggle="modal" class="cursor">+848783xxxxx</span></div>
+  </div>
+  <div class="d-flex d-md-table-row">
+    <div class="d-md-table-cell"><span class="d-md-down-none text-nowrap">Register Address:</span></div>
+    <div class="d-md-table-cell">372 Tra Quyt  Market, Phu Tam Commune, Can Tho City</div>
+  </div>
+  <div class="d-flex d-md-table-row">
+    <div class="d-md-table-cell text-nowrap"><span>Country:</span></div>
+    <div class="d-md-table-cell"><a href="https://b2bmap.com/vietnam">Vietnam</a></div>
+  </div>
+</div>
+</body></html>"##;
 
-        <div id="viewProductImages">
-            <img src="https://b2bmap.com/product-image/202608/black-coarse-thread-drywall-screws-for-wood-studs-05248.png">
-            <img src="https://b2bmap.com/product-image/202608/black-coarse-thread-drywall-screws-for-wood-studs-18828.jpg">
-        </div>
-        </body></html>
-        "#
-    }
-
-    fn listing_html_with_duplicate_mobile_sidebar() -> &'static str {
-        // Same real page, but with a later "mobile" duplicate section
-        // reusing the exact same classes - matches how b2bmap's real
-        // markup actually duplicates this block for mobile. Values
-        // here are deliberately different from the real sidebar so a
-        // test can prove the first, correct one is what gets read.
-        r#"
-        <html><body>
-        <div class="col-lg-4 col-xl-3 d-lg-down-none">
-            <h4 class="text-18 text-lg-22">
-                <a href="https://b2bmap.com/tianjin-huayan-international-trading" class="d-block text-strong">Tianjin Huayan International Trading Co., Ltd.</a>
-            </h4>
-            <p class="text-muted mb-2"><img src="cn.png" class="mr-1">Tianjin, China</p>
-            <p class="mb-2"><span>Year Established:</span> 2001</p>
-            <div class="mb-2">
-                <p class="text-strong text-strong mb-1">Business Type:</p>
-                <ul class="d-flex flex-wrap pl-3">
-                    <li class="text-muted mr-4 mb-2">Manufacturer</li>
-                    <li class="text-muted mr-4 mb-2">Exporter</li>
-                </ul>
-            </div>
-            <div class="mb-3">
-                <span class="d-flex mb-3 align-items-center">
-                    <span class="box-30 border rounded-circle bg-light-white mr-2"><i class="fa fa-phone mr-2 text-13"></i></span>
-                    <span class="text-muted">+8613389057831</span>
-                </span>
-            </div>
-        </div>
-
-        <div class="d-lg-none mb-3">
-            <div class="mb-2">
-                <p class="text-strong text-strong mb-1">Business Type:</p>
-                <ul class="d-flex flex-wrap pl-3">
-                    <li class="text-muted mr-4 mb-2">WRONG_TYPE</li>
-                </ul>
-            </div>
-            <span class="d-flex mb-3 align-items-center">
-                <span class="box-30 border rounded-circle bg-light-white mr-2"><i class="fa fa-phone mr-2 text-13"></i></span>
-                <span class="text-muted">+19999999999</span>
-            </span>
-        </div>
-        </body></html>
-        "#
-    }
-
-    fn listing_html_with_payment_details_table_filled() -> &'static str {
-        // No real b2bmap listing seen so far has this table filled
-        // in - this only proves the lookup mechanics work, not that
-        // these are the real label strings b2bmap actually uses.
-        r#"
-        <html><body>
-        <div class="table-responsive mt-4">
-            <table class="table table-sm table-bordered text-14">
-                <tbody>
-                    <tr><td>Payment Terms</td><td>T/T, L/C</td></tr>
-                    <tr><td>Packaging Info</td><td>Carton box</td></tr>
-                    <tr><td>Delivery Info</td><td>15-30 days</td></tr>
-                </tbody>
-            </table>
-        </div>
-        </body></html>
-        "#
-    }
-
-    fn profile_html() -> &'static str {
-        r#"
-        <html><body>
-        <div class="card-body bg-white">
-            <div class="clean-link">
-                <p>Tianjin Huayan International Trading Co., Ltd. is a factory-backed foreign trade company specialising in the export of metal fasteners and nail products.</p>
-            </div>
-        </div>
-
-        <div class="card-body bg-white">
-            <table class="table table-sm table-borderless w-auto mb-0">
-                <tbody>
-                    <tr><td>Business Type</td><td class="px-2">:</td><td><ul><li>Manufacturer</li><li>Exporter</li></ul></td></tr>
-                    <tr><td>Founded in</td><td class="px-2">:</td><td>2001</td></tr>
-                    <tr><td>Employees</td><td class="px-2">:</td><td>101-500</td></tr>
-                </tbody>
-            </table>
-            <table class="table table-sm table-borderless w-auto mb-0">
-                <tbody>
-                    <tr><td>Member Since</td><td class="px-2 text-muted">:</td><td>29 Aug 2026</td></tr>
-                    <tr><td>Membership Type</td><td class="px-2 text-muted">:</td><td>Free Member</td></tr>
-                    <tr><td>Business Category</td><td class="px-2">:</td><td><a href="https://b2bmap.com/china/tools-hardware-product-suppliers">Tools &amp; Hardware</a></td></tr>
-                </tbody>
-            </table>
-        </div>
-
-        <div class="border-left border-4px border-business-secondary-close px-3 py-2">
-            <a href="https://b2bmap.com/tianjin-huayan-international-trading" class="d-block text-strong">Tianjin Huayan International Trading Co., Ltd.</a>
-            <a href="https://b2bmap.com/tianjin-huayan-international-trading/contact-info" class="text-14 text-muted"> Mr. Man zhao  (Sales Manager)  <i class="fa fa-envelope text-business-secondary-close ml-1"></i></a>
-        </div>
-
-        <div class="d-md-table d-company-info-table w-100">
-            <div class="d-flex d-md-table-row">
-                <div class="d-md-table-cell"><span class="d-md-down-none text-nowrap">Company Name:</span></div>
-                <div class="d-md-table-cell"><span class="d-inline-block">Tianjin Huayan International Trading Co., Ltd.</span></div>
-            </div>
-            <div class="d-flex d-md-table-row">
-                <div class="d-md-table-cell"><span class="d-md-down-none text-nowrap">Contact Number:</span></div>
-                <div class="d-md-table-cell"><span data-toggle="modal" class="cursor">+861338xxxxx</span></div>
-            </div>
-            <div class="d-flex d-md-table-row">
-                <div class="d-md-table-cell"><span class="d-md-down-none text-nowrap">Country:</span></div>
-                <div class="d-md-table-cell"><a href="https://b2bmap.com/china">China</a></div>
-            </div>
-        </div>
-        </body></html>
-        "#
-    }
-
-    fn profile_html_paid_member() -> &'static str {
-        r#"
-        <html><body>
-        <table class="table table-sm table-borderless w-auto mb-0">
-            <tbody>
-                <tr><td>Membership Type</td><td class="px-2 text-muted">:</td><td>Gold Member</td></tr>
-            </tbody>
-        </table>
-        </body></html>
-        "#
-    }
-
-    fn blank_supplier() -> B2bSupplierProfile {
-        B2bSupplierProfile {
-            source_platform: "b2bmap".to_string(),
-            profile_url: "https://b2bmap.com/tianjin-huayan-international-trading".to_string(),
-            ..Default::default()
-        }
+    fn full_supplier() -> B2bSupplierProfile {
+        let s = B2bmapScraper;
+        s.enrich_from_company_profile(s.parse_supplier(LISTING, "u"), PROFILE)
     }
 
     #[test]
     fn matches_platform_is_true_only_for_b2bmap() {
-        let scraper = B2bmapScraper;
-        assert!(scraper.matches_platform("b2bmap"));
-        assert!(!scraper.matches_platform("thomasnet"));
-        assert!(!scraper.matches_platform("alibaba"));
+        assert!(B2bmapScraper.matches_platform("b2bmap"));
+        assert!(!B2bmapScraper.matches_platform("thomasnet"));
     }
 
     #[test]
-    fn parse_supplier_extracts_the_real_fields_from_the_listing_sidebar() {
-        let scraper = B2bmapScraper;
-        let profile_url = "https://b2bmap.com/tianjin-huayan-international-trading";
-        let supplier = scraper.parse_supplier(listing_html(), profile_url);
+    fn company_key_and_link_are_the_company_page() {
+        assert_eq!(
+            B2bmapScraper.company_key(LISTING).as_deref(),
+            Some("loyal-vina")
+        );
+        assert_eq!(
+            B2bmapScraper
+                .extract_company_profile_url(LISTING)
+                .as_deref(),
+            Some("https://b2bmap.com/loyal-vina")
+        );
+        assert_eq!(
+            company_slug("https://b2bmap.com/loyal-vina/contact-info").as_deref(),
+            Some("loyal-vina")
+        );
+        assert_eq!(
+            company_slug("https://b2bmap.com/products/fresh-vietnamese-dragon-fruit"),
+            None
+        );
+        let relative = r#"<h4 class="text-18 text-lg-22"><a href="/loyal-vina">X</a></h4>"#;
+        assert_eq!(
+            B2bmapScraper.company_key(relative).as_deref(),
+            Some("loyal-vina")
+        );
+        assert_eq!(B2bmapScraper.company_key("<html></html>"), None);
+    }
 
+    #[test]
+    fn listing_page_supplier_fields() {
+        let s = B2bmapScraper.parse_supplier(LISTING, "u");
+        assert_eq!(s.company_name.as_deref(), Some("Loyal Vina Co., Ltd"));
+        assert_eq!(s.country.as_deref(), Some("Can Tho, Vietnam"));
+        assert_eq!(s.year_established.as_deref(), Some("2025"));
         assert_eq!(
-            supplier.company_name.as_deref(),
-            Some("Tianjin Huayan International Trading Co., Ltd.")
+            s.contact_phone.as_deref(),
+            Some("+84878369911"),
+            "desktop sidebar, not the mobile copy"
         );
-        assert_eq!(supplier.country.as_deref(), Some("Tianjin, China"));
-        assert_eq!(supplier.year_established.as_deref(), Some("2001"));
+        assert_eq!(s.badge_honorific, None, "business type is not a badge");
         assert_eq!(
-            supplier.badge_honorific.as_deref(),
-            Some("Manufacturer, Exporter")
+            s.company_description.as_deref(),
+            Some("Business type: Supplier, Exporter.")
         );
-        assert_eq!(supplier.contact_phone.as_deref(), Some("+8613389057831"));
-        assert_eq!(supplier.profile_url, profile_url);
-        assert_eq!(supplier.source_platform, "b2bmap");
+        assert!(!s.platform_verified_badge);
+    }
+
+    #[test]
+    fn company_page_fields() {
+        let s = full_supplier();
+        assert_eq!(
+            s.contact_name.as_deref(),
+            Some("Mr. Minh Trung"),
+            "job title kept out of the name"
+        );
+        assert_eq!(s.employee_count.as_deref(), Some("1-5"));
+        assert_eq!(s.badge_honorific.as_deref(), Some("Free Member"));
+        assert!(!s.platform_verified_badge);
+        assert_eq!(
+            s.contact_phone.as_deref(),
+            Some("+84878369911"),
+            "masked number never replaces the real one"
+        );
+        assert_eq!(s.country.as_deref(), Some("Can Tho, Vietnam"));
+        assert!(s.logo_url.as_deref().unwrap().contains("/companylogo/"));
+        assert_eq!(s.website_url, None, "this company shows no website");
+        let d = s.company_description.unwrap();
+        assert!(d.starts_with("Business type: Supplier, Exporter."));
+        assert!(d.contains("Main products: Fresh Seedless Lime"));
+        assert!(d.contains("Contact person's role: Sale Manager."));
+        assert!(d.contains("Member of b2bmap since: 10 Aug 2026."));
+        assert!(d.contains("Registered address: 372 Tra Quyt Market"));
         assert!(
-            !supplier.platform_verified_badge,
-            "expected no verification claim until the profile page is enriched"
+            d.contains("Loyal Vina Co., Ltd was formed"),
+            "extra spaces collapsed: {}",
+            d
         );
-        assert!(supplier.employee_count.is_none());
-        assert!(supplier.sales_revenue.is_none());
-        assert!(supplier.export_percentage.is_none());
     }
 
     #[test]
-    fn parse_supplier_picks_the_first_sidebar_business_type_and_phone_not_a_later_duplicate() {
-        let scraper = B2bmapScraper;
-        let supplier = scraper.parse_supplier(
-            listing_html_with_duplicate_mobile_sidebar(),
-            "https://b2bmap.com/tianjin-huayan-international-trading",
-        );
+    fn paid_membership_is_never_verification() {
+        let paid = PROFILE.replace("Free Member", "Gold Member");
+        let s = B2bmapScraper
+            .enrich_from_company_profile(B2bmapScraper.parse_supplier(LISTING, "u"), &paid);
+        assert_eq!(s.badge_honorific.as_deref(), Some("Gold Member"));
+        assert!(!s.platform_verified_badge);
+    }
 
+    #[test]
+    fn website_is_read_when_the_company_page_shows_one() {
+        let row = r#"<div class="d-flex d-md-table-row"><div class="d-md-table-cell">Website:</div><div class="d-md-table-cell"><a href="https://loyalvina.com">https://loyalvina.com</a></div></div>"#;
+        let with_site = PROFILE.replace(
+            r#"<div class="d-md-table d-company-info-table w-100">"#,
+            &format!(
+                r#"<div class="d-md-table d-company-info-table w-100">{}"#,
+                row
+            ),
+        );
+        let s =
+            B2bmapScraper.enrich_from_company_profile(B2bSupplierProfile::default(), &with_site);
+        assert_eq!(s.website_url.as_deref(), Some("https://loyalvina.com"));
+
+        let b2bmap_link = with_site.replace(
+            "https://loyalvina.com",
+            "https://b2bmap.com/loyal-vina/products",
+        );
+        let s =
+            B2bmapScraper.enrich_from_company_profile(B2bSupplierProfile::default(), &b2bmap_link);
         assert_eq!(
-            supplier.badge_honorific.as_deref(),
-            Some("Manufacturer, Exporter"),
-            "expected the real desktop sidebar business type, not the later duplicate section's"
+            s.website_url, None,
+            "a b2bmap page is not the company's website"
         );
+    }
+
+    #[test]
+    fn listing_fields() {
+        let l = B2bmapScraper.parse_listing(LISTING, "u");
         assert_eq!(
-            supplier.contact_phone.as_deref(),
-            Some("+8613389057831"),
-            "expected the real phone number, not a later duplicate section's value"
+            l.title.as_deref(),
+            Some(
+                "Fresh Vietnamese Dragon Fruit - Red and White Flesh, 350–400 g, Export Grade for Wholesale"
+            )
         );
-    }
-
-    #[test]
-    fn parse_supplier_returns_none_fields_for_a_page_with_no_sidebar_at_all() {
-        let scraper = B2bmapScraper;
-        let supplier = scraper.parse_supplier(
-            "<html><body><p>nothing here</p></body></html>",
-            "https://b2bmap.com/some-supplier",
-        );
-
-        assert!(supplier.company_name.is_none());
-        assert!(supplier.country.is_none());
-        assert!(supplier.year_established.is_none());
-        assert!(supplier.badge_honorific.is_none());
-        assert!(supplier.contact_phone.is_none());
-    }
-
-    #[test]
-    fn extract_company_profile_url_reads_the_real_supplier_link_href() {
-        let scraper = B2bmapScraper;
-        let url = scraper.extract_company_profile_url(listing_html());
-        assert_eq!(
-            url.as_deref(),
-            Some("https://b2bmap.com/tianjin-huayan-international-trading")
-        );
-    }
-
-    #[test]
-    fn extract_company_profile_url_is_none_when_the_supplier_link_is_missing() {
-        let scraper = B2bmapScraper;
-        let url = scraper.extract_company_profile_url("<html><body></body></html>");
-        assert!(url.is_none());
-    }
-
-    #[test]
-    fn enrich_from_company_profile_fills_in_the_real_fields_only_available_there() {
-        let scraper = B2bmapScraper;
-        let supplier = scraper.enrich_from_company_profile(blank_supplier(), profile_html());
-
+        assert_eq!(l.unit_price, None, "'Negotiable' is not a price");
+        assert_eq!(l.minimum_order_quantity.as_deref(), Some("1 Tons"));
+        assert_eq!(l.reference.as_deref(), Some("081090"));
+        assert_eq!(l.payment_type.as_deref(), Some("LC,T/T"));
         assert!(
-            supplier
-                .company_description
+            l.packaging_details
                 .as_deref()
                 .unwrap()
-                .contains("factory-backed foreign trade company")
+                .starts_with("Individual net bag")
         );
-        assert_eq!(supplier.employee_count.as_deref(), Some("101-500"));
-        assert_eq!(
-            supplier.contact_name.as_deref(),
-            Some("Mr. Man zhao (Sales Manager)")
-        );
-        assert_eq!(supplier.badge_honorific.as_deref(), Some("Free Member"));
+        assert!(l.delivery_timeframe.is_some());
+        assert_eq!(l.image_urls.len(), 3);
+        assert!(l.image_urls[0].ends_with("08443.png"));
+    }
+
+    #[test]
+    fn description_has_text_bullets_specs_usage_and_negotiable_price() {
+        let d = B2bmapScraper
+            .parse_listing(LISTING, "u")
+            .description
+            .unwrap();
+        assert!(d.contains("supplied by Loyal Vina"));
         assert!(
-            !supplier.platform_verified_badge,
-            "a Free Member should never be marked as platform-verified"
+            d.contains("Shelf Life: 21–30 days"),
+            "bullet points are read: {}",
+            d
         );
+        assert!(d.contains("Specification: Model Number: LV-DRAGON-001; Grade: Export Grade"));
+        assert!(d.contains("Usage: Fresh fruit consumption"));
+        assert!(d.contains("Price: Negotiable"));
     }
 
     #[test]
-    fn enrich_from_company_profile_marks_a_non_free_membership_tier_as_verified() {
-        let scraper = B2bmapScraper;
-        let supplier =
-            scraper.enrich_from_company_profile(blank_supplier(), profile_html_paid_member());
-
-        assert_eq!(supplier.badge_honorific.as_deref(), Some("Gold Member"));
-        assert!(
-            supplier.platform_verified_badge,
-            "expected a non-'Free' membership tier to be treated as verified under the current heuristic"
-        );
-    }
-
-    #[test]
-    fn enrich_from_company_profile_never_overwrites_a_phone_number_already_captured_from_the_listing_page()
-     {
-        let scraper = B2bmapScraper;
-        let mut supplier = blank_supplier();
-        supplier.contact_phone = Some("+8613389057831".to_string());
-
-        let supplier = scraper.enrich_from_company_profile(supplier, profile_html());
-
+    fn name_and_role_are_split() {
         assert_eq!(
-            supplier.contact_phone.as_deref(),
-            Some("+8613389057831"),
-            "the real listing-page phone number must never be overwritten by the profile page, masked or not"
-        );
-    }
-
-    #[test]
-    fn enrich_from_company_profile_only_fills_country_and_company_name_as_a_fallback() {
-        let scraper = B2bmapScraper;
-        let mut supplier = blank_supplier();
-        supplier.country = Some("Tianjin, China".to_string());
-        supplier.company_name = Some("Tianjin Huayan International Trading Co., Ltd.".to_string());
-
-        let supplier = scraper.enrich_from_company_profile(supplier, profile_html());
-
-        assert_eq!(
-            supplier.country.as_deref(),
-            Some("Tianjin, China"),
-            "the listing page's more specific region text must not be overwritten by the profile page's bare 'China'"
+            split_name_and_role(" Mr. Minh Trung  (Sale Manager) "),
+            (
+                "Mr. Minh Trung".to_string(),
+                Some("Sale Manager".to_string())
+            )
         );
         assert_eq!(
-            supplier.company_name.as_deref(),
-            Some("Tianjin Huayan International Trading Co., Ltd.")
+            split_name_and_role("Mr. Mike Huang"),
+            ("Mr. Mike Huang".to_string(), None)
         );
     }
 
     #[test]
-    fn enrich_from_company_profile_fills_country_and_company_name_when_missing() {
-        let scraper = B2bmapScraper;
-        let supplier = scraper.enrich_from_company_profile(blank_supplier(), profile_html());
-
-        assert_eq!(supplier.country.as_deref(), Some("China"));
-        assert_eq!(
-            supplier.company_name.as_deref(),
-            Some("Tianjin Huayan International Trading Co., Ltd.")
-        );
-    }
-
-    #[test]
-    fn parse_listing_extracts_the_real_fields_that_actually_exist_on_b2bmap() {
-        let scraper = B2bmapScraper;
-        let listing_url = "https://b2bmap.com/products/black-coarse-thread-drywall-screws";
-        let listing = scraper.parse_listing(listing_html(), listing_url);
-
-        assert_eq!(
-            listing.title.as_deref(),
-            Some("Black Coarse Thread Drywall Screws for Wood Studs - Bulk Supply from China")
-        );
-        assert!(
-            listing
-                .description
-                .as_deref()
-                .unwrap()
-                .contains("Black coarse thread drywall screws")
-        );
-        assert_eq!(listing.image_urls.len(), 2);
-        assert_eq!(listing.unit_price.as_deref(), Some("USD 2000 / Tons"));
-        assert_eq!(listing.minimum_order_quantity.as_deref(), Some("1 Tons"));
-        assert_eq!(listing.listing_url, listing_url);
-        assert_eq!(listing.source_platform, "b2bmap");
-    }
-
-    #[test]
-    fn parse_listing_leaves_genuinely_nonexistent_b2bmap_fields_as_none() {
-        let scraper = B2bmapScraper;
-        let listing = scraper.parse_listing(
-            listing_html(),
-            "https://b2bmap.com/products/black-coarse-thread-drywall-screws",
-        );
-
-        assert!(
-            listing.fob_price.is_none(),
-            "b2bmap has no FOB price field anywhere"
-        );
-        assert!(
-            listing.preferred_port.is_none(),
-            "b2bmap has no preferred port field anywhere"
-        );
-        assert!(
-            listing.production_capacity.is_none(),
-            "b2bmap has no production capacity field anywhere"
-        );
-        assert!(
-            listing.incoterms.is_none(),
-            "b2bmap has no Incoterms field anywhere"
-        );
-    }
-
-    #[test]
-    fn parse_listing_returns_none_for_payment_packaging_and_delivery_when_the_real_table_is_empty()
-    {
-        // Matches the real, observed b2bmap markup: the
-        // div.table-responsive.mt-4 table wrapper genuinely exists on
-        // the page but has an empty <tbody> - confirmed on a real,
-        // live listing.
-        let scraper = B2bmapScraper;
-        let listing = scraper.parse_listing(
-            listing_html(),
-            "https://b2bmap.com/products/black-coarse-thread-drywall-screws",
-        );
-
-        assert!(listing.payment_type.is_none());
-        assert!(listing.packaging_details.is_none());
-        assert!(listing.delivery_timeframe.is_none());
-    }
-
-    #[test]
-    fn parse_listing_reads_payment_packaging_and_delivery_when_that_table_is_actually_filled_in() {
-        // No real b2bmap listing with this table filled in has been
-        // seen yet - this only proves the lookup mechanics work, not
-        // the real label wording b2bmap would actually use.
-        let scraper = B2bmapScraper;
-        let listing = scraper.parse_listing(
-            listing_html_with_payment_details_table_filled(),
-            "https://b2bmap.com/products/black-coarse-thread-drywall-screws",
-        );
-
-        assert_eq!(listing.payment_type.as_deref(), Some("T/T, L/C"));
-        assert_eq!(listing.packaging_details.as_deref(), Some("Carton box"));
-        assert_eq!(listing.delivery_timeframe.as_deref(), Some("15-30 days"));
-    }
-
-    #[test]
-    fn parse_listing_reference_falls_back_to_none_when_no_hs_code_row_exists() {
-        let scraper = B2bmapScraper;
-        let listing = scraper.parse_listing(
-            listing_html(),
-            "https://b2bmap.com/products/black-coarse-thread-drywall-screws",
-        );
-        assert!(
-            listing.reference.is_none(),
-            "no real b2bmap listing seen so far has an HS Code row"
-        );
-    }
-
-    #[test]
-    fn parse_listing_reference_is_read_when_an_hs_code_row_is_actually_present() {
-        let scraper = B2bmapScraper;
-        let html = r#"
-        <html><body>
-        <div class="table-responsive">
-            <table class="table table-sm table-bordered product-summery-table">
-                <tbody>
-                    <tr><td>Country of Origin</td><td>China</td></tr>
-                    <tr><td>HS Code</td><td>7318.14</td></tr>
-                </tbody>
-            </table>
-        </div>
-        </body></html>
-        "#;
-        let listing = scraper.parse_listing(html, "https://b2bmap.com/products/some-listing");
-        assert_eq!(listing.reference.as_deref(), Some("7318.14"));
+    fn empty_page_does_not_panic() {
+        let s = B2bmapScraper.parse_supplier("<html></html>", "u");
+        assert!(s.company_name.is_none() && s.contact_phone.is_none());
+        let l = B2bmapScraper.parse_listing("<html></html>", "u");
+        assert!(l.title.is_none() && l.description.is_none() && l.image_urls.is_empty());
     }
 }
