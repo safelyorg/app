@@ -615,10 +615,15 @@ fn b2b_company_age(signals: &[Signal]) -> Option<String> {
 
 /// B2B risk score: warnings give the base score, and any "Serious"
 /// risk factor lifts it to at least the High band (67), +10 for each
-/// extra one. Capped at 100.
-fn b2b_risk_score(base_score: i16, serious_count: i16) -> i16 {
+/// extra one. A "Pattern match" (compound) factor, e.g. full prepayment
+/// to a brand-new company, lifts it to at least the Caution band (45),
+/// +10 for each extra one, but never into High on its own (max 66).
+/// Capped at 100.
+fn b2b_risk_score(base_score: i16, serious_count: i16, compound_count: i16) -> i16 {
     let floor = if serious_count > 0 {
         67 + (serious_count - 1) * 10
+    } else if compound_count > 0 {
+        (45 + (compound_count - 1) * 10).min(66)
     } else {
         0
     };
@@ -764,11 +769,10 @@ pub async fn build_b2b_analysis_path(
     // a missing field. Any "Serious" risk factor (legitimacy concern,
     // unsafe payment terms, a seller Safely already scored high-risk)
     // puts the scan in the High band (67+), plus 10 for each extra one.
-    let serious_count = derive_risk_factors(&signals)
-        .iter()
-        .filter(|f| f.severity == "hard")
-        .count() as i16;
-    let risk_score = b2b_risk_score(base_score, serious_count);
+    let factors = derive_risk_factors(&signals);
+    let serious_count = factors.iter().filter(|f| f.severity == "hard").count() as i16;
+    let compound_count = factors.iter().filter(|f| f.severity == "compound").count() as i16;
+    let risk_score = b2b_risk_score(base_score, serious_count, compound_count);
 
     let overall_risk_notes = claude_result.overall_risk_notes.clone();
     Ok((
@@ -787,16 +791,33 @@ mod b2b_score_tests {
 
     #[test]
     fn no_serious_factor_keeps_the_warning_score() {
-        assert_eq!(b2b_risk_score(15, 0), 15);
-        assert_eq!(b2b_risk_score(60, 0), 60);
+        assert_eq!(b2b_risk_score(15, 0, 0), 15);
+        assert_eq!(b2b_risk_score(60, 0, 0), 60);
     }
 
     #[test]
     fn serious_factors_reach_the_high_band() {
-        assert_eq!(b2b_risk_score(15, 1), 67);
-        assert_eq!(b2b_risk_score(60, 3), 87);
-        assert_eq!(b2b_risk_score(90, 1), 90);
-        assert_eq!(b2b_risk_score(100, 6), 100);
+        assert_eq!(b2b_risk_score(15, 1, 0), 67);
+        assert_eq!(b2b_risk_score(60, 3, 0), 87);
+        assert_eq!(b2b_risk_score(90, 1, 0), 90);
+        assert_eq!(b2b_risk_score(100, 6, 0), 100);
+        assert_eq!(
+            b2b_risk_score(15, 1, 1),
+            67,
+            "serious wins over a pattern match"
+        );
+    }
+
+    #[test]
+    fn pattern_matches_reach_the_caution_band_but_not_high() {
+        assert_eq!(b2b_risk_score(30, 0, 1), 45);
+        assert_eq!(b2b_risk_score(30, 0, 2), 55);
+        assert_eq!(b2b_risk_score(30, 0, 5), 66);
+        assert_eq!(
+            b2b_risk_score(75, 0, 1),
+            75,
+            "a higher warning score is kept"
+        );
     }
 }
 

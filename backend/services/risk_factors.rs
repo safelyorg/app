@@ -1,4 +1,5 @@
 use crate::models::{analysis::Signal, risk_factors::RiskFactor};
+use crate::services::signals::FULL_PREPAYMENT;
 
 /// True only for a genuinely young account/company - an age measured in
 /// days, weeks or months ("This month", "3 months"), or a company
@@ -161,12 +162,46 @@ pub fn derive_risk_factors(signals: &[Signal]) -> Vec<RiskFactor> {
         }
     }
 
-    // Risky payment terms on their own (upfront-only payment, or
-    // Western Union / MoneyGram / crypto on a B2B listing) are serious
-    // even without urgency language: once paid, the money cannot be
-    // recovered.
+    // Full payment before shipment (by a normal method such as bank
+    // transfer) to a brand-new company: a combined flag - the buyer
+    // carries all the risk with a company that has no track record.
     if let Some(a) = advance_payment {
-        if is_flagged(a) && !covered_labels.contains(&"Advance payment request") {
+        if is_flagged(a)
+            && a.value == FULL_PREPAYMENT
+            && !covered_labels.contains(&"Advance payment request")
+        {
+            let young =
+                find_signal(signals, "Account age").filter(|age| is_new_account(&age.value));
+            if let Some(age) = young {
+                factors.push(RiskFactor {
+                    severity: "compound".to_string(),
+                    name: "full_prepayment_to_new_company".to_string(),
+                    description: format!(
+                        "{} The company is also very new ({}), so there is no track record to rely on if the goods never arrive.",
+                        evidence_or(a, "The supplier asks for full payment before shipment."),
+                        age.value
+                    ),
+                    contributing_signals: vec![
+                        "Advance payment request".to_string(),
+                        "Account age".to_string(),
+                    ],
+                });
+                covered_labels.push("Advance payment request");
+                covered_labels.push("Account age");
+            }
+        }
+    }
+
+    // Untraceable payment methods (Western Union / MoneyGram / crypto /
+    // gift cards / a personal account) are serious even without urgency
+    // language: once paid, the money cannot be recovered. Full
+    // prepayment by bank transfer is NOT treated this way - on its own
+    // it stays "Worth noting" (it falls through to the soft factors).
+    if let Some(a) = advance_payment {
+        if is_flagged(a)
+            && a.value != FULL_PREPAYMENT
+            && !covered_labels.contains(&"Advance payment request")
+        {
             factors.push(RiskFactor {
                 severity: "hard".to_string(),
                 name: "unsafe_payment_terms".to_string(),
@@ -243,6 +278,70 @@ mod tests {
         assert_eq!(p.severity, "hard");
         assert_eq!(p.description, "Accepts Western Union.");
         assert!(find(&f, "advance_payment_request_flagged").is_none());
+    }
+
+    #[test]
+    fn full_prepayment_alone_is_worth_noting_not_serious() {
+        let s = vec![sig(
+            "Advance payment request",
+            FULL_PREPAYMENT,
+            "caution",
+            "100% before shipment.",
+        )];
+        let f = derive_risk_factors(&s);
+        assert!(find(&f, "unsafe_payment_terms").is_none());
+        assert_eq!(
+            find(&f, "advance_payment_request_flagged")
+                .unwrap()
+                .severity,
+            "soft"
+        );
+    }
+
+    #[test]
+    fn full_prepayment_to_a_new_company_is_a_pattern_match() {
+        let s = vec![
+            sig(
+                "Advance payment request",
+                FULL_PREPAYMENT,
+                "caution",
+                "40% advance, 60% before shipment.",
+            ),
+            sig("Account age", "Founded this year", "caution", ""),
+        ];
+        let f = derive_risk_factors(&s);
+        assert_eq!(f.len(), 1, "one combined factor, not three");
+        let c = find(&f, "full_prepayment_to_new_company").unwrap();
+        assert_eq!(c.severity, "compound");
+        assert!(
+            c.description
+                .starts_with("40% advance, 60% before shipment.")
+        );
+        assert!(c.description.contains("very new (Founded this year)"));
+        // An older company with full prepayment stays only worth noting.
+        let older = vec![
+            sig("Advance payment request", FULL_PREPAYMENT, "caution", ""),
+            sig("Account age", "About 5 years", "good", ""),
+        ];
+        assert!(
+            find(
+                &derive_risk_factors(&older),
+                "full_prepayment_to_new_company"
+            )
+            .is_none()
+        );
+    }
+
+    #[test]
+    fn untraceable_payment_is_serious() {
+        let s = vec![sig(
+            "Advance payment request",
+            "Untraceable payment",
+            "caution",
+            "Accepts MoneyGram.",
+        )];
+        let f = derive_risk_factors(&s);
+        assert_eq!(find(&f, "unsafe_payment_terms").unwrap().severity, "hard");
     }
 
     #[test]

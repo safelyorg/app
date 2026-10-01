@@ -40,6 +40,10 @@ fn make_analysis(
             found: false,
             evidence: "no advance payment detected".to_string(),
         },
+        untraceable_payment_method: Finding {
+            found: false,
+            evidence: "no untraceable payment method".to_string(),
+        },
         image_authenticity: ImageAssessment {
             verdict: "not verified".to_string(),
             reasoning: "no images provided".to_string(),
@@ -221,7 +225,23 @@ fn urgency_and_advance_payment_use_the_opposite_polarity_from_the_other_four() {
         .find(|s| s.label == "Advance payment request")
         .unwrap();
     assert_eq!(advance_payment.signal_type, "caution");
-    assert_eq!(advance_payment.value, "Detected");
+    // Full payment before shipment by a normal method.
+    assert_eq!(advance_payment.value, "Full prepayment");
+}
+
+#[test]
+fn untraceable_payment_method_is_named_separately() {
+    let mut analysis = make_analysis(true, true, true, true);
+    analysis.untraceable_payment_method.found = true;
+    analysis.untraceable_payment_method.evidence = "Accepts Western Union.".to_string();
+    let signals = build_b2b_claude_signals(&analysis);
+    let payment = signals
+        .iter()
+        .find(|s| s.label == "Advance payment request")
+        .unwrap();
+    assert_eq!(payment.value, "Untraceable payment");
+    assert_eq!(payment.signal_type, "caution");
+    assert_eq!(payment.sub, "Accepts Western Union.");
 }
 
 #[test]

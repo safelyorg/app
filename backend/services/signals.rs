@@ -681,15 +681,46 @@ pub fn build_b2b_claude_signals(analysis: &B2bClaudeAnalysis) -> Vec<Signal> {
             "communication",
             "pattern",
         ),
-        finding_to_signal(
-            "Advance payment request",
-            &analysis.advance_payment_request.evidence,
+        b2b_payment_signal(
             &analysis.advance_payment_request,
-            "communication",
-            "pattern",
+            &analysis.untraceable_payment_method,
         ),
         image_authenticity_signal(&analysis.image_authenticity),
     ]
+}
+
+/// B2B payment card. Two different problems get two different values,
+/// because they are not equally dangerous:
+/// - "Untraceable payment": Western Union, MoneyGram, crypto, gift
+///   cards or a personal account - money that cannot be got back.
+///   risk_factors.rs treats this as Serious.
+/// - "Full prepayment": 100% before shipment by a normal method (bank
+///   transfer). A real risk but common - Worth noting, or a combined
+///   flag (Pattern match) when the company is brand new.
+/// Both are "caution"; "None found" is good.
+pub const UNTRACEABLE_PAYMENT: &str = "Untraceable payment";
+pub const FULL_PREPAYMENT: &str = "Full prepayment";
+
+fn b2b_payment_signal(advance: &Finding, untraceable: &Finding) -> Signal {
+    let (value, sub, signal_type) = if untraceable.found {
+        let mut sub = untraceable.evidence.clone();
+        if advance.found && !advance.evidence.trim().is_empty() {
+            sub = format!("{} {}", sub, advance.evidence).trim().to_string();
+        }
+        (UNTRACEABLE_PAYMENT, sub, "caution")
+    } else if advance.found {
+        (FULL_PREPAYMENT, advance.evidence.clone(), "caution")
+    } else {
+        ("None found", advance.evidence.clone(), "good")
+    };
+    Signal {
+        label: "Advance payment request".to_string(),
+        sub,
+        value: value.to_string(),
+        signal_type: signal_type.to_string(),
+        category: "communication".to_string(),
+        check_type: "pattern".to_string(),
+    }
 }
 
 /// Image authenticity card, shared by B2C and B2B. While image checking
@@ -777,6 +808,7 @@ mod b2b_signal_tests {
             contact_verifiability: f(true),
             urgency_language: f(false),
             advance_payment_request: f(false),
+            untraceable_payment_method: f(false),
             image_authenticity: ImageAssessment {
                 verdict: "not verified".into(),
                 reasoning: "r".into(),
@@ -787,6 +819,41 @@ mod b2b_signal_tests {
 
     fn get<'a>(signals: &'a [Signal], label: &str) -> &'a Signal {
         signals.iter().find(|s| s.label == label).unwrap()
+    }
+
+    fn payment(advance: bool, untraceable: bool) -> Signal {
+        let mut a = analysis(true, true);
+        a.advance_payment_request = f(advance);
+        a.untraceable_payment_method = f(untraceable);
+        build_b2b_claude_signals(&a)
+            .into_iter()
+            .find(|s| s.label == "Advance payment request")
+            .unwrap()
+    }
+
+    #[test]
+    fn payment_card_tells_full_prepayment_and_untraceable_methods_apart() {
+        let none = payment(false, false);
+        assert_eq!(
+            (none.value.as_str(), none.signal_type.as_str()),
+            ("None found", "good")
+        );
+        let prepay = payment(true, false);
+        assert_eq!(
+            (prepay.value.as_str(), prepay.signal_type.as_str()),
+            (FULL_PREPAYMENT, "caution")
+        );
+        let wu = payment(false, true);
+        assert_eq!(
+            (wu.value.as_str(), wu.signal_type.as_str()),
+            (UNTRACEABLE_PAYMENT, "caution")
+        );
+        let both = payment(true, true);
+        assert_eq!(
+            both.value, UNTRACEABLE_PAYMENT,
+            "the more serious problem wins"
+        );
+        assert_eq!(both.sub, "e e");
     }
 
     #[test]

@@ -92,7 +92,7 @@ pub struct ClaudeAnalysis {
     pub overall_risk_notes: String,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Default, Deserialize)]
 pub struct Finding {
     pub found: bool,
     pub evidence: String,
@@ -131,7 +131,15 @@ pub struct B2bClaudeAnalysis {
     pub pricing_transparency: PriceAssessment,
     pub contact_verifiability: Finding,
     pub urgency_language: Finding,
+    /// 100% payment before shipment / before any check (by any method).
     pub advance_payment_request: Finding,
+    /// Western Union, MoneyGram, crypto, gift cards or a personal
+    /// account - money that cannot be got back or traced to a company.
+    /// Kept apart from advance_payment_request so full prepayment by
+    /// bank transfer is not treated as harshly as these. Defaults to
+    /// "not found" if Claude leaves it out.
+    #[serde(default)]
+    pub untraceable_payment_method: Finding,
     pub image_authenticity: ImageAssessment,
     pub overall_risk_notes: String,
 }
@@ -502,22 +510,67 @@ pub fn b2b_content(arg: &CallB2bClaudeArguments) -> String {
           means the GOOD thing was found (the business looks genuine / the
           details are consistent / the listing is specific / contact is
           verifiable). "found": false means a real concern exists.
-        - For urgency_language and advance_payment_request, "found": true
-          means the BAD thing was found (pressure tactics / an unusual
-          upfront payment demand). "found": false means none was found.
+        - For urgency_language, advance_payment_request and
+          untraceable_payment_method, "found": true means the BAD thing
+          was found (pressure tactics / full payment before shipment / an
+          untraceable payment method). "found": false means none was
+          found.
         The example values in the JSON shape at the end show the format
         only - they are not the answer.
 
         For business_legitimacy: set found to true if this looks like a
-        genuine, established business with real operational details; false
-        if it shows signs of being a shell, front, or fabricated entity
-        (e.g. no real company details, generic or nonsensical company name,
-        inconsistent information).
+        genuine, operating business; false only for strong signs of a
+        shell, front, or fabricated entity - e.g. made-up, impossible or
+        self-contradicting details, or a product range that is a random
+        mix of unrelated industries (e.g. one company selling food,
+        excavators, scrap metal and refrigerant gas at once).
+        COMPANY NAMES: many real suppliers (especially in China) use broad
+        legal names such as "... Information Technology Co., Ltd.",
+        "... Technology Co., Ltd." or "... Trading Co., Ltd." and sell
+        physical goods. A name that does not literally describe the
+        product is NOT a reason to set business_legitimacy to false. Judge
+        a name/product mismatch ONLY under registration_consistency, so
+        it is never counted twice.
+        These are also NOT reasons to set business_legitimacy to false,
+        on their own or added together - but DO mention each one that
+        applies in the evidence, as a plain fact, so the buyer sees it
+        (e.g. "No registration or tax number is shown. No street address
+        is shown. The company description is very short."):
+        - missing details: registration or tax number, street address,
+          founding year, employee count, revenue, certifications;
+        - a short, plain or generic company description (say that more
+          detail would help);
+        - a company name that looks unusual or made up (say so plainly;
+          a broad legal name like "... Trading Co., Ltd." is normal and
+          needs no mention).
+        These are NOT reasons and need no mention at all:
+        - how long the company has been on this or any platform (years
+          on Alibaba, "Member of ExportHub: 1st year", "Member of b2bmap
+          since", a TradeWheel or B2Brazil membership date). Joining a
+          platform recently says nothing about how old the company is,
+          so never compare the membership date with the founding year;
+        - anything already judged under another field (listing detail,
+          payment, contact).
+        NEVER judge or comment on a person's name, nationality or
+        ethnicity - that says nothing about the company. NEVER say a
+        company is not registered, not traceable or does not exist: you
+        cannot look up company registries. Say only what is or is not
+        shown (e.g. "No registration number is shown").
+        Set business_legitimacy to false only if you can name a concrete
+        red flag of the kind listed above (made-up, impossible or
+        self-contradicting details, or a random mix of unrelated
+        industries). If you cannot, set it to true and list the missing
+        or unusual details in the evidence.
 
         For registration_consistency: set found to true if the company's
         stated information (name, founding year, scale) hangs together
         coherently; false ONLY if you can name a real, concrete
-        inconsistency. Missing fields alone are not an inconsistency.
+        inconsistency. Missing fields alone are not an inconsistency. A
+        broad company name (see COMPANY NAMES above) is consistent when
+        the company's own description, business type or main products
+        cover what it sells (e.g. "hardware product customization" covers
+        a keyboard); set false for the name only if nothing in the
+        company's own information explains the products.
 
         For listing_specificity: set found to true if the listing describes
         a real, specific product with genuine, plausible details (concrete
@@ -553,17 +606,23 @@ pub fn b2b_content(arg: &CallB2bClaudeArguments) -> String {
         requests. Reasonable business urgency (limited stock, seasonal
         demand) is normal and should NOT be flagged.
 
-        For advance_payment_request: set found to true only if the listing
-        demands full, 100% upfront payment before any samples,
-        verification, or standard partial-deposit terms - genuinely unusual
-        for legitimate B2B trade, where partial deposits and
-        post-inspection payment terms are standard. ALSO set found to true
-        if the accepted payment methods above include Western Union,
-        MoneyGram, cryptocurrency or gift cards: these are cash-style
-        transfers that cannot be reversed or traced to a company, and a
-        genuine B2B supplier does not ask for them. Name the method in the
+        For advance_payment_request: set found to true only if the
+        terms require the FULL price (100%) to be paid before the goods
+        are shipped or before any sample or inspection - including split
+        terms that still add up to 100% before shipment (e.g. "40%
+        advance, 60% before shipment"). Partial deposits with the balance
+        paid against shipping documents (e.g. "30% advance, 70% against
+        copy of B/L"), L/C, D/A, D/P and platform escrow are standard B2B
+        terms and must NOT be flagged. Judge only how much is paid before
+        shipment here, not the payment method.
+
+        For untraceable_payment_method: set found to true only if the
+        accepted payment methods or the description include Western
+        Union, MoneyGram, cryptocurrency, gift cards, or paying a personal
+        (individual's) account instead of the company's account. These
+        cannot be reversed or traced to a company. Name the method in the
         evidence. Bank wire (T/T), L/C, D/A, D/P and platform escrow are
-        normal and must not be flagged on their own.
+        normal and must not be flagged here.
 
         For image_authenticity: {image_context}
         Verdict must be exactly "original" or "not verified" - no other
@@ -578,6 +637,7 @@ pub fn b2b_content(arg: &CallB2bClaudeArguments) -> String {
         "contact_verifiability": {{ "found": true, "evidence": "" }},
         "urgency_language": {{ "found": false, "evidence": "" }},
         "advance_payment_request": {{ "found": false, "evidence": "" }},
+        "untraceable_payment_method": {{ "found": false, "evidence": "" }},
         "image_authenticity": {{ "verdict": "not verified", "reasoning": "" }},
         "overall_risk_notes": ""
         }}
@@ -716,7 +776,36 @@ mod b2b_prompt_tests {
     fn payment_methods_reach_the_prompt() {
         let p = b2b_content(&args("exporthub", "", ""));
         assert!(p.contains("Accepted payment methods: Bank wire (T/T), Western Union (WU)"));
-        assert!(p.contains("include Western Union,\n        MoneyGram"));
+        let flat = p.split_whitespace().collect::<Vec<_>>().join(" ");
+        assert!(flat.contains("include Western Union, MoneyGram"));
+    }
+
+    #[test]
+    fn full_prepayment_and_untraceable_methods_are_separate_questions() {
+        let p = b2b_content(&args("b2bmap", "", ""));
+        let flat = p.split_whitespace().collect::<Vec<_>>().join(" ");
+        assert!(flat.contains("\"40% advance, 60% before shipment\""));
+        assert!(flat.contains("\"30% advance, 70% against copy of B/L\""));
+        assert!(flat.contains("For untraceable_payment_method: set found to true only if"));
+        assert!(flat.contains("\"untraceable_payment_method\": { \"found\": false"));
+    }
+
+    #[test]
+    fn missing_untraceable_field_defaults_to_not_found() {
+        let json = r#"{
+            "business_legitimacy": {"found": true, "evidence": ""},
+            "registration_consistency": {"found": true, "evidence": ""},
+            "listing_specificity": {"found": true, "evidence": ""},
+            "pricing_transparency": {"verdict": "normal", "reasoning": ""},
+            "contact_verifiability": {"found": true, "evidence": ""},
+            "urgency_language": {"found": false, "evidence": ""},
+            "advance_payment_request": {"found": true, "evidence": "100% before shipment"},
+            "image_authenticity": {"verdict": "not verified", "reasoning": ""},
+            "overall_risk_notes": ""
+        }"#;
+        let a: B2bClaudeAnalysis = serde_json::from_str(json).unwrap();
+        assert!(a.advance_payment_request.found);
+        assert!(!a.untraceable_payment_method.found);
     }
 
     #[test]
@@ -738,6 +827,36 @@ mod b2b_prompt_tests {
     }
 
     #[test]
+    fn business_check_needs_a_concrete_red_flag() {
+        let p = b2b_content(&args("exporthub", "", ""));
+        let flat = p.split_whitespace().collect::<Vec<_>>().join(" ");
+        assert!(flat.contains("is NOT a reason to set business_legitimacy to false"));
+        assert!(flat.contains("Judge a name/product mismatch ONLY under registration_consistency"));
+        assert!(flat.contains("random mix of unrelated industries"));
+        assert!(flat.contains("DO mention each one that applies in the evidence, as a plain fact"));
+        assert!(flat.contains(
+            "missing details: registration or tax number, street address, founding year"
+        ));
+        assert!(flat.contains("a company name that looks unusual or made up (say so plainly"));
+        assert!(
+            flat.contains(
+                "how long the company has been on this or any platform (years on Alibaba"
+            )
+        );
+        assert!(flat.contains("never compare the membership date with the founding year"));
+        assert!(
+            flat.contains("NEVER judge or comment on a person's name, nationality or ethnicity")
+        );
+        assert!(flat.contains("NEVER say a company is not registered"));
+        assert!(
+            flat.contains("set it to true and list the missing or unusual details in the evidence")
+        );
+        assert!(flat.contains("only if you can name a concrete red flag"));
+        assert!(flat.contains("\"hardware product customization\" covers a keyboard"));
+        assert!(!flat.contains("generic or nonsensical company name"));
+    }
+
+    #[test]
     fn empty_claude_answer_is_an_error_not_a_crash() {
         let envelope: ClaudeEnvelope =
             serde_json::from_str(r#"{"content": [], "stop_reason": "refusal"}"#).unwrap();
@@ -751,6 +870,7 @@ mod b2b_prompt_tests {
     fn found_meaning_is_spelled_out() {
         let p = b2b_content(&args("alibaba", "", ""));
         assert!(p.contains("\"found\": true\n          means the GOOD thing was found"));
-        assert!(p.contains("\"found\": true\n          means the BAD thing was found"));
+        let flat = p.split_whitespace().collect::<Vec<_>>().join(" ");
+        assert!(flat.contains("\"found\": true means the BAD thing was found"));
     }
 }
