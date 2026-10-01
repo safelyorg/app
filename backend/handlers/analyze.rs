@@ -9,7 +9,7 @@ use crate::{
             BuildResponseData, authorize_request, build_all_signals, build_b2b_analysis_path,
             build_requests, resolve_seller, run_claude_analysis, save_and_build_response,
         },
-        b2b_scrapers::{fetch_b2b_page, get_scraper_for_platform},
+        b2b_scrapers::{b2b_page_from_browser, fetch_b2b_page, get_scraper_for_platform},
         b2c_scrapers::{check_listing_page, requires_client_side_scraping},
         listings::{create_listing, update_listing_from_b2b},
         osint::{PlatformCheckResult, SellerIdentifiers, verify_social_link},
@@ -110,16 +110,24 @@ pub async fn analyze(
     // Platforms whose scraper implements company_key (Alibaba, B2Brazil, ExportHub)
     // get one seller record per company; the rest return None and keep
     // the old per-listing ID below, unchanged.
+    // ScraperAPI first. For platforms in BROWSER_PAGE_PLATFORMS
+    // (Alibaba), the page the buyer's browser sent is the backup, read
+    // only if ScraperAPI could not get the listing.
     let b2b_page = if is_b2b {
-        Some(
-            fetch_b2b_page(&request.platform, &request.listing_url)
+        let page = match fetch_b2b_page(&request.platform, &request.listing_url).await {
+            Some(page) => Some(page),
+            None => {
+                b2b_page_from_browser(
+                    &request.platform,
+                    &request.listing_url,
+                    request.page_html.as_deref(),
+                )
                 .await
-                .ok_or_else(|| {
-                    AnalyzeError::ClaudeAnalysisFailed(
-                        "Could not fetch B2B supplier page".to_string(),
-                    )
-                })?,
-        )
+            }
+        };
+        Some(page.ok_or_else(|| {
+            AnalyzeError::ClaudeAnalysisFailed("Could not fetch B2B supplier page".to_string())
+        })?)
     } else {
         None
     };

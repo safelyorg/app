@@ -99,6 +99,7 @@ async fn analyze_unauthorized_request() {
         domain_check_current_domain: None,
         domain_check_current_html: None,
         domain_check_real_html: None,
+        page_html: None,
         language: None,
     };
 
@@ -174,6 +175,7 @@ async fn analyze_unauthorized_request() {
 //         domain_check_current_domain: None,
 //         domain_check_current_html: None,
 //         domain_check_real_html: None,
+//         page_html: None,
 //     };
 
 //     let result = analyze(State(pool.clone()), headers, Json(request))
@@ -269,6 +271,7 @@ async fn analyze_unauthorized_request() {
 //         domain_check_current_domain: None,
 //         domain_check_current_html: None,
 //         domain_check_real_html: None,
+//         page_html: None,
 //     };
 
 //     let result = analyze(State(pool.clone()), headers, Json(request))
@@ -357,6 +360,7 @@ async fn analyze_unauthorized_request() {
 //         domain_check_current_domain: None,
 //         domain_check_current_html: None,
 //         domain_check_real_html: None,
+//         page_html: None,
 //     };
 
 //     let result = analyze(State(pool.clone()), headers, Json(request))
@@ -579,6 +583,7 @@ fn build_requests_correctly_splits_seller_and_listing_data() {
         domain_check_current_domain: None,
         domain_check_current_html: None,
         domain_check_real_html: None,
+        page_html: None,
         language: None,
     };
 
@@ -628,6 +633,7 @@ fn build_requests_none_values_stay_none() {
         domain_check_current_domain: None,
         domain_check_current_html: None,
         domain_check_real_html: None,
+        page_html: None,
         language: None,
     };
 
@@ -675,6 +681,7 @@ fn build_requests_seller_id_lands_only_on_listing_request() {
         domain_check_current_domain: None,
         domain_check_current_html: None,
         domain_check_real_html: None,
+        page_html: None,
         language: None,
     };
 
@@ -1977,6 +1984,7 @@ async fn build_all_signals_without_domain_check() {
         domain_check_current_domain: None,
         domain_check_current_html: None,
         domain_check_real_html: None,
+        page_html: None,
         language: None,
     };
 
@@ -2061,6 +2069,7 @@ async fn build_all_signals_with_domain_check() {
         domain_check_current_domain: None,
         domain_check_current_html: None,
         domain_check_real_html: None,
+        page_html: None,
         language: None,
     };
 
@@ -2124,7 +2133,12 @@ async fn build_network_memory_signal_calculates_the_real_correct_average() {
     let result = build_network_memory_signal(&pool, seller_id).await;
 
     assert!(result.is_some());
-    assert!(result.unwrap().sub.contains("average risk score was 20 out of 100"));
+    assert!(
+        result
+            .unwrap()
+            .sub
+            .contains("average risk score was 20 out of 100")
+    );
 
     cleanup_seller_and_analysis(&pool, platform_id).await;
 }
@@ -3026,7 +3040,11 @@ fn derive_risk_factors_flags_a_confirmed_fraud_pattern_as_hard() {
 
 #[test]
 fn derive_risk_factors_flags_a_bad_safely_history_as_hard() {
-    let signals = vec![make_signals("Safely history", "Checked 3 times before", "bad")];
+    let signals = vec![make_signals(
+        "Safely history",
+        "Checked 3 times before",
+        "bad",
+    )];
     let factors = derive_risk_factors(&signals);
     assert_eq!(factors.len(), 1);
     assert_eq!(factors[0].severity, "hard");
@@ -3035,7 +3053,11 @@ fn derive_risk_factors_flags_a_bad_safely_history_as_hard() {
 
 #[test]
 fn derive_risk_factors_does_not_flag_safely_history_when_it_is_not_bad() {
-    let signals = vec![make_signals("Safely history", "Checked once before", "good")];
+    let signals = vec![make_signals(
+        "Safely history",
+        "Checked once before",
+        "good",
+    )];
     let factors = derive_risk_factors(&signals);
     assert_eq!(factors.len(), 0);
 }
@@ -4032,6 +4054,7 @@ async fn build_all_signals_produces_correct_no_website_and_no_store_page_message
         domain_check_current_domain: None,
         domain_check_current_html: None,
         domain_check_real_html: None,
+        page_html: None,
         language: None,
     };
 
@@ -4137,6 +4160,7 @@ async fn build_all_signals_correctly_includes_real_verified_seller_data() {
         domain_check_current_domain: None,
         domain_check_current_html: None,
         domain_check_real_html: None,
+        page_html: None,
         language: None,
     };
 
@@ -4220,6 +4244,7 @@ async fn analyze_gracefully_continues_when_server_side_scraping_fails() {
         domain_check_current_domain: None,
         domain_check_current_html: None,
         domain_check_real_html: None,
+        page_html: None,
         language: None,
     };
 

@@ -27,6 +27,9 @@ interface AnalyzePayload {
   domain_check_current_domain: string | null;
   domain_check_current_html: string | null;
   domain_check_real_html: string | null;
+  // Alibaba only: the listing page as this browser shows it (see
+  // BROWSER_PAGE_PLATFORMS below).
+  page_html?: string | null;
 }
 
 interface SocialCandidateLink {
@@ -81,6 +84,12 @@ function formatPlatformName(platform: string | null | undefined): string {
   const names: Record<string, string> = {
     olx: "OLX",
     b2brazil: "B2Brazil",
+    alibaba: "Alibaba",
+    tradewheel: "TradeWheel",
+    exporthub: "ExportHub",
+    b2bmap: "B2BMap",
+    thomasnet: "ThomasNet",
+    kompass: "Kompass",
   };
   return names[platform] || platform;
 }
@@ -105,6 +114,35 @@ function formatPlatformName(platform: string | null | undefined): string {
       return token ? { Authorization: "Bearer " + token } : {};
     } catch (e) {
       return {};
+    }
+  }
+
+  // Platforms whose listing page is also sent from this browser, as a
+  // BACKUP: Safely fetches the listing through ScraperAPI first and
+  // reads this copy only if that fails. Must match
+  // BROWSER_PAGE_PLATFORMS in backend/src/services/b2b_scrapers/mod.rs.
+  const BROWSER_PAGE_PLATFORMS = ["alibaba"];
+
+  // A trimmed copy of the current page for Safely to read: styles,
+  // icons, frames and scripts are removed (only Alibaba's own product
+  // data script, window.detailData, is kept), so the copy is small and
+  // carries no tracking or login scripts. Returns null if it fails.
+  function pageHtmlForSafely(): string | null {
+    try {
+      const copy = document.documentElement.cloneNode(true) as HTMLElement;
+      copy
+        .querySelectorAll("style, link, svg, iframe, noscript, video, canvas")
+        .forEach((el) => el.remove());
+      copy.querySelectorAll("script").forEach((el) => {
+        if (!(el.textContent || "").includes("window.detailData")) el.remove();
+      });
+      // Safely's own panel is not part of the listing.
+      const ownPanel = copy.querySelector("#safely-root");
+      if (ownPanel) ownPanel.remove();
+      return "<!DOCTYPE html>" + copy.outerHTML;
+    } catch (e) {
+      console.error("Safely: could not copy the page", e);
+      return null;
     }
   }
 
@@ -308,6 +346,7 @@ function formatPlatformName(platform: string | null | undefined): string {
           : null,
         domain_check_current_html: domainCheck ? domainCheck.currentDomainHtml || null : null,
         domain_check_real_html: domainCheck ? domainCheck.realDomainHtml || null : null,
+        page_html: BROWSER_PAGE_PLATFORMS.indexOf(platform) !== -1 ? pageHtmlForSafely() : null,
       };
 
       const data = await (window as any).__safelyAPI.analyze(payload);

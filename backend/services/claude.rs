@@ -45,7 +45,32 @@ pub struct ImageSource {
 // 2. Gives you the text(that contains the actual fraud analysis) from the content block
 #[derive(Debug, Deserialize)]
 struct ClaudeEnvelope {
+    /// Claude can (rarely) answer with no text at all - e.g. when it
+    /// declines. Defaults to empty instead of failing to read.
+    #[serde(default)]
     content: Vec<ContentBlock>,
+    /// Why Claude stopped ("end_turn", "max_tokens", "refusal"...).
+    /// Logged when the answer is empty, to see why.
+    #[serde(default)]
+    stop_reason: Option<String>,
+}
+
+/// The text of Claude's answer. An empty answer used to crash the
+/// server ("index out of bounds: the len is 0 but the index is 0");
+/// now it becomes a normal error and the reason is logged.
+fn answer_text(envelope: &ClaudeEnvelope) -> Result<&str, ClaudeError> {
+    match envelope.content.first() {
+        Some(block) => Ok(&block.text),
+        None => {
+            eprintln!(
+                "Safely: Claude returned an empty answer (stop_reason: {:?})",
+                envelope.stop_reason
+            );
+            Err(ClaudeError::ParseFailed(
+                "Claude returned an empty answer".to_string(),
+            ))
+        }
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -240,7 +265,7 @@ pub async fn call_b2c_claude(args: CallClaudeArguments<'_>) -> Result<ClaudeAnal
     let envelope: ClaudeEnvelope =
         from_str(&body_text).map_err(|e| ClaudeError::ParseFailed(e.to_string()))?;
 
-    let inner_json = &envelope.content[0].text;
+    let inner_json = answer_text(&envelope)?;
     let cleaned = inner_json
         .trim()
         .trim_start_matches("```json")
@@ -300,7 +325,7 @@ pub async fn call_b2b_claude(
     let envelope: ClaudeEnvelope =
         from_str(&body_text).map_err(|e| ClaudeError::ParseFailed(e.to_string()))?;
 
-    let inner_json = &envelope.content[0].text;
+    let inner_json = answer_text(&envelope)?;
     let cleaned = inner_json
         .trim()
         .trim_start_matches("```json")
@@ -697,6 +722,16 @@ mod b2b_prompt_tests {
         assert!(p.contains("judge ONLY the contact details"));
         assert!(p.contains("Do NOT\n        use the verified badge"));
         assert!(!p.contains("structured data"));
+    }
+
+    #[test]
+    fn empty_claude_answer_is_an_error_not_a_crash() {
+        let envelope: ClaudeEnvelope =
+            serde_json::from_str(r#"{"content": [], "stop_reason": "refusal"}"#).unwrap();
+        assert!(answer_text(&envelope).is_err());
+        let envelope: ClaudeEnvelope =
+            serde_json::from_str(r#"{"content": [{"type": "text", "text": "{}"}]}"#).unwrap();
+        assert_eq!(answer_text(&envelope).unwrap(), "{}");
     }
 
     #[test]

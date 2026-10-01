@@ -1,0 +1,41 @@
+backend/models/analysis.rs:38:pub struct AnalyzeRequest {
+backend/models/analysis.rs-39-    // shared
+backend/models/analysis.rs-40-    pub platform: String,
+backend/models/analysis.rs-41-    #[serde(default)]
+backend/models/analysis.rs-42-    pub language: Option<String>,
+backend/models/analysis.rs-43-    // listing fields
+backend/models/analysis.rs-44-    pub seller_id: Option<Uuid>,
+backend/models/analysis.rs-45-    pub listing_url: String,
+backend/models/analysis.rs-46-    pub listing_id: Option<String>,
+backend/models/analysis.rs-47-    pub title: Option<String>,
+backend/models/analysis.rs-48-    pub price: Option<i64>,
+backend/models/analysis.rs-49-    pub description: Option<String>,
+backend/models/analysis.rs-50-    pub category: Option<ListingCategory>,
+backend/models/analysis.rs-51-    pub image_urls: Option<Vec<String>>,
+backend/models/analysis.rs-52-    pub posted_date: Option<NaiveDate>,
+backend/models/analysis.rs-53-    // seller fields
+backend/models/analysis.rs-54-    pub platform_id: Option<String>,
+backend/models/analysis.rs-55-    pub seller_name: Option<String>,
+backend/models/analysis.rs-56-    pub seller_handle: Option<String>,
+backend/models/analysis.rs-57-    pub seller_phone: Option<String>,
+backend/models/analysis.rs-58-    pub seller_profile_url: Option<String>,
+backend/models/analysis.rs-59-    pub seller_join_date: Option<String>,
+backend/models/analysis.rs-60-    pub seller_location: Option<String>,
+backend/models/analysis.rs-61-    pub seller_last_active: Option<String>,
+backend/models/analysis.rs-62-
+backend/models/analysis.rs-63-    #[serde(default)]
+backend/models/analysis.rs-64-    pub seller_website: Option<String>,
+backend/models/analysis.rs-65-    #[serde(default)]
+backend/models/analysis.rs-66-    pub seller_verified: Option<bool>,
+backend/models/analysis.rs-67-    #[serde(default)]
+backend/models/analysis.rs-68-    pub seller_rating: Option<f64>,
+backend/models/analysis.rs-69-    #[serde(default)]
+backend/models/analysis.rs-70-    pub seller_total_products: Option<i32>,
+backend/models/analysis.rs-71-    #[serde(default)]
+backend/models/analysis.rs-72-    pub domain_check_status: Option<String>,
+backend/models/analysis.rs-73-    #[serde(default)]
+backend/models/analysis.rs-74-    pub domain_check_real_name: Option<String>,
+backend/models/analysis.rs-75-    #[serde(default)]
+backend/models/analysis.rs-76-    pub domain_check_real_domain: Option<String>,
+backend/models/analysis.rs-77-    #[serde(default)]
+backend/models/analysis.rs-78-    pub domain_check_current_domain: Option<String>,

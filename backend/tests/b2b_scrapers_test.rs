@@ -773,10 +773,9 @@ async fn check_b2b_page_returns_none_when_the_primary_fetch_fails() {
 
 #[tokio::test]
 #[serial]
-async fn check_b2b_page_genuinely_never_retries_a_failed_primary_fetch() {
-    // This is the direct regression guard for the retry loop's
-    // removal: a 500 on the primary fetch must be requested EXACTLY
-    // once, not up to 3 times like the old behavior.
+async fn check_b2b_page_retries_a_server_error_exactly_once() {
+    // A 500 from ScraperAPI is tried once more (FETCH_RETRIES = 1 in
+    // b2b_scrapers/mod.rs) - 2 requests in total, never the old 3.
     unsafe {
         remove_var("SCRAPERAPI_KEY");
     }
@@ -784,6 +783,28 @@ async fn check_b2b_page_genuinely_never_retries_a_failed_primary_fetch() {
     Mock::given(method("GET"))
         .and(path("/listing"))
         .respond_with(ResponseTemplate::new(500))
+        .expect(2)
+        .mount(&mock_server)
+        .await;
+
+    let listing_url = format!("{}/listing", mock_server.uri());
+    let _ = check_b2b_page("b2brazil", &listing_url).await;
+
+    mock_server.verify().await;
+}
+
+#[tokio::test]
+#[serial]
+async fn check_b2b_page_never_retries_a_client_error() {
+    // A 4xx (e.g. 403 "your plan does not include this country") will
+    // not change on a retry, so it is requested exactly once.
+    unsafe {
+        remove_var("SCRAPERAPI_KEY");
+    }
+    let mock_server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/listing"))
+        .respond_with(ResponseTemplate::new(403))
         .expect(1)
         .mount(&mock_server)
         .await;

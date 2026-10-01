@@ -33,6 +33,32 @@ pub fn country_code_for_platform(platform: &str) -> Option<&'static str> {
     }
 }
 
+/// Platforms whose pages are fetched WITHOUT render=true (no browser
+/// running the page's JavaScript):
+/// - thomasnet, kompass: serve already-rendered HTML, and render=true
+///   risked triggering their anti-bot detection.
+/// - exporthub: everything the scraper reads is in the plain page
+///   (lazy images keep their real address in data-src, which the
+///   scraper already reads). Rendering made ExportHub pages slow enough
+///   that ScraperAPI gave up with "500" while ExportHub was slow.
+///   Plain fetches are also cheaper in ScraperAPI credits.
+/// To turn rendering back on for a platform, remove it from this list.
+const NO_RENDER_PLATFORMS: &[&str] = &["thomasnet", "kompass", "exporthub"];
+
+/// Platforms that ScraperAPI treats as "protected domains" and only
+/// fetches with ultra_premium=true. ScraperAPI's own error says so when
+/// it is needed: "Protected domains may require adding premium=true OR
+/// ultra_premium=true". Ultra premium costs more credits per page, so
+/// only platforms that actually need it are listed.
+/// - kompass: always needed it.
+/// - exporthub: started needing it on 2026-10-01 (every fetch failed
+///   with that message on plain premium).
+/// - alibaba: started needing it on 2026-10-01 afternoon (every listing
+///   failed with "500 Request failed" on plain premium, and loaded with
+///   ultra premium).
+/// To stop using it for a platform, remove it from this list.
+const ULTRA_PREMIUM_PLATFORMS: &[&str] = &["kompass", "exporthub", "alibaba"];
+
 pub fn wrap_scraper_url(target_url: &str) -> String {
     wrap_scraper_url_for_platform(target_url, "")
 }
@@ -46,15 +72,14 @@ pub fn wrap_scraper_url(target_url: &str) -> String {
 /// not discovered live - Kompass is known to need ultra_premium=true
 /// (ScraperAPI's own error message for it explicitly asks for it:
 /// "Protected domains may require adding premium=true OR
-/// ultra_premium=true"), and render=true is skipped for ThomasNet and
-/// Kompass since both serve already-rendered HTML and render=true
-/// risked triggering their own anti-bot detection with no benefit.
-/// Every other platform stays on plain premium=true + render=true.
+/// ultra_premium=true"), and render=true is skipped for the platforms
+/// in NO_RENDER_PLATFORMS. Every other platform stays on plain
+/// premium=true + render=true.
 pub fn wrap_scraper_url_for_platform(target_url: &str, platform: &str) -> String {
     if let Ok(api_key) = var("SCRAPERAPI_KEY") {
         let encoded_url = encode(target_url);
-        let needs_render = platform != "thomasnet" && platform != "kompass";
-        let needs_ultra_premium = platform == "kompass";
+        let needs_render = !NO_RENDER_PLATFORMS.contains(&platform);
+        let needs_ultra_premium = ULTRA_PREMIUM_PLATFORMS.contains(&platform);
 
         let mut url = format!(
             "https://api.scraperapi.com/?api_key={}&url={}&premium=true",
@@ -73,5 +98,37 @@ pub fn wrap_scraper_url_for_platform(target_url: &str, platform: &str) -> String
         url
     } else {
         target_url.to_string()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn render_is_skipped_only_for_the_listed_platforms() {
+        unsafe {
+            std::env::set_var("SCRAPERAPI_KEY", "k");
+        }
+        let eh = wrap_scraper_url_for_platform("https://www.exporthub.com/x", "exporthub");
+        assert!(
+            !eh.contains("render=true"),
+            "ExportHub is fetched without rendering"
+        );
+        assert!(eh.contains("premium=true") && eh.contains("country_code=us"));
+        assert!(
+            eh.contains("ultra_premium=true"),
+            "ExportHub is now a protected domain"
+        );
+
+        let ali = wrap_scraper_url_for_platform("https://www.alibaba.com/x", "alibaba");
+        assert!(ali.contains("render=true"), "Alibaba still renders");
+        assert!(
+            ali.contains("ultra_premium=true"),
+            "Alibaba now needs ultra premium"
+        );
+
+        let kompass = wrap_scraper_url_for_platform("https://www.kompass.com/x", "kompass");
+        assert!(!kompass.contains("render=true") && kompass.contains("ultra_premium=true"));
     }
 }
