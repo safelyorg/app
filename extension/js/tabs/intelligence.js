@@ -251,19 +251,43 @@
         ["Order a sample first", "Pay for a sample and check its quality before placing a bulk order."],
         ["Ask for a live video call", "Ask the supplier to show where they work and your goods live: the production line if they are a factory, the warehouse or office if they are a trader or shipping company. This confirms they really operate where they say."],
     ];
-    // Shown first on a B2B scan when Claude flagged the payment terms
-    // (e.g. Western Union / MoneyGram listed as accepted methods).
+    // Shown first on a B2B scan when Claude found an untraceable payment
+    // method (Western Union / MoneyGram / crypto / gift cards / a
+    // personal account). The backend marks it "Untraceable payment".
     const B2B_RISKY_PAYMENT_CHECK = [
         "Do not pay by Western Union, MoneyGram or crypto",
         "This supplier lists payment methods that cannot be reversed or traced to a company. Pay only by bank transfer to an account in the company's own name, or through the platform's protected payment.",
     ];
+    // Shown first when the supplier wants the full price before shipment
+    // by a normal method (the backend marks it "Full prepayment").
+    const B2B_FULL_PREPAYMENT_CHECK = [
+        "Don't pay everything before shipment",
+        "This supplier asks for the full price before the goods are shipped. Try to pay the balance only against a copy of the Bill of Lading, or use a Letter of Credit, and pay only to a bank account in the company's own name.",
+    ];
+    // Shown first when the product needs a licence or prescription (botox,
+    // fillers, prescription medicines). The backend adds a "Regulated
+    // product" card only for these products.
+    const B2B_REGULATED_PRODUCT_CHECK = [
+        "Buy only from the brand owner or an authorised distributor",
+        "This product needs a licence or prescription, and fakes of it can be dangerous. Ask the supplier for a letter from the brand owner showing they are an authorised distributor, and check it with the brand owner directly. You may also need your own import licence.",
+    ];
     function buildRecommendedChecks(signals) {
         const isB2b = isB2bScan(signals);
-        const riskyPayment = isB2b &&
-            signals.some((s) => s.label === "Advance payment request" && s.type === "caution");
-        const checks = isB2b
-            ? (riskyPayment ? [B2B_RISKY_PAYMENT_CHECK] : []).concat(B2B_CHECKS)
-            : B2C_CHECKS;
+        const payment = isB2b
+            ? signals.find((s) => s.label === "Advance payment request" && s.type === "caution")
+            : undefined;
+        // "Full prepayment" gets its own advice; any other flagged payment
+        // ("Untraceable payment", or an older scan's "Detected") keeps the
+        // Western Union warning.
+        const paymentCheck = !payment
+            ? []
+            : payment.value === "Full prepayment"
+                ? [B2B_FULL_PREPAYMENT_CHECK]
+                : [B2B_RISKY_PAYMENT_CHECK];
+        const regulatedCheck = isB2b && signals.some((s) => s.label === "Regulated product" && s.type === "caution")
+            ? [B2B_REGULATED_PRODUCT_CHECK]
+            : [];
+        const checks = isB2b ? regulatedCheck.concat(paymentCheck, B2B_CHECKS) : B2C_CHECKS;
         const cards = checks
             .map(([title, body]) => '<div class="safely-check-card"><div class="safely-check-title">' +
             window.escapeHtml(title) +

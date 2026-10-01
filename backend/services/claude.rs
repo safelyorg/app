@@ -140,6 +140,18 @@ pub struct B2bClaudeAnalysis {
     /// "not found" if Claude leaves it out.
     #[serde(default)]
     pub untraceable_payment_method: Finding,
+    /// The product is a prescription drug, injectable, or another
+    /// product that legally needs a licence to sell or buy (e.g.
+    /// botulinum toxin, dermal fillers, prescription medicines,
+    /// controlled medical devices). Defaults to "not found".
+    #[serde(default)]
+    pub regulated_product: Finding,
+    /// The seller calls itself the manufacturer of a branded product
+    /// that is made by a different, named company (e.g. a reseller of
+    /// Medytox's Meditoxin calling itself a "Manufacturer"). Defaults to
+    /// "not found".
+    #[serde(default)]
+    pub maker_claim_mismatch: Finding,
     pub image_authenticity: ImageAssessment,
     pub overall_risk_notes: String,
 }
@@ -510,11 +522,12 @@ pub fn b2b_content(arg: &CallB2bClaudeArguments) -> String {
           means the GOOD thing was found (the business looks genuine / the
           details are consistent / the listing is specific / contact is
           verifiable). "found": false means a real concern exists.
-        - For urgency_language, advance_payment_request and
-          untraceable_payment_method, "found": true means the BAD thing
-          was found (pressure tactics / full payment before shipment / an
-          untraceable payment method). "found": false means none was
-          found.
+        - For urgency_language, advance_payment_request,
+          untraceable_payment_method, regulated_product and
+          maker_claim_mismatch, "found": true means the BAD thing was
+          found (pressure tactics / full payment before shipment / an
+          untraceable payment method / a licence-only product / a false
+          manufacturer claim). "found": false means none was found.
         The example values in the JSON shape at the end show the format
         only - they are not the answer.
 
@@ -624,6 +637,25 @@ pub fn b2b_content(arg: &CallB2bClaudeArguments) -> String {
         evidence. Bank wire (T/T), L/C, D/A, D/P and platform escrow are
         normal and must not be flagged here.
 
+        For regulated_product: set found to true only if the product is
+        one that legally needs a licence or prescription to sell or buy:
+        prescription medicines, injectables such as botulinum toxin
+        ("botox", Meditoxin, Botulax, Nabota) or dermal fillers, local
+        anaesthetics for clinical use, controlled substances, or medical
+        devices that only licensed professionals may buy. Name the
+        product type in the evidence. Ordinary cosmetics, supplements,
+        food, and general medical supplies (gloves, masks, bandages) are
+        NOT regulated for this question and must not be flagged.
+
+        For maker_claim_mismatch: set found to true only if the seller
+        says it is a manufacturer (business type "Manufacturer" or "we
+        manufacture") AND the listed product is a branded product that is
+        made by a different, named company. Name both companies in the
+        evidence (e.g. "Meditoxin is made by Medytox, but PHARMOCEAN
+        calls itself a manufacturer"). Resellers that call themselves a
+        supplier, distributor or trader are fine and must not be flagged.
+        Generic or unbranded products are never flagged here.
+
         For image_authenticity: {image_context}
         Verdict must be exactly "original" or "not verified" - no other
         words.
@@ -638,6 +670,8 @@ pub fn b2b_content(arg: &CallB2bClaudeArguments) -> String {
         "urgency_language": {{ "found": false, "evidence": "" }},
         "advance_payment_request": {{ "found": false, "evidence": "" }},
         "untraceable_payment_method": {{ "found": false, "evidence": "" }},
+        "regulated_product": {{ "found": false, "evidence": "" }},
+        "maker_claim_mismatch": {{ "found": false, "evidence": "" }},
         "image_authenticity": {{ "verdict": "not verified", "reasoning": "" }},
         "overall_risk_notes": ""
         }}
@@ -854,6 +888,32 @@ mod b2b_prompt_tests {
         assert!(flat.contains("only if you can name a concrete red flag"));
         assert!(flat.contains("\"hardware product customization\" covers a keyboard"));
         assert!(!flat.contains("generic or nonsensical company name"));
+    }
+
+    #[test]
+    fn regulated_product_questions_are_asked_and_default_to_not_found() {
+        let p = b2b_content(&args("tradewheel", "", ""));
+        let flat = p.split_whitespace().collect::<Vec<_>>().join(" ");
+        assert!(flat.contains("For regulated_product: set found to true only if"));
+        assert!(flat.contains("botulinum toxin"));
+        assert!(flat.contains("For maker_claim_mismatch: set found to true only if"));
+        assert!(flat.contains("\"maker_claim_mismatch\": { \"found\": false"));
+
+        // Older answers without the new fields still parse.
+        let json = r#"{
+            "business_legitimacy": {"found": true, "evidence": ""},
+            "registration_consistency": {"found": true, "evidence": ""},
+            "listing_specificity": {"found": true, "evidence": ""},
+            "pricing_transparency": {"verdict": "normal", "reasoning": ""},
+            "contact_verifiability": {"found": true, "evidence": ""},
+            "urgency_language": {"found": false, "evidence": ""},
+            "advance_payment_request": {"found": false, "evidence": ""},
+            "image_authenticity": {"verdict": "not verified", "reasoning": ""},
+            "overall_risk_notes": ""
+        }"#;
+        let a: B2bClaudeAnalysis = serde_json::from_str(json).unwrap();
+        assert!(!a.regulated_product.found);
+        assert!(!a.maker_claim_mismatch.found);
     }
 
     #[test]

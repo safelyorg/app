@@ -44,6 +44,8 @@ fn make_analysis(
             found: false,
             evidence: "no untraceable payment method".to_string(),
         },
+        regulated_product: Finding::default(),
+        maker_claim_mismatch: Finding::default(),
         image_authenticity: ImageAssessment {
             verdict: "not verified".to_string(),
             reasoning: "no images provided".to_string(),

@@ -642,7 +642,7 @@ fn b2b_listing_specificity_signal(finding: &Finding) -> Signal {
 }
 
 pub fn build_b2b_claude_signals(analysis: &B2bClaudeAnalysis) -> Vec<Signal> {
-    vec![
+    let mut signals = vec![
         b2b_finding_to_signal(
             "Overall legitimacy check",
             "company",
@@ -686,7 +686,52 @@ pub fn build_b2b_claude_signals(analysis: &B2bClaudeAnalysis) -> Vec<Signal> {
             &analysis.untraceable_payment_method,
         ),
         image_authenticity_signal(&analysis.image_authenticity),
-    ]
+    ];
+    if let Some(regulated) =
+        b2b_regulated_product_signal(&analysis.regulated_product, &analysis.maker_claim_mismatch)
+    {
+        signals.push(regulated);
+    }
+    signals
+}
+
+/// "Regulated product" card - shown ONLY when the product needs a
+/// licence or prescription (botox, fillers, prescription medicines...).
+/// Ordinary listings do not get this card, so their signal count does
+/// not change.
+/// - "Licence needed": regulated product. Worth noting.
+/// - "Licence needed, not the maker": regulated product AND the seller
+///   calls itself the manufacturer of another company's brand.
+///   risk_factors.rs turns this into a combined flag (Pattern match).
+pub const REGULATED_PRODUCT: &str = "Licence needed";
+pub const REGULATED_NOT_MAKER: &str = "Licence needed, not the maker";
+
+fn b2b_regulated_product_signal(regulated: &Finding, maker_mismatch: &Finding) -> Option<Signal> {
+    if !regulated.found {
+        return None;
+    }
+    let (value, sub) = if maker_mismatch.found {
+        (
+            REGULATED_NOT_MAKER,
+            format!(
+                "{} {}",
+                regulated.evidence.trim(),
+                maker_mismatch.evidence.trim()
+            )
+            .trim()
+            .to_string(),
+        )
+    } else {
+        (REGULATED_PRODUCT, regulated.evidence.trim().to_string())
+    };
+    Some(Signal {
+        label: "Regulated product".to_string(),
+        sub,
+        value: value.to_string(),
+        signal_type: "caution".to_string(),
+        category: "listing".to_string(),
+        check_type: "pattern".to_string(),
+    })
 }
 
 /// B2B payment card. Two different problems get two different values,
@@ -764,6 +809,8 @@ fn table_rank(label: &str) -> u8 {
         "Advance payment request" => 3,
         "Account age" => 4,
         "Duplicate listing" | "Listing detail" => 5,
+        // Shown right after Listing detail (same rank, added after it).
+        "Regulated product" => 5,
         "Image authenticity" => 6,
         "Overall legitimacy check" => 7,
         "Safely history" => 8,
@@ -809,6 +856,8 @@ mod b2b_signal_tests {
             urgency_language: f(false),
             advance_payment_request: f(false),
             untraceable_payment_method: f(false),
+            regulated_product: f(false),
+            maker_claim_mismatch: f(false),
             image_authenticity: ImageAssessment {
                 verdict: "not verified".into(),
                 reasoning: "r".into(),
@@ -829,6 +878,38 @@ mod b2b_signal_tests {
             .into_iter()
             .find(|s| s.label == "Advance payment request")
             .unwrap()
+    }
+
+    fn regulated(found: bool, mismatch: bool) -> Option<Signal> {
+        let mut a = analysis(true, true);
+        a.regulated_product = f(found);
+        a.maker_claim_mismatch = f(mismatch);
+        build_b2b_claude_signals(&a)
+            .into_iter()
+            .find(|s| s.label == "Regulated product")
+    }
+
+    #[test]
+    fn regulated_product_card_only_appears_for_licence_only_products() {
+        assert!(
+            regulated(false, false).is_none(),
+            "ordinary products get no card"
+        );
+        assert!(
+            regulated(false, true).is_none(),
+            "a maker claim alone does not add the card"
+        );
+        let r = regulated(true, false).unwrap();
+        assert_eq!(
+            (r.value.as_str(), r.signal_type.as_str()),
+            (REGULATED_PRODUCT, "caution")
+        );
+        let r = regulated(true, true).unwrap();
+        assert_eq!(
+            (r.value.as_str(), r.signal_type.as_str()),
+            (REGULATED_NOT_MAKER, "caution")
+        );
+        assert_eq!(r.sub, "e e");
     }
 
     #[test]

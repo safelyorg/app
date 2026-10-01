@@ -256,6 +256,29 @@ fn clean_masked_name(raw: &str) -> Option<String> {
 /// still left behind. Decodes the ones seen on real pages; "&amp;" goes
 /// last so it can't create new entities.
 fn decode_leftover_entities(text: &str) -> String {
+    remove_typed_line_breaks(&decode_entities_only(text))
+}
+
+/// Some sellers' text contains "<br />" typed in as visible text (B2Brazil
+/// shows it literally on the page). The real line break is already there
+/// next to it, so the leftover tag text is removed and blank lines are
+/// kept to at most one.
+fn remove_typed_line_breaks(text: &str) -> String {
+    let mut out = text.to_string();
+    for tag in ["<br />", "<br/>", "<br>", "<BR />", "<BR/>", "<BR>"] {
+        out = out.replace(tag, "\n");
+    }
+    let mut lines: Vec<&str> = Vec::new();
+    for line in out.lines().map(str::trim_end) {
+        if line.trim().is_empty() && lines.last().is_some_and(|l| l.trim().is_empty()) {
+            continue;
+        }
+        lines.push(line);
+    }
+    lines.join("\n").trim().to_string()
+}
+
+fn decode_entities_only(text: &str) -> String {
     text.replace("&ldquo;", "\u{201c}")
         .replace("&rdquo;", "\u{201d}")
         .replace("&lsquo;", "\u{2018}")
@@ -532,6 +555,19 @@ mod tests {
         assert_eq!(
             decode_leftover_entities("&ldquo;Hot&amp;Cold&rdquo; China&#39;s"),
             "\u{201c}Hot&Cold\u{201d} China's"
+        );
+    }
+
+    #[test]
+    fn typed_line_break_tags_are_removed() {
+        let text = "First paragraph.<br />\n<br />\n\nSecond paragraph.";
+        assert_eq!(
+            decode_leftover_entities(text),
+            "First paragraph.\n\nSecond paragraph."
+        );
+        assert_eq!(
+            decode_leftover_entities("No tags &amp; fine"),
+            "No tags & fine"
         );
     }
 }

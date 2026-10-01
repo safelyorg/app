@@ -638,6 +638,50 @@ fn serper_enabled() -> bool {
         .unwrap_or(false)
 }
 
+/// Clean-ups that apply to EVERY B2B platform (Alibaba, ExportHub,
+/// TradeWheel, B2Brazil, B2BMap, ThomasNet, Kompass and any added
+/// later), done once here instead of in each scraper:
+/// - a price with no number in it ("Depends", "Negotiable", "Contact
+///   us") is not a price, so it is not counted as provided;
+/// - "<br />" typed into a seller's text is removed (the line break
+///   itself is kept).
+fn clean_b2b_listing(mut listing: B2bListingProfile) -> B2bListingProfile {
+    listing.unit_price = listing.unit_price.filter(|p| has_number(p));
+    listing.fob_price = listing.fob_price.filter(|p| has_number(p));
+    listing.description = listing.description.map(|d| remove_typed_line_breaks(&d));
+    listing
+}
+
+fn clean_b2b_supplier(mut supplier: B2bSupplierProfile) -> B2bSupplierProfile {
+    supplier.company_description = supplier
+        .company_description
+        .map(|d| remove_typed_line_breaks(&d))
+        .filter(|d| !d.is_empty());
+    supplier
+}
+
+/// True when the text holds at least one digit ("36 - 40 USD").
+fn has_number(text: &str) -> bool {
+    text.chars().any(|c| c.is_ascii_digit())
+}
+
+/// "First.<br />\n<br />\nSecond." -> "First.\n\nSecond." - typed tags
+/// become line breaks, and blank lines are kept to at most one.
+fn remove_typed_line_breaks(text: &str) -> String {
+    let mut out = text.to_string();
+    for tag in ["<br />", "<br/>", "<br>", "<BR />", "<BR/>", "<BR>"] {
+        out = out.replace(tag, "\n");
+    }
+    let mut lines: Vec<&str> = Vec::new();
+    for line in out.lines().map(str::trim_end) {
+        if line.trim().is_empty() && lines.last().is_some_and(|l| l.trim().is_empty()) {
+            continue;
+        }
+        lines.push(line);
+    }
+    lines.join("\n").trim().to_string()
+}
+
 /// What Claude sees as the price: the unit price and, when the listing
 /// also shows one, the FOB price. TradeWheel often shows the real
 /// per-unit price ("60 - 80 USD / Carat") only in the FOB line.
@@ -687,6 +731,10 @@ pub async fn build_b2b_analysis_path(
     ),
     AnalyzeError,
 > {
+    // Same clean-up for every platform (see clean_b2b_listing).
+    let supplier = clean_b2b_supplier(supplier);
+    let listing = clean_b2b_listing(listing);
+
     let mut signals = Vec::new();
 
     if let Some(memory_signal) = build_network_memory_signal(pool, seller_id).await {
@@ -817,6 +865,57 @@ mod b2b_score_tests {
             b2b_risk_score(75, 0, 1),
             75,
             "a higher warning score is kept"
+        );
+    }
+}
+
+#[cfg(test)]
+mod b2b_cleanup_tests {
+    use super::*;
+
+    #[test]
+    fn word_only_prices_are_dropped_on_every_platform() {
+        for platform in [
+            "alibaba",
+            "exporthub",
+            "tradewheel",
+            "b2brazil",
+            "b2bmap",
+            "thomasnet",
+            "kompass",
+        ] {
+            let listing = B2bListingProfile {
+                unit_price: Some("Negotiable".into()),
+                fob_price: Some("36 - 40 USD / Depends on the quantity".into()),
+                source_platform: platform.into(),
+                ..Default::default()
+            };
+            let l = clean_b2b_listing(listing);
+            assert_eq!(l.unit_price, None, "{platform}");
+            assert_eq!(
+                l.fob_price.as_deref(),
+                Some("36 - 40 USD / Depends on the quantity")
+            );
+        }
+    }
+
+    #[test]
+    fn typed_line_breaks_are_removed_everywhere() {
+        let supplier = B2bSupplierProfile {
+            company_description: Some("First.<br />\n<br />\n\nSecond.".into()),
+            ..Default::default()
+        };
+        assert_eq!(
+            clean_b2b_supplier(supplier).company_description.as_deref(),
+            Some("First.\n\nSecond.")
+        );
+        let listing = B2bListingProfile {
+            description: Some("A<br>B".into()),
+            ..Default::default()
+        };
+        assert_eq!(
+            clean_b2b_listing(listing).description.as_deref(),
+            Some("A\nB")
         );
     }
 }

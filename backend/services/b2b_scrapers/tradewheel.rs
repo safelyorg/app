@@ -77,12 +77,17 @@ impl B2bScraper for TradewheelScraper {
             title,
             description,
             image_urls: extract_image_urls(&document),
+            // "Depends" / "Negotiable" are not prices: a price must
+            // contain at least one number.
             unit_price: tiers
                 .get("price")
                 .cloned()
                 .or(headline_price)
-                .or_else(|| get(&["Price", "Unit Price"])),
-            fob_price: headline_fob.or_else(|| get(&["FOB Price"])),
+                .or_else(|| get(&["Price", "Unit Price"]))
+                .filter(|p| has_number(p)),
+            fob_price: headline_fob
+                .or_else(|| get(&["FOB Price"]))
+                .filter(|p| has_number(p)),
             // The product table says "MOQ". The tier table's "Quantity"
             // is a price bracket, not the minimum order, so it is only a
             // last resort.
@@ -493,6 +498,12 @@ fn looks_like_website(value: &str) -> bool {
         && v.contains('.')
         && !v.contains("tradewheel.com")
         && v.len() > 4
+}
+
+/// True when the text holds at least one digit ("36 - 40 USD"), false
+/// for words only ("Depends", "Negotiable").
+fn has_number(text: &str) -> bool {
+    text.chars().any(|c| c.is_ascii_digit())
 }
 
 fn fill(slot: &mut Option<String>, value: Option<String>) {
@@ -1016,6 +1027,16 @@ mod tests {
             company_slug("https://www.tradewheel.com/p/x-2402918/"),
             None
         );
+    }
+
+    #[test]
+    fn a_price_without_a_number_is_not_a_price() {
+        assert!(!has_number("Depends"));
+        assert!(!has_number("Negotiable"));
+        assert!(has_number("36 - 40 USD / Depends on the quantity"));
+        let html = r#"<div class="po-box"><table class='table'>
+            <tr><td>Price</td><td>Depends</td></tr></table></div>"#;
+        assert_eq!(TradewheelScraper.parse_listing(html, "u").unit_price, None);
     }
 
     #[test]

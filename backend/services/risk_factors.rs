@@ -1,5 +1,5 @@
 use crate::models::{analysis::Signal, risk_factors::RiskFactor};
-use crate::services::signals::FULL_PREPAYMENT;
+use crate::services::signals::{FULL_PREPAYMENT, REGULATED_NOT_MAKER};
 
 /// True only for a genuinely young account/company - an age measured in
 /// days, weeks or months ("This month", "3 months"), or a company
@@ -215,6 +215,26 @@ pub fn derive_risk_factors(signals: &[Signal]) -> Vec<RiskFactor> {
         }
     }
 
+    // A licence-only product (botox, fillers, prescription medicine)
+    // sold by a company that calls itself the maker of another company's
+    // brand: a combined flag. Fakes of these products are dangerous, and
+    // a false manufacturer claim is a common sign of a fake source. A
+    // regulated product on its own stays "Worth noting" (soft factor).
+    if let Some(r) = find_signal(signals, "Regulated product") {
+        if is_flagged(r) && r.value == REGULATED_NOT_MAKER {
+            factors.push(RiskFactor {
+                severity: "compound".to_string(),
+                name: "regulated_product_from_non_maker".to_string(),
+                description: format!(
+                    "{} Products like this should only be bought from the brand owner or its authorised distributor.",
+                    evidence_or(r, "This product needs a licence to sell, and the seller is not its maker.")
+                ),
+                contributing_signals: vec!["Regulated product".to_string()],
+            });
+            covered_labels.push("Regulated product");
+        }
+    }
+
     // Soft factors - anything caution/bad-type not already covered above
     for signal in signals {
         if is_flagged(signal) && !covered_labels.contains(&signal.label.as_str()) {
@@ -247,6 +267,35 @@ mod tests {
 
     fn find<'a>(f: &'a [RiskFactor], name: &str) -> Option<&'a RiskFactor> {
         f.iter().find(|x| x.name == name)
+    }
+
+    #[test]
+    fn regulated_product_from_non_maker_is_a_combined_flag() {
+        let f = derive_risk_factors(&[sig(
+            "Regulated product",
+            REGULATED_NOT_MAKER,
+            "caution",
+            "Botox. Not the maker.",
+        )]);
+        let c = find(&f, "regulated_product_from_non_maker").unwrap();
+        assert_eq!(c.severity, "compound");
+        assert!(c.description.starts_with("Botox. Not the maker."));
+        assert!(
+            find(&f, "regulated_product_flagged").is_none(),
+            "not counted twice"
+        );
+
+        let f = derive_risk_factors(&[sig(
+            "Regulated product",
+            "Licence needed",
+            "caution",
+            "Botox.",
+        )]);
+        assert!(find(&f, "regulated_product_from_non_maker").is_none());
+        assert_eq!(
+            find(&f, "regulated_product_flagged").unwrap().severity,
+            "soft"
+        );
     }
 
     #[test]

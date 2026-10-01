@@ -328,6 +328,14 @@ interface PlatformCheckResult {
     "This supplier asks for the full price before the goods are shipped. Try to pay the balance only against a copy of the Bill of Lading, or use a Letter of Credit, and pay only to a bank account in the company's own name.",
   ];
 
+  // Shown first when the product needs a licence or prescription (botox,
+  // fillers, prescription medicines). The backend adds a "Regulated
+  // product" card only for these products.
+  const B2B_REGULATED_PRODUCT_CHECK: [string, string] = [
+    "Buy only from the brand owner or an authorised distributor",
+    "This product needs a licence or prescription, and fakes of it can be dangerous. Ask the supplier for a letter from the brand owner showing they are an authorised distributor, and check it with the brand owner directly. You may also need your own import licence.",
+  ];
+
   function buildRecommendedChecks(signals: SafelySignal[]): string {
     const isB2b = isB2bScan(signals);
     const payment = isB2b
@@ -341,7 +349,11 @@ interface PlatformCheckResult {
       : payment.value === "Full prepayment"
         ? [B2B_FULL_PREPAYMENT_CHECK]
         : [B2B_RISKY_PAYMENT_CHECK];
-    const checks = isB2b ? paymentCheck.concat(B2B_CHECKS) : B2C_CHECKS;
+    const regulatedCheck: [string, string][] =
+      isB2b && signals.some((s) => s.label === "Regulated product" && s.type === "caution")
+        ? [B2B_REGULATED_PRODUCT_CHECK]
+        : [];
+    const checks = isB2b ? regulatedCheck.concat(paymentCheck, B2B_CHECKS) : B2C_CHECKS;
     const cards = checks
       .map(
         ([title, body]) =>
