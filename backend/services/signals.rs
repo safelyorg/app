@@ -378,6 +378,35 @@ pub fn build_b2b_verification_signal(supplier: &B2bSupplierProfile) -> Signal {
         };
     }
 
+    // b2bmap does not verify companies either. Its "Free Member", paid
+    // plans and the paid "B2BMAP Verified Seal" are memberships, so the
+    // plan is shown for information only - never as verified, never as
+    // a caution.
+    if supplier.source_platform == "b2bmap" {
+        let (value, sub) = match supplier.badge_honorific.as_deref() {
+            Some(plan) => (
+                plan.to_string(),
+                format!(
+                    "{} is a {} on b2bmap. b2bmap does not verify companies; this is only the membership plan.",
+                    name, plan
+                ),
+            ),
+            None => (
+                "Not offered".to_string(),
+                "b2bmap does not verify companies, so there is no verification to show."
+                    .to_string(),
+            ),
+        };
+        return Signal {
+            label: "Platform verification".to_string(),
+            sub,
+            value,
+            signal_type: "info".to_string(),
+            category: "identity".to_string(),
+            check_type: "existence".to_string(),
+        };
+    }
+
     if supplier.platform_verified_badge {
         Signal {
             label: "Platform verification".to_string(),
@@ -851,6 +880,27 @@ mod b2b_signal_tests {
         assert_eq!(
             (none.value.as_str(), none.signal_type.as_str()),
             ("No badge", "info")
+        );
+    }
+
+    #[test]
+    fn b2bmap_plan_is_info_never_verified_or_caution() {
+        let free = build_b2b_verification_signal(&supplier("b2bmap", false, Some("Free Member")));
+        assert_eq!(
+            (free.value.as_str(), free.signal_type.as_str()),
+            ("Free Member", "info")
+        );
+        assert!(free.sub.contains("b2bmap does not verify companies"));
+        // Even if a badge flag were set, b2bmap is never shown as verified.
+        let paid = build_b2b_verification_signal(&supplier("b2bmap", true, Some("Gold Member")));
+        assert_eq!(
+            (paid.value.as_str(), paid.signal_type.as_str()),
+            ("Gold Member", "info")
+        );
+        let none = build_b2b_verification_signal(&supplier("b2bmap", false, None));
+        assert_eq!(
+            (none.value.as_str(), none.signal_type.as_str()),
+            ("Not offered", "info")
         );
     }
 

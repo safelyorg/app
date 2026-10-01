@@ -174,6 +174,9 @@ fn platform_contact_policy(platform: &str) -> Option<&'static str> {
         "exporthub" => Some(
             "does not show supplier websites, and hides phone numbers from non-paying visitors (a phone listed above was still published by the supplier and is usable); buyers contact suppliers through the platform's inquiry form. ExportHub also does not verify companies, so a missing verified badge is normal there",
         ),
+        "b2bmap" => Some(
+            "shows the supplier's own phone number on product pages, but masks contact numbers on company pages for non-paying visitors (e.g. \"+848783xxxxx\"); a website is shown only if the supplier adds one; buyers can also contact suppliers through the platform's inquiry form. b2bmap does not verify companies: \"Free Member\", its paid plans and its paid \"B2BMAP Verified Seal\" are memberships, not a check on the company. \"Member of b2bmap since\" is when the company joined b2bmap, not when the company was founded",
+        ),
         "tradewheel" => Some(
             "never shows supplier phone numbers, and shows supplier websites only to logged-in members (a website listed above came from the buyer's own logged-in view); buyers contact suppliers through the platform's inquiry form. A contact name with no phone is the normal level of detail there. TradeWheel's Gold and Platinum badges are paid membership levels, not company verification",
         ),
@@ -722,6 +725,16 @@ mod b2b_prompt_tests {
         assert!(p.contains("judge ONLY the contact details"));
         assert!(p.contains("Do NOT\n        use the verified badge"));
         assert!(!p.contains("structured data"));
+    }
+
+    #[test]
+    fn b2bmap_policy_reaches_the_prompt() {
+        let p = b2b_content(&args("b2bmap", "+84878369911", ""));
+        let flat = p.split_whitespace().collect::<Vec<_>>().join(" ");
+        assert!(flat.contains("b2bmap does not verify companies"));
+        assert!(flat.contains("not when the company was founded"));
+        assert!(flat.contains("must NOT count against the supplier"));
+        assert!(p.contains("Contact phone: +84878369911"));
     }
 
     #[test]
