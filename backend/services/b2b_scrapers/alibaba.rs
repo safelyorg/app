@@ -383,19 +383,49 @@ impl B2bScraper for AlibabaScraper {
     fn parse_listing(&self, html: &str, listing_url: &str) -> B2bListingProfile {
         let document = Html::parse_document(html);
 
-        let title = select_attr_or_text(&document, "h1[title]");
-        let description = build_description_from_attributes(&document);
+        let detail = extract_detail_data(html);
+        // Title and description fall back to window.detailData when the
+        // visible markup is missing (same values, just not drawn).
+        let title = select_attr_or_text(&document, "h1[title]").or_else(|| {
+            detail
+                .as_ref()
+                .and_then(|d| d.pointer("/globalData/product"))
+                .and_then(|p| json_str(p, "subject"))
+        });
+        let description = build_description_from_attributes(&document)
+            .or_else(|| detail.as_ref().and_then(detail_description));
+        // "Packaging and delivery" (selling unit, package size, gross
+        // weight) is only in window.detailData.
+        let packaging_details = detail.as_ref().and_then(detail_packaging);
         let mut image_urls = extract_image_urls(&document);
         if image_urls.is_empty() {
-            if let Some(data) = extract_detail_data(html) {
-                image_urls = detail_image_urls(&data);
+            if let Some(data) = detail.as_ref() {
+                image_urls = detail_image_urls(data);
             }
         }
 
         // Try ladder pricing first (multiple tiers); fall back to
         // range pricing (one price + separate MOQ) if that's genuinely
         // what this listing uses instead.
-        let (unit_price, minimum_order_quantity) = extract_price(&document);
+        let (mut unit_price, mut minimum_order_quantity) = extract_price(&document);
+        let mut delivery_timeframe = extract_lead_time(&document);
+
+        // Some layouts (e.g. logistics/service listings, or a page whose
+        // price block is drawn by JavaScript) have no price, minimum
+        // order or lead-time markup - the same values are in the page's
+        // window.detailData script, so they are read from there. These
+        // only fill gaps; a value found on the visible page always wins.
+        if let Some(data) = detail.as_ref() {
+            if unit_price.is_none() {
+                unit_price = detail_price(data);
+            }
+            if minimum_order_quantity.is_none() {
+                minimum_order_quantity = detail_moq(data);
+            }
+            if delivery_timeframe.is_none() {
+                delivery_timeframe = detail_lead_time(data);
+            }
+        }
 
         B2bListingProfile {
             title,
@@ -408,9 +438,9 @@ impl B2bScraper for AlibabaScraper {
             preferred_port: None,
             reference: None,
             production_capacity: None,
-            delivery_timeframe: None,
+            delivery_timeframe,
             incoterms: None,
-            packaging_details: None,
+            packaging_details,
             listing_url: listing_url.to_string(),
             source_platform: "alibaba".to_string(),
         }
@@ -592,6 +622,239 @@ fn extract_price(document: &Html) -> (Option<String>, Option<String>) {
     }
 
     (None, None)
+}
+
+/// The attribute groups of window.detailData: the first (untitled) group
+/// is "Key attributes", the "Packaging and delivery" group is packaging.
+fn detail_attribute_groups(data: &Value) -> Vec<(String, Vec<(String, String)>)> {
+    let Some(groups) = data
+        .pointer("/nodeMap/module_sorted_attribute/privateData/productSortedProperties")
+        .and_then(|g| g.as_array())
+    else {
+        return Vec::new();
+    };
+    groups
+        .iter()
+        .map(|g| {
+            let title = json_str(g, "title").unwrap_or_default();
+            let pairs = g
+                .get("attributeList")
+                .and_then(|l| l.as_array())
+                .map(|list| {
+                    list.iter()
+                        .filter_map(|a| Some((json_str(a, "attribute")?, json_str(a, "value")?)))
+                        .collect()
+                })
+                .unwrap_or_default();
+            (title, pairs)
+        })
+        .collect()
+}
+
+fn join_pairs(pairs: &[(String, String)]) -> String {
+    pairs
+        .iter()
+        .map(|(k, v)| format!("{}: {}", k, v))
+        .collect::<Vec<_>>()
+        .join(". ")
+}
+
+/// "Selling Units: Single item. Single package size: 16X9X8 cm. Single
+/// gross weight: 0.06 kg"
+fn detail_packaging(data: &Value) -> Option<String> {
+    detail_attribute_groups(data)
+        .into_iter()
+        .find(|(title, _)| title.eq_ignore_ascii_case("Packaging and delivery"))
+        .map(|(_, pairs)| join_pairs(&pairs))
+        .filter(|s| !s.is_empty())
+}
+
+/// Key attributes (same "Name: value" format as the visible grid), then
+/// the seller's own product description lines.
+fn detail_description(data: &Value) -> Option<String> {
+    let mut parts = Vec::new();
+    let attributes: Vec<(String, String)> = detail_attribute_groups(data)
+        .into_iter()
+        .filter(|(title, _)| !title.eq_ignore_ascii_case("Packaging and delivery"))
+        .flat_map(|(_, pairs)| pairs)
+        .collect();
+    if !attributes.is_empty() {
+        parts.push(join_pairs(&attributes));
+    }
+    if let Some(details) = data
+        .pointer("/nodeMap/module_description/privateData/productDescription/details")
+        .and_then(|d| d.as_array())
+    {
+        let lines: Vec<String> = details.iter().filter_map(|d| json_str(d, "text")).collect();
+        if !lines.is_empty() {
+            parts.push(lines.join("\n"));
+        }
+    }
+    if parts.is_empty() {
+        None
+    } else {
+        Some(parts.join("\n\n"))
+    }
+}
+
+/// The sample/price module of window.detailData.
+fn detail_sample_module(data: &Value) -> Option<&Value> {
+    data.get("nodeMap")?
+        .get("module_sample_new")?
+        .get("privateData")
+}
+
+/// "US$0.02 (≥1 kilograms)", tiers joined with " | " - the same format
+/// as the visible price tiers.
+fn detail_price(data: &Value) -> Option<String> {
+    let list = detail_sample_module(data)?.get("priceList")?.as_array()?;
+    let tiers: Vec<String> = list
+        .iter()
+        .filter_map(|t| {
+            let price = t.get("formatPrice")?.as_str()?.trim();
+            if price.is_empty() {
+                return None;
+            }
+            Some(
+                match t
+                    .get("formatLadder")
+                    .and_then(|l| l.as_str())
+                    .map(str::trim)
+                {
+                    Some(l) if !l.is_empty() => format!("{} ({})", price, l),
+                    _ => price.to_string(),
+                },
+            )
+        })
+        .collect();
+    if tiers.is_empty() {
+        None
+    } else {
+        Some(tiers.join(" | "))
+    }
+}
+
+/// "1 kilogram" from the minimum-order block of window.detailData.
+fn detail_moq(data: &Value) -> Option<String> {
+    detail_sample_module(data)?
+        .get("orderQuantity")?
+        .get("minOrder")?
+        .get("formatMinOrderQuantity")?
+        .as_str()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+}
+
+/// Lead time from window.detailData, e.g. "1 - 1000 kilogram: 3 days".
+fn detail_lead_time(data: &Value) -> Option<String> {
+    let global = data.get("globalData")?;
+    let list = global
+        .get("trade")?
+        .get("leadTimeInfo")?
+        .get("ladderPeriodList")?
+        .as_array()?;
+    let unit = global
+        .get("product")
+        .and_then(|p| p.get("price").or_else(|| p.get("customPrice")))
+        .and_then(|p| p.get("unit"))
+        .and_then(|u| u.as_str())
+        .unwrap_or("")
+        .trim()
+        .to_string();
+    let parts: Vec<String> = list
+        .iter()
+        .filter_map(|t| {
+            let days = t.get("processPeriod")?.as_i64()?;
+            let min = t.get("minQuantity").and_then(|v| v.as_i64());
+            let max = t
+                .get("maxQuantity")
+                .and_then(|v| v.as_i64())
+                .filter(|m| *m > 0);
+            let range = match (min, max) {
+                (Some(a), Some(b)) => format!("{} - {}", a, b),
+                (Some(a), None) => format!("> {}", a),
+                _ => return Some(format!("{} days", days)),
+            };
+            let qty = if unit.is_empty() {
+                range
+            } else {
+                format!("{} {}", range, unit)
+            };
+            Some(format!("{}: {} days", qty, days))
+        })
+        .collect();
+    if parts.is_empty() {
+        None
+    } else {
+        Some(parts.join("; "))
+    }
+}
+
+/// The "Lead time" table: a quantity row and a days row, e.g.
+/// "Quantity (pieces) | 1 - 2,000 | 2,001 - 5,000 | > 5,000" and
+/// "Lead time (days) | 32 | 35 | To be negotiated" ->
+/// "1 - 2,000 pieces: 32 days; 2,001 - 5,000 pieces: 35 days;
+/// > 5,000 pieces: To be negotiated".
+fn extract_lead_time(document: &Html) -> Option<String> {
+    let table_sel = Selector::parse(".lead-list table").ok()?;
+    let row_sel = Selector::parse("tr").ok()?;
+    let cell_sel = Selector::parse("td, th").ok()?;
+    let table = document.select(&table_sel).next()?;
+    let rows: Vec<Vec<String>> = table
+        .select(&row_sel)
+        .map(|r| {
+            r.select(&cell_sel)
+                .map(|c| {
+                    c.text()
+                        .collect::<Vec<_>>()
+                        .join(" ")
+                        .split_whitespace()
+                        .collect::<Vec<_>>()
+                        .join(" ")
+                })
+                .collect()
+        })
+        .collect();
+    let quantity = rows.iter().find(|r| {
+        r.first()
+            .map_or(false, |l| l.to_lowercase().starts_with("quantity"))
+    })?;
+    let days = rows.iter().find(|r| {
+        r.first()
+            .map_or(false, |l| l.to_lowercase().starts_with("lead time"))
+    })?;
+    // "Quantity (pieces)" -> "pieces"
+    let unit = quantity[0]
+        .split('(')
+        .nth(1)
+        .and_then(|u| u.split(')').next())
+        .unwrap_or("")
+        .trim()
+        .to_string();
+    let parts: Vec<String> = quantity
+        .iter()
+        .skip(1)
+        .zip(days.iter().skip(1))
+        .filter(|(q, d)| !q.is_empty() && !d.is_empty())
+        .map(|(q, d)| {
+            let qty = if unit.is_empty() {
+                q.clone()
+            } else {
+                format!("{} {}", q, unit)
+            };
+            let when = if d.chars().all(|c| c.is_ascii_digit()) {
+                format!("{} days", d)
+            } else {
+                d.clone()
+            };
+            format!("{}: {}", qty, when)
+        })
+        .collect();
+    if parts.is_empty() {
+        None
+    } else {
+        Some(parts.join("; "))
+    }
 }
 
 /// "5-99 cartons" -> "5 cartons"; "≥500 pieces" -> "500 pieces".
@@ -922,6 +1185,79 @@ mod tests {
         assert_eq!(
             AlibabaScraper.company_key(&product_page(BADGED_CARD, TIERS, "")),
             None
+        );
+    }
+
+    #[test]
+    fn lead_time_table_becomes_delivery_timeframe() {
+        let html = r#"<div class="lead-list"><table><tbody><tr><td>Quantity (pieces)</td><td>1 - 2,000</td><td>2,001 - 5,000</td><td> &gt; 5,000 </td></tr><tr><td>Lead time (days)</td><td>32</td><td>35</td><td>To be negotiated</td></tr></tbody></table></div>"#;
+        assert_eq!(
+            AlibabaScraper
+                .parse_listing(html, "u")
+                .delivery_timeframe
+                .as_deref(),
+            Some(
+                "1 - 2,000 pieces: 32 days; 2,001 - 5,000 pieces: 35 days; > 5,000 pieces: To be negotiated"
+            )
+        );
+        assert_eq!(
+            AlibabaScraper
+                .parse_listing("<html></html>", "u")
+                .delivery_timeframe,
+            None
+        );
+    }
+
+    // Trimmed from a real logistics listing (Oct 2026): no price,
+    // minimum-order or lead-time markup - only the page's data script.
+    const SHUNQI_DATA: &str = r#"<script>window.detailData = {"globalData":{"product":{"moq":1,"price":{"unit":"kilogram"}},"trade":{"leadTimeInfo":{"ladderPeriodList":[{"maxQuantity":1000,"minQuantity":1,"processPeriod":3}]}}},"nodeMap":{"module_sample_new":{"privateData":{"orderQuantity":{"minOrder":{"minOrderQuantity":1.0,"quantityUnit":"kilogram","formatMinOrderQuantity":"1 kilogram"}},"priceList":[{"minQuantity":1,"maxQuantity":-1,"price":0.02,"formatLadder":"≥1 kilograms","formatPrice":"US$0.02"}]}}}};</script>"#;
+
+    // Trimmed from the real Wenzhou Mike Optical listing (Oct 2026).
+    const MIKE_DATA: &str = r#"<script>window.detailData = {"globalData":{"seller":{},"product":{"subject":"MK91283 Anti Blue Light Metal Glasses"}},"nodeMap":{"module_sorted_attribute":{"privateData":{"productSortedProperties":[{"title":"","attributeList":[{"attribute":"Frame Type","value":"Semi-Rimless"},{"attribute":"Model Number","value":"MK91283"}]},{"title":"Packaging and delivery","attributeList":[{"attribute":"Selling Units","value":"Single item"},{"attribute":"Single package size","value":"16X9X8 cm"},{"attribute":"Single gross weight","value":"0.06 kg"}]}]}},"module_description":{"privateData":{"productDescription":{"details":[{"type":"text","text":"Anti Blue Light: Protects eyes."},{"type":"text","text":"Unisex Design."}]}}}}};</script>"#;
+
+    #[test]
+    fn packaging_title_and_description_come_from_detail_data() {
+        let l = AlibabaScraper.parse_listing(MIKE_DATA, "u");
+        assert_eq!(
+            l.packaging_details.as_deref(),
+            Some(
+                "Selling Units: Single item. Single package size: 16X9X8 cm. Single gross weight: 0.06 kg"
+            )
+        );
+        assert_eq!(
+            l.title.as_deref(),
+            Some("MK91283 Anti Blue Light Metal Glasses")
+        );
+        assert_eq!(
+            l.description.as_deref(),
+            Some(
+                "Frame Type: Semi-Rimless. Model Number: MK91283\n\nAnti Blue Light: Protects eyes.\nUnisex Design."
+            )
+        );
+    }
+
+    #[test]
+    fn visible_title_and_price_win_over_detail_data() {
+        let html = product_page(BADGED_CARD, TIERS, MIKE_DATA);
+        let l = AlibabaScraper.parse_listing(&html, "u");
+        assert_eq!(l.title.as_deref(), Some("Test Product"));
+        assert!(l.unit_price.as_deref().unwrap().starts_with("US$250"));
+    }
+
+    #[test]
+    fn no_packaging_group_means_none() {
+        let l = AlibabaScraper.parse_listing(SHUNQI_DATA, "u");
+        assert_eq!(l.packaging_details, None);
+    }
+
+    #[test]
+    fn price_moq_and_lead_time_fall_back_to_detail_data() {
+        let l = AlibabaScraper.parse_listing(SHUNQI_DATA, "u");
+        assert_eq!(l.unit_price.as_deref(), Some("US$0.02 (≥1 kilograms)"));
+        assert_eq!(l.minimum_order_quantity.as_deref(), Some("1 kilogram"));
+        assert_eq!(
+            l.delivery_timeframe.as_deref(),
+            Some("1 - 1000 kilogram: 3 days")
         );
     }
 }
