@@ -553,7 +553,7 @@ pub fn build_b2b_transparency_signal(supplier: &B2bSupplierProfile) -> Signal {
 /// never show price, MOQ, Incoterms, packaging or delivery details for
 /// any supplier. Add a platform here only when NO listing on it can
 /// ever have these fields.
-pub const NO_ORDER_DETAILS_PLATFORMS: [&str; 1] = ["thomasnet"];
+pub const NO_ORDER_DETAILS_PLATFORMS: [&str; 2] = ["thomasnet", "kompass"];
 
 /// Checks how many of the real, listing-specific fields (price, MOQ,
 /// Incoterms, etc.) were genuinely filled in versus left as "Not
@@ -886,9 +886,11 @@ mod b2b_signal_tests {
 
     #[test]
     fn empty_listing_is_only_info_on_a_directory_platform() {
-        let s = build_b2b_listing_completeness_signal(&empty_listing("thomasnet"));
-        assert_eq!(s.signal_type, "info");
-        assert_eq!(s.value, "Not shown on this platform");
+        for platform in ["thomasnet", "kompass"] {
+            let s = build_b2b_listing_completeness_signal(&empty_listing(platform));
+            assert_eq!(s.signal_type, "info");
+            assert_eq!(s.value, "Not shown on this platform");
+        }
     }
     use crate::services::claude::{ImageAssessment, PriceAssessment};
 

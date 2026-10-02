@@ -21,14 +21,18 @@ fn clean_optional_text(raw: &str) -> Option<String> {
 /// company page it also carries a trailing
 /// `<span class="titleGMini">(activity, city)</span>` describing the
 /// company's Kompass classification - not part of the actual name.
-/// That span's text is always wrapped in parentheses, so splitting on
-/// the first '(' and trimming reliably strips it on every page shape
-/// seen (company page with the span, product page without it).
+/// That span is removed by element, NOT by cutting at the first '(',
+/// because real names contain brackets too, e.g.
+/// "Chenyue(Jiangsu)Technology Co.,Ltd." (cutting at '(' gave "Chenyue").
 fn parse_company_name(document: &Html) -> Option<String> {
     let selector = Selector::parse("h1[itemprop=name]").ok()?;
-    let full_text = text_of(&document.select(&selector).next()?);
-    let name = full_text.split('(').next().unwrap_or(&full_text);
-    clean_optional_text(name)
+    let mini = Selector::parse(".titleGMini").ok()?;
+    let h1 = document.select(&selector).next()?;
+    let mut name = text_of(&h1);
+    for span in h1.select(&mini) {
+        name = name.replacen(&text_of(&span), "", 1);
+    }
+    clean_optional_text(&name)
 }
 
 /// Reads a value out of Kompass's real `<tr><th>Label</th><td>Value</td></tr>`
@@ -102,6 +106,19 @@ fn parse_location(document: &Html) -> Option<String> {
         .filter(|t| !t.is_empty());
 
     match (locality, country) {
+        // Some companies type the country into the city field too, e.g.
+        // "Shuyang County,Jiangsu Province.China" + "China". The repeat
+        // is dropped so it reads "..., Jiangsu Province, China".
+        (Some(l), Some(c)) if l.to_lowercase().ends_with(&c.to_lowercase()) => {
+            let cut = l.len() - c.len();
+            let head =
+                l[..cut].trim_end_matches(|ch: char| ch == '.' || ch == ',' || ch.is_whitespace());
+            if head.is_empty() {
+                Some(c)
+            } else {
+                Some(format!("{head}, {c}"))
+            }
+        }
         (Some(l), Some(c)) => Some(format!("{l}, {c}")),
         (None, Some(c)) => Some(c),
         (Some(l), None) => Some(l),
@@ -145,13 +162,25 @@ fn parse_first_executive_name(document: &Html) -> Option<String> {
         .and_then(|t| clean_optional_text(&t))
 }
 
+/// The company website. The company page lists it as
+/// `a#webSite_presentation_0`; product pages show the same link in a
+/// "Company website" block (`.webSite a`). Both are read, so the website
+/// is found even when only the product page could be fetched.
 fn parse_website_url(document: &Html) -> Option<String> {
-    let selector = Selector::parse("a[id^='webSite_presentation_']").ok()?;
-    document
-        .select(&selector)
-        .next()
-        .and_then(|el| el.value().attr("href"))
-        .and_then(clean_optional_text)
+    [
+        "a[id^='webSite_presentation_']",
+        ".blockSectionProduct .webSite a[href]",
+    ]
+    .iter()
+    .filter_map(|s| Selector::parse(s).ok())
+    .find_map(|sel| {
+        document
+            .select(&sel)
+            .next()
+            .and_then(|el| el.value().attr("href"))
+            .and_then(clean_optional_text)
+    })
+    .filter(|u| u.starts_with("http"))
 }
 
 fn parse_description(document: &Html) -> Option<String> {
@@ -199,6 +228,33 @@ fn parse_characteristics(document: &Html) -> Vec<(String, String)> {
             Some((title, value))
         })
         .collect()
+}
+
+/// The Kompass company ID from any Kompass company or product link,
+/// e.g. "/c/accurate-industrial-products/in489756/" or
+/// "/p/accurate-industrial-products/in489756/diamond-.../3141.../" ->
+/// "in489756". It is the second path part after "/c/" or "/p/", and is
+/// the same on every product page of that company.
+fn company_id_from_url(url: &str) -> Option<String> {
+    let path = url.split("kompass.com").last().unwrap_or(url);
+    let mut parts = path
+        .split(|c| c == '/' || c == '?' || c == '#')
+        .filter(|p| !p.is_empty());
+    let kind = parts.next()?;
+    if kind != "c" && kind != "p" {
+        return None;
+    }
+    let _slug = parts.next()?;
+    let id = parts.next()?.trim().to_lowercase();
+    // Real IDs are letters + digits (e.g. "in489756", "de602025").
+    if id.len() >= 4
+        && id.chars().all(|c| c.is_ascii_alphanumeric())
+        && id.chars().any(|c| c.is_ascii_digit())
+    {
+        Some(id)
+    } else {
+        None
+    }
 }
 
 impl B2bScraper for KompassScraper {
@@ -258,6 +314,25 @@ impl B2bScraper for KompassScraper {
         } else {
             Some(format!("https://www.kompass.com{href}"))
         }
+    }
+
+    /// One record per company: the Kompass company ID (e.g.
+    /// "in489756"), read from the product page's "See the company"
+    /// link, or from the page's own canonical link. The same for every
+    /// product that company lists, so Safely history and fraud reports
+    /// belong to the company, not to one product.
+    fn company_key(&self, listing_html: &str) -> Option<String> {
+        self.extract_company_profile_url(listing_html)
+            .as_deref()
+            .and_then(company_id_from_url)
+            .or_else(|| {
+                let document = Html::parse_document(listing_html);
+                Selector::parse("link[rel='canonical']")
+                    .ok()
+                    .and_then(|sel| document.select(&sel).next())
+                    .and_then(|el| el.value().attr("href"))
+                    .and_then(company_id_from_url)
+            })
     }
 
     /// Company page has richer data than the product page's own
@@ -349,15 +424,29 @@ impl B2bScraper for KompassScraper {
             }
         };
 
-        let image_urls: Vec<String> = Selector::parse("#productPageCarousel li.itemPicture img")
-            .ok()
-            .map(|sel| {
-                document
-                    .select(&sel)
-                    .filter_map(|el| el.value().attr("src").map(|s| s.to_string()))
-                    .collect()
-            })
-            .unwrap_or_default();
+        // Kompass loads product photos lazily: the real link is in
+        // `data-src`, and `src` is often missing or a placeholder. Both
+        // are read; placeholders (data: URIs) and repeats are skipped.
+        let mut image_urls: Vec<String> = Vec::new();
+        if let Ok(sel) = Selector::parse("#productPageCarousel li.itemPicture img") {
+            for el in document.select(&sel) {
+                let url = ["data-src", "src"]
+                    .iter()
+                    .filter_map(|a| el.value().attr(a))
+                    .map(str::trim)
+                    .find(|u| u.starts_with("http") || u.starts_with("//"));
+                if let Some(url) = url {
+                    let url = if url.starts_with("//") {
+                        format!("https:{url}")
+                    } else {
+                        url.to_string()
+                    };
+                    if !image_urls.contains(&url) {
+                        image_urls.push(url);
+                    }
+                }
+            }
+        }
 
         B2bListingProfile {
             title,
@@ -652,6 +741,119 @@ mod tests {
         assert!(
             listing.reference.is_none(),
             "the Agilon-style product page has no Characteristics table at all"
+        );
+    }
+
+    #[test]
+    fn company_key_is_the_kompass_company_id() {
+        assert_eq!(
+            KompassScraper.company_key(product_page_html()).as_deref(),
+            Some("in483016")
+        );
+        // Real links (Oct 2026): product and company page give the same ID.
+        assert_eq!(
+            company_id_from_url("https://www.kompass.com/p/accurate-industrial-products/in489756/diamond-dotted-paper-for-transformer-windings/3141f387-4da5-40ba-8012-09bc0d8d8ee3/").as_deref(),
+            Some("in489756")
+        );
+        assert_eq!(
+            company_id_from_url("https://www.kompass.com/c/accurate-industrial-products/in489756/")
+                .as_deref(),
+            Some("in489756")
+        );
+        // Broken or unrelated links give nothing.
+        assert_eq!(
+            company_id_from_url(
+                "https://www.kompass.comfr.kompass.storefront.util.CanonicalUrlData@22a50c9b"
+            ),
+            None
+        );
+        assert_eq!(company_id_from_url("https://www.kompass.com/login"), None);
+        assert_eq!(KompassScraper.company_key("<html></html>"), None);
+    }
+
+    #[test]
+    fn company_key_falls_back_to_the_canonical_link() {
+        let html = r#"<html><head><link rel="canonical" href="https://www.kompass.com/p/acme/de602025/widget/abc/"/></head><body></body></html>"#;
+        assert_eq!(
+            KompassScraper.company_key(html).as_deref(),
+            Some("de602025")
+        );
+    }
+
+    #[test]
+    fn lazy_loaded_product_photos_are_read_from_data_src() {
+        // Trimmed from the real KAY International product page (Oct 2026).
+        let html = r#"<html><body><div id="productPageCarousel"><ul>
+            <li class="itemPicture active"><picture><img data-src="https://img.kompass.com/sys-master-images/hcf/he0/10451305693214/mechanical-vacuum-bosster-png" class="lazyload" src="data:image/gif;base64,R0lGOD"></picture></li>
+            <li class="itemPicture"><img data-src="https://img.kompass.com/sys-master-images/hcf/he0/10451305693214/mechanical-vacuum-bosster-png" class="lazyload"></li>
+            <li class="itemPicture"><img src="//img.kompass.com/2.jpg"></li>
+        </ul></div></body></html>"#;
+        let l = KompassScraper.parse_listing(html, "u");
+        assert_eq!(
+            l.image_urls,
+            vec![
+                "https://img.kompass.com/sys-master-images/hcf/he0/10451305693214/mechanical-vacuum-bosster-png".to_string(),
+                "https://img.kompass.com/2.jpg".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn website_is_read_from_the_product_page_too() {
+        // Trimmed from the real Jumbo Stillads product page (Oct 2026).
+        let html = r#"<html><body><div class='blockSectionProduct'>
+            <h2>Company website</h2>
+            <div class="webSite"><a href="https://www.jumbo.as" rel="noopener" target="_blank"><span class="blockText">Jumbo Stillads A/S</span></a></div>
+        </div></body></html>"#;
+        let s = KompassScraper.parse_supplier(html, "u");
+        assert_eq!(s.website_url.as_deref(), Some("https://www.jumbo.as"));
+    }
+
+    #[test]
+    fn company_page_executive_employees_and_website_are_read() {
+        // Trimmed from the real Jumbo Stillads company page (Oct 2026).
+        let html = r#"<html><body>
+        <table class="tableInfoPlus">
+            <tr class="trWebSite"><th>Discover more on our Website</th><td class="listWww"><div class="webSite-item"><a id="webSite_presentation_0" href="https://www.jumbo.as" target="_blank">https://www.jumbo.as</a></div></td></tr>
+            <tr><th>Year established</th><td></td></tr>
+            <tr><th>No employees</th><td>47&nbsp;Employees</td></tr>
+        </table>
+        <div class="executiveBlock"><div class="executiveName"><p title="Karsten  Skov Hansen"><strong>Karsten  Skov Hansen</strong></p><p class="executiveFonction">CEO - Chief Executive Officer</p></div></div>
+        </body></html>"#;
+        let s = KompassScraper.enrich_from_company_profile(B2bSupplierProfile::default(), html);
+        assert_eq!(s.contact_name.as_deref(), Some("Karsten Skov Hansen"));
+        assert_eq!(s.employee_count.as_deref(), Some("47 Employees"));
+        assert_eq!(s.website_url.as_deref(), Some("https://www.jumbo.as"));
+        assert_eq!(s.year_established, None, "an empty year cell stays empty");
+    }
+
+    #[test]
+    fn brackets_inside_the_real_company_name_are_kept() {
+        // Trimmed from the real Chenyue company and product pages (Oct 2026).
+        let company = r#"<html><body><h1 itemprop="name" class="titleGeneral">
+            Chenyue&#x28;Jiangsu&#x29;Technology Co.,Ltd.<span class="titleGMini">
+                (Industrial gearboxes<span class="virgule">,</span>Shuyang County,Jiangsu Province.China)
+            </span></h1></body></html>"#;
+        let product = r#"<html><body><h1 itemprop="name" class="titleGeneral">
+            Chenyue&#x28;Jiangsu&#x29;Technology Co.,Ltd.</h1></body></html>"#;
+        for html in [company, product] {
+            let s = KompassScraper.parse_supplier(html, "u");
+            assert_eq!(
+                s.company_name.as_deref(),
+                Some("Chenyue(Jiangsu)Technology Co.,Ltd.")
+            );
+        }
+    }
+
+    #[test]
+    fn country_typed_into_the_city_is_not_repeated() {
+        let html = r#"<html><body><div itemprop="address">
+            <span itemprop="addressLocality">Shuyang County,Jiangsu Province.China</span>
+            <span itemprop="addressCountry">China</span></div></body></html>"#;
+        let s = KompassScraper.parse_supplier(html, "u");
+        assert_eq!(
+            s.country.as_deref(),
+            Some("Shuyang County,Jiangsu Province, China")
         );
     }
 }
