@@ -8,7 +8,7 @@
   "nav.what_to_expect": "O que esperar",
   "nav.subscribe_btn": "Inscrever-se",
 
-  "hero.badge": "Ativo no Alibaba, TradeWheel, ExportHub e B2Brazil",
+  "hero.badge": "Ativo no Alibaba, TradeWheel, ExportHub, B2Brazil, ThomasNet, B2BMap e Kompass",
   "hero.sub": "O Safely verifica o registro, os anúncios e a presença online de um fornecedor no momento em que você abre a página dele.",
   "hero.add_to_chrome": "Adicionar ao Chrome — É Grátis",
   "hero.see_how": "Veja como funciona",
@@ -16,6 +16,7 @@
 
   "logos.label": "Ativo hoje — verificando fornecedores nestas plataformas",
   "logos.soon": "Em breve",
+  "logos.more_soon": "Mais plataformas em breve",
 
   "how.badge": "Como funciona",
   "how.title": "Detecção de fraude em segundos.",
@@ -51,7 +52,7 @@
   "features.bento3.title": "Proteção automática e invisível",
   "features.bento3.body": "Sem etapas extras, sem aplicativo separado, sem necessidade de conta para começar. O Safely fica discretamente no seu navegador e é ativado no momento em que você abre qualquer anúncio compatível.",
   "features.bento4.title": "Expansão entre plataformas B2B",
-  "features.bento4.body": "Ativo hoje no Alibaba, TradeWheel, ExportHub e B2Brazil. O SAP Ariba é o próximo — uma única extensão que eventualmente cobrirá todas as principais plataformas de compras B2B.",
+  "features.bento4.body": "Ativo hoje no Alibaba, TradeWheel, ExportHub, B2Brazil, ThomasNet, B2BMap e Kompass — uma única extensão que continua crescendo para cobrir todas as principais plataformas de compras B2B.",
 
   "stats.badge": "Em números",
   "stats.title": "Feito para velocidade, sem atrito.",
@@ -72,7 +73,7 @@
   "pricing.book_session": "Agendar uma sessão",
   "pricing.team.name": "Team",
   "pricing.team.for": "Para equipes de compras que verificam fornecedores",
-"pricing.team.li1": "750 verificações de fornecedores/mês no Alibaba, TradeWheel, ExportHub e B2Brazil",
+  "pricing.team.li1": "750 verificações de fornecedores/mês no Alibaba, TradeWheel, ExportHub, B2Brazil, ThomasNet, B2BMap e Kompass",
   "pricing.team.li2": "Pontuação de risco completa e detalhamento de 15+ sinais",
   "pricing.team.li3": "Verificações de registro da empresa e completude do anúncio",
   "pricing.team.li4": "Verificação cruzada de presença social",
@@ -89,7 +90,7 @@
   "pricing.comp.title": "Comparação lado a lado",
   "pricing.comp.feature": "Recurso",
   "pricing.comp.core_access": "Acesso Principal",
-  "pricing.comp.row1": "Verificações de fornecedores (Alibaba, TradeWheel, ExportHub, B2Brazil)",
+  "pricing.comp.row1": "Verificações de fornecedores (Alibaba, TradeWheel, ExportHub, B2Brazil, ThomasNet, B2BMap, Kompass)",
   "pricing.comp.unlimited": "Ilimitado",
   "pricing.comp.team_scans": "750/mês",
   "pricing.comp.row_api": "Acesso à API",
@@ -121,7 +122,7 @@
   "faq.q1.q": "Vocês oferecem um teste grátis?",
   "faq.q1.a": "Sim — tanto o Team quanto o Enterprise começam com um teste grátis de 7 dias, sem necessidade de cartão de crédito, para você testar a verificação real de fornecedores e vendedores antes de pagar qualquer coisa.",
   "faq.q2.q": "Quais plataformas B2B o Safely suporta?",
-  "faq.q2.a": "O Safely está totalmente ativo no Alibaba, TradeWheel, ExportHub e B2Brazil. O SAP Ariba é o próximo em nosso roteiro. Veja a próxima pergunta para saber exatamente quais páginas atualmente disparam uma análise.",
+  "faq.q2.a": "O Safely está totalmente ativo no Alibaba, TradeWheel, ExportHub, B2Brazil, ThomasNet, B2BMap e Kompass — com mais marketplaces B2B adicionados regularmente. Veja a próxima pergunta para saber exatamente quais páginas atualmente disparam uma análise.",
   "faq.q3.q": "Como a IA analisa os anúncios?",
   "faq.q3.a": "Quando você abre a página de um fornecedor, o Safely lê os detalhes do anúncio, o perfil da empresa, as informações de registro e os dados de contato da página. Isso é combinado com uma verificação em tempo real da presença do fornecedor na web, depois enviado à IA Claude para analisar mais de 15 sinais distintos e retornar uma pontuação de risco de 0 a 100 com um detalhamento completo de cada descoberta.",
   "faq.q4.q": "Quem vê minhas denúncias de fraude?",
@@ -131,7 +132,7 @@
   "faq.q6.q": "Meus dados de navegação são privados?",
   "faq.q6.a": "Nós só coletamos dados de anúncios e vendedores das páginas que você visita ativamente em marketplaces compatíveis. Nunca rastreamos seu histórico geral de navegação, nunca vendemos seus dados a terceiros, e todos os dados de análise são armazenados com segurança. Você pode excluir sua conta e todos os dados associados a qualquer momento.",
   "faq.q7.q": "Quais páginas específicas o Safely realmente verifica?",
-  "faq.q7.a": "Atualmente, o Safely lê ativamente páginas de fornecedores e anúncios no Alibaba, TradeWheel, ExportHub e B2Brazil. O Safely só é ativado em páginas de anúncios individuais — simplesmente navegar pela página inicial ou resultados de busca de uma plataforma não dispara uma análise. O suporte para SAP Ariba e outras plataformas B2B está em nosso roteiro.",
+  "faq.q7.a": "Atualmente, o Safely lê ativamente páginas de fornecedores e anúncios no Alibaba, TradeWheel, ExportHub, B2Brazil, ThomasNet, B2BMap e Kompass. O Safely só é ativado em páginas de anúncios individuais — simplesmente navegar pela página inicial ou resultados de busca de uma plataforma não dispara uma análise. Estamos adicionando continuamente suporte a mais plataformas B2B.",
 
   "cta.badge": "Proteja-se hoje",
   "cta.title": "Pare de ser vítima de golpes online.",
