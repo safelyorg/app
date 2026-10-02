@@ -1,6 +1,23 @@
 use reqwest::Client;
 use std::env::var;
+use std::sync::Once;
 use urlencoding::encode;
+
+/// Makes sure the "key is missing" warning is printed only once per run,
+/// not once per page.
+static MISSING_KEY_WARNING: Once = Once::new();
+
+/// Prints a clear warning (once) when SCRAPERAPI_KEY is not set. Pages
+/// still load, but directly from this computer instead of through
+/// ScraperAPI - so no IP rotation, and sites may block the scan. The key
+/// itself is never printed.
+fn warn_missing_scraperapi_key() {
+    MISSING_KEY_WARNING.call_once(|| {
+        eprintln!(
+            "Safely: WARNING: SCRAPERAPI_KEY is not set - pages are being fetched directly, not through ScraperAPI. Add SCRAPERAPI_KEY to backend/.env and restart."
+        );
+    });
+}
 
 /// The one, real, shared HTTP client every scraper fetches through -
 /// genuinely plain now, since ScraperAPI's real, actual integration
@@ -76,7 +93,10 @@ pub fn wrap_scraper_url(target_url: &str) -> String {
 /// in NO_RENDER_PLATFORMS. Every other platform stays on plain
 /// premium=true + render=true.
 pub fn wrap_scraper_url_for_platform(target_url: &str, platform: &str) -> String {
-    if let Ok(api_key) = var("SCRAPERAPI_KEY") {
+    let api_key = var("SCRAPERAPI_KEY")
+        .ok()
+        .filter(|key| !key.trim().is_empty());
+    if let Some(api_key) = api_key {
         let encoded_url = encode(target_url);
         let needs_render = !NO_RENDER_PLATFORMS.contains(&platform);
         let needs_ultra_premium = ULTRA_PREMIUM_PLATFORMS.contains(&platform);
@@ -97,6 +117,7 @@ pub fn wrap_scraper_url_for_platform(target_url: &str, platform: &str) -> String
         }
         url
     } else {
+        warn_missing_scraperapi_key();
         target_url.to_string()
     }
 }

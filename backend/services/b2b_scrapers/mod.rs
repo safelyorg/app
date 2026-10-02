@@ -144,12 +144,32 @@ pub fn clean_listing_url(platform: &str, page_url: &str) -> String {
 /// errors (5xx) and network errors are retried. Set to 0 to turn off.
 const FETCH_RETRIES: u32 = 1;
 
+/// Same as FETCH_RETRIES, but for the company's own pages (company
+/// profile and extended profile), fetched after the listing page. A
+/// failed company page used to be skipped silently; now the reason is
+/// in the log and it is tried once more. Each extra try can add up to
+/// about a minute on Alibaba when ScraperAPI is slow. Set to 0 to turn
+/// the extra try off (the reason is still logged).
+const PROFILE_FETCH_RETRIES: u32 = 1;
+
 /// One ScraperAPI request, tried again on a server error. Returns the
 /// page, or None (with the reason in the log).
 async fn fetch_with_retry(
     client: &reqwest::Client,
     fetch_url: &str,
     page_url: &str,
+) -> Option<String> {
+    fetch_with_retries(client, fetch_url, page_url, FETCH_RETRIES).await
+}
+
+/// The real fetch loop. `page_url` is the page's own address and is the
+/// only address written to the log - `fetch_url` contains the ScraperAPI
+/// key and is never printed.
+async fn fetch_with_retries(
+    client: &reqwest::Client,
+    fetch_url: &str,
+    page_url: &str,
+    retries: u32,
 ) -> Option<String> {
     let mut attempt = 0;
     loop {
@@ -173,7 +193,7 @@ async fn fetch_with_retry(
                 true
             }
         };
-        if !retry || attempt >= FETCH_RETRIES {
+        if !retry || attempt >= retries {
             return None;
         }
         attempt += 1;
@@ -181,7 +201,7 @@ async fn fetch_with_retry(
             "Safely: trying {} again (attempt {} of {})",
             page_url,
             attempt + 1,
-            FETCH_RETRIES + 1
+            retries + 1
         );
     }
 }
@@ -241,41 +261,49 @@ async fn enrich_from_profile_pages(
     let client = build_scraper_client();
     if let Some(profile_url) = scraper.extract_company_profile_url(listing_html) {
         let profile_fetch_url = wrap_scraper_url_for_platform(&profile_url, platform);
-        if let Ok(profile_response) = client.get(&profile_fetch_url).send().await {
-            if profile_response.status().is_success() {
-                if let Ok(profile_html) = profile_response.text().await {
-                    if looks_like_a_real_page(&profile_html) {
-                        take_and_replace(supplier, |s| {
-                            scraper.enrich_from_company_profile(s, &profile_html)
-                        });
-                    } else {
-                        eprintln!(
-                            "Safely: DEPENDENCY DOWN: B2B enrichment fetch for {} returned {} bytes that don't look like a real page - skipping enrichment, keeping listing-page data only",
-                            profile_url,
-                            profile_html.len()
-                        );
-                    }
-                }
+        // A failure is logged inside fetch_with_retries (status + reason),
+        // and the listing-page data is kept.
+        if let Some(profile_html) = fetch_with_retries(
+            &client,
+            &profile_fetch_url,
+            &profile_url,
+            PROFILE_FETCH_RETRIES,
+        )
+        .await
+        {
+            if looks_like_a_real_page(&profile_html) {
+                take_and_replace(supplier, |s| {
+                    scraper.enrich_from_company_profile(s, &profile_html)
+                });
+            } else {
+                eprintln!(
+                    "Safely: DEPENDENCY DOWN: B2B enrichment fetch for {} returned {} bytes that don't look like a real page - skipping enrichment, keeping listing-page data only",
+                    profile_url,
+                    profile_html.len()
+                );
             }
         }
 
         if let Some(extended_url) = scraper.build_extended_profile_url(&profile_url) {
             let extended_fetch_url = wrap_scraper_url_for_platform(&extended_url, platform);
-            if let Ok(extended_response) = client.get(&extended_fetch_url).send().await {
-                if extended_response.status().is_success() {
-                    if let Ok(extended_html) = extended_response.text().await {
-                        if looks_like_a_real_page(&extended_html) {
-                            take_and_replace(supplier, |s| {
-                                scraper.enrich_from_extended_profile(s, &extended_html)
-                            });
-                        } else {
-                            eprintln!(
-                                "Safely: DEPENDENCY DOWN: B2B extended-profile fetch for {} returned {} bytes that don't look like a real page - skipping",
-                                extended_url,
-                                extended_html.len()
-                            );
-                        }
-                    }
+            if let Some(extended_html) = fetch_with_retries(
+                &client,
+                &extended_fetch_url,
+                &extended_url,
+                PROFILE_FETCH_RETRIES,
+            )
+            .await
+            {
+                if looks_like_a_real_page(&extended_html) {
+                    take_and_replace(supplier, |s| {
+                        scraper.enrich_from_extended_profile(s, &extended_html)
+                    });
+                } else {
+                    eprintln!(
+                        "Safely: DEPENDENCY DOWN: B2B extended-profile fetch for {} returned {} bytes that don't look like a real page - skipping",
+                        extended_url,
+                        extended_html.len()
+                    );
                 }
             }
         }
