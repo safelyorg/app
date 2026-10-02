@@ -5,6 +5,7 @@ use backend::db::{bootstrap::run_grants, connection::load_pool};
 use backend::routes::{
     analyze, auth, billing, dashboard, fraud_reports, outcomes, platform_domains, subscribe,
 };
+use backend::services::scraper_client::warn_if_scraperapi_key_missing;
 use dotenvy::dotenv;
 use sqlx::{Pool, Postgres};
 use tokio::net::TcpListener;
@@ -122,6 +123,8 @@ async fn run_server(app: Router) {
 #[tokio::main]
 async fn main() {
     dotenv().ok();
+    // Prints a clear warning if SCRAPERAPI_KEY is missing from .env.
+    warn_if_scraperapi_key_missing();
     let app_pool = setup_database().await;
     let app = build_router(app_pool);
     run_server(app).await;

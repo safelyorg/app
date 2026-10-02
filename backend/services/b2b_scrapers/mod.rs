@@ -6,7 +6,11 @@ pub mod kompass;
 pub mod thomasnet;
 pub mod tradewheel;
 
-use crate::services::scraper_client::{build_scraper_client, wrap_scraper_url_for_platform};
+use std::sync::atomic::{AtomicBool, Ordering};
+
+use crate::services::scraper_client::{
+    build_scraper_client, scraperapi_key_is_set, wrap_scraper_url_for_platform,
+};
 
 #[derive(Debug, Default)]
 pub struct B2bSupplierProfile {
@@ -98,6 +102,26 @@ pub fn get_scraper_for_platform(platform: &str) -> Option<Box<dyn B2bScraper>> {
 
 const MIN_PLAUSIBLE_HTML_BYTES: usize = 2000;
 
+/// Text that only appears on a site's "are you a robot?" page, not on a
+/// real page. Such a page loads with an OK status, so without this check
+/// it was counted as a real company page.
+/// - "punish-component", "sufei-punish": Alibaba's robot-check page.
+/// - "Please enable JS and disable any ad blocker": Kompass's robot-check
+///   page (DataDome).
+/// To add another site, add a piece of text only its robot-check page has.
+const BLOCK_PAGE_MARKERS: &[&str] = &[
+    "punish-component",
+    "sufei-punish",
+    "Please enable JS and disable any ad blocker",
+];
+
+/// true when the page is a robot-check page instead of the real page.
+pub fn looks_like_a_block_page(html: &str) -> bool {
+    BLOCK_PAGE_MARKERS
+        .iter()
+        .any(|marker| html.contains(marker))
+}
+
 pub fn looks_like_a_real_page(html: &str) -> bool {
     html.len() >= MIN_PLAUSIBLE_HTML_BYTES
         && (html.to_lowercase().contains("<html") || html.to_lowercase().contains("<!doctype"))
@@ -111,6 +135,12 @@ pub struct B2bPageResult {
     pub company_key: Option<String>,
     /// The company's own page on the platform (not the product page).
     pub company_url: Option<String>,
+    /// true when the company's own page (or its extended page) could not
+    /// be loaded, so founding year, employees, description etc. may be
+    /// missing. The panel then shows a "Company details" note asking the
+    /// user to scan again. false when the pages loaded, or when the
+    /// platform has no company page.
+    pub company_page_missing: bool,
 }
 
 /// Unchanged signature, kept so existing callers and tests keep
@@ -174,7 +204,10 @@ async fn fetch_with_retries(
     let mut attempt = 0;
     loop {
         let retry = match client.get(fetch_url).send().await {
-            Ok(response) if response.status().is_success() => return response.text().await.ok(),
+            Ok(response) if response.status().is_success() => {
+                SCRAPERAPI_KEY_REJECTED.store(false, Ordering::Relaxed);
+                return response.text().await.ok();
+            }
             Ok(response) => {
                 let status = response.status();
                 // ScraperAPI explains the failure in the response body.
@@ -186,6 +219,14 @@ async fn fetch_with_retries(
                     status,
                     reason.trim()
                 );
+                // ScraperAPI's answer to a wrong key: status 401 and
+                // "...please make sure your API key is valid."
+                if status.as_u16() == 401 && body.contains("API key") {
+                    SCRAPERAPI_KEY_REJECTED.store(true, Ordering::Relaxed);
+                    eprintln!(
+                        "Safely: ScraperAPI says SCRAPERAPI_KEY is wrong - fix it in backend/.env and restart. B2B scans stop until then."
+                    );
+                }
                 status.is_server_error()
             }
             Err(e) => {
@@ -206,8 +247,44 @@ async fn fetch_with_retries(
     }
 }
 
+/// Whether B2B scans may run when SCRAPERAPI_KEY is missing.
+/// false: without the key, every B2B scan (all 7 platforms, including the
+/// Alibaba browser copy) stops, and the panel shows the normal "Couldn't
+/// analyze this listing" screen. A missing key is noticed right away
+/// instead of hidden behind thinner or blocked results.
+/// true: scans try to load pages directly, without ScraperAPI (some sites
+/// block that), and Alibaba may use the browser copy.
+/// When the key is set, this switch changes nothing.
+const B2B_SCANS_WITHOUT_KEY: bool = false;
+
+/// Set when ScraperAPI rejects the key (a wrong key). Treated the same as
+/// a missing key: the scan stops, and the Alibaba browser copy is not
+/// used. Cleared again as soon as ScraperAPI accepts a request.
+static SCRAPERAPI_KEY_REJECTED: AtomicBool = AtomicBool::new(false);
+
+/// true when scans may run: the key is set and ScraperAPI has not
+/// rejected it (or B2B_SCANS_WITHOUT_KEY is switched on).
+fn scraperapi_key_usable() -> bool {
+    B2B_SCANS_WITHOUT_KEY
+        || (scraperapi_key_is_set() && !SCRAPERAPI_KEY_REJECTED.load(Ordering::Relaxed))
+}
+
 pub async fn fetch_b2b_page(platform: &str, page_url: &str) -> Option<B2bPageResult> {
     let scraper = get_scraper_for_platform(platform)?;
+    if !B2B_SCANS_WITHOUT_KEY && !scraperapi_key_is_set() {
+        eprintln!(
+            "Safely: SCRAPERAPI_KEY is not set - scan stopped for {}",
+            page_url
+        );
+        return None;
+    }
+    if !scraperapi_key_usable() {
+        eprintln!(
+            "Safely: SCRAPERAPI_KEY is wrong - scan stopped for {}",
+            page_url
+        );
+        return None;
+    }
     let client = build_scraper_client();
     let fetch_url = wrap_scraper_url_for_platform(&clean_listing_url(platform, page_url), platform);
 
@@ -238,13 +315,16 @@ pub async fn fetch_b2b_page(platform: &str, page_url: &str) -> Option<B2bPageRes
         return None;
     }
 
-    enrich_from_profile_pages(scraper.as_ref(), platform, &html, &mut supplier).await;
+    let company_page_missing =
+        !enrich_from_profile_pages(scraper.as_ref(), platform, page_url, &html, &mut supplier)
+            .await;
 
     Some(B2bPageResult {
         supplier,
         listing,
         company_key,
         company_url,
+        company_page_missing,
     })
 }
 
@@ -252,18 +332,22 @@ pub async fn fetch_b2b_page(platform: &str, page_url: &str) -> Option<B2bPageRes
 /// what they show - founding year, employees, description - to the
 /// supplier. Optional: if a fetch fails, the supplier keeps what the
 /// listing page already gave.
+/// Returns true when every company page that exists was loaded (or the
+/// platform has none), false when one of them could not be loaded.
 async fn enrich_from_profile_pages(
     scraper: &dyn B2bScraper,
     platform: &str,
+    listing_url: &str,
     listing_html: &str,
     supplier: &mut B2bSupplierProfile,
-) {
+) -> bool {
+    let mut all_loaded = true;
     let client = build_scraper_client();
     if let Some(profile_url) = scraper.extract_company_profile_url(listing_html) {
         let profile_fetch_url = wrap_scraper_url_for_platform(&profile_url, platform);
         // A failure is logged inside fetch_with_retries (status + reason),
         // and the listing-page data is kept.
-        if let Some(profile_html) = fetch_with_retries(
+        match fetch_with_retries(
             &client,
             &profile_fetch_url,
             &profile_url,
@@ -271,22 +355,32 @@ async fn enrich_from_profile_pages(
         )
         .await
         {
-            if looks_like_a_real_page(&profile_html) {
+            Some(profile_html) if looks_like_a_block_page(&profile_html) => {
+                all_loaded = false;
+                eprintln!(
+                    "Safely: company page {} was a robot-check page, not the real page - company details skipped",
+                    profile_url
+                );
+            }
+            Some(profile_html) if looks_like_a_real_page(&profile_html) => {
                 take_and_replace(supplier, |s| {
                     scraper.enrich_from_company_profile(s, &profile_html)
                 });
-            } else {
+            }
+            Some(profile_html) => {
+                all_loaded = false;
                 eprintln!(
                     "Safely: DEPENDENCY DOWN: B2B enrichment fetch for {} returned {} bytes that don't look like a real page - skipping enrichment, keeping listing-page data only",
                     profile_url,
                     profile_html.len()
                 );
             }
+            None => all_loaded = false,
         }
 
         if let Some(extended_url) = scraper.build_extended_profile_url(&profile_url) {
             let extended_fetch_url = wrap_scraper_url_for_platform(&extended_url, platform);
-            if let Some(extended_html) = fetch_with_retries(
+            match fetch_with_retries(
                 &client,
                 &extended_fetch_url,
                 &extended_url,
@@ -294,20 +388,38 @@ async fn enrich_from_profile_pages(
             )
             .await
             {
-                if looks_like_a_real_page(&extended_html) {
+                Some(extended_html) if looks_like_a_block_page(&extended_html) => {
+                    all_loaded = false;
+                    eprintln!(
+                        "Safely: extended company page {} was a robot-check page, not the real page - those details skipped",
+                        extended_url
+                    );
+                }
+                Some(extended_html) if looks_like_a_real_page(&extended_html) => {
                     take_and_replace(supplier, |s| {
                         scraper.enrich_from_extended_profile(s, &extended_html)
                     });
-                } else {
+                }
+                Some(extended_html) => {
+                    all_loaded = false;
                     eprintln!(
                         "Safely: DEPENDENCY DOWN: B2B extended-profile fetch for {} returned {} bytes that don't look like a real page - skipping",
                         extended_url,
                         extended_html.len()
                     );
                 }
+                None => all_loaded = false,
             }
         }
+    } else {
+        // Not counted as a failure: some platforms and listings have no
+        // company page at all. Logged so the reason is visible.
+        eprintln!(
+            "Safely: no company page link found on {} - company details come from the listing page only",
+            listing_url
+        );
     }
+    all_loaded
 }
 
 fn take_and_replace(
@@ -340,6 +452,10 @@ pub async fn b2b_page_from_browser(
     if !BROWSER_PAGE_PLATFORMS.contains(&platform) {
         return None;
     }
+    if !scraperapi_key_usable() {
+        // Key missing or wrong - the reason was already logged.
+        return None;
+    }
     let html = page_html?;
     let scraper = get_scraper_for_platform(platform)?;
     if !looks_like_a_real_page(html) {
@@ -364,7 +480,8 @@ pub async fn b2b_page_from_browser(
     let company_key = scraper.company_key(html);
     let company_url = scraper.extract_company_profile_url(html);
 
-    enrich_from_profile_pages(scraper.as_ref(), platform, html, &mut supplier).await;
+    let company_page_missing =
+        !enrich_from_profile_pages(scraper.as_ref(), platform, page_url, html, &mut supplier).await;
 
     eprintln!(
         "Safely: ScraperAPI could not get the {} listing - read it from the browser page instead ({} bytes)",
@@ -376,6 +493,7 @@ pub async fn b2b_page_from_browser(
         listing,
         company_key,
         company_url,
+        company_page_missing,
     })
 }
 

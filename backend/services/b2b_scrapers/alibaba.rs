@@ -76,6 +76,75 @@ fn json_str(value: &Value, key: &str) -> Option<String> {
         .filter(|s| !s.is_empty())
 }
 
+/// The contact person's name from `globalData.seller`. Some sellers set
+/// the contact name to a single initial ("Z") while their first name is
+/// in accountFirstName ("Linda") - then the full "Linda Z" is used.
+/// A normal contact name ("Mr. Xu") is kept exactly as it is.
+fn seller_contact_name(seller: &Value) -> Option<String> {
+    let contact = json_str(seller, "contactName");
+    let first = json_str(seller, "accountFirstName");
+    let is_initial_only = |name: &str| name.chars().filter(|c| c.is_alphabetic()).count() <= 2;
+    match (contact, first) {
+        (Some(contact), Some(first))
+            if is_initial_only(&contact) && !contact.contains(first.as_str()) =>
+        {
+            Some(format!("{} {}", first, contact))
+        }
+        (Some(contact), _) => Some(contact),
+        (None, Some(first)) => {
+            let last = json_str(seller, "accountLastName").unwrap_or_default();
+            Some(format!("{} {}", first, last).trim().to_string())
+        }
+        (None, None) => None,
+    }
+}
+
+/// Company facts that every Alibaba listing page carries in
+/// `globalData.seller`, written as plain sentences for the company
+/// description (which the AI checks read):
+/// - business type, e.g. "Manufacturer, Trading Company"
+/// - how long the company has been on Alibaba (not its founding year)
+fn seller_facts(seller: &Value) -> Vec<String> {
+    let mut facts = Vec::new();
+    if let Some(business_type) = json_str(seller, "companyBusinessType") {
+        let checked = seller
+            .get("isCompanyBusinessTypeAuth")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        facts.push(format!(
+            "Business type: {}{}.",
+            business_type.replace(',', ", ").replace(",  ", ", "),
+            if checked {
+                " (checked by Alibaba)"
+            } else {
+                " (stated by the supplier, not checked by Alibaba)"
+            }
+        ));
+    }
+    if let Some(years) = json_str(seller, "companyJoinYears") {
+        if let Ok(n) = years.parse::<u32>() {
+            facts.push(format!(
+                "On Alibaba for {} {}.",
+                n,
+                if n == 1 { "year" } else { "years" }
+            ));
+        }
+    }
+    facts
+}
+
+/// Adds a sentence to the company description unless it is already in it.
+fn add_to_description(supplier: &mut B2bSupplierProfile, sentence: &str) {
+    match supplier.company_description.as_mut() {
+        Some(d) if d.contains(sentence) => {}
+        Some(d) => {
+            d.push(' ');
+            d.push_str(sentence);
+        }
+        None => supplier.company_description = Some(sentence.to_string()),
+    }
+}
+
 fn absolute_url(url: &str) -> String {
     if url.starts_with("//") {
         format!("https:{}", url)
@@ -161,7 +230,7 @@ impl B2bScraper for AlibabaScraper {
                 if text.is_empty() {
                     continue;
                 }
-                if text.ends_with("yrs") {
+                if text.ends_with("yrs") || text.ends_with(" yr") {
                     // Years on Alibaba, not company age - deliberately
                     // not used as a founding year (see below).
                     continue;
@@ -221,9 +290,13 @@ impl B2bScraper for AlibabaScraper {
                 .and_then(detail_year_founded)
         });
 
-        let contact_name = seller_json
-            .as_ref()
-            .and_then(|s| json_str(s, "contactName"));
+        let contact_name = seller_json.as_ref().and_then(seller_contact_name);
+        let facts = seller_json.as_ref().map(seller_facts).unwrap_or_default();
+        let company_description = if facts.is_empty() {
+            None
+        } else {
+            Some(facts.join(" "))
+        };
         let employee_count = seller_json
             .as_ref()
             .and_then(|s| json_str(s, "employeesCount"));
@@ -249,7 +322,7 @@ impl B2bScraper for AlibabaScraper {
             contact_name,
             contact_phone: None,
             badge_honorific,
-            company_description: None,
+            company_description,
             website_url: None,
         }
     }
@@ -369,12 +442,50 @@ impl B2bScraper for AlibabaScraper {
             supplier.employee_count = field("companyNumberOfEmployees")
                 .or_else(|| extract_profile_table_field(&document, "Total employees"));
         }
-        if supplier.company_description.is_none() {
-            supplier.company_description = field("companyDescription").map(|d| {
-                d.replace("<br>", "\n")
-                    .replace("<br/>", "\n")
-                    .replace("<br />", "\n")
+        // The company's own description comes first; facts taken from
+        // the listing page (business type, years on Alibaba) follow it.
+        if let Some(own) = field("companyDescription").map(|d| {
+            d.replace("<br>", "\n")
+                .replace("<br/>", "\n")
+                .replace("<br />", "\n")
+        }) {
+            supplier.company_description = Some(match supplier.company_description.take() {
+                Some(facts) if !own.contains(&facts) => format!("{}\n\n{}", own, facts),
+                _ => own,
             });
+        }
+
+        // The shop header that every company page has (new and old
+        // layouts): main products, business type and the operating
+        // address Alibaba staff checked.
+        let main_products: Vec<String> = module_data
+            .iter()
+            .find_map(|d| d.get("supplierMainProducts")?.as_array().cloned())
+            .unwrap_or_default()
+            .iter()
+            .filter_map(|p| p.as_str().map(|p| p.trim().to_string()))
+            .filter(|p| !p.is_empty())
+            .collect();
+        if !main_products.is_empty() {
+            add_to_description(
+                &mut supplier,
+                &format!("Main products: {}.", main_products.join(", ")),
+            );
+        }
+        let has_business_type = supplier
+            .company_description
+            .as_deref()
+            .map_or(false, |d| d.contains("Business type:"));
+        if !has_business_type {
+            if let Some(business_type) = field("companyBusinessType") {
+                add_to_description(
+                    &mut supplier,
+                    &format!("Business type: {} (stated by the supplier).", business_type),
+                );
+            }
+        }
+        if let Some(address) = field("supplierOperationalAddress") {
+            add_to_description(&mut supplier, &format!("Address: {}.", address));
         }
 
         supplier
@@ -1258,6 +1369,64 @@ mod tests {
         assert_eq!(
             l.delivery_timeframe.as_deref(),
             Some("1 - 1000 kilogram: 3 days")
+        );
+    }
+
+    #[test]
+    fn single_initial_contact_gets_the_first_name() {
+        let seller: Value = serde_json::from_str(
+            r#"{"contactName":"Z","accountFirstName":"Linda","accountLastName":"Z"}"#,
+        )
+        .unwrap();
+        assert_eq!(seller_contact_name(&seller).as_deref(), Some("Linda Z"));
+        let normal: Value =
+            serde_json::from_str(r#"{"contactName":"Mr. Xu","accountFirstName":"Wei"}"#).unwrap();
+        assert_eq!(seller_contact_name(&normal).as_deref(), Some("Mr. Xu"));
+    }
+
+    #[test]
+    fn listing_page_gives_business_type_and_years_on_alibaba() {
+        let script = r#"<script>window.detailData = {"globalData":{"seller":{"contactName":"Z","accountFirstName":"Linda","companyBusinessType":"Manufacturer,Trading Company","isCompanyBusinessTypeAuth":false,"companyJoinYears":"1"}}};</script>"#;
+        let s = AlibabaScraper.parse_supplier(&product_page(BADGED_CARD, TIERS, script), "u");
+        assert_eq!(s.contact_name.as_deref(), Some("Linda Z"));
+        assert_eq!(
+            s.company_description.as_deref(),
+            Some(
+                "Business type: Manufacturer, Trading Company (stated by the supplier, not checked by Alibaba). On Alibaba for 1 year."
+            )
+        );
+        assert_eq!(
+            s.year_established, None,
+            "years on Alibaba is not a founding year"
+        );
+    }
+
+    // Shop header module from a real company page (new layout).
+    const SHOP_HEADER: &str = r#"<!DOCTYPE html><html><body>
+<div module-data='%7B%22mds%22%3A%7B%22moduleData%22%3A%7B%22data%22%3A%7B%22supplierMainProducts%22%3A%5B%22smartphone%22%2C%22tablet%22%2C%22television%22%5D%2C%22companyBusinessType%22%3A%7B%22authenticated%22%3Afalse%2C%22value%22%3A%22Manufacturer%2C Trading Company%22%7D%2C%22supplierOperationalAddress%22%3A%7B%22value%22%3A%22829%2C Block 14%2C Foshan%2C Guangdong%2C China%22%7D%7D%7D%7D%7D'></div>
+</body></html>"#;
+
+    #[test]
+    fn new_company_page_gives_main_products_and_address() {
+        let script = r#"<script>window.detailData = {"globalData":{"seller":{"companyBusinessType":"Manufacturer,Trading Company","companyJoinYears":"1"}}};</script>"#;
+        let supplier =
+            AlibabaScraper.parse_supplier(&product_page(BADGED_CARD, TIERS, script), "u");
+        let s = AlibabaScraper.enrich_from_company_profile(supplier, SHOP_HEADER);
+        let d = s.company_description.unwrap();
+        assert!(d.starts_with("Business type: Manufacturer, Trading Company"));
+        assert!(d.contains("On Alibaba for 1 year."));
+        assert!(d.contains("Main products: smartphone, tablet, television."));
+        assert!(d.contains("Address: 829, Block 14, Foshan, Guangdong, China."));
+        assert_eq!(d.matches("Business type:").count(), 1);
+    }
+
+    #[test]
+    fn company_page_alone_gives_business_type() {
+        let supplier = AlibabaScraper.parse_supplier(&product_page(BADGED_CARD, TIERS, ""), "u");
+        let s = AlibabaScraper.enrich_from_company_profile(supplier, SHOP_HEADER);
+        let d = s.company_description.unwrap();
+        assert!(
+            d.contains("Business type: Manufacturer, Trading Company (stated by the supplier).")
         );
     }
 }

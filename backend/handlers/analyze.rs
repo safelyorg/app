@@ -1,7 +1,7 @@
 use crate::{
     errors::analyze::AnalyzeError,
     models::{
-        analysis::{AnalyzeRequest, AnalyzeResponse, RiskLevel},
+        analysis::{AnalyzeRequest, AnalyzeResponse, RiskLevel, Signal},
         sellers::Sellers,
     },
     services::{
@@ -132,6 +132,10 @@ pub async fn analyze(
         None
     };
     let company_key = b2b_page.as_ref().and_then(|p| p.company_key.clone());
+    let company_page_missing = b2b_page
+        .as_ref()
+        .map(|p| p.company_page_missing)
+        .unwrap_or(false);
     let company_url = b2b_page.as_ref().and_then(|p| p.company_url.clone());
 
     let (mut seller_req, listing_req) = build_requests(&request);
@@ -255,6 +259,13 @@ pub async fn analyze(
     };
 
     let mut signals = signals;
+    // The company's own page could not be loaded (the reason is in the
+    // terminal), so some company details may be missing. Tell the user
+    // instead of silently showing a thinner result. "info" does not
+    // change the risk score.
+    if company_page_missing {
+        signals.push(company_page_missing_signal());
+    }
     sort_signals_by_table(&mut signals);
 
     let risk_level = match risk_score {
@@ -300,6 +311,18 @@ pub async fn analyze(
     }
 
     Ok(response)
+}
+
+/// The note shown when the company's own page could not be loaded.
+fn company_page_missing_signal() -> Signal {
+    Signal {
+        label: "Company details".to_string(),
+        sub: "The company's own page on this platform couldn't be loaded right now, so details like founding year, employees and description may be missing. Scan again for the full result.".to_string(),
+        value: "Couldn't be loaded".to_string(),
+        signal_type: "info".to_string(),
+        category: "company".to_string(),
+        check_type: "existence".to_string(),
+    }
 }
 
 pub async fn verify_social_link_handler(

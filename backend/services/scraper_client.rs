@@ -19,6 +19,22 @@ fn warn_missing_scraperapi_key() {
     });
 }
 
+/// Called once when the server starts (main.rs), so a missing key is
+/// noticed right away instead of on the first scan. Prints nothing when
+/// the key is set. The key itself is never printed.
+pub fn warn_if_scraperapi_key_missing() {
+    if !scraperapi_key_is_set() {
+        warn_missing_scraperapi_key();
+    }
+}
+
+/// true when SCRAPERAPI_KEY is set and not empty.
+pub fn scraperapi_key_is_set() -> bool {
+    var("SCRAPERAPI_KEY")
+        .map(|key| !key.trim().is_empty())
+        .unwrap_or(false)
+}
+
 /// The one, real, shared HTTP client every scraper fetches through -
 /// genuinely plain now, since ScraperAPI's real, actual integration
 /// method wraps the TARGET URL itself, rather than configuring the
