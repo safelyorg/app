@@ -1,7 +1,58 @@
 use super::{B2bListingProfile, B2bScraper, B2bSupplierProfile};
 use scraper::{ElementRef, Html, Selector};
+use serde_json::Value;
 
 pub struct ThomasnetScraper;
+
+/// ThomasNet pages are built with Next.js, which puts the whole
+/// company record into one `<script id="__NEXT_DATA__">` JSON block.
+/// Returns `props.pageProps.data` (the company) if present. Used only
+/// to fill fields the visible page didn't give.
+fn next_company_data(document: &Html) -> Option<Value> {
+    let sel = Selector::parse("script#__NEXT_DATA__").ok()?;
+    let raw = document.select(&sel).next()?.text().collect::<String>();
+    let data: Value = serde_json::from_str(&raw).ok()?;
+    data.pointer("/props/pageProps/data").cloned()
+}
+
+fn json_text(value: &Value, key: &str) -> Option<String> {
+    match value.get(key)? {
+        Value::String(s) => clean_optional_text(s),
+        Value::Number(n) => Some(n.to_string()),
+        _ => None,
+    }
+}
+
+/// "Livermore, CA, USA" from the company's address record.
+fn json_location(company: &Value) -> Option<String> {
+    let address = company.get("address")?;
+    let parts: Vec<String> = ["city", "state", "country"]
+        .iter()
+        .filter_map(|k| json_text(address, k))
+        .collect();
+    if parts.is_empty() {
+        None
+    } else {
+        Some(parts.join(", "))
+    }
+}
+
+/// The company part of a ThomasNet profile link, e.g.
+/// ".../company/t-k-machine-30682072/profile?heading=1" ->
+/// "t-k-machine-30682072". The same for every category page of that
+/// company, so it is used as the company's record key.
+fn company_slug_from_url(url: &str) -> Option<String> {
+    let after = url.split("/company/").nth(1)?;
+    let slug = after
+        .split(|c| c == '/' || c == '?' || c == '#')
+        .next()?
+        .trim();
+    if slug.is_empty() {
+        None
+    } else {
+        Some(slug.to_lowercase())
+    }
+}
 
 /// Turns any of ThomasNet's three real "empty" shapes (a genuine
 /// value, the literal text "Not available", or a fully empty /
@@ -39,6 +90,28 @@ fn parse_labeled_field(document: &Html, label: &str) -> Option<String> {
                 return clean_optional_text(&text_of(&ul));
             }
         }
+    }
+    None
+}
+
+/// Like parse_labeled_field, but returns only the FIRST <li> under the
+/// label, so a list (e.g. several key personnel) gives one entry, not
+/// all of them run together. Extra spaces are squeezed out.
+fn first_labeled_item(document: &Html, label: &str) -> Option<String> {
+    let label_selector = Selector::parse("div.txt-label").ok()?;
+    let li_selector = Selector::parse("ul li").ok()?;
+
+    for label_el in document.select(&label_selector) {
+        if text_of(&label_el).trim().trim_end_matches(':') != label {
+            continue;
+        }
+        let parent = label_el.parent().and_then(ElementRef::wrap)?;
+        let li = parent.select(&li_selector).next()?;
+        let text = text_of(&li)
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ");
+        return clean_optional_text(&text);
     }
     None
 }
@@ -134,12 +207,24 @@ impl B2bScraper for ThomasnetScraper {
         }
         let company_description = description_self_authored.or(description_thomasnet);
 
-        let contact_name =
-            Selector::parse("[data-sentry-component='BusinessDetailsSectionColumn'] p.mar-0")
-                .ok()
-                .and_then(|s| document.select(&s).next())
-                .map(|el| text_of(&el))
-                .and_then(|t| clean_optional_text(&t));
+        // The contact person is the first entry under "Key Personnel".
+        // (The old selector took the first <p> in the business details
+        // column, which is the "Primary Company Type", e.g. "Custom
+        // Manufacturer" - not a person.) "Not available" becomes None.
+        // Each entry is "Name, Role" (e.g. "Steve Savignac, Manager -
+        // Quad Metalworks"); only the name is kept, same as on the
+        // other platforms. The page's data record has the name on its
+        // own, so it is used first; the visible text split at the first
+        // comma is the fallback.
+        let contact_name = next_company_data(&document)
+            .as_ref()
+            .and_then(|c| c.get("personnel"))
+            .and_then(|p| p.as_array())
+            .and_then(|list| list.iter().find_map(|person| json_text(person, "name")))
+            .or_else(|| {
+                first_labeled_item(&document, "Key Personnel")
+                    .and_then(|entry| clean_optional_text(entry.split(',').next().unwrap_or("")))
+            });
 
         let contact_phone = Selector::parse("a[href^='tel:']")
             .ok()
@@ -165,9 +250,27 @@ impl B2bScraper for ThomasnetScraper {
             })
             .map(|s| s.to_string());
 
+        // The page's own data record fills anything the visible page
+        // didn't give. The visible page always wins.
+        let company = next_company_data(&document);
+        let from_data = |key: &str| company.as_ref().and_then(|c| json_text(c, key));
+        let company_name = company_name.or_else(|| from_data("name"));
+        let year_established = year_established.or_else(|| from_data("yearFounded"));
+        let employee_count = employee_count.or_else(|| from_data("numberEmployees"));
+        let sales_revenue = sales_revenue.or_else(|| from_data("annualSales"));
+        let contact_phone = contact_phone.or_else(|| from_data("primaryPhone"));
+        let website_url = website_url.or_else(|| from_data("website"));
+        let company_description = company_description
+            .or_else(|| from_data("descriptionByCompany"))
+            .or_else(|| from_data("description"));
+        let logo_url = from_data("logoUrl");
+        // "Livermore, CA, USA" (with the country) is preferred over the
+        // visible "Livermore, CA 94551", which never names the country.
+        let location = company.as_ref().and_then(json_location).or(location);
+
         B2bSupplierProfile {
             company_name,
-            logo_url: None,
+            logo_url,
             year_established,
             country: location,
             platform_verified_badge,
@@ -211,10 +314,29 @@ impl B2bScraper for ThomasnetScraper {
             .map(|el| text_of(&el))
             .and_then(|t| clean_optional_text(&t));
 
+        // Fill gaps from the page's data record: the category this page
+        // is about ("heading"), and the company's own photos.
+        let company = next_company_data(&document);
+        let heading = company.as_ref().and_then(|c| c.get("heading"));
+        let title = title.or_else(|| heading.and_then(|h| json_text(h, "name")));
+        let description = description.or_else(|| heading.and_then(|h| json_text(h, "description")));
+        let image_urls: Vec<String> = company
+            .as_ref()
+            .and_then(|c| c.get("additionalInformation"))
+            .and_then(|a| a.as_array())
+            .map(|items| {
+                items
+                    .iter()
+                    .filter(|i| i.get("type").and_then(|t| t.as_str()) == Some("IMAGE"))
+                    .filter_map(|i| json_text(i, "url"))
+                    .collect()
+            })
+            .unwrap_or_default();
+
         B2bListingProfile {
             title,
             description,
-            image_urls: Vec::new(),
+            image_urls,
             // None of the price/MOQ/Incoterms fields apply on
             // ThomasNet - it's a capability/service directory, not a
             // priced-item marketplace, confirmed across every real
@@ -232,6 +354,28 @@ impl B2bScraper for ThomasnetScraper {
             listing_url: listing_url.to_string(),
             source_platform: "thomasnet".to_string(),
         }
+    }
+
+    /// One record per company: "t-k-machine-30682072", taken from the
+    /// page's canonical link (or the same link in the page's data
+    /// record). The same for
+    /// every category page of the company, so its Safely history and
+    /// fraud reports are shared, not split per category.
+    fn company_key(&self, listing_html: &str) -> Option<String> {
+        let document = Html::parse_document(listing_html);
+        Selector::parse("link[rel='canonical']")
+            .ok()
+            .and_then(|s| document.select(&s).next())
+            .and_then(|el| el.value().attr("href"))
+            .and_then(company_slug_from_url)
+            .or_else(|| {
+                let sel = Selector::parse("script#__NEXT_DATA__").ok()?;
+                let raw = document.select(&sel).next()?.text().collect::<String>();
+                let data: Value = serde_json::from_str(&raw).ok()?;
+                data.pointer("/props/pageProps/canonicalUrl")?
+                    .as_str()
+                    .and_then(company_slug_from_url)
+            })
     }
 }
 
@@ -284,7 +428,10 @@ mod tests {
         <div data-sentry-component="SupplierLocations"><a>Tustin, CA</a></div>
         <div><h3>Company Description by Thomasnet</h3><p>A ThomasNet-authored blurb.</p></div>
         <div><h3>Company Description by Acme Fasteners Inc</h3><p>Our own, self-authored description.</p></div>
-        <div data-sentry-component="BusinessDetailsSectionColumn"><p class="mar-0">Jane Doe</p></div>
+        <div data-sentry-component="BusinessDetailsSectionColumn">
+          <div><div class="txt-label">Primary Company Type</div><ul><li><p class="mar-0">Custom Manufacturer</p></li></ul></div>
+          <div><div class="txt-label">Key Personnel</div><ul><li><p class="mar-0">Jane Doe, Sales Manager</p></li><li><p class="mar-0">John Roe, Accounts</p></li></ul></div>
+        </div>
         <a href="tel:+15551234567">(555) 123-4567</a>
         <div><div class="txt-label">Website</div><ul><li><a href="https://acmefasteners.com">acmefasteners.com</a></li></ul></div>
         </body></html>
@@ -421,5 +568,101 @@ mod tests {
         assert_eq!(listing.fob_price, None);
         assert_eq!(listing.minimum_order_quantity, None);
         assert_eq!(listing.incoterms, None);
+    }
+
+    // Trimmed from the real T & K Machine profile page (Oct 2026).
+    const TK_PAGE: &str = r#"<html><head><link rel="canonical" href="https://www.thomasnet.com/company/t-k-machine-30682072/profile"/></head><body>
+    <h1>T &amp; K Machine</h1>
+    <div data-sentry-component="BusinessDetailsSectionColumn">
+      <div><div class="txt-label">Primary Company Type</div><ul><li class="mar-l-2 mar-t-1"><p class="mar-0">Custom Manufacturer</p></li></ul></div>
+      <div><div class="txt-label">Key Personnel</div><ul><li class="mar-l-2 mar-t-1">Not available</li></ul></div>
+    </div>
+    <div data-sentry-component="SupplierLocations"><a>Livermore, CA 94551</a></div>
+    <script id="__NEXT_DATA__" type="application/json">{"props":{"pageProps":{"canonicalUrl":"https://www.thomasnet.com/company/t-k-machine-30682072/profile","data":{"tgramsId":30682072,"name":"T & K Machine","logoUrl":"https://cdn.thomasnet.com/ccp/30682072/185135.jpg","website":"https://tk-machine.com/","primaryPhone":"(866) 996-3676","annualSales":"$1 - 4.9 Mil","numberEmployees":"1-9","yearFounded":1994,"descriptionByCompany":"T&K Machine is a precision machine shop.","address":{"city":"Livermore","state":"CA","zip":"94551","country":"USA"},"heading":{"name":"Prototypes","description":"Custom manufacturer of prototypes."},"additionalInformation":[{"title":"Facility","url":"https://cdn.thomasnet.com/ccp/30682072/208047.JPG","type":"IMAGE"},{"title":"Brochure","url":"https://cdn.thomasnet.com/ccp/30682072/x.pdf","type":"PDF"}]}}}}</script>
+    </body></html>"#;
+
+    #[test]
+    fn company_type_is_not_used_as_contact_name() {
+        let s = ThomasnetScraper.parse_supplier(TK_PAGE, "u");
+        assert_eq!(
+            s.contact_name, None,
+            "'Custom Manufacturer' is not a person"
+        );
+    }
+
+    #[test]
+    fn first_key_person_is_the_contact_name() {
+        let s = ThomasnetScraper.parse_supplier(claimed_verified_html(), "u");
+        assert_eq!(s.contact_name.as_deref(), Some("Jane Doe"));
+    }
+
+    #[test]
+    fn page_data_fills_missing_fields_and_logo() {
+        let s = ThomasnetScraper.parse_supplier(TK_PAGE, "u");
+        assert_eq!(s.company_name.as_deref(), Some("T & K Machine"));
+        assert_eq!(
+            s.logo_url.as_deref(),
+            Some("https://cdn.thomasnet.com/ccp/30682072/185135.jpg")
+        );
+        assert_eq!(s.year_established.as_deref(), Some("1994"));
+        assert_eq!(s.employee_count.as_deref(), Some("1-9"));
+        assert_eq!(s.sales_revenue.as_deref(), Some("$1 - 4.9 Mil"));
+        assert_eq!(s.contact_phone.as_deref(), Some("(866) 996-3676"));
+        assert_eq!(s.website_url.as_deref(), Some("https://tk-machine.com/"));
+        assert_eq!(
+            s.company_description.as_deref(),
+            Some("T&K Machine is a precision machine shop.")
+        );
+        assert_eq!(s.country.as_deref(), Some("Livermore, CA, USA"));
+    }
+
+    #[test]
+    fn visible_page_wins_over_page_data() {
+        // No page data at all: the visible values are used unchanged.
+        let s = ThomasnetScraper.parse_supplier(claimed_verified_html(), "u");
+        assert_eq!(s.country.as_deref(), Some("Tustin, CA"));
+        assert_eq!(s.year_established.as_deref(), Some("2005"));
+        assert_eq!(s.logo_url, None);
+    }
+
+    #[test]
+    fn listing_gets_photos_but_not_documents() {
+        let l = ThomasnetScraper.parse_listing(TK_PAGE, "u");
+        assert_eq!(l.title.as_deref(), Some("Prototypes"));
+        assert_eq!(
+            l.description.as_deref(),
+            Some("Custom manufacturer of prototypes.")
+        );
+        assert_eq!(
+            l.image_urls,
+            vec!["https://cdn.thomasnet.com/ccp/30682072/208047.JPG"]
+        );
+    }
+
+    #[test]
+    fn company_key_is_the_company_slug() {
+        assert_eq!(
+            ThomasnetScraper.company_key(TK_PAGE).as_deref(),
+            Some("t-k-machine-30682072")
+        );
+        assert_eq!(
+            company_slug_from_url(
+                "https://www.thomasnet.com/company/t-k-machine-30682072/profile?coverage_area=NA&heading=63750202"
+            )
+            .as_deref(),
+            Some("t-k-machine-30682072")
+        );
+        assert_eq!(ThomasnetScraper.company_key("<html></html>"), None);
+    }
+
+    #[test]
+    fn contact_name_comes_from_page_data_without_the_role() {
+        // Trimmed from the real QuadMetalworks profile page (Oct 2026).
+        let html = r#"<html><body>
+        <div><div class="txt-label">Key Personnel</div><ul><li><p class="mar-0">Steve Savignac, Manager - Quad Metalworks</p></li><li><p class="mar-0">Ross Byrum, Sales / Customer Service</p></li></ul></div>
+        <script id="__NEXT_DATA__" type="application/json">{"props":{"pageProps":{"data":{"personnel":[{"name":"Steve Savignac","title":"Manager - Quad Metalworks"},{"name":"Ross Byrum","title":"Sales / Customer Service"}]}}}}</script>
+        </body></html>"#;
+        let s = ThomasnetScraper.parse_supplier(html, "u");
+        assert_eq!(s.contact_name.as_deref(), Some("Steve Savignac"));
     }
 }

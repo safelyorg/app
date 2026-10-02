@@ -549,6 +549,12 @@ pub fn build_b2b_transparency_signal(supplier: &B2bSupplierProfile) -> Signal {
     }
 }
 
+/// Platforms that are supplier directories, not marketplaces: they
+/// never show price, MOQ, Incoterms, packaging or delivery details for
+/// any supplier. Add a platform here only when NO listing on it can
+/// ever have these fields.
+pub const NO_ORDER_DETAILS_PLATFORMS: [&str; 1] = ["thomasnet"];
+
 /// Checks how many of the real, listing-specific fields (price, MOQ,
 /// Incoterms, etc.) were genuinely filled in versus left as "Not
 /// informed." Incomplete listings are common in B2B and not
@@ -568,6 +574,22 @@ pub fn build_b2b_listing_completeness_signal(listing: &B2bListingProfile) -> Sig
     ];
     let filled_count = fields.iter().filter(|(_, f)| f.is_some()).count();
     let total = fields.len();
+
+    // A seller can't be marked down for details the platform has no
+    // place for. Directory platforms (see NO_ORDER_DETAILS_PLATFORMS)
+    // never show price, MOQ, Incoterms etc., so on them an empty
+    // listing is normal and stays information only.
+    if NO_ORDER_DETAILS_PLATFORMS.contains(&listing.source_platform.as_str()) {
+        return Signal {
+            label: "Listing completeness".to_string(),
+            sub: "This platform is a supplier directory and does not show price, minimum order or delivery details for any supplier, so this is not counted against them.".to_string(),
+            value: "Not shown on this platform".to_string(),
+            signal_type: "info".to_string(),
+            category: "listing".to_string(),
+            check_type: "pattern".to_string(),
+        };
+    }
+
     let signal_type = if filled_count == 0 { "caution" } else { "info" };
 
     // Real, delimited checklist the frontend parses to build the
@@ -834,6 +856,40 @@ pub fn sort_signals_by_table(signals: &mut [Signal]) {
 #[cfg(test)]
 mod b2b_signal_tests {
     use super::*;
+
+    fn empty_listing(platform: &str) -> B2bListingProfile {
+        B2bListingProfile {
+            title: None,
+            description: None,
+            image_urls: Vec::new(),
+            unit_price: None,
+            fob_price: None,
+            minimum_order_quantity: None,
+            payment_type: None,
+            preferred_port: None,
+            reference: None,
+            production_capacity: None,
+            delivery_timeframe: None,
+            incoterms: None,
+            packaging_details: None,
+            listing_url: "u".to_string(),
+            source_platform: platform.to_string(),
+        }
+    }
+
+    #[test]
+    fn empty_listing_is_caution_on_a_marketplace() {
+        let s = build_b2b_listing_completeness_signal(&empty_listing("alibaba"));
+        assert_eq!(s.signal_type, "caution");
+        assert_eq!(s.value, "0/9 fields provided");
+    }
+
+    #[test]
+    fn empty_listing_is_only_info_on_a_directory_platform() {
+        let s = build_b2b_listing_completeness_signal(&empty_listing("thomasnet"));
+        assert_eq!(s.signal_type, "info");
+        assert_eq!(s.value, "Not shown on this platform");
+    }
     use crate::services::claude::{ImageAssessment, PriceAssessment};
 
     fn f(found: bool) -> Finding {
