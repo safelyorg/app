@@ -96,6 +96,13 @@ fn build_router(app_pool: Pool<Postgres>) -> Router {
                 "/../site/templates/subscribe.html"
             )),
         )
+        .route_service(
+            "/partners",
+            ServeFile::new(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../site/templates/partners.html"
+            )),
+        )
         .fallback_service(
             ServeDir::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../site"))
                 .append_index_html_on_directories(true),

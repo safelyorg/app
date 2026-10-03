@@ -1,0 +1,384 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Safely / Partners</title>
+        <meta
+            name="description"
+            content="Join the Safely partner program and earn 30% on every customer you refer. Free to join, tracked and paid out by Creem."
+        />
+        <link rel="preload" as="font" type="font/woff2" href="/fonts/ClashDisplay-Bold.woff2" crossorigin>
+        <link rel="icon" type="image/x-icon" href="images/favicon.ico" />
+        <link rel="icon" type="image/png" sizes="32x32" href="images/favicon-32x32.png" />
+        <link rel="icon" type="image/png" sizes="16x16" href="images/favicon-16x16.png" />
+        <link rel="apple-touch-icon" sizes="180x180" href="images/apple-touch-icon.png" />
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+        <link
+            href="https://fonts.googleapis.com/css2?family=Archivo:ital,wght@0,600;0,700;0,800;0,900;1,700;1,800;1,900&family=Archivo+Black&family=Gasoek+One&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500&display=swap"
+            rel="stylesheet"
+        />
+        <link rel="stylesheet" href="css/base.css" />
+        <link rel="stylesheet" href="css/nav.css" />
+        <link rel="stylesheet" href="css/faq.css" />
+        <link rel="stylesheet" href="css/cta_footer.css" />
+        <link rel="stylesheet" href="css/subscribe.css" />
+        <link rel="stylesheet" href="css/partners.css" />
+        <link rel="stylesheet" href="css/responsive.css" />
+    </head>
+    <body>
+        <!--
+            The Creem join link for the partner program is used in TWO
+            buttons on this page (hero + bottom). To change it, replace
+            https://affiliates.creem.io in both places with the join link
+            shown in Creem's Affiliate Hub.
+        -->
+        <input
+            type="checkbox"
+            id="nav-toggle"
+            class="sr-toggle"
+            aria-label="Toggle navigation menu"
+        />
+        <!-- ============ NAV ============ -->
+        <div class="navwrap">
+            <div class="wrap">
+                <nav class="nav">
+                    <a href="https://safely.sh" class="brand" aria-label="Safely home">
+                        <span class="mk" aria-hidden="true">
+                            <img src="images/black_logo.png" alt="" />
+                        </span>
+                        Safely
+                    </a>
+                    <div class="nav-links">
+                        <a href="#how" data-i18n="partners.nav_how">How it works</a>
+                        <a href="#details" data-i18n="partners.nav_details">Payouts</a>
+                        <a href="#faq" data-i18n="nav.faq">FAQ</a>
+                    </div>
+                    <div class="nav-right">
+                        <select
+                            data-safely-lang-select
+                            class="lang-select"
+                            aria-label="Choose language"
+                        ></select>
+                        <a href="https://affiliates.creem.io/join/safely" class="btn btn-sun" target="_blank" rel="noopener"
+                            ><span data-i18n="partners.cta">Get my referral link</span>
+                            <svg viewBox="0 0 24 24" fill="none">
+                                <path
+                                    d="M5 12h14M13 5l7 7-7 7"
+                                    stroke="currentColor"
+                                    stroke-width="2.6"
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                />
+                            </svg>
+                        </a>
+                        <label class="hamb" for="nav-toggle" aria-label="Open menu"><span></span></label>
+                    </div>
+                </nav>
+            </div>
+        </div>
+        <div class="drawer" id="drawer">
+            <a href="#how" data-i18n="partners.nav_how">How it works</a>
+            <a href="#details" data-i18n="partners.nav_details">Payouts</a>
+            <a href="#faq" data-i18n="nav.faq">FAQ</a>
+            <select
+                data-safely-lang-select
+                class="lang-select lang-select-drawer"
+                aria-label="Choose language"
+            ></select>
+        </div>
+        <label class="drawer-backdrop" for="nav-toggle" aria-hidden="true"></label>
+
+        <!-- ============ HERO ============ -->
+        <section class="sec nl-hero" id="join">
+            <div class="wrap">
+                <svg class="nl-eyes" viewBox="0 0 130 96" fill="none" aria-hidden="true">
+                    <path d="M12 22 Q24 4 44 14" stroke="#161616" stroke-width="8" fill="none" stroke-linecap="round" />
+                    <path d="M70 16 Q84 2 104 12" stroke="#161616" stroke-width="8" fill="none" stroke-linecap="round" />
+                    <circle cx="36" cy="56" r="28" fill="#fff" stroke="#161616" stroke-width="7" />
+                    <circle cx="92" cy="56" r="28" fill="#fff" stroke="#161616" stroke-width="7" />
+                    <circle cx="44" cy="46" r="12" fill="#161616" />
+                    <circle cx="100" cy="46" r="12" fill="#161616" />
+                </svg>
+                <div class="head">
+                    <span class="badge p"><span class="bd"></span><span data-i18n="partners.badge">Partner program</span></span>
+                    <h2 class="disp gasoek" data-i18n="partners.headline">Earn 30% for<br />every customer</h2>
+                    <p data-i18n="partners.sub">
+                        Share Safely with buyers, sourcing agents and procurement
+                        teams. When someone subscribes through your link, you
+                        earn 30% of what they pay.
+                    </p>
+                </div>
+                <div class="pt-cta">
+                    <a href="https://affiliates.creem.io/join/safely" class="btn btn-lg btn-dark" target="_blank" rel="noopener"
+                        ><span data-i18n="partners.cta">Get my referral link</span>
+                        <svg viewBox="0 0 24 24" fill="none">
+                            <path d="M5 12h14M13 5l7 7-7 7" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" />
+                        </svg>
+                    </a>
+                    <a href="#how" class="btn btn-lg"><span data-i18n="partners.see_how">See how it works</span></a>
+                </div>
+                <p class="pt-note" data-i18n="partners.note">
+                    Free to join · Sign in with Google or email · Paid on the 1st and 15th
+                </p>
+            </div>
+            <div class="wv down" aria-hidden="true">
+                <svg viewBox="0 0 1440 80" preserveAspectRatio="none">
+                    <path d="M0,40 C 240,75 480,5 720,28 C 960,50 1200,80 1440,38 L1440,80 L0,80 Z" fill="#f1ebda" />
+                </svg>
+            </div>
+        </section>
+
+        <!-- ============ HOW IT WORKS ============ -->
+        <section class="sec pt-sec" id="how" style="background: var(--cream-2)">
+            <div class="wrap">
+                <div class="head">
+                    <span class="badge o"><span class="bd"></span><span data-i18n="partners.how_badge">How it works</span></span>
+                    <h2 class="disp gasoek" data-i18n="partners.how_title">Three steps. No paperwork.</h2>
+                </div>
+                <div class="nl-cards">
+                    <div class="nl-card">
+                        <span class="nl-card-ic" aria-hidden="true">
+                            <svg viewBox="0 0 24 24" fill="none">
+                                <circle cx="12" cy="8" r="4" stroke="#161616" stroke-width="2" />
+                                <path d="M5 21v-1a6 6 0 016-6h2a6 6 0 016 6v1" stroke="#161616" stroke-width="2" stroke-linecap="round" />
+                            </svg>
+                        </span>
+                        <h3 data-i18n="partners.step1.title">1. Join</h3>
+                        <p data-i18n="partners.step1.body">
+                            Click "Get my referral link" and sign in with Google
+                            or your email. Your personal referral link is ready
+                            in your partner dashboard.
+                        </p>
+                    </div>
+                    <div class="nl-card">
+                        <span class="nl-card-ic" aria-hidden="true">
+                            <svg viewBox="0 0 24 24" fill="none">
+                                <path d="M10 14a4 4 0 005.7 0l3-3a4 4 0 00-5.7-5.7l-1 1M14 10a4 4 0 00-5.7 0l-3 3a4 4 0 005.7 5.7l1-1" stroke="#161616" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                            </svg>
+                        </span>
+                        <h3 data-i18n="partners.step2.title">2. Share</h3>
+                        <p data-i18n="partners.step2.body">
+                            Post your link on LinkedIn, in your newsletter, or
+                            send it to buyers you work with. Every click is
+                            remembered for 180 days.
+                        </p>
+                    </div>
+                    <div class="nl-card">
+                        <span class="nl-card-ic" aria-hidden="true">
+                            <svg viewBox="0 0 24 24" fill="none">
+                                <path d="M12 3v18M17 7H9.5a3 3 0 000 6h5a3 3 0 010 6H6" stroke="#161616" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                            </svg>
+                        </span>
+                        <h3 data-i18n="partners.step3.title">3. Earn</h3>
+                        <p data-i18n="partners.step3.body">
+                            When someone you referred subscribes, 30% goes to
+                            your balance. See clicks, customers and earnings in
+                            your dashboard and withdraw any time.
+                        </p>
+                    </div>
+                </div>
+            </div>
+            <div class="wv down" aria-hidden="true">
+                <svg viewBox="0 0 1440 80" preserveAspectRatio="none">
+                    <path d="M0,40 C 240,75 480,5 720,28 C 960,50 1200,80 1440,38 L1440,80 L0,80 Z" fill="#fbf7ed" />
+                </svg>
+            </div>
+        </section>
+
+        <!-- ============ PAYOUT DETAILS ============ -->
+        <section class="sec pt-sec" id="details">
+            <div class="wrap">
+                <div class="head">
+                    <span class="badge p"><span class="bd"></span><span data-i18n="partners.details_badge">Payouts</span></span>
+                    <h2 class="disp gasoek" data-i18n="partners.details_title">Simple, clear terms.</h2>
+                </div>
+                <div class="pt-facts">
+                    <div class="pt-fact">
+                        <div class="v">30%</div>
+                        <div class="l" data-i18n="partners.fact1">Commission on referred sales</div>
+                    </div>
+                    <div class="pt-fact">
+                        <div class="v" data-i18n="partners.fact2_v">180 days</div>
+                        <div class="l" data-i18n="partners.fact2">A click counts for this long</div>
+                    </div>
+                    <div class="pt-fact">
+                        <div class="v" data-i18n="partners.fact3_v">1st &amp; 15th</div>
+                        <div class="l" data-i18n="partners.fact3">Payout days each month</div>
+                    </div>
+                    <div class="pt-fact">
+                        <div class="v">$50</div>
+                        <div class="l" data-i18n="partners.fact4">Minimum to withdraw</div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ============ FAQ ============ -->
+        <section class="sec pt-sec" id="faq" style="background: var(--cream-2)">
+            <div class="wrap">
+                <div class="head">
+                    <span class="badge p"><span class="bd"></span><span data-i18n="faq.badge">FAQ</span></span>
+                    <h2 class="disp gasoek" data-i18n="partners.faq_title">Partner questions.</h2>
+                </div>
+                <div class="faq">
+                    <details class="acc" name="faq" open>
+                        <summary>
+                            <span data-i18n="partners.q1.q">Who pays me, and how?</span><span class="ic"><svg viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="#161616" stroke-width="2.6" stroke-linecap="round" /></svg></span>
+                        </summary>
+                        <div class="ans">
+                            <p data-i18n="partners.q1.a">
+                                Our payment partner, Creem, tracks your referrals
+                                and pays you directly by bank transfer or USDC.
+                                Before your first payout, Creem asks for a quick
+                                ID check. Payout fees: bank transfer $7 or 1%
+                                (whichever is higher), USDC 2%.
+                            </p>
+                        </div>
+                    </details>
+                    <details class="acc" name="faq">
+                        <summary>
+                            <span data-i18n="partners.q2.q">When does a sale count as mine?</span><span class="ic"><svg viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="#161616" stroke-width="2.6" stroke-linecap="round" /></svg></span>
+                        </summary>
+                        <div class="ans">
+                            <p data-i18n="partners.q2.a">
+                                When someone clicks your link and subscribes
+                                within 180 days, using the same browser. The sale
+                                appears in your dashboard automatically.
+                            </p>
+                        </div>
+                    </details>
+                    <details class="acc" name="faq">
+                        <summary>
+                            <span data-i18n="partners.q3.q">When can I withdraw?</span><span class="ic"><svg viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="#161616" stroke-width="2.6" stroke-linecap="round" /></svg></span>
+                        </summary>
+                        <div class="ans">
+                            <p data-i18n="partners.q3.a">
+                                Each commission is held for 7–12 days in case of
+                                a refund. Once your available balance reaches $50,
+                                click Withdraw and it is paid on the next 1st or
+                                15th of the month.
+                            </p>
+                        </div>
+                    </details>
+                    <details class="acc" name="faq">
+                        <summary>
+                            <span data-i18n="partners.q4.q">Do I need to be a Safely customer?</span><span class="ic"><svg viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="#161616" stroke-width="2.6" stroke-linecap="round" /></svg></span>
+                        </summary>
+                        <div class="ans">
+                            <p data-i18n="partners.q4.a">
+                                No. Anyone can join — sourcing agents, consultants,
+                                trade communities, newsletter writers. You only
+                                need an email address to sign in.
+                            </p>
+                        </div>
+                    </details>
+                    <details class="acc" name="faq">
+                        <summary>
+                            <span data-i18n="partners.q5.q">Are there any rules?</span><span class="ic"><svg viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="#161616" stroke-width="2.6" stroke-linecap="round" /></svg></span>
+                        </summary>
+                        <div class="ans">
+                            <p data-i18n="partners.q5.a">
+                                Be honest about what Safely does, don't send spam,
+                                and don't refer yourself. Questions? Email
+                                <b>help@safely.sh</b>.
+                            </p>
+                        </div>
+                    </details>
+                </div>
+            </div>
+        </section>
+
+        <!-- ============ FINAL CTA ============ -->
+        <section class="sec pt-sec pt-final">
+            <div class="wrap">
+                <h2 class="disp gasoek" data-i18n="partners.final_title">Ready to start earning?</h2>
+                <p data-i18n="partners.final_sub">It takes less than a minute to get your link.</p>
+                <a href="https://affiliates.creem.io/join/safely" class="btn btn-lg btn-sun" target="_blank" rel="noopener"
+                    ><span data-i18n="partners.cta">Get my referral link</span>
+                    <svg viewBox="0 0 24 24" fill="none">
+                        <path d="M5 12h14M13 5l7 7-7 7" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" />
+                    </svg>
+                </a>
+            </div>
+            <div class="wv down" aria-hidden="true">
+                <svg viewBox="0 0 1440 80" preserveAspectRatio="none">
+                    <path d="M0,40 C 240,75 480,5 720,28 C 960,50 1200,80 1440,38 L1440,80 L0,80 Z" fill="#181b22" />
+                </svg>
+            </div>
+        </section>
+
+        <!-- ============ FOOTER (dark) ============ -->
+        <footer>
+            <div class="wrap">
+                <div class="fgrid">
+                    <div class="fbrand">
+                        <a href="https://safely.sh" class="brand" aria-label="Safely home">
+                            <span class="mk" aria-hidden="true">
+                                <img src="images/white_logo.png" alt="" />
+                            </span>
+                            Safely
+                        </a>
+                        <p data-i18n="footer.tagline">
+                            Fraud detection for any online marketplace. Powered
+                            by AI, protected by community. Works anywhere you
+                            buy and sell online.
+                        </p>
+                        <div class="socials">
+                            <a href="https://x.com/ibilalkayyy" target="_blank" aria-label="X"
+                                ><svg viewBox="0 0 24 24" fill="none"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" fill="currentColor" /></svg
+                            ></a>
+                            <a href="https://github.com/safelyorg" target="_blank" aria-label="GitHub"
+                                ><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 00-3.16 19.49c.5.09.68-.22.68-.48v-1.7c-2.78.6-3.37-1.34-3.37-1.34-.45-1.16-1.1-1.47-1.1-1.47-.9-.62.07-.6.07-.6 1 .07 1.53 1.03 1.53 1.03.89 1.52 2.34 1.08 2.91.83.09-.65.35-1.09.63-1.34-2.22-.25-4.55-1.11-4.55-4.94 0-1.09.39-1.98 1.03-2.68-.1-.25-.45-1.27.1-2.65 0 0 .84-.27 2.75 1.02a9.5 9.5 0 015 0c1.91-1.29 2.75-1.02 2.75-1.02.55 1.38.2 2.4.1 2.65.64.7 1.03 1.59 1.03 2.68 0 3.84-2.34 4.69-4.57 4.93.36.31.68.92.68 1.85v2.74c0 .27.18.58.69.48A10 10 0 0012 2z" /></svg
+                            ></a>
+                            <a href="https://www.linkedin.com/company/safelypage" target="_blank" aria-label="LinkedIn"
+                                ><svg viewBox="0 0 24 24" fill="currentColor"><path d="M6.94 5a2 2 0 11-4 0 2 2 0 014 0zM3 8.5h3.9V21H3V8.5zM9.5 8.5h3.7v1.7h.05c.52-.95 1.8-1.95 3.7-1.95 3.95 0 4.68 2.5 4.68 5.75V21H17.7v-5.5c0-1.3-.02-3-1.84-3-1.84 0-2.12 1.43-2.12 2.9V21H9.5V8.5z" /></svg
+                            ></a>
+                        </div>
+                    </div>
+                    <div class="fcol">
+                        <h5 data-i18n="footer.product">Product</h5>
+                        <a href="/#how" data-i18n="footer.how_it_works">How it works</a
+                        ><a href="/#features" data-i18n="footer.features">Features</a
+                        ><a href="/#pricing" data-i18n="footer.pricing">Pricing</a
+                        ><a href="/#m-chrome" data-i18n="footer.chrome_extension">Chrome Extension</a
+                        ><a href="/#m-api" data-i18n="footer.api">API</a>
+                    </div>
+                    <div class="fcol">
+                        <h5 data-i18n="footer.company">Company</h5>
+                        <a href="/#m-about" data-i18n="footer.about">About</a>
+                        <a href="/partners" data-i18n="footer.partners">Partners</a>
+                        <a href="/subscribe" data-i18n="footer.subscribe">Subscribe</a>
+                        <a href="/#m-careers" data-i18n="footer.careers">Careers</a>
+                        <a href="/#m-contact" data-i18n="footer.contact">Contact</a>
+                    </div>
+                    <div class="fcol">
+                        <h5 data-i18n="footer.legal">Legal</h5>
+                        <a href="/#m-privacy" data-i18n="footer.privacy_policy">Privacy Policy</a
+                        ><a href="/#m-terms" data-i18n="footer.terms">Terms of Service</a
+                        ><a href="/#m-cookie" data-i18n="footer.cookie_policy">Cookie Policy</a
+                        ><a href="/#m-report" data-i18n="footer.report_abuse">Report Abuse</a>
+                    </div>
+                    <div class="fcol">
+                        <h5 data-i18n="footer.compare">Compare</h5>
+                        <a href="/#m-vs-norton" data-i18n="footer.vs_norton">vs Norton</a
+                        ><a href="/#m-vs-manual" data-i18n="footer.vs_manual">vs Manual Research</a
+                        ><a href="/#m-vs-reviews" data-i18n="footer.vs_reviews">vs Basic Reviews</a
+                        ><a href="/#m-vs-extensions" data-i18n="footer.vs_extensions">vs Other Extensions</a>
+                    </div>
+                </div>
+                <div class="fbottom">
+                    <div class="cp" data-i18n="footer.copyright">© 2026 Safely. All rights reserved.</div>
+                    <div class="links">
+                        <a href="/#m-privacy" data-i18n="footer.privacy">Privacy</a
+                        ><a href="/#m-terms" data-i18n="footer.terms_short">Terms</a
+                        ><a href="/#m-contact" data-i18n="footer.contact_short">Contact</a>
+                    </div>
+                </div>
+            </div>
+        </footer>
+
+        <script src="js/i18n.js"></script>
+    </body>
+</html>

@@ -1,0 +1,58 @@
+/* ============================================================
+   PARTNERS — affiliate program page (reuses subscribe.css for the
+   hero and cards; only the extra pieces live here)
+   ============================================================ */
+.pt-cta {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+    flex-wrap: wrap;
+}
+.pt-note {
+    text-align: center;
+    margin: 18px auto 0;
+    font-size: 13px;
+    font-weight: 600;
+    color: #1f3a55;
+}
+.pt-facts {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+}
+.pt-fact {
+    background: var(--paper);
+    border: var(--bd);
+    border-radius: var(--r);
+    box-shadow: var(--sh);
+    padding: 22px;
+    text-align: center;
+}
+.pt-fact .v {
+    font-family: var(--disp);
+    font-weight: 700;
+    font-size: clamp(26px, 3vw, 34px);
+}
+.pt-fact .l {
+    margin-top: 6px;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--muted);
+}
+.pt-sec .head {
+    margin-bottom: 34px;
+}
+.pt-final {
+    text-align: center;
+}
+.pt-final p {
+    max-width: 52ch;
+    margin: 0 auto 22px;
+    color: var(--muted);
+    font-weight: 500;
+}
+@media (max-width: 767px) {
+    .pt-facts {
+        grid-template-columns: 1fr 1fr;
+    }
+}
