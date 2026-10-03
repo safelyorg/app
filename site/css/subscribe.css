@@ -190,3 +190,200 @@
         grid-template-columns: 1fr;
     }
 }
+
+/* ---------- hero: example newsletter issue ---------- */
+.nl-hero {
+    padding-bottom: clamp(90px, 10vw, 130px);
+}
+.nl-stage {
+    position: relative;
+    max-width: 560px;
+    margin: clamp(40px, 5vw, 56px) auto 0;
+}
+.nl-mail {
+    background: var(--paper);
+    border: var(--bd);
+    border-radius: 22px;
+    box-shadow: var(--sh-lg);
+    padding: 20px 22px 24px;
+    text-align: left;
+    transform: rotate(-1.5deg);
+}
+.nm-head {
+    display: flex;
+    align-items: center;
+    gap: 11px;
+    padding-bottom: 14px;
+    border-bottom: 2px solid var(--cream-2);
+}
+.nm-av {
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    border: var(--bd-thin);
+    background: var(--mint);
+    display: grid;
+    place-items: center;
+    flex: none;
+}
+.nm-av img {
+    width: 20px;
+    height: 20px;
+    object-fit: contain;
+}
+.nm-from {
+    display: flex;
+    flex-direction: column;
+    line-height: 1.25;
+    font-size: 12.5px;
+    color: var(--muted);
+    font-weight: 500;
+}
+.nm-from b {
+    font-family: var(--disp);
+    font-weight: 800;
+    font-size: 15px;
+    color: var(--ink);
+}
+.nm-tag {
+    margin-left: auto;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--muted);
+    background: var(--cream);
+    border: 1.5px solid var(--cream-2);
+    border-radius: 999px;
+    padding: 4px 10px;
+}
+.nm-subject {
+    margin-top: 16px;
+    font-family: var(--disp);
+    font-weight: 800;
+    font-size: clamp(19px, 2.4vw, 23px);
+    line-height: 1.2;
+    letter-spacing: -0.015em;
+}
+.nm-body {
+    margin-top: 14px;
+}
+.nm-l {
+    display: block;
+    height: 9px;
+    border-radius: 9px;
+    background: var(--cream-2);
+    margin-bottom: 9px;
+}
+.nm-l.w95 { width: 95%; }
+.nm-l.w80 { width: 80%; }
+.nm-l.w70 { width: 70%; }
+.nm-l.w55 { width: 55%; margin-bottom: 0; }
+.nm-box {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    margin: 16px 0;
+    padding: 14px;
+    border-radius: 14px;
+    background: var(--cream);
+    border: 2px dashed #e2dccb;
+}
+.nm-box-t {
+    width: 100%;
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--muted);
+}
+.nm-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    background: var(--paper);
+    border: var(--bd-thin);
+    border-radius: 999px;
+    padding: 4px 11px 4px 5px;
+    font-size: 12.5px;
+    font-weight: 700;
+}
+.nm-chip i {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    border: 1.5px solid var(--ink);
+    display: grid;
+    place-items: center;
+}
+.nm-chip i svg {
+    width: 11px;
+    height: 11px;
+}
+.nm-chip.bad i {
+    background: var(--coral);
+}
+.nm-chip.warn i {
+    background: var(--sun);
+}
+.nl-sticker {
+    position: absolute;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--paper);
+    border: var(--bd);
+    border-radius: 999px;
+    padding: 7px 15px;
+    font-size: 13.5px;
+    font-weight: 700;
+    box-shadow: var(--sh);
+    white-space: nowrap;
+}
+.nl-sticker i {
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: var(--mint);
+    border: 2px solid var(--ink);
+    display: grid;
+    place-items: center;
+}
+.nl-sticker i svg {
+    width: 12px;
+    height: 12px;
+}
+.nl-sticker.s1 {
+    top: -18px;
+    right: -34px;
+    transform: rotate(5deg);
+    padding-left: 7px;
+}
+.nl-sticker.s2 {
+    bottom: 36px;
+    left: -46px;
+    transform: rotate(-5deg);
+    background: var(--sun);
+    font-family: var(--disp);
+    font-weight: 800;
+}
+
+/* ---------- what to expect: homepage step cards (no arrows) ---------- */
+.nl-steps .step p {
+    margin-top: 0;
+}
+
+@media (max-width: 767px) {
+    .nl-eyes {
+        display: none;
+    }
+    .nl-sticker.s1 {
+        right: -6px;
+    }
+    .nl-sticker.s2 {
+        left: -6px;
+        bottom: -18px;
+    }
+    .nl-mail {
+        transform: none;
+    }
+}

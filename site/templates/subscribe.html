@@ -18,12 +18,13 @@
             href="https://fonts.googleapis.com/css2?family=Archivo:ital,wght@0,600;0,700;0,800;0,900;1,700;1,800;1,900&family=Archivo+Black&family=Gasoek+One&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500&family=Sora:wght@500;600;700;800&display=swap"
             rel="stylesheet"
         />
-        <link rel="stylesheet" href="css/base.css" />
-        <link rel="stylesheet" href="css/nav.css" />
-        <link rel="stylesheet" href="css/cta_footer.css" />
-        <link rel="stylesheet" href="css/subscribe.css" />
-        <link rel="stylesheet" href="css/modals.css" />
-        <link rel="stylesheet" href="css/responsive.css" />
+        <link rel="stylesheet" href="css/base.css?v=20261003g" />
+        <link rel="stylesheet" href="css/nav.css?v=20261003g" />
+        <link rel="stylesheet" href="css/how_it_works.css?v=20261003g" />
+        <link rel="stylesheet" href="css/cta_footer.css?v=20261003g" />
+        <link rel="stylesheet" href="css/subscribe.css?v=20261003g" />
+        <link rel="stylesheet" href="css/modals.css?v=20261003g" />
+        <link rel="stylesheet" href="css/responsive.css?v=20261003g" />
     </head>
     <body>
         <input
@@ -148,7 +149,7 @@
                         required
                         autocomplete="email"
                     />
-                    <button type="submit" class="btn btn-dark" id="nl-submit" data-i18n="nl.submit">
+                    <button type="submit" class="btn btn-sun" id="nl-submit" data-i18n="nl.submit">
                         Subscribe
                     </button>
                 </form>
@@ -156,6 +157,35 @@
                 <p class="nl-note" data-i18n="nl.note">
                     Be aware of the different scams stories — no spam, unsubscribe any time.
                 </p>
+
+                <!-- example issue preview -->
+                <div class="nl-stage" aria-hidden="true">
+                    <div class="nl-mail">
+                        <div class="nm-head">
+                            <span class="nm-av"><img src="images/black_logo.png" alt="" /></span>
+                            <div class="nm-from">
+                                <b>Safely</b>
+                                <span data-i18n="nl.preview_to">to you</span>
+                            </div>
+                            <span class="nm-tag" data-i18n="nl.preview_tag">Example issue</span>
+                        </div>
+                        <div class="nm-subject" data-i18n="nl.preview_subject">The supplier with a 3-week-old website</div>
+                        <div class="nm-body">
+                            <span class="nm-l w95"></span>
+                            <span class="nm-l w80"></span>
+                            <div class="nm-box">
+                                <span class="nm-box-t" data-i18n="nl.preview_box">Warning signs in this case</span>
+                                <span class="nm-chip bad"><i><svg viewBox="0 0 24 24" fill="none"><path d="M12 8v5m0 4h.01" stroke="#191c22" stroke-width="3" stroke-linecap="round" /></svg></i><span data-i18n="nl.preview_s1">Advance payment</span></span>
+                                <span class="nm-chip warn"><i><svg viewBox="0 0 24 24" fill="none"><path d="M12 8v5m0 4h.01" stroke="#191c22" stroke-width="3" stroke-linecap="round" /></svg></i><span data-i18n="nl.preview_s2">New domain</span></span>
+                                <span class="nm-chip bad"><i><svg viewBox="0 0 24 24" fill="none"><path d="M12 8v5m0 4h.01" stroke="#191c22" stroke-width="3" stroke-linecap="round" /></svg></i><span data-i18n="nl.preview_s3">Copied photos</span></span>
+                            </div>
+                            <span class="nm-l w70"></span>
+                            <span class="nm-l w55"></span>
+                        </div>
+                    </div>
+                    <span class="nl-sticker s1"><i><svg viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17l-5-5" stroke="#191c22" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" /></svg></i><span data-i18n="nl.sticker1">No spam</span></span>
+                    <span class="nl-sticker s2"><span data-i18n="nl.sticker2">Free newsletter</span></span>
+                </div>
             </div>
             <div class="wv down" aria-hidden="true">
                 <svg viewBox="0 0 1440 80" preserveAspectRatio="none">
@@ -174,67 +204,24 @@
                     <span class="badge o"><span class="bd"></span><span data-i18n="nl.expect_badge">What to expect</span></span>
                     <h2 class="disp gasoek" data-i18n="nl.expect_title">What you'll actually get.</h2>
                 </div>
-                <div class="nl-cards">
-                    <div class="nl-card">
-                        <span class="nl-card-ic" aria-hidden="true">
-                            <svg viewBox="0 0 24 24" fill="none">
-                                <path
-                                    d="M12 8v5m0 4h.01M10.3 3.9l-8 14A2 2 0 004 21h16a2 2 0 001.7-3.1l-8-14a2 2 0 00-3.4 0z"
-                                    stroke="#161616"
-                                    stroke-width="2.2"
-                                    stroke-linecap="round"
-                                    stroke-linejoin="round"
-                                />
-                            </svg>
-                        </span>
+                <div class="steps nl-steps">
+                    <div class="step">
+                        <span class="snum" data-i18n="nl.card1.pill">Case studies</span>
+                        <span class="sic"><svg viewBox="0 0 24 24" fill="none"><path d="M12 8v5m0 4h.01M10.3 3.9l-8 14A2 2 0 004 21h16a2 2 0 001.7-3.1l-8-14a2 2 0 00-3.4 0z" stroke="#161616" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" /></svg></span>
                         <h3 data-i18n="nl.card1.title">Real scam breakdowns</h3>
-                        <p data-i18n="nl.card1.body">
-                            How specific scams actually worked, what the
-                            warning signs were, and what the buyer could have
-                            caught earlier.
-                        </p>
+                        <p data-i18n="nl.card1.body">How specific scams actually worked, what the warning signs were, and what the buyer could have caught earlier.</p>
                     </div>
-                    <div class="nl-card">
-                        <span class="nl-card-ic" aria-hidden="true">
-                            <svg viewBox="0 0 24 24" fill="none">
-                                <path
-                                    d="M12 3l8 3v6c0 5-3.4 8-8 9-4.6-1-8-4-8-9V6l8-3z"
-                                    stroke="#161616"
-                                    stroke-width="2.2"
-                                    stroke-linejoin="round"
-                                />
-                                <path
-                                    d="M9 12l2 2 4-4"
-                                    stroke="#161616"
-                                    stroke-width="2.4"
-                                    stroke-linecap="round"
-                                    stroke-linejoin="round"
-                                />
-                            </svg>
-                        </span>
+                    <div class="step">
+                        <span class="snum" data-i18n="nl.card2.pill">Checklists</span>
+                        <span class="sic"><svg viewBox="0 0 24 24" fill="none"><path d="M12 3l8 3v6c0 5-3.4 8-8 9-4.6-1-8-4-8-9V6l8-3z" stroke="#161616" stroke-width="2.2" stroke-linejoin="round" /> <path d="M9 12l2 2 4-4" stroke="#161616" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" /></svg></span>
                         <h3 data-i18n="nl.card2.title">Practical prevention tips</h3>
-                        <p data-i18n="nl.card2.body">
-                            Genuinely useful things to check before you pay —
-                            not vague "be careful online" advice.
-                        </p>
+                        <p data-i18n="nl.card2.body">Genuinely useful things to check before you pay — not vague "be careful online" advice.</p>
                     </div>
-                    <div class="nl-card">
-                        <span class="nl-card-ic" aria-hidden="true">
-                            <svg viewBox="0 0 24 24" fill="none">
-                                <circle cx="12" cy="12" r="9" stroke="#161616" stroke-width="2" />
-                                <path
-                                    d="M3 12h18M12 3c2.5 2.4 4 5.6 4 9s-1.5 6.6-4 9c-2.5-2.4-4-5.6-4-9s1.5-6.6 4-9z"
-                                    stroke="#161616"
-                                    stroke-width="2"
-                                />
-                            </svg>
-                        </span>
+                    <div class="step">
+                        <span class="snum" data-i18n="nl.card3.pill">Updates</span>
+                        <span class="sic"><svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="#161616" stroke-width="2" /> <path d="M3 12h18M12 3c2.5 2.4 4 5.6 4 9s-1.5 6.6-4 9c-2.5-2.4-4-5.6-4-9s1.5-6.6 4-9z" stroke="#161616" stroke-width="2" /></svg></span>
                         <h3 data-i18n="nl.card3.title">Product updates</h3>
-                        <p data-i18n="nl.card3.body">
-                            New marketplaces, new detection features, and what
-                            we're building next — without it being the whole
-                            newsletter.
-                        </p>
+                        <p data-i18n="nl.card3.body">New marketplaces, new detection features, and what we're building next — without it being the whole newsletter.</p>
                     </div>
                 </div>
             </div>
@@ -242,9 +229,42 @@
                 <svg viewBox="0 0 1440 80" preserveAspectRatio="none">
                     <path
                         d="M0,40 C 240,75 480,5 720,28 C 960,50 1200,80 1440,38 L1440,80 L0,80 Z"
-                        fill="#181b22"
+                        fill="#ffffff"
                     />
                 </svg>
+            </div>
+        </section>
+
+        <!-- ============ FINAL CTA ============ -->
+        <section class="sec finalcta">
+            <div class="wv down" aria-hidden="true">
+                <svg viewBox="0 0 1440 80" preserveAspectRatio="none">
+                    <path d="M0,40 C 240,75 480,5 720,28 C 960,50 1200,80 1440,38 L1440,80 L0,80 Z" fill="#181b22" />
+                </svg>
+            </div>
+            <div class="wrap">
+                <div class="cta-stage">
+                    <svg class="cta-eyes" viewBox="0 0 130 96" fill="none" aria-hidden="true">
+                        <path d="M12 22 Q24 4 44 14" stroke="#161616" stroke-width="8" fill="none" stroke-linecap="round" />
+                        <path d="M70 16 Q84 2 104 12" stroke="#161616" stroke-width="8" fill="none" stroke-linecap="round" />
+                        <circle cx="36" cy="56" r="28" fill="#fff" stroke="#161616" stroke-width="7" />
+                        <circle cx="92" cy="56" r="28" fill="#fff" stroke="#161616" stroke-width="7" />
+                        <circle cx="44" cy="46" r="12" fill="#161616" />
+                        <circle cx="100" cy="46" r="12" fill="#161616" />
+                    </svg>
+                    <span class="cta-sticker" aria-hidden="true" data-i18n="nl.cta_sticker">Unsubscribe any time</span>
+                    <div class="box">
+                        <span class="badge o"><span class="bd"></span><span data-i18n="nl.badge">Subscribe Safely</span></span>
+                        <h2 class="disp gasoek" style="margin-top: 18px" data-i18n="nl.cta_title">Spot the next scam first.</h2>
+                        <p data-i18n="nl.cta_sub">Real cases and simple checks, straight to your inbox.</p>
+                        <div class="cta-row">
+                            <a href="#subscribe" class="btn btn-lg btn-sun"
+                                ><span data-i18n="nav.subscribe_btn">Subscribe</span>
+                                <svg viewBox="0 0 24 24" fill="none"><path d="M5 12h14M13 5l7 7-7 7" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" /></svg>
+                            </a>
+                        </div>
+                    </div>
+                </div>
             </div>
         </section>
 
@@ -312,6 +332,7 @@
                     <div class="fcol">
                         <h5 data-i18n="footer.company">Company</h5>
                         <a href="#m-about" data-i18n="footer.about">About</a>
+                        <a href="/partners" data-i18n="footer.partners">Partners</a>
                         <a href="/subscribe" data-i18n="footer.subscribe">Subscribe</a>
                         <a href="#m-careers" data-i18n="footer.careers">Careers</a>
                         <a href="#m-contact" data-i18n="footer.contact">Contact</a>
@@ -340,6 +361,7 @@
                     </div>
                 </div>
             </div>
+            <div class="fword" aria-hidden="true">Safely</div>
         </footer>
 
         <!-- ============ MODALS (pure-CSS :target) ============ -->
@@ -641,7 +663,7 @@
                     </p>
                     <p data-i18n="modal.vs_manual.body2">
                         Safely runs the same checks a careful buyer would want
-                        to do, automatically, in about 2 seconds, every time you
+                        to do, automatically, in about 10 seconds, every time you
                         open a listing.
                     </p>
                 </div>
@@ -705,7 +727,7 @@
                         Safely is purpose-built around one question: is this
                         specific listing and seller safe to send money to.
                         That's the only thing it does, which is why it can go
-                        deep on it — 8 distinct fraud signals, seller history,
+                        deep on it — 15 distinct fraud signals, seller history,
                         and a community fraud report network, all in one
                         focused tool.
                     </p>

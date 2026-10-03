@@ -23,18 +23,18 @@
                 }
             </style></noscript
         >
-        <link rel="stylesheet" href="css/base.css" />
-        <link rel="stylesheet" href="css/nav.css" />
-        <link rel="stylesheet" href="css/hero.css" />
-        <link rel="stylesheet" href="css/how_it_works.css" />
-        <link rel="stylesheet" href="css/features.css" />
-        <link rel="stylesheet" href="css/pricing.css" />
-        <link rel="stylesheet" href="css/faq.css" />
-        <link rel="stylesheet" href="css/cta_footer.css" />
-        <link rel="stylesheet" href="css/signin.css" />
-        <link rel="stylesheet" href="css/modals.css" />
-        <link rel="stylesheet" href="css/responsive.css" />
-        <link rel="stylesheet" href="css/marquee.css">
+        <link rel="stylesheet" href="css/base.css?v=20261003g" />
+        <link rel="stylesheet" href="css/nav.css?v=20261003g" />
+        <link rel="stylesheet" href="css/hero.css?v=20261003g" />
+        <link rel="stylesheet" href="css/how_it_works.css?v=20261003g" />
+        <link rel="stylesheet" href="css/features.css?v=20261003g" />
+        <link rel="stylesheet" href="css/pricing.css?v=20261003g" />
+        <link rel="stylesheet" href="css/faq.css?v=20261003g" />
+        <link rel="stylesheet" href="css/cta_footer.css?v=20261003g" />
+        <link rel="stylesheet" href="css/signin.css?v=20261003g" />
+        <link rel="stylesheet" href="css/modals.css?v=20261003g" />
+        <link rel="stylesheet" href="css/responsive.css?v=20261003g" />
+        <link rel="stylesheet" href="css/marquee.css?v=20261003g">
     </head>
     <body>
         <!-- pure-CSS state toggles (no JS needed to open/close menu or sign-in) -->
@@ -179,9 +179,9 @@
                         <circle cx="100" cy="46" r="12" fill="#161616" />
                     </svg>
                     <h1 class="disp" data-i18n="hero.headline">
-                        PAY<br>
-                        WITH<br>
-                        CONFIDENCE
+                        SPOT<br>
+                        SCAMS<br>
+                        IMMEDIATELY
                     </h1>
                 </div>
                 <p class="sub" data-i18n="hero.sub">
@@ -299,6 +299,34 @@
                     <span data-i18n="hero.proof">One place to verify every supplier before you commit</span>
                 </div>
             </div>
+                <!-- live scan preview -->
+                <div class="hero-stage" aria-hidden="true">
+                    <div class="hs-win">
+                        <div class="hs-bar"><i></i><i></i><i></i><span class="hs-url">alibaba.com/product-detail/led-panel-light…</span></div>
+                        <div class="hs-page">
+                            <div class="hs-gallery"><span class="hs-scan"></span></div>
+                            <div class="hs-info">
+                                <span class="hs-l w90 dark"></span>
+                                <span class="hs-l w60 dark"></span>
+                                <div class="hs-price">US$1.20 – 2.80 <small>/ piece</small></div>
+                                <span class="hs-l w75"></span>
+                                <span class="hs-l w50"></span>
+                                <div class="hs-btns"><span></span><span></span></div>
+                            </div>
+                            <div class="hs-panel">
+                                <div class="hs-ph"><span class="hs-shield"><svg viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17l-5-5" stroke="#191c22" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round" /></svg></span>Safely</div>
+                                <div class="hs-score"><b>88</b><span>/100</span></div>
+                                <div class="hs-verdict" data-i18n="hero.stage.verdict">High risk</div>
+                                <div class="hs-bars"><i style="--w: 92%"></i><i style="--w: 70%"></i><i style="--w: 45%"></i></div>
+                            </div>
+                        </div>
+                    </div>
+                    <span class="hs-flag fl1 bad"><span class="d"><svg viewBox="0 0 24 24" fill="none"><path d="M12 8v5m0 4h.01" stroke="#191c22" stroke-width="3" stroke-linecap="round" /></svg></span><span data-i18n="hero.flag1">Advance payment requested</span></span>
+                    <span class="hs-flag fl2 good"><span class="d"><svg viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17l-5-5" stroke="#191c22" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" /></svg></span><span data-i18n="hero.flag2">Verified on platform</span></span>
+                    <span class="hs-flag fl3 warn"><span class="d"><svg viewBox="0 0 24 24" fill="none"><path d="M12 8v5m0 4h.01" stroke="#191c22" stroke-width="3" stroke-linecap="round" /></svg></span><span data-i18n="hero.flag3">Website domain 3 weeks old</span></span>
+                    <span class="hs-flag fl4 bad"><span class="d"><svg viewBox="0 0 24 24" fill="none"><path d="M12 8v5m0 4h.01" stroke="#191c22" stroke-width="3" stroke-linecap="round" /></svg></span><span data-i18n="hero.flag4">Price far below market</span></span>
+                </div>
+            </div>
             <div class="wv down" aria-hidden="true">
                 <svg viewBox="0 0 1440 80" preserveAspectRatio="none">
                     <path
@@ -361,6 +389,8 @@
                     </p>
                 </div>
                 <div class="steps">
+                    <span class="step-link l1" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M5 12h14M13 5l7 7-7 7" stroke="#191c22" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" /></svg></span>
+                    <span class="step-link l2" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M5 12h14M13 5l7 7-7 7" stroke="#191c22" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" /></svg></span>
                     <div class="step reveal">
                         <span class="snum" data-i18n="how.step1.num">01 · Install</span>
                         <span class="sic"
@@ -452,9 +482,9 @@
                         ><span class="bd"></span><span data-i18n="features.badge">Features</span></span
                     >
                     <h2 class="disp gasoek reveal d1">
-                        <span data-i18n="features.title_pre">Everything you need to</span>
+                        <span data-i18n="features.title_pre">Find every red flag</span>
                         <span class="uline"
-                            ><span data-i18n="features.title_highlight">spot a scam</span><svg
+                            ><span data-i18n="features.title_highlight">in one place</span><svg
                                 viewBox="0 0 300 24"
                                 preserveAspectRatio="none"
                             >
@@ -480,111 +510,18 @@
                             AI-powered supplier due diligence
                         </h3>
                         <p class="colp" data-i18n="features.f1.body">
-                            Every supplier is checked across 15+ distinct
+                            Every supplier is checked across 15 distinct
                             signals using Claude AI. From company registration
                             consistency and listing completeness to social
                             presence across the web and platform verification —
                             you see exactly what's missing or suspicious, and
                             why, in plain language.
                         </p>
-                        <ul class="siglist">
-                            <li>
-                                <span class="ck"
-                                    ><svg viewBox="0 0 24 24" fill="none">
-                                        <path
-                                            d="M20 6L9 17l-5-5"
-                                            stroke="#161616"
-                                            stroke-width="3"
-                                            stroke-linecap="round"
-                                            stroke-linejoin="round"
-                                        /></svg></span
-                                ><span data-i18n="features.sig1">Company registration consistency</span>
-                            </li>
-                            <li>
-                                <span class="ck"
-                                    ><svg viewBox="0 0 24 24" fill="none">
-                                        <path
-                                            d="M20 6L9 17l-5-5"
-                                            stroke="#161616"
-                                            stroke-width="3"
-                                            stroke-linecap="round"
-                                            stroke-linejoin="round"
-                                        /></svg></span
-                                ><span data-i18n="features.sig2">Company profile completeness</span>
-                            </li>
-                            <li>
-                                <span class="ck"
-                                    ><svg viewBox="0 0 24 24" fill="none">
-                                        <path
-                                            d="M20 6L9 17l-5-5"
-                                            stroke="#161616"
-                                            stroke-width="3"
-                                            stroke-linecap="round"
-                                            stroke-linejoin="round"
-                                        /></svg></span
-                                ><span data-i18n="features.sig3">Listing completeness (MOQ, pricing, port &amp; more)</span>
-                            </li>
-                            <li>
-                                <span class="ck"
-                                    ><svg viewBox="0 0 24 24" fill="none">
-                                        <path
-                                            d="M20 6L9 17l-5-5"
-                                            stroke="#161616"
-                                            stroke-width="3"
-                                            stroke-linecap="round"
-                                            stroke-linejoin="round"
-                                        /></svg></span
-                                ><span data-i18n="features.sig4">Platform verification badge check</span>
-                            </li>
-                            <li>
-                                <span class="ck"
-                                    ><svg viewBox="0 0 24 24" fill="none">
-                                        <path
-                                            d="M20 6L9 17l-5-5"
-                                            stroke="#161616"
-                                            stroke-width="3"
-                                            stroke-linecap="round"
-                                            stroke-linejoin="round"
-                                        /></svg></span
-                                ><span data-i18n="features.sig5">Social presence cross-check</span>
-                            </li>
-                            <li>
-                                <span class="ck"
-                                    ><svg viewBox="0 0 24 24" fill="none">
-                                        <path
-                                            d="M20 6L9 17l-5-5"
-                                            stroke="#161616"
-                                            stroke-width="3"
-                                            stroke-linecap="round"
-                                            stroke-linejoin="round"
-                                        /></svg></span
-                                ><span data-i18n="features.sig6">Domain &amp; lookalike-site detection</span>
-                            </li>
-                            <li>
-                                <span class="ck"
-                                    ><svg viewBox="0 0 24 24" fill="none">
-                                        <path
-                                            d="M20 6L9 17l-5-5"
-                                            stroke="#161616"
-                                            stroke-width="3"
-                                            stroke-linecap="round"
-                                            stroke-linejoin="round"
-                                        /></svg></span
-                                ><span data-i18n="features.sig7">Duplicate &amp; templated listing detection</span>
-                            </li>
-                            <li>
-                                <span class="ck"
-                                    ><svg viewBox="0 0 24 24" fill="none">
-                                        <path
-                                            d="M20 6L9 17l-5-5"
-                                            stroke="#161616"
-                                            stroke-width="3"
-                                            stroke-linecap="round"
-                                            stroke-linejoin="round"
-                                        /></svg></span
-                                ><span data-i18n="features.sig8">Prior fraud report history</span>
-                            </li>
-                        </ul>
+                        <div class="f1-stats">
+                            <div><b>15</b><span data-i18n="features.stat1">signals checked</span></div>
+                            <div><b>3</b><span data-i18n="features.stat2">layers: listing, seller, company</span></div>
+                            <div><b>1</b><span data-i18n="features.stat3">clear verdict</span></div>
+                        </div>
                     </div>
                     <div class="b">
                         <div class="ext-shell">
@@ -760,42 +697,86 @@
                     </div>
                 </div>
 
+                <!-- all signals -->
+                <div class="sigx reveal">
+                    <div class="sigx-head">
+                        <span class="t"><b>15</b> <span data-i18n="features.sigx.title">signals checked on every supplier</span></span>
+                        <span class="ai"><i></i><span data-i18n="features.sigx.ai">Analyzed by Claude AI</span></span>
+                    </div>
+                    <div class="sigx-grid">
+                    <div class="sigx-col" style="--c: var(--coral)">
+                        <h4 data-i18n="features.sigx.g1">The listing</h4>
+                        <ol>
+                            <li><span class="n">01</span><span data-i18n="features.sig1">Price analysis</span></li>
+                            <li><span class="n">02</span><span data-i18n="features.sig2">Urgency language</span></li>
+                            <li><span class="n">03</span><span data-i18n="features.sig3">Advance payment request</span></li>
+                            <li><span class="n">04</span><span data-i18n="features.sig4">Image authenticity</span></li>
+                            <li><span class="n">05</span><span data-i18n="features.sig5">Listing detail</span></li>
+                            <li><span class="n">06</span><span data-i18n="features.sig6">Listing completeness (MOQ, pricing, port)</span></li>
+                        </ol>
+                    </div>
+                    <div class="sigx-col" style="--c: var(--sun)">
+                        <h4 data-i18n="features.sigx.g2">The seller</h4>
+                        <ol>
+                            <li><span class="n">07</span><span data-i18n="features.sig7">Account age</span></li>
+                            <li><span class="n">08</span><span data-i18n="features.sig8">Platform verification badge</span></li>
+                            <li><span class="n">09</span><span data-i18n="features.sig9">Contact info check</span></li>
+                            <li><span class="n">10</span><span data-i18n="features.sig10">Seller website check</span></li>
+                            <li><span class="n">11</span><span data-i18n="features.sig11">Safely report history</span></li>
+                        </ol>
+                    </div>
+                    <div class="sigx-col" style="--c: var(--sky-deep)">
+                        <h4 data-i18n="features.sigx.g3">The company</h4>
+                        <ol>
+                            <li><span class="n">12</span><span data-i18n="features.sig12">Registration consistency</span></li>
+                            <li><span class="n">13</span><span data-i18n="features.sig13">Company profile completeness</span></li>
+                            <li><span class="n">14</span><span data-i18n="features.sig14">Overall legitimacy check</span></li>
+                            <li><span class="n">15</span><span data-i18n="features.sig15">Domain &amp; lookalike-site check</span></li>
+                        </ol>
+                    </div>
+                    </div>
+                    <div class="sigx-foot" data-i18n="features.sigx.extra">Plus, when relevant: regulated product check and social presence check.</div>
+                </div>
+
                 <!-- bento -->
                 <div class="bento">
                     <article class="bcard reveal">
                         <div class="bviz c1">
-                            <div class="vchip">
-                                <span
-                                    class="vi"
-                                    style="background: var(--coral)"
-                                    ><svg viewBox="0 0 24 24" fill="none">
-                                        <path
-                                            d="M12 8v5m0 4h.01M10.3 3.9l-8 14A2 2 0 004 21h16a2 2 0 001.7-3.1l-8-14a2 2 0 00-3.4 0z"
-                                            stroke="#fff"
-                                            stroke-width="2.2"
-                                            stroke-linecap="round"
-                                            stroke-linejoin="round"
-                                        /></svg></span
-                                ><span data-i18n="mock.fake_listing">Fake listing reported</span><span class="vt"
-                                    data-i18n="mock.hours_ago">2h ago</span
-                                >
-                            </div>
-                            <div class="vchip">
-                                <span
-                                    class="vi"
-                                    style="background: var(--coral)"
-                                    ><svg viewBox="0 0 24 24" fill="none">
-                                        <path
-                                            d="M12 8v5m0 4h.01M10.3 3.9l-8 14A2 2 0 004 21h16a2 2 0 001.7-3.1l-8-14a2 2 0 00-3.4 0z"
-                                            stroke="#fff"
-                                            stroke-width="2.2"
-                                            stroke-linecap="round"
-                                            stroke-linejoin="round"
-                                        /></svg></span
-                                ><span data-i18n="mock.advance_scam">Advance payment scam</span><span class="vt"
-                                    data-i18n="mock.day_ago">1d ago</span
-                                >
-                            </div>
+                            <svg class="net" viewBox="0 0 400 180" aria-hidden="true">
+                                <line class="ln" x1="70" y1="62" x2="200" y2="96" />
+                                <line class="ln" x1="112" y1="150" x2="200" y2="96" />
+                                <line class="ln" x1="146" y1="24" x2="200" y2="96" />
+                                <line class="ln" x1="290" y1="28" x2="200" y2="96" />
+                                <line class="ln" x1="338" y1="104" x2="200" y2="96" />
+                                <line class="ln" x1="278" y1="158" x2="200" y2="96" />
+                                <circle class="ring" cx="200" cy="96" r="30" />
+                                <!-- flagged seller -->
+                                <circle cx="200" cy="96" r="30" fill="#ff6656" stroke="#191c22" stroke-width="3.5" />
+                                <path d="M200 82v16" stroke="#fff" stroke-width="5" stroke-linecap="round" />
+                                <circle cx="200" cy="109" r="3.2" fill="#fff" />
+                                <!-- reporter -->
+                                <g transform="translate(70 62)">
+                                    <circle r="19" fill="#ffb937" stroke="#191c22" stroke-width="3" />
+                                    <circle cx="-6" cy="-2" r="2.6" fill="#191c22" /><circle cx="6" cy="-2" r="2.6" fill="#191c22" />
+                                    <path d="M-6 7q6 4 12 0" stroke="#191c22" stroke-width="2.6" fill="none" stroke-linecap="round" />
+                                    <path d="M14 -16v-20" stroke="#191c22" stroke-width="3" stroke-linecap="round" />
+                                    <path d="M14 -36h16l-5 6 5 6h-16z" fill="#ff6656" stroke="#191c22" stroke-width="2.5" stroke-linejoin="round" />
+                                </g>
+                                <!-- protected buyers -->
+                                <g fill="#fff" stroke="#191c22" stroke-width="3">
+                                    <circle cx="112" cy="150" r="16" /><circle cx="146" cy="24" r="16" />
+                                    <circle cx="290" cy="28" r="16" /><circle cx="338" cy="104" r="16" /><circle cx="278" cy="158" r="16" />
+                                </g>
+                                <g fill="#3ed9a6" stroke="#191c22" stroke-width="2.4">
+                                    <circle cx="124" cy="138" r="8" /><circle cx="158" cy="12" r="8" />
+                                    <circle cx="302" cy="16" r="8" /><circle cx="350" cy="92" r="8" /><circle cx="290" cy="146" r="8" />
+                                </g>
+                                <g stroke="#191c22" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M120.5 138l2.5 2.5 4.5-4.5" /><path d="M154.5 12l2.5 2.5 4.5-4.5" />
+                                    <path d="M298.5 16l2.5 2.5 4.5-4.5" /><path d="M346.5 92l2.5 2.5 4.5-4.5" /><path d="M286.5 146l2.5 2.5 4.5-4.5" />
+                                </g>
+                            </svg>
+                            <span class="net-tag" data-i18n="mock.net_tag">1 report · every buyer warned</span>
                         </div>
                         <div class="btxt">
                             <span class="fic"
@@ -821,46 +802,21 @@
 
                     <article class="bcard reveal d1">
                         <div class="bviz c2">
-                            <div class="vseller">
-                                <svg class="ava" viewBox="0 0 48 48">
-                                    <rect
-                                        x="6"
-                                        y="6"
-                                        width="36"
-                                        height="36"
-                                        rx="13"
-                                        fill="#ff9f93"
-                                        stroke="#161616"
-                                        stroke-width="3"
-                                    />
-                                    <circle
-                                        cx="18"
-                                        cy="22"
-                                        r="3"
-                                        fill="#161616"
-                                    />
-                                    <circle
-                                        cx="30"
-                                        cy="22"
-                                        r="3"
-                                        fill="#161616"
-                                    />
-                                    <path
-                                        d="M18 31q6 4 12 0"
-                                        stroke="#161616"
-                                        stroke-width="3"
-                                        fill="none"
-                                        stroke-linecap="round"
-                                    />
-                                </svg>
-                                <div>
-                                    <div class="nm">unknown_seller_92</div>
-                                    <div class="vmeta">
-                                        <span data-i18n="mock.age_3mo">Age 3mo</span
-                                        ><span class="warn" data-i18n="mock.two_reports">2 reports</span
-                                        ><span data-i18n="mock.unverified">Unverified</span>
-                                    </div>
+                            <div class="tl">
+                                <div class="tl-who">
+                                    <svg viewBox="0 0 48 48" aria-hidden="true">
+                                        <rect x="4" y="4" width="40" height="40" rx="14" fill="#ff9d8f" stroke="#191c22" stroke-width="3" />
+                                        <circle cx="18" cy="22" r="3" fill="#191c22" /><circle cx="30" cy="22" r="3" fill="#191c22" />
+                                        <path d="M18 32h12" stroke="#191c22" stroke-width="3" stroke-linecap="round" />
+                                    </svg>
+                                    <span>unknown_seller_92</span>
                                 </div>
+                                <ol class="tl-line">
+                                    <li><span class="pt"></span><b data-i18n="mock.tl_joined">Joined</b><small data-i18n="mock.tl_joined_sub">3 months ago</small></li>
+                                    <li class="warn"><span class="pt"></span><b data-i18n="mock.tl_unverified">Unverified</b><small data-i18n="mock.tl_unverified_sub">No badge</small></li>
+                                    <li class="bad"><span class="pt"></span><b data-i18n="mock.tl_reports">2 reports</b><small data-i18n="mock.tl_reports_sub">Last week</small></li>
+                                    <li class="now"><span class="pt"></span><b data-i18n="mock.tl_today">Today</b><small data-i18n="mock.tl_today_sub">You're here</small></li>
+                                </ol>
                             </div>
                         </div>
                         <div class="btxt">
@@ -900,17 +856,16 @@
 
                     <article class="bcard reveal d1">
                         <div class="bviz c3">
-                            <div class="vbar">
-                                <span class="vi" style="background: var(--mint)"
-                                    ><svg viewBox="0 0 24 24" fill="none">
-                                        <path
-                                            d="M12 3l8 3v6c0 5-3.4 8-8 9-4.6-1-8-4-8-9V6l8-3z"
-                                            stroke="#161616"
-                                            stroke-width="2.2"
-                                            stroke-linejoin="round"
-                                        /></svg></span
-                                ><span class="u">olx.com.pk/item/iphone…</span
-                                ><span class="on" data-i18n="mock.active">Active</span>
+                            <div class="peek" aria-hidden="true">
+                                <div class="peek-bar"><i></i><i></i><i></i><span class="peek-url">alibaba.com/product/led-panel-light…</span></div>
+                                <div class="peek-body">
+                                    <div class="peek-img"></div>
+                                    <div class="peek-lines"><span></span><span></span><span></span></div>
+                                </div>
+                                <div class="peek-toast">
+                                    <span class="sh"><svg viewBox="0 0 24 24" fill="none"><path d="M12 3l8 3v6c0 5-3.4 8-8 9-4.6-1-8-4-8-9V6l8-3z" stroke="#191c22" stroke-width="2.4" stroke-linejoin="round" /><path d="M9 12l2 2 4-4" stroke="#191c22" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" /></svg></span>
+                                    <span data-i18n="mock.auto_check">Checked automatically</span>
+                                </div>
                             </div>
                         </div>
                         <div class="btxt">
@@ -942,9 +897,9 @@
 
                     <article class="bcard reveal d2">
                         <div class="bviz c4">
-                            <div class="vmkts">
-                                <span>Alibaba ✓</span><span>TradeWheel ✓</span><span>ExportHub ✓</span><span>B2Brazil ✓</span><span>ThomasNet ✓</span><span>B2BMap ✓</span><span>Kompass ✓</span><span class="soon">More soon</span>
-                            </div>
+                            <div class="mq"><div class="mq-track"><span>Alibaba</span><span>TradeWheel</span><span>ExportHub</span><span>B2Brazil</span><span>ThomasNet</span><span>B2BMap</span><span>Kompass</span><span aria-hidden="true">Alibaba</span><span aria-hidden="true">TradeWheel</span><span aria-hidden="true">ExportHub</span><span aria-hidden="true">B2Brazil</span><span aria-hidden="true">ThomasNet</span><span aria-hidden="true">B2BMap</span><span aria-hidden="true">Kompass</span></div></div>
+                            <div class="mq rev"><div class="mq-track"><span>B2Brazil</span><span>ThomasNet</span><span>B2BMap</span><span>Kompass</span><span>Alibaba</span><span>TradeWheel</span><span>ExportHub</span><span aria-hidden="true">B2Brazil</span><span aria-hidden="true">ThomasNet</span><span aria-hidden="true">B2BMap</span><span aria-hidden="true">Kompass</span><span aria-hidden="true">Alibaba</span><span aria-hidden="true">TradeWheel</span><span aria-hidden="true">ExportHub</span></div></div>
+                            <span class="mq-live"><i></i><span data-i18n="mock.live_count">7 platforms live · more soon</span></span>
                         </div>
                         <div class="btxt">
                             <span class="fic"
@@ -992,7 +947,7 @@
                 </div>
                 <div class="statbar reveal">
                     <div class="it">
-                        <div class="num disp">15+</div>
+                        <div class="num disp">15</div>
                         <div class="cap" data-i18n="stats.cap1">Signals checked per supplier</div>
                     </div>
                     <div class="it">
@@ -1047,94 +1002,77 @@
                 <!-- TEAM -->
                 <div class="pcard feat">
                     <span class="pbadge" data-i18n="pricing.most_popular">Most popular</span>
-                    <div class="pname" data-i18n="pricing.team.name">Team</div>
-                    <div class="pfor" data-i18n="pricing.team.for">
-                        For procurement teams verifying vendors and suppliers
+                    <div class="ptop">
+                        <div class="pplan">
+                            <span class="pic"><svg viewBox="0 0 24 24" fill="none"><path d="M12 3l8 3v6c0 5-3.4 8-8 9-4.6-1-8-4-8-9V6l8-3z" stroke="#191c22" stroke-width="2.2" stroke-linejoin="round" /><path d="M9 12l2 2 4-4" stroke="#191c22" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" /></svg></span>
+                            <div>
+                                <div class="pname" data-i18n="pricing.team.name">Team</div>
+                                <div class="pfor" data-i18n="pricing.team.for">For procurement teams verifying vendors and suppliers</div>
+                            </div>
+                        </div>
+                        <div class="pprice">
+                            <span class="amt" data-mo="$200" data-yr="$1,920">$200</span>
+                            <span class="per" data-mo="/month" data-yr="/year">/month</span>
+                        </div>
+                        <div class="p-billed" data-mo="" data-yr="$160/mo, billed annually"></div>
+                        <div class="pmeter">
+                            <div class="pm-row"><span data-i18n="pricing.meter_label">Supplier scans</span><b data-i18n="pricing.team.meter">750 / month</b></div>
+                            <div class="pm-bar"><i style="width: 38%"></i></div>
+                        </div>
+                        <label for="si-toggle" class="btn btn-sun" tabindex="0" role="button"><span data-i18n="pricing.start_trial">Start free trial</span><svg viewBox="0 0 24 24" fill="none"><path d="M5 12h14M13 5l7 7-7 7" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" /></svg></label>
+                        <a href="https://cal.com/ibilalkayy/safely-session" class="btn" target="_blank" data-i18n="pricing.book_session">Book a session</a>
+                        <div class="p-trial" data-i18n="pricing.trial">7-day free trial</div>
                     </div>
-                    <div class="pprice">
-                        <span class="amt" data-mo="$200" data-yr="$1,920">$200</span>
-                        <span class="per" data-mo="/month" data-yr="/year">/month</span>
-                    </div>
-                    <div
-                        class="p-billed"
-                        data-mo=""
-                        data-yr="$160/mo, billed annually"
-                    ></div>
-                    <div class="p-trial" data-i18n="pricing.trial">7-day free trial</div>
-                    <label for="si-toggle" class="btn btn-dark" tabindex="0" role="button" data-i18n="pricing.start_trial">Start free trial</label>
-                    <a href="https://cal.com/ibilalkayy/safely-session" class="btn" target="_blank" style="margin-top: 10px; width: 100%" data-i18n="pricing.book_session">Book a session</a>
+                    <div class="ptear" aria-hidden="true"></div>
                     <ul class="plist">
-                        <li>
-                            <span class="ck"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5" /></svg></span>
-                            <span data-i18n="pricing.team.li1">750 supplier scans/month across Alibaba, TradeWheel, ExportHub, B2Brazil, ThomasNet, B2BMap &amp; Kompass</span>
-                        </li>
-                        <li>
-                            <span class="ck"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5" /></svg></span>
-                            <span data-i18n="pricing.team.li2">Full risk score &amp; 15+ signal breakdown</span>
-                        </li>
-                        <li>
-                            <span class="ck"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5" /></svg></span>
-                            <span data-i18n="pricing.team.li3">Company registration &amp; listing completeness checks</span>
-                        </li>
-                        <li>
-                            <span class="ck"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5" /></svg></span>
-                            <span data-i18n="pricing.team.li4">Social presence cross-check</span>
-                        </li>
-                        <li>
-                            <span class="ck"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5" /></svg></span>
-                            <span data-i18n="pricing.team.li5">Downloadable PDF due-diligence reports</span>
-                        </li>
-                        <li>
-                            <span class="ck"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5" /></svg></span>
-                            <span data-i18n="pricing.team.li6">Community fraud report network</span>
-                        </li>
+                        <li><span class="ck"><svg viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17l-5-5" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" /></svg></span><span data-i18n="pricing.team.li1">750 supplier scans/month across Alibaba, TradeWheel, ExportHub, B2Brazil, ThomasNet, B2BMap &amp; Kompass</span></li>
+                        <li><span class="ck"><svg viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17l-5-5" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" /></svg></span><span data-i18n="pricing.team.li2">Full risk score &amp; 15-signal breakdown</span></li>
+                        <li><span class="ck"><svg viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17l-5-5" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" /></svg></span><span data-i18n="pricing.team.li3">Company registration &amp; listing completeness checks</span></li>
+                        <li><span class="ck"><svg viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17l-5-5" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" /></svg></span><span data-i18n="pricing.team.li4">Social presence cross-check</span></li>
+                        <li><span class="ck"><svg viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17l-5-5" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" /></svg></span><span data-i18n="pricing.team.li5">Downloadable PDF due-diligence reports</span></li>
+                        <li><span class="ck"><svg viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17l-5-5" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" /></svg></span><span data-i18n="pricing.team.li6">Community fraud report network</span></li>
                     </ul>
                 </div>
                 <!-- ENTERPRISE -->
                 <div class="pcard">
-                    <div class="pname" data-i18n="pricing.ent.name">Enterprise</div>
-                    <div class="pfor" data-i18n="pricing.ent.for">
-                        For high-volume procurement operations and platform integrations
+                    <div class="ptop">
+                        <div class="pplan">
+                            <span class="pic"><svg viewBox="0 0 24 24" fill="none"><path d="M4 21V5a2 2 0 012-2h7a2 2 0 012 2v16M15 9h3a2 2 0 012 2v10M2 21h20M8 7h3M8 11h3M8 15h3" stroke="#191c22" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" /></svg></span>
+                            <div>
+                                <div class="pname" data-i18n="pricing.ent.name">Enterprise</div>
+                                <div class="pfor" data-i18n="pricing.ent.for">For high-volume procurement operations and platform integrations</div>
+                            </div>
+                        </div>
+                        <div class="pprice">
+                            <span class="amt" data-mo="$500" data-yr="$4,800">$500</span>
+                            <span class="per" data-mo="/month" data-yr="/year">/month</span>
+                        </div>
+                        <div class="p-billed" data-mo="" data-yr="$400/mo, billed annually"></div>
+                        <div class="pmeter">
+                            <div class="pm-row"><span data-i18n="pricing.meter_label">Supplier scans</span><b data-i18n="pricing.ent.meter">Unlimited</b></div>
+                            <div class="pm-bar inf"><i style="width: 100%"></i></div>
+                        </div>
+                        <label for="si-toggle" class="btn btn-sun" tabindex="0" role="button"><span data-i18n="pricing.start_trial">Start free trial</span><svg viewBox="0 0 24 24" fill="none"><path d="M5 12h14M13 5l7 7-7 7" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" /></svg></label>
+                        <a href="https://cal.com/ibilalkayy/safely-session" class="btn" target="_blank" data-i18n="pricing.book_session">Book a session</a>
+                        <div class="p-trial" data-i18n="pricing.trial">7-day free trial</div>
                     </div>
-                    <div class="pprice">
-                        <span class="amt" data-mo="$500" data-yr="$4,800">$500</span>
-                        <span class="per" data-mo="/month" data-yr="/year">/month</span>
-                    </div>
-                    <div
-                        class="p-billed"
-                        data-mo=""
-                        data-yr="$400/mo, billed annually"
-                    ></div>
-                    <div class="p-trial" data-i18n="pricing.trial">7-day free trial</div>
-                    <label for="si-toggle" class="btn btn-dark" tabindex="0" role="button" data-i18n="pricing.start_trial">Start free trial</label>
-                    <a href="https://cal.com/ibilalkayy/safely-session" class="btn" target="_blank" style="margin-top: 10px; width: 100%" data-i18n="pricing.book_session">Book a session</a>
+                    <div class="ptear" aria-hidden="true"></div>
                     <ul class="plist">
-                        <li>
-                            <span class="ck"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5" /></svg></span>
-                            <span data-i18n="pricing.ent.li1">Everything in Team</span>
-                        </li>
-                        <li>
-                            <span class="ck"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5" /></svg></span>
-                            <span data-i18n="pricing.ent.li2">Unlimited supplier scans</span>
-                        </li>
-                        <li>
-                            <span class="ck"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5" /></svg></span>
-                            <span data-i18n="pricing.ent.li3">API access — pull risk scores directly into your own systems</span>
-                        </li>
-                        <li>
-                            <span class="ck"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5" /></svg></span>
-                            <span data-i18n="pricing.ent.li4">Priority support &amp; faster response times</span>
-                        </li>
-                        <li>
-                            <span class="ck"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5" /></svg></span>
-                            <span data-i18n="pricing.ent.li5">Early access to new platforms &amp; signals</span>
-                        </li>
-                        <li>
-                            <span class="ck"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5" /></svg></span>
-                            <span data-i18n="pricing.ent.li6">Direct line to the team for feature requests</span>
-                        </li>
+                        <li><span class="ck"><svg viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17l-5-5" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" /></svg></span><span data-i18n="pricing.ent.li1">Everything in Team</span></li>
+                        <li><span class="ck"><svg viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17l-5-5" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" /></svg></span><span data-i18n="pricing.ent.li2">Unlimited supplier scans</span></li>
+                        <li><span class="ck"><svg viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17l-5-5" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" /></svg></span><span data-i18n="pricing.ent.li3">API access — pull risk scores directly into your own systems</span></li>
+                        <li><span class="ck"><svg viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17l-5-5" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" /></svg></span><span data-i18n="pricing.ent.li4">Priority support &amp; faster response times</span></li>
+                        <li><span class="ck"><svg viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17l-5-5" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" /></svg></span><span data-i18n="pricing.ent.li5">Early access to new platforms &amp; signals</span></li>
+                        <li><span class="ck"><svg viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17l-5-5" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" /></svg></span><span data-i18n="pricing.ent.li6">Direct line to the team for feature requests</span></li>
                     </ul>
                 </div>
+            </div>
+
+            <!-- reassurance strip -->
+            <div class="assure reveal d2">
+                <div class="as-it"><span class="as-ic"><svg viewBox="0 0 24 24" fill="none"><path d="M12 7v5l3 2" stroke="#191c22" stroke-width="2.4" stroke-linecap="round" /><circle cx="12" cy="12" r="9" stroke="#191c22" stroke-width="2.4" /></svg></span><span data-i18n="pricing.assure1">7-day free trial on every plan</span></div>
+                <div class="as-it"><span class="as-ic"><svg viewBox="0 0 24 24" fill="none"><rect x="3" y="6" width="18" height="13" rx="2.5" stroke="#191c22" stroke-width="2.4" /><path d="M3 10h18M4 20L20 4" stroke="#191c22" stroke-width="2.4" stroke-linecap="round" /></svg></span><span data-i18n="pricing.assure2">No credit card to start</span></div>
+                <div class="as-it"><span class="as-ic"><svg viewBox="0 0 24 24" fill="none"><rect x="3" y="5" width="18" height="16" rx="3" stroke="#191c22" stroke-width="2.4" /><path d="M3 10h18M8 3v4M16 3v4" stroke="#191c22" stroke-width="2.4" stroke-linecap="round" /></svg></span><span data-i18n="pricing.assure3">Live walkthrough on request</span></div>
             </div>
 
             <!-- Comparison table -->
@@ -1144,63 +1082,68 @@
                     <table class="comp-table">
                         <thead>
                             <tr>
-                                <th style="width: 50%" data-i18n="pricing.comp.feature">Feature</th>
+                                <th class="fcol-h"><span class="fh-t" data-i18n="pricing.comp.compare_plans">Compare plans</span><span class="fh-s" data-i18n="pricing.comp.compare_sub">Both plans include every signal and the full risk report.</span></th>
                                 <th class="feat-col">
-                                    Team<br /><span style="font-family: var(--body); font-weight: 600; font-size: 12px; color: #1d3550;">$200/mo</span>
+                                    <span class="th-tag" data-i18n="pricing.most_popular">Most popular</span>
+                                    <span class="th-name">Team</span>
+                                    <span class="th-price">$200<small>/mo</small></span>
+                                    <label for="si-toggle" class="th-cta" tabindex="0" role="button" data-i18n="pricing.start_trial">Start free trial</label>
                                 </th>
-                                <th>
-                                    Enterprise<br /><span style="font-family: var(--body); font-weight: 600; font-size: 12px; color: var(--muted);">$500/mo</span>
+                                <th class="ent-col">
+                                    <span class="th-name">Enterprise</span>
+                                    <span class="th-price">$500<small>/mo</small></span>
+                                    <label for="si-toggle" class="th-cta" tabindex="0" role="button" data-i18n="pricing.start_trial">Start free trial</label>
                                 </th>
                             </tr>
                         </thead>
                         <tbody>
-                            <tr class="comp-cat"><td colspan="3" data-i18n="pricing.comp.core_access">Core Access</td></tr>
+                            <tr class="comp-cat"><td colspan="3"><span class="cc-pill"><svg viewBox="0 0 24 24" fill="none"><path d="M13 2L4 14h7l-1 8 9-12h-7l1-8z" stroke="#191c22" stroke-width="2.2" stroke-linejoin="round" /></svg><span data-i18n="pricing.comp.core_access">Core Access</span></span></td></tr>
                             <tr>
                                 <td data-i18n="pricing.comp.row1">Supplier scans (Alibaba, TradeWheel, ExportHub, B2Brazil, ThomasNet, B2BMap, Kompass)</td>
-                                <td><span class="tval" data-i18n="pricing.comp.team_scans">750/month</span></td>
-                                <td><span class="tval" data-i18n="pricing.comp.unlimited">Unlimited</span></td>
+                                <td class="tc" data-label="Team"><span class="tval" data-i18n="pricing.comp.team_scans">750/month</span></td>
+                                <td class="ec" data-label="Enterprise"><span class="tval big" data-i18n="pricing.comp.unlimited">Unlimited</span></td>
                             </tr>
                             <tr>
-                                <td data-i18n="pricing.comp.row2">Risk score &amp; 15+ signal breakdown</td>
-                                <td><span class="tck"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5" /></svg></span></td>
-                                <td><span class="tck"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5" /></svg></span></td>
+                                <td data-i18n="pricing.comp.row2">Risk score &amp; 15-signal breakdown</td>
+                                <td class="tc" data-label="Team"><span class="tck"><svg viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17l-5-5" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" /></svg></span></td>
+                                <td class="ec" data-label="Enterprise"><span class="tck"><svg viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17l-5-5" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" /></svg></span></td>
                             </tr>
                             <tr>
                                 <td data-i18n="pricing.comp.row_api">API access</td>
-                                <td><span class="tval" data-i18n="pricing.comp.not_included">—</span></td>
-                                <td><span class="tck"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5" /></svg></span></td>
+                                <td class="tc" data-label="Team"><span class="tdash" aria-label="Not included">—</span></td>
+                                <td class="ec" data-label="Enterprise"><span class="tck"><svg viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17l-5-5" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" /></svg></span></td>
                             </tr>
-                            <tr class="comp-cat"><td colspan="3" data-i18n="pricing.comp.due_diligence">Due Diligence</td></tr>
+                            <tr class="comp-cat"><td colspan="3"><span class="cc-pill"><svg viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="#191c22" stroke-width="2.4" /><path d="M16 16l5 5" stroke="#191c22" stroke-width="2.4" stroke-linecap="round" /></svg><span data-i18n="pricing.comp.due_diligence">Due Diligence</span></span></td></tr>
                             <tr>
                                 <td data-i18n="pricing.comp.row3">Company registration &amp; listing completeness checks</td>
-                                <td><span class="tck"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5" /></svg></span></td>
-                                <td><span class="tck"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5" /></svg></span></td>
+                                <td class="tc" data-label="Team"><span class="tck"><svg viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17l-5-5" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" /></svg></span></td>
+                                <td class="ec" data-label="Enterprise"><span class="tck"><svg viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17l-5-5" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" /></svg></span></td>
                             </tr>
                             <tr>
                                 <td data-i18n="pricing.comp.row4">Social presence cross-check</td>
-                                <td><span class="tck"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5" /></svg></span></td>
-                                <td><span class="tck"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5" /></svg></span></td>
+                                <td class="tc" data-label="Team"><span class="tck"><svg viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17l-5-5" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" /></svg></span></td>
+                                <td class="ec" data-label="Enterprise"><span class="tck"><svg viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17l-5-5" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" /></svg></span></td>
                             </tr>
                             <tr>
                                 <td data-i18n="pricing.comp.row5">Downloadable PDF report</td>
-                                <td><span class="tck"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5" /></svg></span></td>
-                                <td><span class="tck"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5" /></svg></span></td>
+                                <td class="tc" data-label="Team"><span class="tck"><svg viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17l-5-5" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" /></svg></span></td>
+                                <td class="ec" data-label="Enterprise"><span class="tck"><svg viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17l-5-5" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" /></svg></span></td>
                             </tr>
                             <tr>
                                 <td data-i18n="pricing.comp.row6">Community fraud report network</td>
-                                <td><span class="tck"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5" /></svg></span></td>
-                                <td><span class="tck"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5" /></svg></span></td>
+                                <td class="tc" data-label="Team"><span class="tck"><svg viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17l-5-5" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" /></svg></span></td>
+                                <td class="ec" data-label="Enterprise"><span class="tck"><svg viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17l-5-5" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" /></svg></span></td>
                             </tr>
-                            <tr class="comp-cat"><td colspan="3" data-i18n="pricing.comp.support">Support</td></tr>
+                            <tr class="comp-cat"><td colspan="3"><span class="cc-pill"><svg viewBox="0 0 24 24" fill="none"><path d="M4 12a8 8 0 0116 0v5a2 2 0 01-2 2h-2v-6h4M4 13h4v6H6a2 2 0 01-2-2v-4z" stroke="#191c22" stroke-width="2.2" stroke-linejoin="round" /></svg><span data-i18n="pricing.comp.support">Support</span></span></td></tr>
                             <tr>
                                 <td data-i18n="pricing.comp.row7">Support response</td>
-                                <td><span class="tval" data-i18n="pricing.comp.support_48">48 hr</span></td>
-                                <td><span class="tval" data-i18n="pricing.comp.support_24">24 hr</span></td>
+                                <td class="tc" data-label="Team"><span class="tval" data-i18n="pricing.comp.support_48">48 hr</span></td>
+                                <td class="ec" data-label="Enterprise"><span class="tval big" data-i18n="pricing.comp.support_24">24 hr</span></td>
                             </tr>
                             <tr>
                                 <td data-i18n="pricing.comp.row8">Free trial</td>
-                                <td><span class="tval" data-i18n="pricing.comp.trial_days">7 days</span></td>
-                                <td><span class="tval" data-i18n="pricing.comp.trial_days">7 days</span></td>
+                                <td class="tc" data-label="Team"><span class="tval" data-i18n="pricing.comp.trial_days">7 days</span></td>
+                                <td class="ec" data-label="Enterprise"><span class="tval" data-i18n="pricing.comp.trial_days">7 days</span></td>
                             </tr>
                         </tbody>
                     </table>
@@ -1466,16 +1409,24 @@
                     />
                 </svg>
             </div>
-            <div class="wrap">
-                <div class="head">
+            <div class="wrap faq-grid">
+                <aside class="faq-side">
                     <span class="badge p reveal"
                         ><span class="bd"></span><span data-i18n="faq.badge">FAQ</span></span
                     >
                     <h2 class="disp gasoek reveal d1" data-i18n="faq.title">Common questions.</h2>
-                </div>
+                    <p class="reveal d2" data-i18n="faq.side_sub">Everything buyers ask before they trust Safely with their sourcing.</p>
+                    <div class="faq-help reveal d2">
+                        <svg class="fh-eyes" viewBox="0 0 130 96" fill="none" aria-hidden="true"><circle cx="36" cy="56" r="28" fill="#fff" stroke="#161616" stroke-width="7" /><circle cx="92" cy="56" r="28" fill="#fff" stroke="#161616" stroke-width="7" /><circle cx="44" cy="46" r="12" fill="#161616" /><circle cx="100" cy="46" r="12" fill="#161616" /></svg>
+                        <h3 data-i18n="faq.help.title">Still unsure?</h3>
+                        <p data-i18n="faq.help.body">Talk to the team. We'll walk you through a real supplier check.</p>
+                        <a href="https://cal.com/ibilalkayy/safely-session" class="btn btn-sun" target="_blank"><span data-i18n="faq.help.btn">Book a session</span><svg viewBox="0 0 24 24" fill="none"><path d="M5 12h14M13 5l7 7-7 7" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" /></svg></a>
+                        <a href="mailto:help@safely.sh" class="fh-mail">help@safely.sh</a>
+                    </div>
+                </aside>
                 <div class="faq reveal d1">
                     <details class="acc" name="faq" open>
-                        <summary>
+                        <summary><span class="qn">01</span>
                             <span data-i18n="faq.q1.q">Do you offer a free trial?</span><span class="ic"
                                 ><svg viewBox="0 0 24 24" fill="none">
                                     <path
@@ -1494,7 +1445,7 @@
                         </div>
                     </details>
                     <details class="acc" name="faq">
-                        <summary>
+                        <summary><span class="qn">02</span>
                             <span data-i18n="faq.q2.q">Which B2B platforms does Safely support?</span><span
                                 class="ic"
                                 ><svg viewBox="0 0 24 24" fill="none">
@@ -1517,7 +1468,7 @@
                         </div>
                     </details>
                     <details class="acc" name="faq">
-                        <summary>
+                        <summary><span class="qn">03</span>
                             <span data-i18n="faq.q3.q">How does the AI analyze listings?</span><span class="ic"
                                 ><svg viewBox="0 0 24 24" fill="none">
                                     <path
@@ -1535,14 +1486,14 @@
                                 information, and contact data from the page.
                                 This is combined with a real-time check of the
                                 supplier's presence across the web, then sent to
-                                Claude AI to analyze 15+ distinct signals and
+                                Claude AI to analyze 15 distinct signals and
                                 return a risk score from 0–100 with a detailed
                                 breakdown of every finding.
                             </p>
                         </div>
                     </details>
                     <details class="acc" name="faq">
-                        <summary>
+                        <summary><span class="qn">04</span>
                             <span data-i18n="faq.q4.q">Who sees my fraud reports?</span><span class="ic"
                                 ><svg viewBox="0 0 24 24" fill="none">
                                     <path
@@ -1564,7 +1515,7 @@
                         </div>
                     </details>
                     <details class="acc" name="faq">
-                        <summary>
+                        <summary><span class="qn">05</span>
                             <span data-i18n="faq.q5.q">Does Safely slow my browser down?</span><span class="ic"
                                 ><svg viewBox="0 0 24 24" fill="none">
                                     <path
@@ -1580,13 +1531,13 @@
                                 No. The extension only activates on supported
                                 marketplace pages and runs analysis in the
                                 background without blocking page load. Analysis
-                                typically completes within 2 seconds and has no
+                                typically completes in about 10 seconds and has no
                                 noticeable impact on browser performance.
                             </p>
                         </div>
                     </details>
                     <details class="acc" name="faq">
-                        <summary>
+                        <summary><span class="qn">06</span>
                             <span data-i18n="faq.q6.q">Is my browsing data private?</span><span class="ic"
                                 ><svg viewBox="0 0 24 24" fill="none">
                                     <path
@@ -1610,7 +1561,7 @@
                         </div>
                     </details>
                     <details class="acc" name="faq">
-                        <summary>
+                        <summary><span class="qn">07</span>
                             <span data-i18n="faq.q7.q">Which specific pages does Safely actually scan?</span><span
                                 class="ic"
                                 ><svg viewBox="0 0 24 24" fill="none">
@@ -1649,7 +1600,17 @@
                 </svg>
             </div>
             <div class="wrap">
-                <div class="box reveal">
+                <div class="cta-stage reveal">
+                <svg class="cta-eyes" viewBox="0 0 130 96" fill="none" aria-hidden="true">
+                    <path d="M12 22 Q24 4 44 14" stroke="#161616" stroke-width="8" fill="none" stroke-linecap="round" />
+                    <path d="M70 16 Q84 2 104 12" stroke="#161616" stroke-width="8" fill="none" stroke-linecap="round" />
+                    <circle cx="36" cy="56" r="28" fill="#fff" stroke="#161616" stroke-width="7" />
+                    <circle cx="92" cy="56" r="28" fill="#fff" stroke="#161616" stroke-width="7" />
+                    <circle class="pupil" cx="44" cy="46" r="12" fill="#161616" />
+                    <circle class="pupil" cx="100" cy="46" r="12" fill="#161616" />
+                </svg>
+                <span class="cta-sticker" aria-hidden="true" data-i18n="cta.sticker">10-second install</span>
+                <div class="box">
                     <span class="deco d1" aria-hidden="true">✦</span
                     ><span class="deco d2" aria-hidden="true">✦</span>
                     <span class="badge o" style="margin-bottom: 6px"
@@ -1692,6 +1653,7 @@
                         </a>
                     </div>
                 </div>
+            </div>
             </div>
         </section>
 
@@ -1788,6 +1750,8 @@
                     </div>
                 </div>
             </div>
+                <div class="fword" aria-hidden="true">Safely</div>
+
         </footer>
 
         <!-- ============ SIGN-IN PAGE ============ -->
@@ -2399,7 +2363,7 @@
                     </p>
                     <p data-i18n="modal.vs_manual.body2">
                         Safely runs the same checks a careful buyer would want
-                        to do, automatically, in about 2 seconds, every time you
+                        to do, automatically, in about 10 seconds, every time you
                         open a listing.
                     </p>
                 </div>
@@ -2515,7 +2479,7 @@
                         Safely is purpose-built around one question: is this
                         specific listing and seller safe to send money to.
                         That's the only thing it does, which is why it can go
-                        deep on it — 8 distinct fraud signals, seller history,
+                        deep on it — 15 distinct fraud signals, seller history,
                         and a community fraud report network, all in one focused
                         tool.
                     </p>

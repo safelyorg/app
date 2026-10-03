@@ -1,9 +1,75 @@
 /* ============================================================
    FAQ — Accordion
    ============================================================ */
+.faq-grid {
+    display: grid;
+    grid-template-columns: 0.85fr 1.25fr;
+    gap: clamp(32px, 5vw, 70px);
+    align-items: start;
+}
+.faq-side {
+    position: sticky;
+    top: 110px;
+}
+.faq-side h2 {
+    font-size: clamp(34px, 4.6vw, 54px);
+    line-height: 1.02;
+    margin-top: 18px;
+}
+.faq-side > p {
+    margin-top: 16px;
+    font-size: 16.5px;
+    font-weight: 500;
+    color: var(--muted);
+    max-width: 34ch;
+}
+.faq-help {
+    position: relative;
+    margin-top: 30px;
+    background: var(--ink);
+    color: #fff;
+    border: var(--bd);
+    border-radius: var(--r-lg);
+    box-shadow: var(--sh-lg);
+    padding: 30px 26px 24px;
+}
+.fh-eyes {
+    position: absolute;
+    top: -30px;
+    right: 22px;
+    width: 72px;
+    animation: wob 4s ease-in-out infinite;
+    transform-origin: bottom center;
+}
+.faq-help h3 {
+    font-family: var(--disp);
+    font-weight: 800;
+    font-size: 22px;
+    letter-spacing: -0.01em;
+}
+.faq-help p {
+    margin-top: 6px;
+    font-size: 14.5px;
+    font-weight: 500;
+    color: var(--on-dark-mut);
+}
+.faq-help .btn {
+    margin-top: 18px;
+    width: 100%;
+}
+.fh-mail {
+    display: block;
+    margin-top: 14px;
+    text-align: center;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 13px;
+    color: var(--on-dark-mut);
+}
+.fh-mail:hover {
+    color: #fff;
+}
 .faq {
-    max-width: 760px;
-    margin-inline: auto;
+    min-width: 0;
 }
 .acc {
     border: var(--bd);
@@ -24,7 +90,7 @@
     align-items: center;
     justify-content: space-between;
     gap: 16px;
-    padding: 18px 20px;
+    padding: 20px 20px;
     font-family: var(--disp);
     font-weight: 700;
     font-size: 18px;
@@ -71,9 +137,59 @@
     }
 }
 .acc .ans p {
-    padding: 0 20px 20px;
+    padding: 0 20px 22px 66px;
     color: var(--muted);
     font-size: 15.5px;
     font-weight: 500;
     line-height: 1.6;
+}
+
+/* question numbers */
+/* the question text takes the free space; the +/x icon stays small on the right */
+.acc summary > span:not(.ic):not(.qn) {
+    flex: 1;
+}
+.acc .qn {
+    flex: none;
+    width: 30px;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 12.5px;
+    font-weight: 500;
+    color: var(--muted);
+    margin-right: -4px;
+}
+.acc[open] .qn {
+    color: var(--coral);
+}
+@media (max-width: 980px) {
+    .faq-grid {
+        grid-template-columns: 1fr;
+        gap: 0;
+    }
+    /* phones/tablets: title, then questions, then the help card */
+    .faq-side {
+        display: contents;
+    }
+    .faq-side > .badge {
+        justify-self: center;
+    }
+    .faq-side > h2,
+    .faq-side > p {
+        text-align: center;
+        margin-inline: auto;
+    }
+    .faq {
+        margin-top: 8px;
+    }
+    .faq-help {
+        order: 2;
+        width: 100%;
+        max-width: 460px;
+        margin: 26px auto 0;
+    }
+}
+@media (max-width: 560px) {
+    .acc .ans p {
+        padding-left: 20px;
+    }
 }

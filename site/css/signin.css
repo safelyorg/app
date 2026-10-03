@@ -46,6 +46,9 @@
 
 /* ---------- left column (form) ---------- */
 .si-left {
+    position: relative;
+    background-image: radial-gradient(circle, rgba(25, 28, 34, 0.06) 1.5px, transparent 1.5px);
+    background-size: 22px 22px;
     display: flex;
     flex-direction: column;
     padding: clamp(26px, 4vw, 46px) clamp(22px, 5vw, 58px);
@@ -186,7 +189,7 @@
     gap: 9px;
     width: 100%;
     margin-top: 16px;
-    background: var(--sun);
+    background: linear-gradient(180deg, var(--sun-2) 0%, var(--sun) 60%);
     border: var(--bd);
     border-radius: 13px;
     padding: 13px;
@@ -202,7 +205,7 @@
 .si-magic:hover {
     transform: translate(-2px, -2px);
     box-shadow: var(--sh-lg);
-    background: var(--sun-2);
+    background: linear-gradient(180deg, #fff0b8 0%, var(--sun-2) 60%);
 }
 .si-magic svg {
     width: 17px;
@@ -259,7 +262,7 @@
 /* ---------- right column (visual) ---------- */
 .si-right {
     position: relative;
-    background: var(--sky);
+    background: radial-gradient(120% 100% at 50% 0%, #86c0f2 0%, var(--sky) 55%, #5ea8e8 100%);
     padding: clamp(40px, 5vw, 64px) clamp(40px, 5vw, 64px)
         clamp(40px, 5vw, 64px) clamp(104px, 14vw, 180px);
     display: flex;
@@ -268,50 +271,147 @@
     overflow: hidden;
     clip-path: url(#siCurve);
 }
+.si-right::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-image: radial-gradient(circle, rgba(22, 22, 22, 0.08) 1.5px, transparent 1.5px);
+    background-size: 22px 22px;
+    pointer-events: none;
+}
+.si-right > * {
+    position: relative;
+}
 .si-right h3 {
     font-family: var(--disp);
     font-weight: 800;
-    text-transform: uppercase;
-    font-size: clamp(34px, 4.6vw, 56px);
-    line-height: 0.88;
-    letter-spacing: -0.04em;
-    max-width: 12ch;
+    font-size: clamp(32px, 3.8vw, 50px);
+    line-height: 0.98;
+    max-width: 13ch;
 }
 .si-right .rp {
     font-size: 17px;
     font-weight: 500;
     color: #1f3a55;
-    margin-top: 18px;
-    max-width: 34ch;
+    margin-top: 16px;
+    max-width: 36ch;
 }
+
+/* example result card */
+.si-demo {
+    position: relative;
+    margin-top: 34px;
+    max-width: 380px;
+}
+.si-eyes {
+    position: absolute;
+    z-index: 2;
+    top: -34px;
+    right: 18px;
+    width: 76px;
+    transform-origin: bottom center;
+    animation: wob 4s ease-in-out infinite;
+}
+.sd-card {
+    background: var(--paper);
+    border: var(--bd);
+    border-radius: 20px;
+    box-shadow: var(--sh-lg);
+    padding: 20px;
+    transform: rotate(-2deg);
+}
+.sd-top {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding-bottom: 14px;
+    border-bottom: 2px dashed #e2dccb;
+}
+.sd-score {
+    display: flex;
+    align-items: baseline;
+    gap: 2px;
+    background: var(--ink);
+    color: var(--coral);
+    border-radius: 14px;
+    padding: 10px 12px 8px;
+}
+.sd-score b {
+    font-family: var(--disp);
+    font-weight: 800;
+    font-size: 34px;
+    line-height: 1;
+    letter-spacing: -0.03em;
+}
+.sd-score span {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--on-dark-mut);
+}
+.sd-l {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
+}
+.sd-v {
+    font-family: var(--disp);
+    font-weight: 800;
+    font-size: 20px;
+    color: #d33a2a;
+}
+.sd-rows {
+    display: grid;
+    gap: 10px;
+    margin-top: 14px;
+}
+.sd-rows li {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 14px;
+    font-weight: 600;
+}
+.sd-rows i {
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    border: 2px solid var(--ink);
+    display: grid;
+    place-items: center;
+    flex: none;
+}
+.sd-rows i svg {
+    width: 12px;
+    height: 12px;
+}
+.sd-rows i.bad { background: var(--coral); }
+.sd-rows i.warn { background: var(--sun); }
+.sd-rows i.good { background: var(--mint); }
+
 .si-pills {
     display: flex;
     flex-wrap: wrap;
     gap: 10px;
-    margin-top: 24px;
+    margin-top: 30px;
 }
 .si-pill {
     display: inline-flex;
     align-items: center;
     gap: 8px;
     background: var(--paper);
-    border: var(--bd);
+    border: var(--bd-thin);
     border-radius: 999px;
-    padding: 9px 16px;
+    padding: 7px 14px;
     font-weight: 700;
-    font-size: 13.5px;
+    font-size: 13px;
     box-shadow: var(--sh-sm);
 }
 .si-pill .d {
     width: 8px;
     height: 8px;
     border-radius: 50%;
-}
-.si-mascot {
-    margin-top: clamp(22px, 3vw, 34px);
-    width: clamp(96px, 12vw, 134px);
-    animation: wob 4s ease-in-out infinite;
-    transform-origin: bottom center;
 }
 .si-close {
     position: fixed;
@@ -337,4 +437,29 @@
 .si-close svg {
     width: 20px;
     height: 20px;
+}
+
+/* small perks under the magic-link button */
+.si-perks {
+    display: flex;
+    justify-content: center;
+    gap: 18px;
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 2px dashed var(--cream-2);
+}
+.si-perks > span {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 12.5px;
+    font-weight: 700;
+    color: var(--ink);
+}
+.si-perks i {
+    width: 16px;
+    height: 16px;
+    border-radius: 5px;
+    border: 1.5px solid var(--ink);
+    background: var(--mint) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23191c22' stroke-width='3.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6L9 17l-5-5'/%3E%3C/svg%3E") center / 10px no-repeat;
 }

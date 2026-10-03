@@ -1,6 +1,8 @@
 /* ============================================================
-   PARTNERS — affiliate program page (reuses subscribe.css for the
-   hero and cards; only the extra pieces live here)
+   PARTNERS — affiliate program page
+   Reuses subscribe.css (hero), how_it_works.css (steps),
+   faq.css (questions) and cta_footer.css (final box + footer).
+   Only the partner-specific pieces live here.
    ============================================================ */
 .pt-cta {
     display: flex;
@@ -15,44 +17,222 @@
     font-weight: 600;
     color: #1f3a55;
 }
-.pt-facts {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 16px;
+.pt-sec .head {
+    margin-bottom: 40px;
 }
-.pt-fact {
+.nl-hero {
+    padding-bottom: clamp(90px, 10vw, 130px);
+}
+
+/* ---------- hero: commission examples (ticket cards) ---------- */
+.pt-stage {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    gap: 18px;
+    max-width: 780px;
+    margin: clamp(40px, 5vw, 56px) auto 0;
+}
+.pt-ticket {
     background: var(--paper);
     border: var(--bd);
-    border-radius: var(--r);
+    border-radius: 20px;
     box-shadow: var(--sh);
-    padding: 22px;
-    text-align: center;
+    text-align: left;
 }
-.pt-fact .v {
-    font-family: var(--disp);
-    font-weight: 700;
-    font-size: clamp(26px, 3vw, 34px);
+.pt-ticket:first-child {
+    transform: rotate(-2deg);
 }
-.pt-fact .l {
+.pt-ticket:last-child {
+    transform: rotate(2deg);
+}
+.tk-top {
+    padding: 18px 20px 16px;
+}
+.tk-plan {
+    display: block;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--muted);
+}
+.tk-pays {
+    display: block;
     margin-top: 6px;
     font-size: 14px;
     font-weight: 600;
     color: var(--muted);
 }
-.pt-sec .head {
-    margin-bottom: 34px;
+.tk-pays b {
+    font-family: var(--disp);
+    font-weight: 800;
+    font-size: 22px;
+    letter-spacing: -0.02em;
+    color: var(--ink);
 }
-.pt-final {
+.tk-pays small {
+    font-size: 12px;
+}
+.tk-tear {
+    position: relative;
+    margin: 0 16px;
+    border-top: 2px dashed #e2dccb;
+}
+.tk-tear::before,
+.tk-tear::after {
+    content: "";
+    position: absolute;
+    top: -12px;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    border: var(--bd);
+    background: #79a9ee;
+}
+.tk-tear::before {
+    left: -29px;
+    clip-path: inset(0 0 0 50%);
+}
+.tk-tear::after {
+    right: -29px;
+    clip-path: inset(0 50% 0 0);
+}
+.tk-bottom {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    padding: 14px 20px 18px;
+    font-size: 14px;
+    font-weight: 700;
+}
+.tk-earn {
+    font-family: var(--disp);
+    font-weight: 800;
+    font-size: 40px;
+    line-height: 1;
+    letter-spacing: -0.04em;
+    color: var(--mint-deep);
+}
+.pt-30 {
+    width: 108px;
+    height: 108px;
+    border-radius: 50%;
+    background: var(--sun);
+    border: var(--bd);
+    box-shadow: var(--sh);
+    display: grid;
+    place-content: center;
     text-align: center;
+    animation: wob 4s ease-in-out infinite;
 }
-.pt-final p {
-    max-width: 52ch;
-    margin: 0 auto 22px;
-    color: var(--muted);
-    font-weight: 500;
+.pt-30 b {
+    font-family: var(--disp);
+    font-weight: 800;
+    font-size: 32px;
+    line-height: 1;
+    letter-spacing: -0.03em;
 }
-@media (max-width: 767px) {
+.pt-30 span {
+    margin-top: 3px;
+    font-size: 12px;
+    font-weight: 700;
+}
+
+/* ---------- how it works: tighter step cards on this page ---------- */
+.pt-sec .steps .step h3 {
+    margin-top: 2px;
+}
+
+/* ---------- payout facts: dark band like the homepage stats ---------- */
+.pt-facts {
+    position: relative;
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    background: var(--ink);
+    border: var(--bd);
+    border-radius: var(--r-lg);
+    box-shadow: var(--sh-lg);
+    overflow: hidden;
+}
+.pt-facts::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-image: radial-gradient(circle, rgba(255, 255, 255, 0.07) 1.5px, transparent 1.5px);
+    background-size: 20px 20px;
+    pointer-events: none;
+}
+.pt-fact {
+    position: relative;
+    padding: 34px 18px 30px;
+    text-align: center;
+    border-right: 2px solid var(--ink-line);
+}
+.pt-fact:last-child {
+    border-right: none;
+}
+.pt-fact .v {
+    font-family: var(--disp);
+    font-weight: 800;
+    font-size: clamp(30px, 3.6vw, 46px);
+    line-height: 1;
+    letter-spacing: -0.03em;
+    color: var(--sun);
+}
+.pt-fact:nth-of-type(2) .v {
+    color: var(--mint);
+}
+.pt-fact:nth-of-type(3) .v {
+    color: var(--sky-card);
+}
+.pt-fact:nth-of-type(4) .v {
+    color: var(--coral-card);
+}
+.pt-fact .l {
+    margin-top: 10px;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--on-dark-mut);
+}
+
+@media (max-width: 980px) {
     .pt-facts {
         grid-template-columns: 1fr 1fr;
     }
+    .pt-fact:nth-of-type(2) {
+        border-right: none;
+    }
+    .pt-fact:nth-of-type(1),
+    .pt-fact:nth-of-type(2) {
+        border-bottom: 2px solid var(--ink-line);
+    }
+}
+@media (max-width: 680px) {
+    .pt-stage {
+        grid-template-columns: 1fr;
+        max-width: 360px;
+        gap: 14px;
+    }
+    .pt-30 {
+        order: -1;
+        justify-self: center;
+        width: 92px;
+        height: 92px;
+    }
+    .pt-ticket:first-child,
+    .pt-ticket:last-child {
+        transform: none;
+    }
+}
+@media (max-width: 767px) {
+    .nl-eyes {
+        display: none;
+    }
+}
+.tk-earn small {
+    margin-left: 2px;
+    font-family: var(--body);
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: 0;
+    color: var(--muted);
 }

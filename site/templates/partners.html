@@ -6,9 +6,8 @@
         <title>Safely / Partners</title>
         <meta
             name="description"
-            content="Join the Safely partner program and earn 30% on every customer you refer. Free to join, tracked and paid out by Creem."
+            content="Join the Safely partner program and earn 30% of every payment from customers you refer. Free to join, tracked and paid out by Creem."
         />
-        <link rel="preload" as="font" type="font/woff2" href="/fonts/ClashDisplay-Bold.woff2" crossorigin>
         <link rel="icon" type="image/x-icon" href="images/favicon.ico" />
         <link rel="icon" type="image/png" sizes="32x32" href="images/favicon-32x32.png" />
         <link rel="icon" type="image/png" sizes="16x16" href="images/favicon-16x16.png" />
@@ -16,16 +15,17 @@
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
         <link
-            href="https://fonts.googleapis.com/css2?family=Archivo:ital,wght@0,600;0,700;0,800;0,900;1,700;1,800;1,900&family=Archivo+Black&family=Gasoek+One&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500&display=swap"
+            href="https://fonts.googleapis.com/css2?family=Archivo:ital,wght@0,600;0,700;0,800;0,900;1,700;1,800;1,900&family=Archivo+Black&family=Gasoek+One&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500&family=Sora:wght@500;600;700;800&display=swap"
             rel="stylesheet"
         />
-        <link rel="stylesheet" href="css/base.css" />
-        <link rel="stylesheet" href="css/nav.css" />
-        <link rel="stylesheet" href="css/faq.css" />
-        <link rel="stylesheet" href="css/cta_footer.css" />
-        <link rel="stylesheet" href="css/subscribe.css" />
-        <link rel="stylesheet" href="css/partners.css" />
-        <link rel="stylesheet" href="css/responsive.css" />
+        <link rel="stylesheet" href="css/base.css?v=20261003e" />
+        <link rel="stylesheet" href="css/nav.css?v=20261003e" />
+        <link rel="stylesheet" href="css/how_it_works.css?v=20261003e" />
+        <link rel="stylesheet" href="css/faq.css?v=20261003e" />
+        <link rel="stylesheet" href="css/cta_footer.css?v=20261003e" />
+        <link rel="stylesheet" href="css/subscribe.css?v=20261003e" />
+        <link rel="stylesheet" href="css/partners.css?v=20261003e" />
+        <link rel="stylesheet" href="css/responsive.css?v=20261003e" />
     </head>
     <body>
         <!--
@@ -106,12 +106,11 @@
                     <h2 class="disp gasoek" data-i18n="partners.headline">Earn 30% for<br />every customer</h2>
                     <p data-i18n="partners.sub">
                         Share Safely with buyers, sourcing agents and procurement
-                        teams. When someone subscribes through your link, you
-                        earn 30% of what they pay.
+                        teams. When someone subscribes through your link, you earn 30% of every payment they make, for as long as they stay subscribed.
                     </p>
                 </div>
                 <div class="pt-cta">
-                    <a href="https://affiliates.creem.io/join/safely" class="btn btn-lg btn-dark" target="_blank" rel="noopener"
+                    <a href="https://affiliates.creem.io/join/safely" class="btn btn-lg btn-sun" target="_blank" rel="noopener"
                         ><span data-i18n="partners.cta">Get my referral link</span>
                         <svg viewBox="0 0 24 24" fill="none">
                             <path d="M5 12h14M13 5l7 7-7 7" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" />
@@ -122,6 +121,33 @@
                 <p class="pt-note" data-i18n="partners.note">
                     Free to join · Sign in with Google or email · Paid on the 1st and 15th
                 </p>
+
+                <!-- earnings example -->
+                <div class="pt-stage" aria-label="Commission examples">
+                    <div class="pt-ticket">
+                        <div class="tk-top">
+                            <span class="tk-plan" data-i18n="partners.ex_team">You refer a Team customer</span>
+                            <span class="tk-pays"><span data-i18n="partners.ex_pays">They pay</span> <b>$200</b><small>/mo</small></span>
+                        </div>
+                        <div class="tk-tear" aria-hidden="true"></div>
+                        <div class="tk-bottom">
+                            <span data-i18n="partners.ex_you">You earn</span>
+                            <b class="tk-earn">$60<small>/mo</small></b>
+                        </div>
+                    </div>
+                    <div class="pt-30" aria-hidden="true"><b>30%</b><span data-i18n="partners.ex_badge">to you</span></div>
+                    <div class="pt-ticket">
+                        <div class="tk-top">
+                            <span class="tk-plan" data-i18n="partners.ex_ent">You refer an Enterprise customer</span>
+                            <span class="tk-pays"><span data-i18n="partners.ex_pays">They pay</span> <b>$500</b><small>/mo</small></span>
+                        </div>
+                        <div class="tk-tear" aria-hidden="true"></div>
+                        <div class="tk-bottom">
+                            <span data-i18n="partners.ex_you">You earn</span>
+                            <b class="tk-earn">$150<small>/mo</small></b>
+                        </div>
+                    </div>
+                </div>
             </div>
             <div class="wv down" aria-hidden="true">
                 <svg viewBox="0 0 1440 80" preserveAspectRatio="none">
@@ -137,46 +163,33 @@
                     <span class="badge o"><span class="bd"></span><span data-i18n="partners.how_badge">How it works</span></span>
                     <h2 class="disp gasoek" data-i18n="partners.how_title">Three steps. No paperwork.</h2>
                 </div>
-                <div class="nl-cards">
-                    <div class="nl-card">
-                        <span class="nl-card-ic" aria-hidden="true">
-                            <svg viewBox="0 0 24 24" fill="none">
-                                <circle cx="12" cy="8" r="4" stroke="#161616" stroke-width="2" />
-                                <path d="M5 21v-1a6 6 0 016-6h2a6 6 0 016 6v1" stroke="#161616" stroke-width="2" stroke-linecap="round" />
-                            </svg>
-                        </span>
-                        <h3 data-i18n="partners.step1.title">1. Join</h3>
-                        <p data-i18n="partners.step1.body">
-                            Click "Get my referral link" and sign in with Google
-                            or your email. Your personal referral link is ready
-                            in your partner dashboard.
-                        </p>
+                <div class="steps">
+                    <span class="step-link l1" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M5 12h14M13 5l7 7-7 7" stroke="#191c22" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" /></svg></span>
+                    <span class="step-link l2" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M5 12h14M13 5l7 7-7 7" stroke="#191c22" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" /></svg></span>
+                    <div class="step">
+                        <span class="snum" data-i18n="partners.step1.num">01 · Join</span>
+                        <span class="sic"><svg viewBox="0 0 24 24" fill="none">
+                                <circle cx="12" cy="8" r="4" stroke="#161616" stroke-width="2.2" />
+                                <path d="M5 21v-1a6 6 0 016-6h2a6 6 0 016 6v1" stroke="#161616" stroke-width="2.2" stroke-linecap="round" />
+                            </svg></span>
+                        <h3 data-i18n="partners.step1.head">Get your link</h3>
+                        <p data-i18n="partners.step1.body">Click "Get my referral link" and sign in with Google or your email. Your personal referral link is ready in your partner dashboard.</p>
                     </div>
-                    <div class="nl-card">
-                        <span class="nl-card-ic" aria-hidden="true">
-                            <svg viewBox="0 0 24 24" fill="none">
-                                <path d="M10 14a4 4 0 005.7 0l3-3a4 4 0 00-5.7-5.7l-1 1M14 10a4 4 0 00-5.7 0l-3 3a4 4 0 005.7 5.7l1-1" stroke="#161616" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
-                            </svg>
-                        </span>
-                        <h3 data-i18n="partners.step2.title">2. Share</h3>
-                        <p data-i18n="partners.step2.body">
-                            Post your link on LinkedIn, in your newsletter, or
-                            send it to buyers you work with. Every click is
-                            remembered for 180 days.
-                        </p>
+                    <div class="step">
+                        <span class="snum" data-i18n="partners.step2.num">02 · Share</span>
+                        <span class="sic"><svg viewBox="0 0 24 24" fill="none">
+                                <path d="M10 14a4 4 0 005.7 0l3-3a4 4 0 00-5.7-5.7l-1 1M14 10a4 4 0 00-5.7 0l-3 3a4 4 0 005.7 5.7l1-1" stroke="#161616" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" />
+                            </svg></span>
+                        <h3 data-i18n="partners.step2.head">Share it anywhere</h3>
+                        <p data-i18n="partners.step2.body">Post your link on LinkedIn, in your newsletter, or send it to buyers you work with. Every click is remembered for 180 days.</p>
                     </div>
-                    <div class="nl-card">
-                        <span class="nl-card-ic" aria-hidden="true">
-                            <svg viewBox="0 0 24 24" fill="none">
-                                <path d="M12 3v18M17 7H9.5a3 3 0 000 6h5a3 3 0 010 6H6" stroke="#161616" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
-                            </svg>
-                        </span>
-                        <h3 data-i18n="partners.step3.title">3. Earn</h3>
-                        <p data-i18n="partners.step3.body">
-                            When someone you referred subscribes, 30% goes to
-                            your balance. See clicks, customers and earnings in
-                            your dashboard and withdraw any time.
-                        </p>
+                    <div class="step">
+                        <span class="snum" data-i18n="partners.step3.num">03 · Earn</span>
+                        <span class="sic"><svg viewBox="0 0 24 24" fill="none">
+                                <path d="M12 3v18M17 7H9.5a3 3 0 000 6h5a3 3 0 010 6H6" stroke="#161616" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" />
+                            </svg></span>
+                        <h3 data-i18n="partners.step3.head">Get paid</h3>
+                        <p data-i18n="partners.step3.body">Every time someone you referred pays, 30% goes to your balance. See clicks, customers and earnings in your dashboard and withdraw any time.</p>
                     </div>
                 </div>
             </div>
@@ -189,6 +202,11 @@
 
         <!-- ============ PAYOUT DETAILS ============ -->
         <section class="sec pt-sec" id="details">
+            <div class="wv down" aria-hidden="true">
+                <svg viewBox="0 0 1440 80" preserveAspectRatio="none">
+                    <path d="M0,40 C 240,75 480,5 720,28 C 960,50 1200,80 1440,38 L1440,80 L0,80 Z" fill="#f1ebda" />
+                </svg>
+            </div>
             <div class="wrap">
                 <div class="head">
                     <span class="badge p"><span class="bd"></span><span data-i18n="partners.details_badge">Payouts</span></span>
@@ -217,15 +235,27 @@
 
         <!-- ============ FAQ ============ -->
         <section class="sec pt-sec" id="faq" style="background: var(--cream-2)">
-            <div class="wrap">
-                <div class="head">
+            <div class="wv down" aria-hidden="true">
+                <svg viewBox="0 0 1440 80" preserveAspectRatio="none">
+                    <path d="M0,40 C 240,75 480,5 720,28 C 960,50 1200,80 1440,38 L1440,80 L0,80 Z" fill="#ffffff" />
+                </svg>
+            </div>
+            <div class="wrap faq-grid">
+                <aside class="faq-side">
                     <span class="badge p"><span class="bd"></span><span data-i18n="faq.badge">FAQ</span></span>
                     <h2 class="disp gasoek" data-i18n="partners.faq_title">Partner questions.</h2>
-                </div>
+                    <p data-i18n="partners.faq_sub">How payouts, tracking and the rules work.</p>
+                    <div class="faq-help">
+                        <svg class="fh-eyes" viewBox="0 0 130 96" fill="none" aria-hidden="true"><circle cx="36" cy="56" r="28" fill="#fff" stroke="#161616" stroke-width="7" /><circle cx="92" cy="56" r="28" fill="#fff" stroke="#161616" stroke-width="7" /><circle cx="44" cy="46" r="12" fill="#161616" /><circle cx="100" cy="46" r="12" fill="#161616" /></svg>
+                        <h3 data-i18n="partners.help_title">Have a bigger audience?</h3>
+                        <p data-i18n="partners.help_body">Run a sourcing community or newsletter? Write to us and we'll help you get started.</p>
+                        <a href="mailto:help@safely.sh" class="btn btn-sun"><span>help@safely.sh</span><svg viewBox="0 0 24 24" fill="none"><path d="M5 12h14M13 5l7 7-7 7" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" /></svg></a>
+                    </div>
+                </aside>
                 <div class="faq">
                     <details class="acc" name="faq" open>
                         <summary>
-                            <span data-i18n="partners.q1.q">Who pays me, and how?</span><span class="ic"><svg viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="#161616" stroke-width="2.6" stroke-linecap="round" /></svg></span>
+                            <span class="qn">01</span><span data-i18n="partners.q1.q">Who pays me, and how?</span><span class="ic"><svg viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="#161616" stroke-width="2.6" stroke-linecap="round" /></svg></span>
                         </summary>
                         <div class="ans">
                             <p data-i18n="partners.q1.a">
@@ -239,7 +269,7 @@
                     </details>
                     <details class="acc" name="faq">
                         <summary>
-                            <span data-i18n="partners.q2.q">When does a sale count as mine?</span><span class="ic"><svg viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="#161616" stroke-width="2.6" stroke-linecap="round" /></svg></span>
+                            <span class="qn">02</span><span data-i18n="partners.q2.q">When does a sale count as mine?</span><span class="ic"><svg viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="#161616" stroke-width="2.6" stroke-linecap="round" /></svg></span>
                         </summary>
                         <div class="ans">
                             <p data-i18n="partners.q2.a">
@@ -251,7 +281,7 @@
                     </details>
                     <details class="acc" name="faq">
                         <summary>
-                            <span data-i18n="partners.q3.q">When can I withdraw?</span><span class="ic"><svg viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="#161616" stroke-width="2.6" stroke-linecap="round" /></svg></span>
+                            <span class="qn">03</span><span data-i18n="partners.q3.q">When can I withdraw?</span><span class="ic"><svg viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="#161616" stroke-width="2.6" stroke-linecap="round" /></svg></span>
                         </summary>
                         <div class="ans">
                             <p data-i18n="partners.q3.a">
@@ -264,7 +294,7 @@
                     </details>
                     <details class="acc" name="faq">
                         <summary>
-                            <span data-i18n="partners.q4.q">Do I need to be a Safely customer?</span><span class="ic"><svg viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="#161616" stroke-width="2.6" stroke-linecap="round" /></svg></span>
+                            <span class="qn">04</span><span data-i18n="partners.q4.q">Do I need to be a Safely customer?</span><span class="ic"><svg viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="#161616" stroke-width="2.6" stroke-linecap="round" /></svg></span>
                         </summary>
                         <div class="ans">
                             <p data-i18n="partners.q4.a">
@@ -276,7 +306,7 @@
                     </details>
                     <details class="acc" name="faq">
                         <summary>
-                            <span data-i18n="partners.q5.q">Are there any rules?</span><span class="ic"><svg viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="#161616" stroke-width="2.6" stroke-linecap="round" /></svg></span>
+                            <span class="qn">05</span><span data-i18n="partners.q5.q">Are there any rules?</span><span class="ic"><svg viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="#161616" stroke-width="2.6" stroke-linecap="round" /></svg></span>
                         </summary>
                         <div class="ans">
                             <p data-i18n="partners.q5.a">
@@ -291,21 +321,35 @@
         </section>
 
         <!-- ============ FINAL CTA ============ -->
-        <section class="sec pt-sec pt-final">
-            <div class="wrap">
-                <h2 class="disp gasoek" data-i18n="partners.final_title">Ready to start earning?</h2>
-                <p data-i18n="partners.final_sub">It takes less than a minute to get your link.</p>
-                <a href="https://affiliates.creem.io/join/safely" class="btn btn-lg btn-sun" target="_blank" rel="noopener"
-                    ><span data-i18n="partners.cta">Get my referral link</span>
-                    <svg viewBox="0 0 24 24" fill="none">
-                        <path d="M5 12h14M13 5l7 7-7 7" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" />
-                    </svg>
-                </a>
-            </div>
+        <section class="sec finalcta">
             <div class="wv down" aria-hidden="true">
                 <svg viewBox="0 0 1440 80" preserveAspectRatio="none">
                     <path d="M0,40 C 240,75 480,5 720,28 C 960,50 1200,80 1440,38 L1440,80 L0,80 Z" fill="#181b22" />
                 </svg>
+            </div>
+            <div class="wrap">
+                <div class="cta-stage">
+                    <svg class="cta-eyes" viewBox="0 0 130 96" fill="none" aria-hidden="true">
+                        <path d="M12 22 Q24 4 44 14" stroke="#161616" stroke-width="8" fill="none" stroke-linecap="round" />
+                        <path d="M70 16 Q84 2 104 12" stroke="#161616" stroke-width="8" fill="none" stroke-linecap="round" />
+                        <circle cx="36" cy="56" r="28" fill="#fff" stroke="#161616" stroke-width="7" />
+                        <circle cx="92" cy="56" r="28" fill="#fff" stroke="#161616" stroke-width="7" />
+                        <circle cx="44" cy="46" r="12" fill="#161616" />
+                        <circle cx="100" cy="46" r="12" fill="#161616" />
+                    </svg>
+                    <span class="cta-sticker" aria-hidden="true" data-i18n="partners.sticker">Free to join</span>
+                    <div class="box">
+                        <span class="badge o"><span class="bd"></span><span data-i18n="partners.badge">Partner program</span></span>
+                        <h2 class="disp gasoek" style="margin-top: 18px" data-i18n="partners.final_title">Ready to start earning?</h2>
+                        <p data-i18n="partners.final_sub">It takes less than a minute to get your link.</p>
+                        <div class="cta-row">
+                            <a href="https://affiliates.creem.io/join/safely" class="btn btn-lg btn-sun" target="_blank" rel="noopener"
+                                ><span data-i18n="partners.cta">Get my referral link</span>
+                                <svg viewBox="0 0 24 24" fill="none"><path d="M5 12h14M13 5l7 7-7 7" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" /></svg>
+                            </a>
+                        </div>
+                    </div>
+                </div>
             </div>
         </section>
 
@@ -377,6 +421,7 @@
                     </div>
                 </div>
             </div>
+            <div class="fword" aria-hidden="true">Safely</div>
         </footer>
 
         <script src="js/i18n.js"></script>
