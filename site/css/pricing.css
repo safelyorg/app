@@ -54,7 +54,7 @@
     font-family: var(--disp);
     font-weight: 800;
     font-size: 20px;
-    letter-spacing: -0.01em;
+    letter-spacing: -0.005em;
 }
 .pprice {
     display: flex;
@@ -72,7 +72,7 @@
 .pprice .amt {
     font-family: var(--disp);
     font-weight: 800;
-    font-size: 38px;
+    font-size: 36px;
     line-height: 1;
     letter-spacing: -0.02em;
     white-space: nowrap;
@@ -221,9 +221,10 @@
     font-family: var(--disp);
     font-weight: 800;
     font-size: clamp(24px, 3.5vw, 38px);
+    line-height: 1.15;
     text-align: center;
     margin-bottom: 28px;
-    letter-spacing: -0.025em;
+    letter-spacing: -0.02em;
 }
 .comp-scroll {
     overflow-x: auto;
@@ -244,7 +245,7 @@
     border-bottom: var(--bd);
     padding: 14px 18px;
     font-family: var(--disp);
-    font-weight: 700;
+    font-weight: 800;
     font-size: 14px;
     text-align: center;
     white-space: nowrap;
@@ -279,7 +280,7 @@
     font-family: var(--disp);
     font-weight: 700;
     font-size: 11px;
-    letter-spacing: 0.1em;
+    letter-spacing: 0.08em;
     text-transform: uppercase;
     color: var(--muted);
     padding: 10px 18px !important;
