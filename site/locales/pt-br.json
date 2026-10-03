@@ -9,7 +9,7 @@
   "nav.subscribe_btn": "Inscrever-se",
 
   "hero.badge": "Ativo no Alibaba, TradeWheel, ExportHub, B2Brazil, ThomasNet, B2BMap e Kompass",
-  "hero.sub": "O Safely verifica o registro, os anúncios e a presença online de um fornecedor no momento em que você abre a página dele.",
+  "hero.sub": "Abra a página de qualquer fornecedor e o Safely verifica na hora o registro, os anúncios e a presença online dele.",
   "hero.add_to_chrome": "Adicionar ao Chrome — É Grátis",
   "hero.see_how": "Veja como funciona",
   "hero.proof": "Um só lugar para verificar cada fornecedor antes de fechar negócio",
@@ -20,7 +20,8 @@
 
   "how.badge": "Como funciona",
   "how.title": "Detecção de fraude em segundos.",
-  "how.sub": "O Safely é ativado automaticamente no momento em que você abre qualquer anúncio. Sem etapas manuais. Sem aplicativo separado.",
+  "how.sub": "O Safely é ativado automaticamente no momento em que você abre qualquer anúncio.",
+  "how.sub2": "Sem etapas manuais. Sem aplicativo separado.",
   "how.step1.num": "01 · Instalar",
   "how.step1.title": "Adicione ao seu navegador",
   "how.step1.body": "Instale a extensão Safely para Chrome com um clique. Ela é ativada automaticamente em qualquer marketplace online — sem configuração, sem necessidade de conta para começar.",
