@@ -107,10 +107,12 @@ pub async fn authorize_request(
     check_and_increment_scan_usage(pool, user_id)
         .await
         .map_err(|e| match e {
-            ScanLimitError::NoActiveSubscription => AnalyzeError::SubscriptionRequired,
             ScanLimitError::LimitReached { limit } => AnalyzeError::ScanLimitReached(limit),
-            ScanLimitError::TrialLimitReached { limit } => {
-                AnalyzeError::TrialScanLimitReached(limit)
+            ScanLimitError::FreeLimitReached { limit, resets_on } => {
+                AnalyzeError::FreeScanLimitReached { limit, resets_on }
+            }
+            ScanLimitError::Unavailable => {
+                AnalyzeError::Database("Could not check your scan allowance".to_string())
             }
         })?;
 

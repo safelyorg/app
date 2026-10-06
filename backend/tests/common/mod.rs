@@ -145,7 +145,7 @@ pub async fn cleanup_test_subscription(pool: &Pool<Postgres>, sub_id: &str) {
 /// every column the real `subscriptions` table requires (including
 /// creem_customer_id and creem_product_id, both NOT NULL), using
 /// plain, made-up values for the fields a given test doesn't actually
-/// care about.
+/// care about. Billing is monthly (the column's default).
 #[allow(dead_code)]
 pub async fn insert_test_subscription(
     pool: &Pool<Postgres>,
@@ -201,6 +201,60 @@ pub async fn insert_test_subscription_full(
     .bind(options.scheduled_plan_name)
     .execute(pool)
     .await;
+}
+
+/// A paid plan for scan-limit tests: which plan, its status, monthly or
+/// yearly billing, scans already used this month, and how many days ago
+/// it was bought (a yearly plan's scan months run from that day).
+#[allow(dead_code)]
+pub struct TestPaidPlan<'a> {
+    pub plan_name: &'a str,
+    pub status: &'a str,
+    pub billing_interval: &'a str,
+    pub scans_used: i32,
+    pub bought_days_ago: i32,
+}
+
+/// Inserts a paid subscription whose scan count belongs to the current
+/// scan month - so a test can then move scan_period_start back a month
+/// to act as if a new month has begun.
+#[allow(dead_code)]
+pub async fn insert_subscription_with_scans(
+    pool: &Pool<Postgres>,
+    user_id: Uuid,
+    sub_id: &str,
+    plan: TestPaidPlan<'_>,
+) {
+    cleanup_test_subscription(pool, sub_id).await;
+    query(
+        "WITH bought AS (SELECT NOW() - make_interval(days => $8) AS at)
+         INSERT INTO subscriptions (
+             id, user_id, creem_subscription_id, creem_customer_id, creem_product_id,
+             plan_name, status, billing_interval, scans_used_this_period,
+             scan_anchor, scan_period_start, current_period_end, created_at, updated_at
+         )
+         SELECT $1, $2, $3, 'cust_fake_test_001', $4, $5, $6::subscription_status, $7, $9,
+                bought.at,
+                bought.at + make_interval(months => (
+                    EXTRACT(YEAR FROM age(NOW(), bought.at)) * 12
+                    + EXTRACT(MONTH FROM age(NOW(), bought.at)))::int),
+                CASE WHEN $7 = 'year' THEN bought.at + interval '1 year'
+                     ELSE bought.at + interval '1 month' END,
+                NOW(), NOW()
+         FROM bought",
+    )
+    .bind(Uuid::now_v7())
+    .bind(user_id)
+    .bind(sub_id)
+    .bind(format!("prod_{}_test", plan.plan_name.to_lowercase()))
+    .bind(plan.plan_name)
+    .bind(plan.status)
+    .bind(plan.billing_interval)
+    .bind(plan.bought_days_ago)
+    .bind(plan.scans_used)
+    .execute(pool)
+    .await
+    .expect("expected to insert a test subscription with scans");
 }
 
 // auth

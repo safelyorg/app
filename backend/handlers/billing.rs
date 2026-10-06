@@ -3,10 +3,11 @@ use crate::services::billing::{extract_subscription, mark_event_processed_if_new
 use crate::services::{
     auth::extract_user_id,
     billing::{
-        CreateCheckoutError, apply_scheduled_downgrade_if_due, apply_upgrade, cancel_with_creem,
-        create_checkout, fetch_subscriber_email, handle_subscription_granted,
+        BillingInterval, CreateCheckoutError, PLAN_PRODUCTS, PlanChange,
+        apply_scheduled_downgrade_if_due, apply_upgrade, cancel_with_creem, classify_plan_change,
+        create_checkout, fetch_subscriber_email, get_scan_usage, handle_subscription_granted,
         handle_subscription_lost, handle_subscription_past_due, handle_subscription_update,
-        verify_and_parse_webhook,
+        plan_for_product_id, product_ids_key, schedule_downgrade, verify_and_parse_webhook,
     },
     email::send_subscription_canceled_email,
 };
@@ -18,7 +19,7 @@ use axum::{
 };
 use chrono::{DateTime, Utc};
 use serde::Deserialize;
-use serde_json::{Value, json};
+use serde_json::{Map, Value, json};
 use sqlx::{Pool, Postgres, query, query_as, query_scalar};
 use std::env::var;
 
@@ -30,7 +31,6 @@ pub struct CreateCheckoutBody {
 #[derive(Debug, Deserialize)]
 pub struct ChangePlanBody {
     pub product_id: String,
-    pub plan_name: String,
 }
 
 /// POST /api/v1/billing/checkout
@@ -55,6 +55,29 @@ pub async fn create_checkout_handler(
         .map_err(|_| BillingError::InternalError("Failed to verify session".to_string()))?
         .ok_or(BillingError::Unauthorized)?;
 
+    let (new_plan, new_interval) = plan_for_product_id(&body.product_id)
+        .ok_or_else(|| BillingError::InvalidRequest("Unknown plan".to_string()))?;
+
+    // Someone already on a paid plan only gets a new checkout when moving
+    // from monthly to yearly (the monthly plan is then ended automatically
+    // once the yearly one is paid). Every other change goes through
+    // /billing/change-plan, so nobody ends up paying for two plans.
+    if let Some((current_plan, current_interval)) = active_plan(&pool, user_id).await? {
+        match classify_plan_change(&current_plan, current_interval, new_plan, new_interval) {
+            PlanChange::NewYearlyCheckout => {}
+            PlanChange::YearlyToMonthly => {
+                return Err(BillingError::InvalidRequest(
+                    "A yearly plan can't be switched to monthly from the dashboard".to_string(),
+                ));
+            }
+            _ => {
+                return Err(BillingError::InvalidRequest(
+                    "You already have a plan - use change plan instead".to_string(),
+                ));
+            }
+        }
+    }
+
     let checkout = create_checkout(&body.product_id, user_id)
         .await
         .map_err(|e| match e {
@@ -78,9 +101,9 @@ pub async fn create_checkout_handler(
 /// POST /api/v1/webhooks/creem
 ///
 /// It's the real, external endpoint Creem calls whenever something happens
-/// to a subscription - trials starting, payments succeeding or failing,
+/// to a subscription - payments succeeding or failing,
 /// cancellations - and it's what keeps your own database's picture of
-/// who's paying, trialing, or lost access genuinely in sync with what's
+/// who's paying or lost access genuinely in sync with what's
 /// real on Creem's side.
 ///
 /// It first confirms the webhook is genuinely, verifiably from Creem
@@ -111,7 +134,7 @@ pub async fn creem_webhook(
                 event.id
             );
         }
-        "subscription.active" | "subscription.trialing" | "subscription.paid" => {
+        "subscription.active" | "subscription.paid" => {
             if let Some(parsed) = extract_subscription(&event.event_type, &event.object) {
                 handle_subscription_granted(&pool, &parsed).await;
             }
@@ -165,7 +188,7 @@ pub async fn cancel_subscription_handler(
 
     let sub_id: Option<String> = query_scalar(
         "SELECT creem_subscription_id FROM subscriptions
-         WHERE user_id = $1 AND status IN ('active', 'trialing', 'past_due')
+         WHERE user_id = $1 AND status IN ('active', 'past_due')
          ORDER BY created_at DESC LIMIT 1",
     )
     .bind(user_id)
@@ -202,6 +225,10 @@ pub async fn cancel_subscription_handler(
 /// plan they're on, what status it's in, and when it renews so the
 /// frontend can show accurate billing info without guessing.
 ///
+/// It also returns "usage" - plan ("Free", "Team" or "Enterprise"),
+/// scans used, limit (null = unlimited) and reset date - so the
+/// extension and dashboard can show e.g. "Free · 37/100".
+///
 /// It confirms who's genuinely signed in, looks up their most recent real
 /// subscription, and if a scheduled downgrade's deferred period has
 /// genuinely ended by now, actually applies it at this exact moment,
@@ -219,21 +246,27 @@ pub async fn get_subscription_status(
         String,
         String,
         String,
+        String,
         Option<DateTime<Utc>>,
         Option<String>,
         Option<String>,
     )> = query_as(
-        "SELECT creem_subscription_id, plan_name, status::text, current_period_end, scheduled_product_id, scheduled_plan_name
-         FROM subscriptions WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1",
+        "SELECT creem_subscription_id, plan_name, billing_interval, status::text, current_period_end,
+                scheduled_product_id, scheduled_plan_name
+         FROM subscriptions WHERE user_id = $1
+         ORDER BY (status = 'active') DESC, created_at DESC LIMIT 1",
     )
     .bind(user_id)
     .fetch_optional(&pool)
     .await
     .map_err(|_| BillingError::InternalError("Failed to look up subscription".to_string()))?;
 
+    let usage = get_scan_usage(&pool, user_id).await;
+
     let Some((
         sub_id,
         mut plan_name,
+        billing_interval,
         status,
         current_period_end,
         scheduled_product_id,
@@ -241,7 +274,9 @@ pub async fn get_subscription_status(
     )) = row
     else {
         return Ok(Json(json!({
-            "plan_name": null, "status": null, "current_period_end": null, "scheduled_plan_name": null,
+            "plan_name": null, "billing_interval": null, "status": null, "current_period_end": null,
+            "scheduled_plan_name": null,
+            "usage": usage,
         })));
     };
 
@@ -261,18 +296,21 @@ pub async fn get_subscription_status(
 
     Ok(Json(json!({
         "plan_name": plan_name,
+        "billing_interval": billing_interval,
         "status": status,
         "current_period_end": current_period_end,
         "scheduled_plan_name": scheduled_plan_name_response,
+        "usage": usage,
     })))
 }
 
 /// POST /api/v1/billing/change-plan
 ///
-/// Switches an existing subscription to a different plan. It upgrades, apply
-/// and charge immediately; downgrades are scheduled for when the current
-/// paid period actually ends, matching standard Netflix/Spotify-style
-/// downgrade behavior.
+/// Switches an existing subscription to a different plan with the same
+/// billing (monthly -> monthly, yearly -> yearly). Upgrades apply and
+/// charge immediately; downgrades happen at the next renewal, matching
+/// standard Netflix/Spotify-style downgrade behavior. Monthly -> yearly
+/// goes through /billing/checkout instead.
 pub async fn change_plan_handler(
     State(pool): State<Pool<Postgres>>,
     headers: HeaderMap,
@@ -283,9 +321,12 @@ pub async fn change_plan_handler(
         .map_err(|_| BillingError::InternalError("Failed to verify session".to_string()))?
         .ok_or(BillingError::Unauthorized)?;
 
+    let (new_plan, new_interval) = plan_for_product_id(&body.product_id)
+        .ok_or_else(|| BillingError::InvalidRequest("Unknown plan".to_string()))?;
+
     let current: Option<(String, String, String)> = query_as(
-        "SELECT creem_subscription_id, plan_name, status::text FROM subscriptions
-         WHERE user_id = $1 AND status IN ('active', 'trialing')
+        "SELECT creem_subscription_id, plan_name, billing_interval FROM subscriptions
+         WHERE user_id = $1 AND status = 'active'
          ORDER BY created_at DESC LIMIT 1",
     )
     .bind(user_id)
@@ -293,40 +334,45 @@ pub async fn change_plan_handler(
     .await
     .map_err(|_| BillingError::InternalError("Failed to look up subscription".to_string()))?;
 
-    let (sub_id, current_plan, current_status) = current
+    let (sub_id, current_plan, current_interval) = current
         .ok_or_else(|| BillingError::NotFound("No active subscription found".to_string()))?;
+    let current_interval = BillingInterval::from_db(&current_interval);
 
-    let is_upgrade = current_plan == "Team" && body.plan_name == "Enterprise";
-    let is_downgrade = current_plan == "Enterprise" && body.plan_name == "Team";
-
-    if current_status == "trialing" && is_upgrade {
-        return Err(BillingError::Conflict(
-            "Upgrades aren't available during your trial - this will be possible once your trial ends.".to_string(),
-        ));
-    }
-
-    if !is_upgrade && !is_downgrade {
-        return Err(BillingError::InvalidRequest(
+    match classify_plan_change(&current_plan, current_interval, new_plan, new_interval) {
+        PlanChange::UpgradeNow => {
+            apply_upgrade(&pool, &sub_id, &body.product_id, new_plan, new_interval).await
+        }
+        PlanChange::DowngradeAtRenewal => {
+            schedule_downgrade(&pool, &sub_id, &body.product_id, new_plan).await
+        }
+        PlanChange::NewYearlyCheckout => Err(BillingError::InvalidRequest(
+            "Switching to yearly is done through checkout".to_string(),
+        )),
+        PlanChange::YearlyToMonthly => Err(BillingError::InvalidRequest(
+            "A yearly plan can't be switched to monthly from the dashboard".to_string(),
+        )),
+        PlanChange::AlreadyOnPlan | PlanChange::Invalid => Err(BillingError::InvalidRequest(
             "Not a valid plan change".to_string(),
-        ));
+        )),
     }
+}
 
-    if is_upgrade {
-        return apply_upgrade(&pool, &sub_id, &body).await;
-    }
-
-    query(
-        "UPDATE subscriptions SET scheduled_product_id = $1, scheduled_plan_name = $2, updated_at = NOW()
-         WHERE creem_subscription_id = $3",
+/// The user's active paid plan and its billing, if they have one.
+async fn active_plan(
+    pool: &Pool<Postgres>,
+    user_id: uuid::Uuid,
+) -> Result<Option<(String, BillingInterval)>, BillingError> {
+    let row: Option<(String, String)> = query_as(
+        "SELECT plan_name, billing_interval FROM subscriptions
+         WHERE user_id = $1 AND status = 'active'
+         ORDER BY created_at DESC LIMIT 1",
     )
-    .bind(&body.product_id)
-    .bind(&body.plan_name)
-    .bind(&sub_id)
-    .execute(&pool)
+    .bind(user_id)
+    .fetch_optional(pool)
     .await
-    .map_err(|_| BillingError::InternalError("Failed to schedule downgrade".to_string()))?;
+    .map_err(|_| BillingError::InternalError("Failed to look up subscription".to_string()))?;
 
-    Ok(Json(json!({ "applied": "scheduled" })))
+    Ok(row.map(|(plan, interval)| (plan, BillingInterval::from_db(&interval))))
 }
 
 /// GET /api/v1/billing/product-ids
@@ -335,14 +381,21 @@ pub async fn change_plan_handler(
 /// checkout requests always use the actual, correct ID - rather than the
 /// frontend needing to hardcode them itself.
 pub async fn get_product_ids() -> Result<Json<Value>, BillingError> {
-    let team_id = var("CREEM_TEAM_PRODUCT_ID")
-        .map_err(|_| BillingError::InternalError("CREEM_TEAM_PRODUCT_ID not set".to_string()))?;
-    let enterprise_id = var("CREEM_ENTERPRISE_PRODUCT_ID").map_err(|_| {
-        BillingError::InternalError("CREEM_ENTERPRISE_PRODUCT_ID not set".to_string())
-    })?;
+    // Monthly IDs must be set; yearly ones are null until they're added
+    // to .env (the dashboard then says that option isn't available yet).
+    for env_name in ["CREEM_TEAM_PRODUCT_ID", "CREEM_ENTERPRISE_PRODUCT_ID"] {
+        if var(env_name).is_err() {
+            return Err(BillingError::InternalError(format!("{} not set", env_name)));
+        }
+    }
 
-    Ok(Json(json!({
-        "Team": team_id,
-        "Enterprise": enterprise_id,
-    })))
+    let mut ids = Map::new();
+    for (env_name, plan, interval) in PLAN_PRODUCTS {
+        ids.insert(
+            product_ids_key(plan, interval),
+            var(env_name).map(Value::String).unwrap_or(Value::Null),
+        );
+    }
+
+    Ok(Json(Value::Object(ids)))
 }

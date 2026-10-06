@@ -6,10 +6,10 @@ use backend::services::b2b_scrapers::{
     tradewheel::TradewheelScraper,
 };
 use serial_test::serial;
-use std::env::remove_var;
+use std::env::{remove_var, set_var, var};
 use wiremock::{
     Mock, MockServer, ResponseTemplate,
-    matchers::{method, path},
+    matchers::{method, query_param},
 };
 
 // NOTE: This test hits B2Brazil's real, live site through ScraperAPI -
@@ -642,15 +642,62 @@ fn b2brazil_profile_with_description() -> String {
     )
 }
 
+// --- check_b2b_page against a fake ScraperAPI ---
+// B2B scans only run with a ScraperAPI key (B2B_SCANS_WITHOUT_KEY is
+// false), so these tests set a test key and send every ScraperAPI
+// request to a local fake ScraperAPI (SCRAPERAPI_BASE_URL) instead of
+// the internet.
+
+/// Points ScraperAPI requests at a local fake ScraperAPI for one test,
+/// and puts the real settings back when the test ends (even if it fails).
+struct FakeScraperApi {
+    original_key: Option<String>,
+    original_base_url: Option<String>,
+}
+
+impl FakeScraperApi {
+    fn start(server: &MockServer) -> Self {
+        let guard = FakeScraperApi {
+            original_key: var("SCRAPERAPI_KEY").ok(),
+            original_base_url: var("SCRAPERAPI_BASE_URL").ok(),
+        };
+        unsafe {
+            set_var("SCRAPERAPI_KEY", "test_scraperapi_key");
+            set_var("SCRAPERAPI_BASE_URL", server.uri());
+        }
+        guard
+    }
+}
+
+impl Drop for FakeScraperApi {
+    fn drop(&mut self) {
+        unsafe {
+            match &self.original_key {
+                Some(key) => set_var("SCRAPERAPI_KEY", key),
+                None => remove_var("SCRAPERAPI_KEY"),
+            }
+            match &self.original_base_url {
+                Some(url) => set_var("SCRAPERAPI_BASE_URL", url),
+                None => remove_var("SCRAPERAPI_BASE_URL"),
+            }
+        }
+    }
+}
+
+/// Matches the ScraperAPI request for one page: ScraperAPI gets the
+/// page's address in its `url` parameter.
+fn scraperapi_request_for(page_url: &str) -> wiremock::MockBuilder {
+    Mock::given(method("GET")).and(query_param("url", page_url))
+}
+
 #[tokio::test]
 #[serial]
 async fn check_b2b_page_does_not_fetch_a_profile_page_when_no_link_is_found() {
-    unsafe {
-        std::env::remove_var("SCRAPERAPI_KEY");
-    }
     let mock_server = MockServer::start().await;
-    Mock::given(method("GET"))
-        .and(path("/listing"))
+    let _fake = FakeScraperApi::start(&mock_server);
+    let listing_url = format!("{}/listing", mock_server.uri());
+
+    scraperapi_request_for(&listing_url)
         .respond_with(
             ResponseTemplate::new(200).set_body_string(b2brazil_listing_no_profile_link()),
         )
@@ -658,7 +705,6 @@ async fn check_b2b_page_does_not_fetch_a_profile_page_when_no_link_is_found() {
         .mount(&mock_server)
         .await;
 
-    let listing_url = format!("{}/listing", mock_server.uri());
     let result = check_b2b_page("b2brazil", &listing_url).await;
 
     assert!(result.is_some());
@@ -667,23 +713,19 @@ async fn check_b2b_page_does_not_fetch_a_profile_page_when_no_link_is_found() {
         supplier.company_description, None,
         "expected no enrichment fetch, so no description, when the profile link is genuinely absent"
     );
-    // The `.expect(1)` above on the mock is itself the real assertion
-    // that exactly one request was made - mock_server.verify() below
-    // makes that explicit and fails loudly if it's ever violated.
+    // .expect(1) is the real check that only the listing page was asked for.
     mock_server.verify().await;
 }
 
 #[tokio::test]
 #[serial]
 async fn check_b2b_page_fetches_the_profile_page_and_applies_real_enrichment() {
-    unsafe {
-        std::env::remove_var("SCRAPERAPI_KEY");
-    }
     let mock_server = MockServer::start().await;
+    let _fake = FakeScraperApi::start(&mock_server);
+    let listing_url = format!("{}/listing", mock_server.uri());
     let profile_url = format!("{}/hotsite/acme", mock_server.uri());
 
-    Mock::given(method("GET"))
-        .and(path("/listing"))
+    scraperapi_request_for(&listing_url)
         .respond_with(
             ResponseTemplate::new(200)
                 .set_body_string(listing_html_with_profile_link(&profile_url)),
@@ -691,9 +733,7 @@ async fn check_b2b_page_fetches_the_profile_page_and_applies_real_enrichment() {
         .expect(1)
         .mount(&mock_server)
         .await;
-
-    Mock::given(method("GET"))
-        .and(path("/hotsite/acme"))
+    scraperapi_request_for(&profile_url)
         .respond_with(
             ResponseTemplate::new(200).set_body_string(b2brazil_profile_with_description()),
         )
@@ -701,7 +741,6 @@ async fn check_b2b_page_fetches_the_profile_page_and_applies_real_enrichment() {
         .mount(&mock_server)
         .await;
 
-    let listing_url = format!("{}/listing", mock_server.uri());
     let result = check_b2b_page("b2brazil", &listing_url).await;
 
     assert!(result.is_some());
@@ -717,28 +756,23 @@ async fn check_b2b_page_fetches_the_profile_page_and_applies_real_enrichment() {
 #[tokio::test]
 #[serial]
 async fn check_b2b_page_still_succeeds_when_the_enrichment_fetch_genuinely_fails() {
-    unsafe {
-        std::env::remove_var("SCRAPERAPI_KEY");
-    }
     let mock_server = MockServer::start().await;
+    let _fake = FakeScraperApi::start(&mock_server);
+    let listing_url = format!("{}/listing", mock_server.uri());
     let profile_url = format!("{}/hotsite/broken", mock_server.uri());
 
-    Mock::given(method("GET"))
-        .and(path("/listing"))
+    scraperapi_request_for(&listing_url)
         .respond_with(
             ResponseTemplate::new(200)
                 .set_body_string(listing_html_with_profile_link(&profile_url)),
         )
         .mount(&mock_server)
         .await;
-
-    Mock::given(method("GET"))
-        .and(path("/hotsite/broken"))
+    scraperapi_request_for(&profile_url)
         .respond_with(ResponseTemplate::new(500))
         .mount(&mock_server)
         .await;
 
-    let listing_url = format!("{}/listing", mock_server.uri());
     let result = check_b2b_page("b2brazil", &listing_url).await;
 
     assert!(
@@ -754,18 +788,61 @@ async fn check_b2b_page_still_succeeds_when_the_enrichment_fetch_genuinely_fails
 
 #[tokio::test]
 #[serial]
-async fn check_b2b_page_returns_none_when_the_primary_fetch_fails() {
-    unsafe {
-        remove_var("SCRAPERAPI_KEY");
-    }
+async fn check_b2b_page_asks_again_when_the_company_page_is_a_robot_check() {
+    // A robot-check page comes back with status 200; it is recognised
+    // and the company page is asked for once more, through a new connection.
     let mock_server = MockServer::start().await;
-    Mock::given(method("GET"))
-        .and(path("/listing"))
+    let _fake = FakeScraperApi::start(&mock_server);
+    let listing_url = format!("{}/listing", mock_server.uri());
+    let profile_url = format!("{}/hotsite/acme", mock_server.uri());
+
+    scraperapi_request_for(&listing_url)
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_string(listing_html_with_profile_link(&profile_url)),
+        )
+        .mount(&mock_server)
+        .await;
+    scraperapi_request_for(&profile_url)
+        .respond_with(ResponseTemplate::new(200).set_body_string(pad_html(
+            r#"<div id="sufei-punish">Please slide to verify</div>"#,
+        )))
+        .up_to_n_times(1)
+        .expect(1)
+        .mount(&mock_server)
+        .await;
+    scraperapi_request_for(&profile_url)
+        .respond_with(
+            ResponseTemplate::new(200).set_body_string(b2brazil_profile_with_description()),
+        )
+        .expect(1)
+        .mount(&mock_server)
+        .await;
+
+    let (supplier, _listing) = check_b2b_page("b2brazil", &listing_url)
+        .await
+        .expect("expected the listing to load");
+
+    assert_eq!(
+        supplier.company_description,
+        Some("Founded in 1998, specializing in industrial equipment.".to_string()),
+        "expected the second try to get the real company page"
+    );
+    mock_server.verify().await;
+}
+
+#[tokio::test]
+#[serial]
+async fn check_b2b_page_returns_none_when_the_primary_fetch_fails() {
+    let mock_server = MockServer::start().await;
+    let _fake = FakeScraperApi::start(&mock_server);
+    let listing_url = format!("{}/listing", mock_server.uri());
+
+    scraperapi_request_for(&listing_url)
         .respond_with(ResponseTemplate::new(500))
         .mount(&mock_server)
         .await;
 
-    let listing_url = format!("{}/listing", mock_server.uri());
     let result = check_b2b_page("b2brazil", &listing_url).await;
 
     assert!(result.is_none());
@@ -776,18 +853,16 @@ async fn check_b2b_page_returns_none_when_the_primary_fetch_fails() {
 async fn check_b2b_page_retries_a_server_error_exactly_once() {
     // A 500 from ScraperAPI is tried once more (FETCH_RETRIES = 1 in
     // b2b_scrapers/mod.rs) - 2 requests in total, never the old 3.
-    unsafe {
-        remove_var("SCRAPERAPI_KEY");
-    }
     let mock_server = MockServer::start().await;
-    Mock::given(method("GET"))
-        .and(path("/listing"))
+    let _fake = FakeScraperApi::start(&mock_server);
+    let listing_url = format!("{}/listing", mock_server.uri());
+
+    scraperapi_request_for(&listing_url)
         .respond_with(ResponseTemplate::new(500))
         .expect(2)
         .mount(&mock_server)
         .await;
 
-    let listing_url = format!("{}/listing", mock_server.uri());
     let _ = check_b2b_page("b2brazil", &listing_url).await;
 
     mock_server.verify().await;
@@ -798,21 +873,43 @@ async fn check_b2b_page_retries_a_server_error_exactly_once() {
 async fn check_b2b_page_never_retries_a_client_error() {
     // A 4xx (e.g. 403 "your plan does not include this country") will
     // not change on a retry, so it is requested exactly once.
-    unsafe {
-        remove_var("SCRAPERAPI_KEY");
-    }
     let mock_server = MockServer::start().await;
-    Mock::given(method("GET"))
-        .and(path("/listing"))
+    let _fake = FakeScraperApi::start(&mock_server);
+    let listing_url = format!("{}/listing", mock_server.uri());
+
+    scraperapi_request_for(&listing_url)
         .respond_with(ResponseTemplate::new(403))
         .expect(1)
         .mount(&mock_server)
         .await;
 
-    let listing_url = format!("{}/listing", mock_server.uri());
     let _ = check_b2b_page("b2brazil", &listing_url).await;
 
     mock_server.verify().await;
+}
+
+#[tokio::test]
+#[serial]
+async fn check_b2b_page_stops_without_a_scraperapi_key() {
+    // B2B_SCANS_WITHOUT_KEY is false: without the key nothing is fetched.
+    let mock_server = MockServer::start().await;
+    let fake = FakeScraperApi::start(&mock_server);
+    unsafe {
+        remove_var("SCRAPERAPI_KEY");
+    }
+    let listing_url = format!("{}/listing", mock_server.uri());
+
+    scraperapi_request_for(&listing_url)
+        .respond_with(
+            ResponseTemplate::new(200).set_body_string(b2brazil_listing_no_profile_link()),
+        )
+        .expect(0)
+        .mount(&mock_server)
+        .await;
+
+    assert!(check_b2b_page("b2brazil", &listing_url).await.is_none());
+    mock_server.verify().await;
+    drop(fake);
 }
 
 // --- TradeWheel scraper: matches_platform ---

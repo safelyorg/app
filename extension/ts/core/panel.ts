@@ -20,7 +20,6 @@ interface PendingTabRegistration {
   let pendingTabRegistrations: PendingTabRegistration[] = [];
   const tabIds: string[] = [];
   const tabTitles: Record<string, string> = {};
-
   // Base DOM Structure — the unsupported notice exists from the start
   // as its own permanent piece of the panel, separate from tabsArea
   // (where the 3 real tabs get built) - this way there's no possibility
@@ -31,6 +30,7 @@ interface PendingTabRegistration {
     '<div id="safely-panel">' +
     '<div class="safely-panel-header">' +
     '<span class="safely-panel-title" id="safely-panel-title">Safely</span>' +
+    '<span id="safely-usage-line" style="display:none; margin-left:10px; font-size:11px; color:#8a8a93; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;"></span>' +
     '<div class="safely-close-btn" id="safely-close-btn">\u00d7</div>' +
     "</div>" +
     '<div class="safely-tabs-area" id="safely-tabs-area"></div>' +
@@ -43,20 +43,12 @@ interface PendingTabRegistration {
     "</div>" +
     '<div class="safely-tab-content" id="safely-tab-signin-required" style="display:none; padding: 20px; text-align: center;">' +
     '<div style="font-size:13px; line-height:1.6; color:#8a8a93; margin-bottom:16px;">' +
-    "Sign in to Safely to analyze this listing. It only takes a moment, " +
-    "and your risk history stays saved to your account." +
+    "Sign in free to analyze this listing. You get 100 free scans every " +
+    "month \u2014 no credit card needed." +
     "</div>" +
     '<a href="' +
     (window as any).__safelyAPI.SITE_BASE +
-    '" target="_blank" class="safely-signin-required-btn">Sign in to Safely</a>' +
-    "</div>" +
-    '<div class="safely-tab-content" id="safely-tab-subscription-required" style="display:none; padding: 20px; text-align: center;">' +
-    '<div style="font-size:13px; line-height:1.6; color:#8a8a93; margin-bottom:16px;">' +
-    "Subscribe to Safely to analyze this listing." +
-    "</div>" +
-    '<a href="' +
-    (window as any).__safelyAPI.SITE_BASE +
-    '/dashboard/?manage_billing=1" target="_blank" class="safely-signin-required-btn">Subscribe to Safely</a>' +
+    '" target="_blank" class="safely-signin-required-btn">Sign in free</a>' +
     "</div>" +
     '<div class="safely-tab-content" id="safely-tab-analysis-failed" style="display:none; padding: 20px; text-align: center;">' +
     '<div class="safely-failed-icon">&#9888;</div>' +
@@ -68,11 +60,11 @@ interface PendingTabRegistration {
     "</div>" +
     '<div class="safely-tab-content" id="safely-tab-scan-limit-reached" style="display:none; padding: 20px; text-align: center;">' +
     '<div style="font-size:13px; line-height:1.6; color:#8a8a93; margin-bottom:16px;" id="safely-scan-limit-message">' +
-    "You've used all your scans for this billing period." +
+    "You've used all your scans for this month." +
     "</div>" +
     '<a href="' +
     (window as any).__safelyAPI.SITE_BASE +
-    '/dashboard/?manage_billing=1" target="_blank" class="safely-signin-required-btn">Upgrade your plan</a>' +
+    '/dashboard/?manage_billing=1" target="_blank" class="safely-signin-required-btn">See plans</a>' +
     "</div>" +
     "</div>" +
     '<div id="safely-toolbar"><img class="safely-toolbar-letter" src="' +
@@ -82,7 +74,6 @@ interface PendingTabRegistration {
     "</div></div>";
   document.body.appendChild(root);
   (window as any).__safelyRoot = root;
-
   const panel = document.getElementById("safely-panel") as HTMLElement;
   const toolbar = document.getElementById("safely-toolbar") as HTMLElement;
   const collapseBtn = document.getElementById("safely-collapse-btn") as HTMLElement;
@@ -101,9 +92,7 @@ interface PendingTabRegistration {
   const analysisFailedContent = document.getElementById(
     "safely-tab-analysis-failed",
   ) as HTMLElement;
-  const subscriptionRequiredContent = document.getElementById(
-    "safely-tab-subscription-required",
-  ) as HTMLElement;
+  const usageLine = document.getElementById("safely-usage-line") as HTMLElement | null;
   const scanLimitReachedContent = document.getElementById(
     "safely-tab-scan-limit-reached",
   ) as HTMLElement;
@@ -120,7 +109,6 @@ interface PendingTabRegistration {
       updateSupportState();
     });
   }
-
   // ── Reserve icon positions: the 3 real tabs PLUS one dedicated
   // "unsupported" icon, kept as separate slots so exactly one relevant
   // set is ever visible at a time. ──
@@ -165,20 +153,6 @@ interface PendingTabRegistration {
     e.stopPropagation();
     togglePanel("signin-required");
   });
-
-  const subscriptionRequiredIcon = document.createElement("div");
-  subscriptionRequiredIcon.className = "safely-toolbar-icon";
-  subscriptionRequiredIcon.dataset.open = "subscription-required";
-  subscriptionRequiredIcon.title = "Subscription required";
-  subscriptionRequiredIcon.style.display = "none";
-  subscriptionRequiredIcon.innerHTML =
-    '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="4" width="22" height="16" rx="2"></rect><line x1="1" y1="10" x2="23" y2="10"></line></svg>';
-  toolbarInner.insertBefore(subscriptionRequiredIcon, collapseBtn);
-  subscriptionRequiredIcon.addEventListener("click", (e) => {
-    e.stopPropagation();
-    togglePanel("subscription-required");
-  });
-
   const scanLimitReachedIcon = document.createElement("div");
   scanLimitReachedIcon.className = "safely-toolbar-icon";
   scanLimitReachedIcon.dataset.open = "scan-limit-reached";
@@ -210,7 +184,6 @@ interface PendingTabRegistration {
     const specialStates = [
       "unsupported",
       "signin-required",
-      "subscription-required",
       "analysis-failed",
       "scan-limit-reached",
     ];
@@ -222,8 +195,6 @@ interface PendingTabRegistration {
       });
       unsupportedContent.style.display = tab === "unsupported" ? "block" : "none";
       signinRequiredContent.style.display = tab === "signin-required" ? "block" : "none";
-      subscriptionRequiredContent.style.display =
-        tab === "subscription-required" ? "block" : "none";
       analysisFailedContent.style.display = tab === "analysis-failed" ? "block" : "none";
       scanLimitReachedContent.style.display = tab === "scan-limit-reached" ? "block" : "none";
     } else {
@@ -231,6 +202,7 @@ interface PendingTabRegistration {
       unsupportedContent.style.display = "none";
       signinRequiredContent.style.display = "none";
       analysisFailedContent.style.display = "none";
+      scanLimitReachedContent.style.display = "none";
       tabIds.forEach((id) => {
         const el = document.getElementById("safely-tab-" + id);
         if (el) el.style.display = id === tab ? "block" : "none";
@@ -238,7 +210,6 @@ interface PendingTabRegistration {
     }
     if (tabsArea) tabsArea.scrollTop = 0;
   }
-
   function togglePanel(tab: string): void {
     if (panelVisible && currentTab === tab) {
       panelVisible = false;
@@ -289,7 +260,6 @@ interface PendingTabRegistration {
     if (id === "risk") switchTab(id);
     if (typeof initFn === "function") initFn(root);
   }
-
   // Until we know for certain this is a real listing page, calls from
   // tabs/risk.js, tabs/intelligence.js, and tabs/protect.js are only
   // QUEUED, never actually built into the DOM. This guarantees the
@@ -339,39 +309,13 @@ interface PendingTabRegistration {
       chrome.storage.local.get("safely_session_token", async (result) => {
         if (!isStillCurrentPage()) return;
         if (result.safely_session_token) {
+          // Everyone signed in can scan: Free gets 100 scans a month,
+          // paid plans get more. The server checks the limit on each
+          // scan and replies with free_scan_limit_reached /
+          // scan_limit_reached when it's used up.
           signinRequiredIcon.style.display = "none";
           analysisFailedIcon.style.display = "none";
-          subscriptionRequiredIcon.style.display = "none";
-
-          const subscriptionResult = await (window as any).__safelyAPI.checkSubscriptionStatus();
-          if (!isStillCurrentPage()) return;
-
-          if (!subscriptionResult.ok) {
-            TAB_ORDER.forEach((id) => {
-              if (iconSlots[id]) iconSlots[id].style.display = "none";
-            });
-            signinRequiredIcon.style.display = "none";
-            subscriptionRequiredIcon.style.display = "none";
-            if (failedMessage) {
-              failedMessage.textContent =
-                "Safely couldn't connect right now. Please try again in a moment.";
-            }
-            if (retryBtn) retryBtn.style.display = "flex";
-            analysisFailedIcon.style.display = "flex";
-            switchTab("analysis-failed");
-            return;
-          }
-
-          const isSubscribed = isSubscriptionActive(subscriptionResult.status);
-
-          if (!isSubscribed) {
-            TAB_ORDER.forEach((id) => {
-              if (iconSlots[id]) iconSlots[id].style.display = "none";
-            });
-            subscriptionRequiredIcon.style.display = "flex";
-            switchTab("subscription-required");
-            return;
-          }
+          scanLimitReachedIcon.style.display = "none";
 
           buildQueuedTabsIfNeeded();
           TAB_ORDER.forEach((id) => {
@@ -390,7 +334,8 @@ interface PendingTabRegistration {
           });
           signinRequiredIcon.style.display = "flex";
           analysisFailedIcon.style.display = "none";
-          subscriptionRequiredIcon.style.display = "none";
+          scanLimitReachedIcon.style.display = "none";
+          if (usageLine) usageLine.style.display = "none";
           switchTab("signin-required");
         }
       });
@@ -400,7 +345,7 @@ interface PendingTabRegistration {
       });
       signinRequiredIcon.style.display = "none";
       analysisFailedIcon.style.display = "none";
-      subscriptionRequiredIcon.style.display = "none";
+      scanLimitReachedIcon.style.display = "none";
       unsupportedIcon.style.display = "flex";
 
       if (unsupportedMessageEl) {
@@ -413,7 +358,6 @@ interface PendingTabRegistration {
       switchTab("unsupported");
     }
   }
-
   // ── Toolbar Hover Events ──
   toolbar.addEventListener("mouseenter", () => {
     clearTimeout(collapseTimer);
@@ -476,7 +420,6 @@ interface PendingTabRegistration {
       }, 150);
     }
   });
-
   // ── Rate-limit countdown, shown on the analysis-failed tab. ──
   let rateLimitCountdownTimer: ReturnType<typeof setInterval> | null = null;
 
@@ -515,10 +458,21 @@ interface PendingTabRegistration {
       render();
     }, 1000);
   }
+  async function refreshUsageLine(): Promise<void> {
+    if (!usageLine) return;
+    const usage = await (window as any).__safelyAPI.getScanUsage();
+    const text = (globalThis as any).__safelyFormatUsageLine(usage);
+    usageLine.textContent = text;
+    usageLine.style.display = text ? "inline" : "none";
+  }
 
   window.addEventListener("safely-analysis-finished", (e: any) => {
     if (loadingOverlay) loadingOverlay.classList.remove("safely-visible");
     if (tabsArea) tabsArea.classList.remove("safely-loading-blur");
+
+    // Refresh the "63/100" scans-used line after every scan attempt.
+    // It never blocks anything.
+    refreshUsageLine();
 
     const reason = e.detail && e.detail.error;
     if (!reason) return; // success - tabs are already showing real data
@@ -532,25 +486,13 @@ interface PendingTabRegistration {
       return;
     }
 
-    if (
-      reason === "scan_limit_reached" ||
-      reason === "subscription_required" ||
-      reason === "trial_scan_limit_reached"
-    ) {
+    if (reason === "scan_limit_reached" || reason === "free_scan_limit_reached") {
       if (scanLimitMessage) {
-        if (reason === "trial_scan_limit_reached" && e.detail.scanLimit) {
-          scanLimitMessage.textContent =
-            "You've used all " +
-            e.detail.scanLimit +
-            " scans included in your free trial. Your subscription will begin billing and unlock your full plan limit once the trial period ends.";
-        } else if (reason === "scan_limit_reached" && e.detail.scanLimit) {
-          scanLimitMessage.textContent =
-            "You've used all " +
-            e.detail.scanLimit +
-            " scans included in your plan this billing period.";
-        } else {
-          scanLimitMessage.textContent = "An active subscription is required to analyze listings.";
-        }
+        scanLimitMessage.textContent = (globalThis as any).__safelyScanLimitMessage(
+          reason,
+          e.detail.scanLimit,
+          e.detail.resetsOn,
+        );
       }
       scanLimitReachedIcon.style.display = "flex";
       TAB_ORDER.forEach((id) => {
@@ -574,7 +516,6 @@ interface PendingTabRegistration {
     });
     switchTab("analysis-failed");
   });
-
   // If someone signs in on a separate tab while this panel is showing
   // "sign in required," this picks that up immediately.
   chrome.storage.onChanged.addListener((changes, area) => {

@@ -92,6 +92,18 @@ const NO_RENDER_PLATFORMS: &[&str] = &["thomasnet", "kompass", "exporthub"];
 /// To stop using it for a platform, remove it from this list.
 const ULTRA_PREMIUM_PLATFORMS: &[&str] = &["kompass", "exporthub", "alibaba"];
 
+/// Where ScraperAPI requests are sent: the real ScraperAPI, unless
+/// SCRAPERAPI_BASE_URL is set. Only the tests set it, to send requests
+/// to a local fake ScraperAPI instead of the internet. Leave it out of
+/// .env.
+fn scraperapi_base_url() -> String {
+    var("SCRAPERAPI_BASE_URL")
+        .ok()
+        .map(|url| url.trim().trim_end_matches('/').to_string())
+        .filter(|url| !url.is_empty())
+        .unwrap_or_else(|| "https://api.scraperapi.com".to_string())
+}
+
 pub fn wrap_scraper_url(target_url: &str) -> String {
     wrap_scraper_url_for_platform(target_url, "")
 }
@@ -118,8 +130,10 @@ pub fn wrap_scraper_url_for_platform(target_url: &str, platform: &str) -> String
         let needs_ultra_premium = ULTRA_PREMIUM_PLATFORMS.contains(&platform);
 
         let mut url = format!(
-            "https://api.scraperapi.com/?api_key={}&url={}&premium=true",
-            api_key, encoded_url
+            "{}/?api_key={}&url={}&premium=true",
+            scraperapi_base_url(),
+            api_key,
+            encoded_url
         );
         if needs_ultra_premium {
             url.push_str("&ultra_premium=true");
@@ -159,6 +173,10 @@ mod tests {
         );
 
         let ali = wrap_scraper_url_for_platform("https://www.alibaba.com/x", "alibaba");
+        assert!(
+            ali.starts_with("https://api.scraperapi.com/?api_key=k&url="),
+            "requests go to the real ScraperAPI unless a test points them elsewhere"
+        );
         assert!(ali.contains("render=true"), "Alibaba still renders");
         assert!(
             ali.contains("ultra_premium=true"),

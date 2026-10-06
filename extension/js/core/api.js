@@ -89,19 +89,17 @@ function formatPlatformName(platform) {
                     if (response.status === 402) {
                         try {
                             const parsed = JSON.parse(rawText);
-                            if (parsed.error === "scan_limit_reached") {
-                                return { error: "scan_limit_reached", scanLimit: parsed.limit || null };
-                            }
-                            if (parsed.error === "trial_scan_limit_reached") {
+                            if (parsed.error === "free_scan_limit_reached") {
                                 return {
-                                    error: "trial_scan_limit_reached",
+                                    error: "free_scan_limit_reached",
                                     scanLimit: parsed.limit || null,
+                                    resetsOn: parsed.resets_on || null,
                                 };
                             }
-                            return { error: "subscription_required" };
+                            return { error: "scan_limit_reached", scanLimit: parsed.limit || null };
                         }
                         catch (e) {
-                            return { error: "subscription_required" };
+                            return { error: "scan_limit_reached", scanLimit: null };
                         }
                     }
                     return null;
@@ -113,22 +111,23 @@ function formatPlatformName(platform) {
                 return null;
             }
         },
-        checkSubscriptionStatus: async function () {
+        // The person's plan and scans used this month, for the small
+        // "63/100" line. Never blocks a scan - the server decides that.
+        // Returns null if it can't be read.
+        getScanUsage: async function () {
             try {
                 const authHeaders = await getAuthHeaders();
                 const response = await fetch(API_BASE + "/billing/subscription-status", {
                     headers: authHeaders,
                 });
-                if (!response.ok) {
-                    console.error("Safely: subscription status check failed - status", response.status);
-                    return { ok: false };
-                }
+                if (!response.ok)
+                    return null;
                 const data = await response.json();
-                return { ok: true, status: data.status || null };
+                return data.usage || null;
             }
             catch (error) {
-                console.error("Safely: could not reach Safely server to check subscription", error);
-                return { ok: false };
+                console.error("Safely: could not read scan usage", error);
+                return null;
             }
         },
         submitOutcome: async function (analysisId, action) {
@@ -268,6 +267,7 @@ function formatPlatformName(platform) {
                         error: data && data.error ? data.error : "generic",
                         retryAfterSeconds: data && data.retryAfterSeconds,
                         scanLimit: data && data.scanLimit,
+                        resetsOn: data && data.resetsOn,
                     },
                 }));
                 return;

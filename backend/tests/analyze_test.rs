@@ -2081,157 +2081,161 @@ async fn build_all_signals_with_domain_check() {
     assert_eq!(all_signals[0].label, "Domain check");
 }
 
-// Build Network Memory Signal
-#[tokio::test]
-async fn build_network_memory_signal_uses_singular_phrasing_for_exactly_one_prior_check() {
-    let pool = admin_pool().await;
-    let platform_id = "network_memory_singular_001";
-    let (analysis_id, seller_id) = setup_real_seller_and_analysis(&pool, platform_id).await;
+// Build Network Memory Signal Tests
 
-    insert_raw_evidence_row(&pool, analysis_id, seller_id, "50").await;
+/// A seller ID nobody has used before, so a test never collides with a
+/// seller left behind by an earlier run (e.g. one that crashed).
+fn unique_platform_id(prefix: &str) -> String {
+    format!("{}_{}", prefix, Uuid::new_v4().simple())
+}
 
-    let result = build_network_memory_signal(&pool, seller_id).await;
+/// Same as setup_real_seller_and_analysis, but first removes anything a
+/// previous, crashed run of the same test left behind (old reports and
+/// evidence rows would otherwise stop the old seller from being deleted).
+async fn fresh_seller_and_analysis(
+    pool: &sqlx::Pool<sqlx::Postgres>,
+    platform_id: &str,
+) -> (Uuid, Uuid) {
+    let _ = query(
+        "DELETE FROM fraud_reports WHERE seller_id IN
+            (SELECT id FROM sellers WHERE platform = 'olx' AND platform_id = $1)",
+    )
+    .bind(platform_id)
+    .execute(pool)
+    .await;
+    cleanup_seller_and_analysis(pool, platform_id).await;
+    setup_real_seller_and_analysis(pool, platform_id).await
+}
 
-    assert!(result.is_some());
-    let signal = result.unwrap();
-    assert_eq!(signal.value, "Checked once before");
-    assert!(signal.sub.contains("once before"));
+/// Files one scam report against this seller, the way a Safely user would.
+async fn insert_scam_report(pool: &sqlx::Pool<sqlx::Postgres>, seller_id: Uuid, platform_id: &str) {
+    query(
+        "INSERT INTO fraud_reports (seller_id, platform, platform_id, report_type, description)
+         VALUES ($1, 'olx', $2, 'scam'::report_types, 'Test scam report')",
+    )
+    .bind(seller_id)
+    .bind(platform_id)
+    .execute(pool)
+    .await
+    .expect("expected to create a real fraud report");
+}
 
-    cleanup_seller_and_analysis(&pool, platform_id).await;
+async fn cleanup_seller_reports_and_analysis(
+    pool: &sqlx::Pool<sqlx::Postgres>,
+    seller_id: Uuid,
+    platform_id: &str,
+) {
+    let _ = query("DELETE FROM fraud_reports WHERE seller_id = $1")
+        .bind(seller_id)
+        .execute(pool)
+        .await;
+    cleanup_seller_and_analysis(pool, platform_id).await;
 }
 
 #[tokio::test]
-async fn build_network_memory_signal_uses_plural_phrasing_for_multiple_prior_checks() {
+async fn build_network_memory_signal_shows_no_scam_reports_as_neutral() {
     let pool = admin_pool().await;
-    let platform_id = "network_memory_plural_001";
-    let (analysis_id, seller_id) = setup_real_seller_and_analysis(&pool, platform_id).await;
+    let platform_id = &unique_platform_id("network_memory_no_reports");
+    let (_analysis_id, seller_id) = fresh_seller_and_analysis(&pool, platform_id).await;
 
-    insert_raw_evidence_row(&pool, analysis_id, seller_id, "20").await;
-    insert_raw_evidence_row(&pool, analysis_id, seller_id, "40").await;
-    insert_raw_evidence_row(&pool, analysis_id, seller_id, "60").await;
+    let signal = build_network_memory_signal(&pool, seller_id)
+        .await
+        .expect("expected the Safely history line on every scan");
 
-    let result = build_network_memory_signal(&pool, seller_id).await;
-
-    assert!(result.is_some());
-    let signal = result.unwrap();
-    assert_eq!(signal.value, "Checked 3 times before");
-    assert!(signal.sub.contains("3 times before"));
-
-    cleanup_seller_and_analysis(&pool, platform_id).await;
-}
-
-#[tokio::test]
-async fn build_network_memory_signal_calculates_the_real_correct_average() {
-    let pool = admin_pool().await;
-    let platform_id = "network_memory_average_001";
-    let (analysis_id, seller_id) = setup_real_seller_and_analysis(&pool, platform_id).await;
-
-    insert_raw_evidence_row(&pool, analysis_id, seller_id, "10").await;
-    insert_raw_evidence_row(&pool, analysis_id, seller_id, "20").await;
-    insert_raw_evidence_row(&pool, analysis_id, seller_id, "30").await;
-
-    let result = build_network_memory_signal(&pool, seller_id).await;
-
-    assert!(result.is_some());
-    assert!(
-        result
-            .unwrap()
-            .sub
-            .contains("average risk score was 20 out of 100")
+    assert_eq!(signal.label, "Safely history");
+    assert_eq!(signal.value, "No scam reports");
+    assert_eq!(
+        signal.signal_type, "info",
+        "no reports must never count for or against the seller"
+    );
+    assert_eq!(
+        signal.sub,
+        "No Safely user has reported this seller as a scam."
     );
 
-    cleanup_seller_and_analysis(&pool, platform_id).await;
+    cleanup_seller_reports_and_analysis(&pool, seller_id, platform_id).await;
 }
 
 #[tokio::test]
-async fn build_network_memory_signal_marks_high_average_as_bad() {
+async fn build_network_memory_signal_uses_singular_phrasing_for_one_scam_report() {
     let pool = admin_pool().await;
-    let platform_id = "network_memory_bad_001";
-    let (analysis_id, seller_id) = setup_real_seller_and_analysis(&pool, platform_id).await;
+    let platform_id = &unique_platform_id("network_memory_one_report");
+    let (_analysis_id, seller_id) = fresh_seller_and_analysis(&pool, platform_id).await;
 
-    insert_raw_evidence_row(&pool, analysis_id, seller_id, "67").await;
+    insert_scam_report(&pool, seller_id, platform_id).await;
 
-    let result = build_network_memory_signal(&pool, seller_id).await;
-    assert_eq!(result.unwrap().signal_type, "bad");
+    let signal = build_network_memory_signal(&pool, seller_id).await.unwrap();
+    assert_eq!(signal.value, "Reported once");
+    assert_eq!(
+        signal.sub,
+        "1 Safely user has reported this seller as a scam."
+    );
+    assert_eq!(signal.signal_type, "bad");
 
-    cleanup_seller_and_analysis(&pool, platform_id).await;
+    cleanup_seller_reports_and_analysis(&pool, seller_id, platform_id).await;
 }
 
 #[tokio::test]
-async fn build_network_memory_signal_marks_exactly_66_as_caution_not_bad() {
+async fn build_network_memory_signal_uses_plural_phrasing_for_several_scam_reports() {
     let pool = admin_pool().await;
-    let platform_id = "network_memory_66_001";
-    let (analysis_id, seller_id) = setup_real_seller_and_analysis(&pool, platform_id).await;
+    let platform_id = &unique_platform_id("network_memory_three_reports");
+    let (_analysis_id, seller_id) = fresh_seller_and_analysis(&pool, platform_id).await;
 
-    insert_raw_evidence_row(&pool, analysis_id, seller_id, "66").await;
+    for _ in 0..3 {
+        insert_scam_report(&pool, seller_id, platform_id).await;
+    }
 
-    let result = build_network_memory_signal(&pool, seller_id).await;
-    assert_eq!(result.unwrap().signal_type, "caution");
+    let signal = build_network_memory_signal(&pool, seller_id).await.unwrap();
+    assert_eq!(signal.value, "Reported 3 times");
+    assert_eq!(
+        signal.sub,
+        "3 Safely users have reported this seller as a scam."
+    );
+    assert_eq!(signal.signal_type, "bad");
 
-    cleanup_seller_and_analysis(&pool, platform_id).await;
+    cleanup_seller_reports_and_analysis(&pool, seller_id, platform_id).await;
 }
 
 #[tokio::test]
-async fn build_network_memory_signal_marks_exactly_34_as_caution() {
+async fn build_network_memory_signal_ignores_past_scan_scores() {
+    // Being scanned before - even with high scores - is not evidence
+    // against a seller. Only scam reports change this line.
     let pool = admin_pool().await;
-    let platform_id = "network_memory_34_001";
-    let (analysis_id, seller_id) = setup_real_seller_and_analysis(&pool, platform_id).await;
+    let platform_id = &unique_platform_id("network_memory_past_scores");
+    let (analysis_id, seller_id) = fresh_seller_and_analysis(&pool, platform_id).await;
 
-    insert_raw_evidence_row(&pool, analysis_id, seller_id, "34").await;
+    insert_raw_evidence_row(&pool, analysis_id, seller_id, "90").await;
+    insert_raw_evidence_row(&pool, analysis_id, seller_id, "85").await;
+    insert_raw_evidence_row(&pool, analysis_id, seller_id, "not_a_real_number").await;
 
-    let result = build_network_memory_signal(&pool, seller_id).await;
-    assert_eq!(result.unwrap().signal_type, "caution");
+    let signal = build_network_memory_signal(&pool, seller_id).await.unwrap();
+    assert_eq!(signal.value, "No scam reports");
+    assert_eq!(signal.signal_type, "info");
 
-    cleanup_seller_and_analysis(&pool, platform_id).await;
-}
-
-#[tokio::test]
-async fn build_network_memory_signal_marks_33_as_good_not_caution() {
-    let pool = admin_pool().await;
-    let platform_id = "network_memory_33_001";
-    let (analysis_id, seller_id) = setup_real_seller_and_analysis(&pool, platform_id).await;
-
-    insert_raw_evidence_row(&pool, analysis_id, seller_id, "33").await;
-
-    let result = build_network_memory_signal(&pool, seller_id).await;
-    assert_eq!(result.unwrap().signal_type, "good");
-
-    cleanup_seller_and_analysis(&pool, platform_id).await;
+    cleanup_seller_reports_and_analysis(&pool, seller_id, platform_id).await;
 }
 
 #[tokio::test]
 async fn build_network_memory_signal_correctly_scopes_to_only_this_specific_seller() {
     let pool = admin_pool().await;
-    let platform_id_a = "network_memory_scope_a_001";
-    let platform_id_b = "network_memory_scope_b_001";
-    let (analysis_a, seller_a) = setup_real_seller_and_analysis(&pool, platform_id_a).await;
-    let (analysis_b, seller_b) = setup_real_seller_and_analysis(&pool, platform_id_b).await;
+    let platform_id_a = &unique_platform_id("network_memory_scope_a");
+    let platform_id_b = &unique_platform_id("network_memory_scope_b");
+    let (_analysis_a, seller_a) = fresh_seller_and_analysis(&pool, platform_id_a).await;
+    let (_analysis_b, seller_b) = fresh_seller_and_analysis(&pool, platform_id_b).await;
 
-    insert_raw_evidence_row(&pool, analysis_a, seller_a, "10").await;
-    insert_raw_evidence_row(&pool, analysis_b, seller_b, "99").await;
+    insert_scam_report(&pool, seller_b, platform_id_b).await;
+    insert_scam_report(&pool, seller_b, platform_id_b).await;
 
-    let result = build_network_memory_signal(&pool, seller_a).await;
-    assert_eq!(result.unwrap().value, "Checked once before");
+    let signal_a = build_network_memory_signal(&pool, seller_a).await.unwrap();
+    let signal_b = build_network_memory_signal(&pool, seller_b).await.unwrap();
+    assert_eq!(
+        signal_a.value, "No scam reports",
+        "expected seller A to be unaffected by seller B's reports"
+    );
+    assert_eq!(signal_b.value, "Reported 2 times");
 
-    cleanup_seller_and_analysis(&pool, platform_id_a).await;
-    cleanup_seller_and_analysis(&pool, platform_id_b).await;
-}
-
-#[tokio::test]
-async fn build_network_memory_signal_ignores_a_genuinely_malformed_value_without_crashing() {
-    let pool = admin_pool().await;
-    let platform_id = "network_memory_malformed_001";
-    let (analysis_id, seller_id) = setup_real_seller_and_analysis(&pool, platform_id).await;
-
-    insert_raw_evidence_row(&pool, analysis_id, seller_id, "not_a_real_number").await;
-    insert_raw_evidence_row(&pool, analysis_id, seller_id, "50").await;
-
-    let result = build_network_memory_signal(&pool, seller_id).await;
-
-    assert!(result.is_some());
-    assert_eq!(result.unwrap().value, "Checked once before");
-
-    cleanup_seller_and_analysis(&pool, platform_id).await;
+    cleanup_seller_reports_and_analysis(&pool, seller_a, platform_id_a).await;
+    cleanup_seller_reports_and_analysis(&pool, seller_b, platform_id_b).await;
 }
 
 // Build Domain Signal Test
@@ -4713,49 +4717,46 @@ async fn response_json(err: AnalyzeError) -> (StatusCode, Value) {
 
 #[tokio::test]
 async fn scan_limit_reached_returns_payment_required_with_the_real_limit() {
-    let (status, body) = response_json(AnalyzeError::ScanLimitReached(50)).await;
+    let (status, body) = response_json(AnalyzeError::ScanLimitReached(750)).await;
 
     assert_eq!(status, StatusCode::PAYMENT_REQUIRED);
     assert_eq!(body["error"], "scan_limit_reached");
-    assert_eq!(body["limit"], 50);
-    assert!(
-        body["message"].as_str().unwrap().contains("50"),
-        "expected the real limit to appear in the human-readable message too, got: {}",
-        body["message"]
-    );
-}
-
-#[tokio::test]
-async fn trial_scan_limit_reached_returns_payment_required_with_the_real_limit_and_mentions_trial()
-{
-    let (status, body) = response_json(AnalyzeError::TrialScanLimitReached(20)).await;
-
-    assert_eq!(status, StatusCode::PAYMENT_REQUIRED);
-    assert_eq!(body["error"], "trial_scan_limit_reached");
-    assert_eq!(body["limit"], 20);
+    assert_eq!(body["limit"], 750);
     let message = body["message"].as_str().unwrap();
-    assert!(message.contains("20"));
     assert!(
-        message.to_lowercase().contains("trial"),
-        "expected the trial-specific message to actually mention the trial, got: {}",
+        message.contains("750") && message.contains("this month"),
+        "expected the real limit and 'this month' in the message, got: {}",
         message
     );
 }
 
 #[tokio::test]
-async fn subscription_required_returns_payment_required() {
-    let (status, body) = response_json(AnalyzeError::SubscriptionRequired).await;
+async fn free_scan_limit_reached_returns_payment_required_with_the_reset_date() {
+    let resets_on = NaiveDate::from_ymd_opt(2026, 11, 14).unwrap();
+    let (status, body) = response_json(AnalyzeError::FreeScanLimitReached {
+        limit: 100,
+        resets_on,
+    })
+    .await;
 
     assert_eq!(status, StatusCode::PAYMENT_REQUIRED);
-    assert_eq!(body["error"], "subscription_required");
+    assert_eq!(body["error"], "free_scan_limit_reached");
+    assert_eq!(body["limit"], 100);
+    assert_eq!(body["resets_on"], "2026-11-14");
+    let message = body["message"].as_str().unwrap();
+    assert!(message.contains("100 free scans"), "got: {}", message);
+    assert!(
+        message.contains("November 14, 2026"),
+        "expected the user's own reset date in the message, got: {}",
+        message
+    );
 }
 
 #[tokio::test]
-async fn unauthorized_still_returns_401_after_the_new_variants_were_added() {
-    // Regression guard - confirms the new ScanLimitReached/
-    // TrialScanLimitReached arms being pulled out ahead of the
-    // catch-all `other` match didn't accidentally change any
-    // pre-existing error's real status code.
+async fn unauthorized_still_returns_401_next_to_the_scan_limit_errors() {
+    // Regression guard - the scan-limit arms are matched ahead of the
+    // catch-all `other` arm; this confirms that didn't change any
+    // other error's real status code.
     let (status, body) = response_json(AnalyzeError::Unauthorized).await;
 
     assert_eq!(status, StatusCode::UNAUTHORIZED);
@@ -4773,24 +4774,77 @@ async fn database_error_passes_the_real_message_straight_through() {
 }
 
 #[tokio::test]
-async fn scan_limit_reached_and_trial_scan_limit_reached_use_genuinely_different_error_codes() {
-    let (_, scan_body) = response_json(AnalyzeError::ScanLimitReached(10)).await;
-    let (_, trial_body) = response_json(AnalyzeError::TrialScanLimitReached(10)).await;
+async fn scan_limit_reached_and_free_scan_limit_reached_use_different_error_codes() {
+    let (_, paid_body) = response_json(AnalyzeError::ScanLimitReached(750)).await;
+    let (_, free_body) = response_json(AnalyzeError::FreeScanLimitReached {
+        limit: 100,
+        resets_on: NaiveDate::from_ymd_opt(2026, 11, 14).unwrap(),
+    })
+    .await;
 
-    assert_ne!(scan_body["error"], trial_body["error"]);
+    assert_ne!(paid_body["error"], free_body["error"]);
 }
 
 #[tokio::test]
-async fn build_network_memory_signal_shows_a_neutral_first_check_when_there_is_no_history() {
-    let pool = admin_pool().await;
-    let platform_id = "network_memory_first_check_001";
-    let (_analysis_id, seller_id) = setup_real_seller_and_analysis(&pool, platform_id).await;
+async fn authorize_request_lets_a_free_user_scan_without_any_subscription() {
+    let pool = test_pool().await;
+    let email = "authorize_free_user@example.com";
+    cleanup_test_user(&pool, email).await;
 
-    let result = build_network_memory_signal(&pool, seller_id).await;
+    let (user, _) = find_or_create_user_by_email(&pool, email)
+        .await
+        .expect("expected to create the user");
+    let token = create_session(&pool, user.id)
+        .await
+        .expect("expected to create a real session");
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        "authorization",
+        HeaderValue::from_str(&format!("Bearer {}", token))
+            .expect("expected to insert the header value"),
+    );
 
-    let signal = result.expect("a first check should still show the Safely history line");
-    assert_eq!(signal.value, "New to Safely");
-    assert_eq!(signal.signal_type, "info");
+    let result = authorize_request(&headers, &pool)
+        .await
+        .expect("expected a signed-in Free user to be allowed to scan");
+    assert_eq!(result, user.id);
 
-    cleanup_seller_and_analysis(&pool, platform_id).await;
+    cleanup_test_user(&pool, email).await;
+}
+
+#[tokio::test]
+async fn authorize_request_refuses_a_free_user_after_100_scans_this_month() {
+    let pool = test_pool().await;
+    let email = "authorize_free_user_used_up@example.com";
+    cleanup_test_user(&pool, email).await;
+
+    let (user, _) = find_or_create_user_by_email(&pool, email)
+        .await
+        .expect("expected to create the user");
+    let token = create_session(&pool, user.id)
+        .await
+        .expect("expected to create a real session");
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        "authorization",
+        HeaderValue::from_str(&format!("Bearer {}", token))
+            .expect("expected to insert the header value"),
+    );
+
+    // All 100 used in the current Free month (it starts on the sign-up date).
+    query(
+        "INSERT INTO free_scan_usage (user_id, period_start, scans_used)
+         SELECT id, created_at, 100 FROM users WHERE id = $1",
+    )
+    .bind(user.id)
+    .execute(&pool)
+    .await
+    .expect("expected to use up the free scans");
+
+    match authorize_request(&headers, &pool).await {
+        Err(AnalyzeError::FreeScanLimitReached { limit, .. }) => assert_eq!(limit, 100),
+        other => panic!("expected FreeScanLimitReached, got: {:?}", other),
+    }
+
+    cleanup_test_user(&pool, email).await;
 }

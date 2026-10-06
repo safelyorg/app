@@ -544,10 +544,17 @@
                             >
                                 <div>
                                     <div class="flex items-center gap-2">
-                                        <span id="current-plan-name" class="text-[14px] font-bold" data-i18n="dash.settings.no_active_plan">No active plan</span>
+                                        <span id="current-plan-name" class="text-[14px] font-bold" data-i18n="dash.settings.free_plan">Free plan</span>
                                         <span id="current-plan-badge" class="hidden px-2 py-0.5 rounded-full bg-brand/10 text-brand text-[10px] font-bold uppercase tracking-wide" data-i18n="dash.settings.active_badge">Active</span>
                                     </div>
-                                    <div id="current-plan-price" class="text-[12px] text-muted mt-1" data-i18n="dash.settings.choose_plan">Choose a plan below to get started</div>
+                                    <div id="current-plan-price" class="text-[12px] text-muted mt-1" data-i18n="dash.settings.free_desc">100 free scans every month</div>
+                                    <!-- Scans used this month / billing period, filled by init.ts -->
+                                    <div id="current-plan-usage" class="hidden mt-2.5 w-56 max-w-full">
+                                        <div class="h-1.5 rounded-full bg-surface3 overflow-hidden">
+                                            <div id="current-plan-usage-bar" class="h-full rounded-full bg-brand transition-all duration-300" style="width: 0%"></div>
+                                        </div>
+                                        <div id="current-plan-usage-text" class="text-[11px] text-muted mt-1.5"></div>
+                                    </div>
                                 </div>
                                 <svg id="plan-billing-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" class="text-muted flex-shrink-0 transition-transform duration-200">
                                     <path d="M6 9l6 6 6-6" />
@@ -555,24 +562,37 @@
                             </button>
                             <div id="plan-billing-expanded" class="overflow-hidden transition-all duration-300 ease-in-out" style="max-height: 0;">
                                 <div class="border-t border-line p-3">
-                                    <button type="button" class="plan-option w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg text-left hover:bg-white/5 transition" data-plan="Team" data-price="$200/month">
+                                    <div class="flex items-center justify-between gap-2 px-3 pb-2">
+                                        <div class="text-[10px] font-extrabold uppercase tracking-wider text-muted" data-i18n="dash.settings.upgrade_label">Upgrade for more scans</div>
+                                        <!-- Monthly / Yearly switch (init.ts) -->
+                                        <div class="flex gap-0.5 bg-surface2 border border-line rounded-lg p-0.5 flex-shrink-0">
+                                            <button type="button" class="billing-interval-btn px-2.5 py-1 rounded-md text-[11px] font-bold text-muted transition" data-interval="month" data-i18n="dash.plan.monthly">Monthly</button>
+                                            <button type="button" class="billing-interval-btn px-2.5 py-1 rounded-md text-[11px] font-bold text-muted transition" data-interval="year">
+                                                <span data-i18n="dash.plan.yearly">Yearly</span>
+                                                <span class="text-mint" data-i18n="dash.plan.save_40">-40%</span>
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <button type="button" class="plan-option w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg text-left hover:bg-white/5 transition" data-plan="Team">
                                         <span>
                                             <span class="block text-[13px] font-semibold" data-i18n="dash.plan.team">Team</span>
-                                            <span class="block text-[11px] text-muted">$200/month</span>
+                                            <span class="plan-desc block text-[11px] text-muted" data-i18n="dash.plan.team_desc" data-i18n-month="dash.plan.team_desc" data-i18n-year="dash.plan.team_desc_yearly" data-text-month="750 scans/month · $200/month" data-text-year="750 scans/month · $1,440/year ($120/mo)">750 scans/month · $200/month</span>
                                         </span>
                                         <svg class="plan-check hidden w-4 h-4 text-brand flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
                                             <path d="M20 6L9 17l-5-5" />
                                         </svg>
                                     </button>
-                                    <button type="button" class="plan-option w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg text-left hover:bg-white/5 transition" data-plan="Enterprise" data-price="$500/month">
+                                    <button type="button" class="plan-option w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg text-left hover:bg-white/5 transition" data-plan="Enterprise">
                                         <span>
                                             <span class="block text-[13px] font-semibold" data-i18n="dash.plan.enterprise">Enterprise</span>
-                                            <span class="block text-[11px] text-muted">$500/month</span>
+                                            <span class="plan-desc block text-[11px] text-muted" data-i18n="dash.plan.enterprise_desc" data-i18n-month="dash.plan.enterprise_desc" data-i18n-year="dash.plan.enterprise_desc_yearly" data-text-month="Unlimited scans · $500/month" data-text-year="Unlimited scans · $3,600/year ($300/mo)">Unlimited scans · $500/month</span>
                                         </span>
                                         <svg class="plan-check hidden w-4 h-4 text-brand flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
                                             <path d="M20 6L9 17l-5-5" />
                                         </svg>
                                     </button>
+                                    <!-- Shown when moving between monthly and yearly (init.ts) -->
+                                    <p id="plan-interval-note" class="hidden px-3 pt-1.5 text-[11px] text-muted leading-relaxed"></p>
                                     <div class="border-t border-line mt-1.5 pt-1.5">
                                         <button
                                             type="button"
@@ -584,7 +604,8 @@
                                             Continue
                                         </button>
                                     </div>
-                                    <div class="mt-3 pt-3 border-t border-line">
+                                    <!-- Only shown while on a paid plan (init.ts) -->
+                                    <div id="cancel-subscription-area" class="hidden mt-3 pt-3 border-t border-line">
                                         <button type="button" id="cancel-subscription-btn" class="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-coral text-[11px] font-semibold hover:bg-coral/10 transition">
                                             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
                                                 <circle cx="12" cy="12" r="9" />
@@ -595,7 +616,7 @@
                                         <div id="cancel-sub-confirm" class="overflow-hidden transition-all duration-300 ease-in-out" style="max-height: 0;">
                                             <div class="mt-2 p-3.5 bg-coral/5 border border-coral/25 rounded-xl">
                                                 <p class="text-[12px] text-muted mb-3 leading-relaxed" data-i18n="dash.settings.cancel_confirm_text">
-                                                    Are you sure? You'll lose access to your plan's features at the end of the current billing period.
+                                                    Are you sure? Your paid plan ends and you move to the Free plan (100 scans a month).
                                                 </p>
                                                 <div class="flex items-center justify-center gap-2">
                                                     <button type="button" id="cancel-sub-confirm-yes" class="px-3.5 py-2 rounded-lg bg-coral text-white text-[12px] font-bold hover:bg-coral/90 transition" data-i18n="dash.settings.yes_cancel">

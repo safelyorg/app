@@ -216,7 +216,7 @@ fn or_not_provided<'a>(value: &'a str) -> &'a str {
 /// cost). The Image authenticity card reads this too: while it is off,
 /// the card shows "Not checked" instead of a caution. Set to true to
 /// turn image checking back on - nothing else needs changing.
-pub const IMAGE_ANALYSIS_ENABLED: bool = false;
+pub const IMAGE_ANALYSIS_ENABLED: bool = true;
 
 /// The ONE, shared place that builds the real content blocks sent to
 /// Claude - genuinely unified for both B2C and B2B, so a future

@@ -43,6 +43,10 @@ pub struct ParsedSubscription {
 pub struct ParsedProduct {
     pub id: String,
     pub name: String,
+    /// Creem's billing period, e.g. "every-month" or "every-year". Only
+    /// used when the product ID isn't one of ours in .env.
+    #[serde(default)]
+    pub billing_period: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]

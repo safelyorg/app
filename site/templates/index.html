@@ -23,18 +23,18 @@
                 }
             </style></noscript
         >
-        <link rel="stylesheet" href="css/base.css?v=20261003g" />
-        <link rel="stylesheet" href="css/nav.css?v=20261003g" />
-        <link rel="stylesheet" href="css/hero.css?v=20261003g" />
-        <link rel="stylesheet" href="css/how_it_works.css?v=20261003g" />
-        <link rel="stylesheet" href="css/features.css?v=20261003g" />
-        <link rel="stylesheet" href="css/pricing.css?v=20261003g" />
-        <link rel="stylesheet" href="css/faq.css?v=20261003g" />
-        <link rel="stylesheet" href="css/cta_footer.css?v=20261003g" />
-        <link rel="stylesheet" href="css/signin.css?v=20261003g" />
-        <link rel="stylesheet" href="css/modals.css?v=20261003g" />
-        <link rel="stylesheet" href="css/responsive.css?v=20261003g" />
-        <link rel="stylesheet" href="css/marquee.css?v=20261003g">
+        <link rel="stylesheet" href="css/base.css?v=20261006a" />
+        <link rel="stylesheet" href="css/nav.css?v=20261006a" />
+        <link rel="stylesheet" href="css/hero.css?v=20261006a" />
+        <link rel="stylesheet" href="css/how_it_works.css?v=20261006a" />
+        <link rel="stylesheet" href="css/features.css?v=20261006a" />
+        <link rel="stylesheet" href="css/pricing.css?v=20261006a" />
+        <link rel="stylesheet" href="css/faq.css?v=20261006a" />
+        <link rel="stylesheet" href="css/cta_footer.css?v=20261006a" />
+        <link rel="stylesheet" href="css/signin.css?v=20261006a" />
+        <link rel="stylesheet" href="css/modals.css?v=20261006a" />
+        <link rel="stylesheet" href="css/responsive.css?v=20261006a" />
+        <link rel="stylesheet" href="css/marquee.css?v=20261006a">
     </head>
     <body>
         <!-- pure-CSS state toggles (no JS needed to open/close menu or sign-in) -->
@@ -983,8 +983,8 @@
                 <span class="badge p" data-i18n="pricing.badge">Pricing</span>
                 <h2 class="gasoek" data-i18n="pricing.title">Pick your shield</h2>
                 <p data-i18n="pricing.sub">
-                    No free tier. Every plan starts with a free trial — no
-                    credit card required.
+                    Start free with 100 scans every month. Upgrade when you
+                    need more — no credit card to start.
                 </p>
             </div>
 
@@ -993,12 +993,43 @@
                 <div class="ptoggle">
                     <div class="ptoggle-thumb"></div>
                     <button class="ptoggle-btn active" data-bill="mo" data-i18n="pricing.monthly">Monthly</button>
-                    <button class="ptoggle-btn" data-bill="yr"><span data-i18n="pricing.yearly">Yearly</span> <span class="psave-badge" data-i18n="pricing.save">Save ~20%</span></button>
+                    <button class="ptoggle-btn" data-bill="yr"><span data-i18n="pricing.yearly">Yearly</span> <span class="psave-badge" data-i18n="pricing.save">Save 40%</span></button>
                 </div>
             </div>
 
             <!-- Cards -->
             <div class="price-grid reveal d2">
+                <!-- FREE -->
+                <div class="pcard">
+                    <div class="ptop">
+                        <div class="pplan">
+                            <span class="pic"><svg viewBox="0 0 24 24" fill="none"><path d="M20 12v9H4v-9M2 7h20v5H2zM12 21V7M12 7H7.5a2.5 2.5 0 010-5C11 2 12 7 12 7zM12 7h4.5a2.5 2.5 0 000-5C13 2 12 7 12 7z" stroke="#191c22" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" /></svg></span>
+                            <div>
+                                <div class="pname" data-i18n="pricing.free.name">Free</div>
+                                <div class="pfor" data-i18n="pricing.free.for">For trying Safely on your next supplier, no card needed</div>
+                            </div>
+                        </div>
+                        <div class="pprice">
+                            <span class="amt" data-mo="$0" data-yr="$0">$0</span>
+                            <span class="per" data-mo="/month" data-yr="/month">/month</span>
+                        </div>
+                        <div class="p-billed" data-mo="" data-yr=""></div>
+                        <div class="pmeter">
+                            <div class="pm-row"><span data-i18n="pricing.meter_label">Supplier scans</span><b data-i18n="pricing.free.meter">100 / month</b></div>
+                            <div class="pm-bar"><i style="width: 13%"></i></div>
+                        </div>
+                        <label for="si-toggle" class="btn" tabindex="0" role="button"><span data-i18n="pricing.start_free">Start free</span><svg viewBox="0 0 24 24" fill="none"><path d="M5 12h14M13 5l7 7-7 7" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" /></svg></label>
+                        <div class="p-free-note" data-i18n="pricing.free.note">Just sign in. No card, no trial.</div>
+                    </div>
+                    <div class="ptear" aria-hidden="true"></div>
+                    <ul class="plist">
+                        <li><span class="ck"><svg viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17l-5-5" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" /></svg></span><span data-i18n="pricing.free.li1">100 supplier scans every month, reset on your sign-up date</span></li>
+                        <li><span class="ck"><svg viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17l-5-5" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" /></svg></span><span data-i18n="pricing.free.li2">Full risk score &amp; 15-signal breakdown</span></li>
+                        <li><span class="ck"><svg viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17l-5-5" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" /></svg></span><span data-i18n="pricing.free.li3">All supported B2B platforms</span></li>
+                        <li><span class="ck"><svg viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17l-5-5" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" /></svg></span><span data-i18n="pricing.free.li4">Community fraud report network</span></li>
+                        <li><span class="ck"><svg viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17l-5-5" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" /></svg></span><span data-i18n="pricing.free.li5">No credit card needed</span></li>
+                    </ul>
+                </div>
                 <!-- TEAM -->
                 <div class="pcard feat">
                     <span class="pbadge" data-i18n="pricing.most_popular">Most popular</span>
@@ -1011,17 +1042,16 @@
                             </div>
                         </div>
                         <div class="pprice">
-                            <span class="amt" data-mo="$200" data-yr="$1,920">$200</span>
+                            <span class="amt" data-mo="$200" data-yr="$1,440">$200</span>
                             <span class="per" data-mo="/month" data-yr="/year">/month</span>
                         </div>
-                        <div class="p-billed" data-mo="" data-yr="$160/mo, billed annually"></div>
+                        <div class="p-billed" data-mo="" data-yr="$120/mo, billed annually"></div>
                         <div class="pmeter">
                             <div class="pm-row"><span data-i18n="pricing.meter_label">Supplier scans</span><b data-i18n="pricing.team.meter">750 / month</b></div>
                             <div class="pm-bar"><i style="width: 38%"></i></div>
                         </div>
-                        <label for="si-toggle" class="btn btn-sun" tabindex="0" role="button"><span data-i18n="pricing.start_trial">Start free trial</span><svg viewBox="0 0 24 24" fill="none"><path d="M5 12h14M13 5l7 7-7 7" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" /></svg></label>
+                        <label for="si-toggle" class="btn btn-sun" tabindex="0" role="button"><span data-i18n="pricing.choose_plan">Choose plan</span><svg viewBox="0 0 24 24" fill="none"><path d="M5 12h14M13 5l7 7-7 7" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" /></svg></label>
                         <a href="https://cal.com/ibilalkayy/safely-session" class="btn" target="_blank" data-i18n="pricing.book_session">Book a session</a>
-                        <div class="p-trial" data-i18n="pricing.trial">7-day free trial</div>
                     </div>
                     <div class="ptear" aria-hidden="true"></div>
                     <ul class="plist">
@@ -1044,17 +1074,16 @@
                             </div>
                         </div>
                         <div class="pprice">
-                            <span class="amt" data-mo="$500" data-yr="$4,800">$500</span>
+                            <span class="amt" data-mo="$500" data-yr="$3,600">$500</span>
                             <span class="per" data-mo="/month" data-yr="/year">/month</span>
                         </div>
-                        <div class="p-billed" data-mo="" data-yr="$400/mo, billed annually"></div>
+                        <div class="p-billed" data-mo="" data-yr="$300/mo, billed annually"></div>
                         <div class="pmeter">
                             <div class="pm-row"><span data-i18n="pricing.meter_label">Supplier scans</span><b data-i18n="pricing.ent.meter">Unlimited</b></div>
                             <div class="pm-bar inf"><i style="width: 100%"></i></div>
                         </div>
-                        <label for="si-toggle" class="btn btn-sun" tabindex="0" role="button"><span data-i18n="pricing.start_trial">Start free trial</span><svg viewBox="0 0 24 24" fill="none"><path d="M5 12h14M13 5l7 7-7 7" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" /></svg></label>
+                        <label for="si-toggle" class="btn btn-sun" tabindex="0" role="button"><span data-i18n="pricing.choose_plan">Choose plan</span><svg viewBox="0 0 24 24" fill="none"><path d="M5 12h14M13 5l7 7-7 7" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" /></svg></label>
                         <a href="https://cal.com/ibilalkayy/safely-session" class="btn" target="_blank" data-i18n="pricing.book_session">Book a session</a>
-                        <div class="p-trial" data-i18n="pricing.trial">7-day free trial</div>
                     </div>
                     <div class="ptear" aria-hidden="true"></div>
                     <ul class="plist">
@@ -1070,7 +1099,7 @@
 
             <!-- reassurance strip -->
             <div class="assure reveal d2">
-                <div class="as-it"><span class="as-ic"><svg viewBox="0 0 24 24" fill="none"><path d="M12 7v5l3 2" stroke="#191c22" stroke-width="2.4" stroke-linecap="round" /><circle cx="12" cy="12" r="9" stroke="#191c22" stroke-width="2.4" /></svg></span><span data-i18n="pricing.assure1">7-day free trial on every plan</span></div>
+                <div class="as-it"><span class="as-ic"><svg viewBox="0 0 24 24" fill="none"><path d="M12 7v5l3 2" stroke="#191c22" stroke-width="2.4" stroke-linecap="round" /><circle cx="12" cy="12" r="9" stroke="#191c22" stroke-width="2.4" /></svg></span><span data-i18n="pricing.assure1">100 free scans every month</span></div>
                 <div class="as-it"><span class="as-ic"><svg viewBox="0 0 24 24" fill="none"><rect x="3" y="6" width="18" height="13" rx="2.5" stroke="#191c22" stroke-width="2.4" /><path d="M3 10h18M4 20L20 4" stroke="#191c22" stroke-width="2.4" stroke-linecap="round" /></svg></span><span data-i18n="pricing.assure2">No credit card to start</span></div>
                 <div class="as-it"><span class="as-ic"><svg viewBox="0 0 24 24" fill="none"><rect x="3" y="5" width="18" height="16" rx="3" stroke="#191c22" stroke-width="2.4" /><path d="M3 10h18M8 3v4M16 3v4" stroke="#191c22" stroke-width="2.4" stroke-linecap="round" /></svg></span><span data-i18n="pricing.assure3">Live walkthrough on request</span></div>
             </div>
@@ -1082,68 +1111,82 @@
                     <table class="comp-table">
                         <thead>
                             <tr>
-                                <th class="fcol-h"><span class="fh-t" data-i18n="pricing.comp.compare_plans">Compare plans</span><span class="fh-s" data-i18n="pricing.comp.compare_sub">Both plans include every signal and the full risk report.</span></th>
+                                <th class="fcol-h"><span class="fh-t" data-i18n="pricing.comp.compare_plans">Compare plans</span><span class="fh-s" data-i18n="pricing.comp.compare_sub">Every plan includes all 15 signals and the full risk report.</span></th>
+                                <th class="free-col">
+                                    <span class="th-name" data-i18n="pricing.free.name">Free</span>
+                                    <span class="th-price">$0<small>/mo</small></span>
+                                    <label for="si-toggle" class="th-cta" tabindex="0" role="button" data-i18n="pricing.start_free">Start free</label>
+                                </th>
                                 <th class="feat-col">
                                     <span class="th-tag" data-i18n="pricing.most_popular">Most popular</span>
                                     <span class="th-name">Team</span>
                                     <span class="th-price">$200<small>/mo</small></span>
-                                    <label for="si-toggle" class="th-cta" tabindex="0" role="button" data-i18n="pricing.start_trial">Start free trial</label>
+                                    <label for="si-toggle" class="th-cta" tabindex="0" role="button" data-i18n="pricing.choose_plan">Choose plan</label>
                                 </th>
                                 <th class="ent-col">
                                     <span class="th-name">Enterprise</span>
                                     <span class="th-price">$500<small>/mo</small></span>
-                                    <label for="si-toggle" class="th-cta" tabindex="0" role="button" data-i18n="pricing.start_trial">Start free trial</label>
+                                    <label for="si-toggle" class="th-cta" tabindex="0" role="button" data-i18n="pricing.choose_plan">Choose plan</label>
                                 </th>
                             </tr>
                         </thead>
                         <tbody>
-                            <tr class="comp-cat"><td colspan="3"><span class="cc-pill"><svg viewBox="0 0 24 24" fill="none"><path d="M13 2L4 14h7l-1 8 9-12h-7l1-8z" stroke="#191c22" stroke-width="2.2" stroke-linejoin="round" /></svg><span data-i18n="pricing.comp.core_access">Core Access</span></span></td></tr>
+                            <tr class="comp-cat"><td colspan="4"><span class="cc-pill"><svg viewBox="0 0 24 24" fill="none"><path d="M13 2L4 14h7l-1 8 9-12h-7l1-8z" stroke="#191c22" stroke-width="2.2" stroke-linejoin="round" /></svg><span data-i18n="pricing.comp.core_access">Core Access</span></span></td></tr>
                             <tr>
                                 <td data-i18n="pricing.comp.row1">Supplier scans (Alibaba, TradeWheel, ExportHub, B2Brazil, ThomasNet, B2BMap, Kompass)</td>
+                                <td class="fc" data-label="Free"><span class="tval" data-i18n="pricing.comp.free_scans">100/month</span></td>
                                 <td class="tc" data-label="Team"><span class="tval" data-i18n="pricing.comp.team_scans">750/month</span></td>
                                 <td class="ec" data-label="Enterprise"><span class="tval big" data-i18n="pricing.comp.unlimited">Unlimited</span></td>
                             </tr>
                             <tr>
                                 <td data-i18n="pricing.comp.row2">Risk score &amp; 15-signal breakdown</td>
+                                <td class="fc" data-label="Free"><span class="tck"><svg viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17l-5-5" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" /></svg></span></td>
                                 <td class="tc" data-label="Team"><span class="tck"><svg viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17l-5-5" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" /></svg></span></td>
                                 <td class="ec" data-label="Enterprise"><span class="tck"><svg viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17l-5-5" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" /></svg></span></td>
                             </tr>
                             <tr>
                                 <td data-i18n="pricing.comp.row_api">API access</td>
+                                <td class="fc" data-label="Free"><span class="tdash" aria-label="Not included">—</span></td>
                                 <td class="tc" data-label="Team"><span class="tdash" aria-label="Not included">—</span></td>
                                 <td class="ec" data-label="Enterprise"><span class="tck"><svg viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17l-5-5" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" /></svg></span></td>
                             </tr>
-                            <tr class="comp-cat"><td colspan="3"><span class="cc-pill"><svg viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="#191c22" stroke-width="2.4" /><path d="M16 16l5 5" stroke="#191c22" stroke-width="2.4" stroke-linecap="round" /></svg><span data-i18n="pricing.comp.due_diligence">Due Diligence</span></span></td></tr>
+                            <tr class="comp-cat"><td colspan="4"><span class="cc-pill"><svg viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="#191c22" stroke-width="2.4" /><path d="M16 16l5 5" stroke="#191c22" stroke-width="2.4" stroke-linecap="round" /></svg><span data-i18n="pricing.comp.due_diligence">Due Diligence</span></span></td></tr>
                             <tr>
                                 <td data-i18n="pricing.comp.row3">Company registration &amp; listing completeness checks</td>
+                                <td class="fc" data-label="Free"><span class="tck"><svg viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17l-5-5" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" /></svg></span></td>
                                 <td class="tc" data-label="Team"><span class="tck"><svg viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17l-5-5" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" /></svg></span></td>
                                 <td class="ec" data-label="Enterprise"><span class="tck"><svg viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17l-5-5" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" /></svg></span></td>
                             </tr>
                             <tr>
                                 <td data-i18n="pricing.comp.row4">Social presence cross-check</td>
+                                <td class="fc" data-label="Free"><span class="tck"><svg viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17l-5-5" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" /></svg></span></td>
                                 <td class="tc" data-label="Team"><span class="tck"><svg viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17l-5-5" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" /></svg></span></td>
                                 <td class="ec" data-label="Enterprise"><span class="tck"><svg viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17l-5-5" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" /></svg></span></td>
                             </tr>
                             <tr>
                                 <td data-i18n="pricing.comp.row5">Downloadable PDF report</td>
+                                <td class="fc" data-label="Free"><span class="tck"><svg viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17l-5-5" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" /></svg></span></td>
                                 <td class="tc" data-label="Team"><span class="tck"><svg viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17l-5-5" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" /></svg></span></td>
                                 <td class="ec" data-label="Enterprise"><span class="tck"><svg viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17l-5-5" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" /></svg></span></td>
                             </tr>
                             <tr>
                                 <td data-i18n="pricing.comp.row6">Community fraud report network</td>
+                                <td class="fc" data-label="Free"><span class="tck"><svg viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17l-5-5" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" /></svg></span></td>
                                 <td class="tc" data-label="Team"><span class="tck"><svg viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17l-5-5" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" /></svg></span></td>
                                 <td class="ec" data-label="Enterprise"><span class="tck"><svg viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17l-5-5" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" /></svg></span></td>
                             </tr>
-                            <tr class="comp-cat"><td colspan="3"><span class="cc-pill"><svg viewBox="0 0 24 24" fill="none"><path d="M4 12a8 8 0 0116 0v5a2 2 0 01-2 2h-2v-6h4M4 13h4v6H6a2 2 0 01-2-2v-4z" stroke="#191c22" stroke-width="2.2" stroke-linejoin="round" /></svg><span data-i18n="pricing.comp.support">Support</span></span></td></tr>
+                            <tr class="comp-cat"><td colspan="4"><span class="cc-pill"><svg viewBox="0 0 24 24" fill="none"><path d="M4 12a8 8 0 0116 0v5a2 2 0 01-2 2h-2v-6h4M4 13h4v6H6a2 2 0 01-2-2v-4z" stroke="#191c22" stroke-width="2.2" stroke-linejoin="round" /></svg><span data-i18n="pricing.comp.support">Support</span></span></td></tr>
                             <tr>
                                 <td data-i18n="pricing.comp.row7">Support response</td>
+                                <td class="fc" data-label="Free"><span class="tval" data-i18n="pricing.comp.support_email">Email</span></td>
                                 <td class="tc" data-label="Team"><span class="tval" data-i18n="pricing.comp.support_48">48 hr</span></td>
                                 <td class="ec" data-label="Enterprise"><span class="tval big" data-i18n="pricing.comp.support_24">24 hr</span></td>
                             </tr>
                             <tr>
-                                <td data-i18n="pricing.comp.row8">Free trial</td>
-                                <td class="tc" data-label="Team"><span class="tval" data-i18n="pricing.comp.trial_days">7 days</span></td>
-                                <td class="ec" data-label="Enterprise"><span class="tval" data-i18n="pricing.comp.trial_days">7 days</span></td>
+                                <td data-i18n="pricing.comp.row8">Credit card to start</td>
+                                <td class="fc" data-label="Free"><span class="tval" data-i18n="pricing.comp.card_not_needed">Not needed</span></td>
+                                <td class="tc" data-label="Team"><span class="tval" data-i18n="pricing.comp.card_required">Required</span></td>
+                                <td class="ec" data-label="Enterprise"><span class="tval" data-i18n="pricing.comp.card_required">Required</span></td>
                             </tr>
                         </tbody>
                     </table>
@@ -1427,7 +1470,7 @@
                 <div class="faq reveal d1">
                     <details class="acc" name="faq" open>
                         <summary><span class="qn">01</span>
-                            <span data-i18n="faq.q1.q">Do you offer a free trial?</span><span class="ic"
+                            <span data-i18n="faq.q1.q">Is there a free plan?</span><span class="ic"
                                 ><svg viewBox="0 0 24 24" fill="none">
                                     <path
                                         d="M12 5v14M5 12h14"
@@ -1439,8 +1482,11 @@
                         </summary>
                         <div class="ans">
                             <p data-i18n="faq.q1.a">
-                                Yes — both Team and Enterprise start with a 7-day free trial and no credit card required,
-                                so you can test full real-world vendor and seller verification before paying anything.
+                                Yes — every account gets 100 free scans every month, with
+                                no credit card needed. They come back every month on the
+                                day you signed up. If you need
+                                more, upgrade to Team (750 scans a month) or Enterprise
+                                (unlimited) at any time.
                             </p>
                         </div>
                     </details>

@@ -1,10 +1,10 @@
 mod common;
 
 use crate::common::{
-    TestSubscriptionOptions, auth_headers_for, cleanup_test_subscription, cleanup_test_user,
-    compute_creem_signature, create_test_user, get_subscription_status_text,
-    insert_active_subscription, insert_test_subscription, insert_test_subscription_full,
-    load_env_once, test_pool,
+    TestPaidPlan, TestSubscriptionOptions, auth_headers_for, cleanup_test_subscription,
+    cleanup_test_user, compute_creem_signature, create_test_user, get_subscription_status_text,
+    insert_active_subscription, insert_subscription_with_scans, insert_test_subscription,
+    insert_test_subscription_full, load_env_once, test_pool,
 };
 use axum::{
     Json,
@@ -25,12 +25,13 @@ use backend::{
     services::{
         auth::find_or_create_user_by_email,
         billing::{
-            CreateCheckoutError, apply_scheduled_downgrade_if_due, apply_upgrade,
-            cancel_with_creem, change_creem_subscription_product, create_checkout,
-            extract_metadata_user_id, extract_subscription, fetch_subscriber_email,
+            BillingInterval, CreateCheckoutError, FREE_MONTHLY_SCANS, ScanLimitError,
+            apply_scheduled_downgrade_if_due, apply_upgrade, cancel_with_creem,
+            change_creem_subscription_product, check_and_increment_scan_usage, create_checkout,
+            extract_metadata_user_id, extract_subscription, fetch_subscriber_email, get_scan_usage,
             handle_subscription_granted, handle_subscription_lost, handle_subscription_past_due,
             handle_subscription_update, is_new_billing_period, mark_event_processed_if_new,
-            scan_limit_for_plan_and_status, upsert_subscription, verify_and_parse_webhook,
+            scan_limit_for_plan, upsert_subscription, verify_and_parse_webhook,
             verify_creem_signature,
         },
         email::{
@@ -39,17 +40,111 @@ use backend::{
         },
     },
 };
-use chrono::{DateTime, Duration, Utc};
+use chrono::{DateTime, Duration, NaiveDate, Utc};
 use hmac::{Hmac, KeyInit, Mac};
 use reqwest::StatusCode;
 use serde_json::json;
 use serial_test::serial;
 use sha2::Sha256;
-use sqlx::{query, query_as, query_scalar};
+use sqlx::{Pool, Postgres, query, query_as, query_scalar};
 use std::env::{remove_var, set_var, var};
 use uuid::Uuid;
 
 type HmacSha256 = Hmac<Sha256>;
+
+// The real Creem product IDs from .env. Checkout and change-plan only
+// accept these 4 products, so tests that reach those checks use them.
+fn team_product_id() -> String {
+    load_env_once();
+    var("CREEM_TEAM_PRODUCT_ID").expect("expected CREEM_TEAM_PRODUCT_ID to be set in .env")
+}
+
+fn enterprise_product_id() -> String {
+    load_env_once();
+    var("CREEM_ENTERPRISE_PRODUCT_ID")
+        .expect("expected CREEM_ENTERPRISE_PRODUCT_ID to be set in .env")
+}
+
+/// The yearly product IDs. If .env doesn't have them yet, a test value
+/// is set for this test run only (the yearly code just needs an ID it
+/// recognises). Only call this from #[serial] tests.
+fn yearly_product_ids() -> (String, String) {
+    load_env_once();
+    let get_or_set = |name: &str, fallback: &str| -> String {
+        var(name).unwrap_or_else(|_| {
+            unsafe {
+                set_var(name, fallback);
+            }
+            fallback.to_string()
+        })
+    };
+    (
+        get_or_set("CREEM_TEAM_YEARLY_PRODUCT_ID", "prod_test_team_yearly"),
+        get_or_set(
+            "CREEM_ENTERPRISE_YEARLY_PRODUCT_ID",
+            "prod_test_enterprise_yearly",
+        ),
+    )
+}
+
+/// A subscription as Creem sends it in a webhook.
+fn creem_subscription(
+    sub_id: &str,
+    user_id: Uuid,
+    product_id: &str,
+    product_name: &str,
+    billing_period: Option<&str>,
+    period_end: &str,
+) -> ParsedSubscription {
+    ParsedSubscription {
+        id: sub_id.to_string(),
+        status: "active".to_string(),
+        current_period_end_date: Some(period_end.to_string()),
+        canceled_at: None,
+        product: ParsedProduct {
+            id: product_id.to_string(),
+            name: product_name.to_string(),
+            billing_period: billing_period.map(|p| p.to_string()),
+        },
+        customer: ParsedCustomer {
+            id: "cust_test".to_string(),
+            email: "test@example.com".to_string(),
+        },
+        metadata: Some(ParsedMetadata {
+            safely_user_id: Some(user_id.to_string()),
+        }),
+    }
+}
+
+/// (plan_name, billing_interval, creem_product_id, scheduled_product_id,
+/// scans_used_this_period, status) of one subscription row.
+async fn subscription_row(
+    pool: &Pool<Postgres>,
+    sub_id: &str,
+) -> (String, String, String, Option<String>, i32, String) {
+    query_as(
+        "SELECT plan_name, billing_interval, creem_product_id, scheduled_product_id,
+                scans_used_this_period, status::text
+         FROM subscriptions WHERE creem_subscription_id = $1",
+    )
+    .bind(sub_id)
+    .fetch_one(pool)
+    .await
+    .expect("expected the subscription row to exist")
+}
+
+/// The UTC date of the user's sign-up plus `months` months.
+async fn sign_up_date_plus_months(pool: &Pool<Postgres>, user_id: Uuid, months: i32) -> NaiveDate {
+    query_scalar(
+        "SELECT ((created_at + make_interval(months => $2)) AT TIME ZONE 'UTC')::date
+         FROM users WHERE id = $1",
+    )
+    .bind(user_id)
+    .bind(months)
+    .fetch_one(pool)
+    .await
+    .expect("expected the user to exist")
+}
 
 // Checkout Handler Tests
 #[tokio::test]
@@ -82,7 +177,7 @@ async fn checkout_handler_success() {
     let headers = auth_headers_for(&pool, user.id).await;
 
     let checkout_body = CreateCheckoutBody {
-        product_id: "prod_6qDjyvwKbCZvWTgIztzqz4".to_string(),
+        product_id: team_product_id(),
     };
 
     let result = create_checkout_handler(State(pool.clone()), headers, Json(checkout_body))
@@ -131,7 +226,7 @@ async fn checkout_handler_unauthorized() {
 
 #[tokio::test]
 #[serial]
-async fn checkout_handler_creem_rejects_invalid_product() {
+async fn checkout_handler_rejects_a_product_that_is_not_one_of_the_4_plans() {
     let pool = test_pool().await;
     let email = "checkout_rejected@example.com";
     let (user, _) = create_test_user(&pool, email).await;
@@ -146,10 +241,80 @@ async fn checkout_handler_creem_rejects_invalid_product() {
     match result {
         Err(BillingError::InvalidRequest(_)) => {}
         Err(other) => panic!(
-            "expected InvalidRequest (Creem rejection), got a different error: {:?}",
+            "expected InvalidRequest (unknown plan), got a different error: {:?}",
             other
         ),
-        Ok(_) => panic!("expected Creem to reject a fake product_id, but it succeeded"),
+        Ok(_) => panic!("expected a fake product_id to be rejected, but it succeeded"),
+    }
+
+    cleanup_test_user(&pool, email).await;
+}
+
+#[tokio::test]
+#[serial]
+async fn checkout_handler_blocks_a_second_plan_with_the_same_billing() {
+    // Already on Team monthly: buying another monthly plan must go
+    // through change-plan, never a second checkout (no double billing).
+    let pool = test_pool().await;
+    let email = "checkout_second_plan@example.com";
+    let (user, _) = create_test_user(&pool, email).await;
+    let headers = auth_headers_for(&pool, user.id).await;
+    insert_test_subscription(&pool, user.id, "sub_checkout_second_001", "Team", "active").await;
+
+    let result = create_checkout_handler(
+        State(pool.clone()),
+        headers,
+        Json(CreateCheckoutBody {
+            product_id: enterprise_product_id(),
+        }),
+    )
+    .await;
+
+    match result {
+        Err(BillingError::InvalidRequest(msg)) => {
+            assert!(msg.contains("change plan"), "got: {}", msg)
+        }
+        other => panic!("expected InvalidRequest, got: {:?}", other.map(|j| j.0)),
+    }
+
+    cleanup_test_user(&pool, email).await;
+}
+
+#[tokio::test]
+#[serial]
+async fn checkout_handler_blocks_yearly_to_monthly() {
+    let pool = test_pool().await;
+    let email = "checkout_yearly_to_monthly@example.com";
+    let (user, _) = create_test_user(&pool, email).await;
+    let headers = auth_headers_for(&pool, user.id).await;
+    insert_subscription_with_scans(
+        &pool,
+        user.id,
+        "sub_checkout_y2m_001",
+        TestPaidPlan {
+            plan_name: "Team",
+            status: "active",
+            billing_interval: "year",
+            scans_used: 0,
+            bought_days_ago: 10,
+        },
+    )
+    .await;
+
+    let result = create_checkout_handler(
+        State(pool.clone()),
+        headers,
+        Json(CreateCheckoutBody {
+            product_id: team_product_id(),
+        }),
+    )
+    .await;
+
+    match result {
+        Err(BillingError::InvalidRequest(msg)) => {
+            assert!(msg.contains("monthly"), "got: {}", msg)
+        }
+        other => panic!("expected InvalidRequest, got: {:?}", other.map(|j| j.0)),
     }
 
     cleanup_test_user(&pool, email).await;
@@ -386,8 +551,8 @@ async fn creem_webhook_inner_handler_failure_still_returns_ok() {
     let fake_user_id = Uuid::new_v4();
 
     let raw_body = format!(
-        r#"{{"id":"evt_inner_failure_001","eventType":"subscription.paid","created_at":1700000000,"object":{{"id":"{}","status":"active","current_period_end_date":null,"canceled_at":null,"product":{{"id":"prod_test","name":"Team"}},"customer":{{"id":"cust_test","email":"test@example.com"}},"metadata":{{"safely_user_id":"{}"}}}}}}"#,
-        sub_id, fake_user_id
+        r#"{{"id":"evt_inner_failure_{}","eventType":"subscription.paid","created_at":1700000000,"object":{{"id":"{}","status":"active","current_period_end_date":null,"canceled_at":null,"product":{{"id":"prod_test","name":"Team"}},"customer":{{"id":"cust_test","email":"test@example.com"}},"metadata":{{"safely_user_id":"{}"}}}}}}"#,
+        fake_user_id, sub_id, fake_user_id
     );
 
     let real_signature = compute_creem_signature(&secret, &raw_body);
@@ -679,6 +844,27 @@ fn extract_subscription_subscription_shape_success() {
     let parsed = result.expect("expected the subscription to be extracted successfully");
     assert_eq!(parsed.id, "sub_test_001");
     assert_eq!(parsed.status, "active");
+    assert_eq!(
+        parsed.product.billing_period, None,
+        "expected a product without billing_period to still parse"
+    );
+}
+
+#[test]
+fn extract_subscription_reads_the_product_billing_period() {
+    let object = serde_json::json!({
+        "id": "sub_test_yearly_001",
+        "status": "active",
+        "current_period_end_date": null,
+        "canceled_at": null,
+        "product": { "id": "prod_test", "name": "Team", "billing_period": "every-year" },
+        "customer": { "id": "cust_test", "email": "test@example.com" },
+        "metadata": null
+    });
+
+    let parsed = extract_subscription("subscription.paid", &object)
+        .expect("expected the subscription to be extracted successfully");
+    assert_eq!(parsed.product.billing_period.as_deref(), Some("every-year"));
 }
 
 #[test]
@@ -686,7 +872,7 @@ fn extract_subscription_checkout_completed_shape_success() {
     let object = json!({
         "subscription": {
             "id": "sub_nested_001",
-            "status": "trialing",
+            "status": "active",
             "current_period_end_date": null,
             "canceled_at": null,
             "product": { "id": "prod_test", "name": "Team" },
@@ -699,7 +885,7 @@ fn extract_subscription_checkout_completed_shape_success() {
     let parsed = result.expect("expected the NESTED subscription to be extracted successfully");
 
     assert_eq!(parsed.id, "sub_nested_001");
-    assert_eq!(parsed.status, "trialing");
+    assert_eq!(parsed.status, "active");
 }
 
 #[test]
@@ -766,6 +952,7 @@ async fn subscription_granted_success() {
         product: ParsedProduct {
             id: "prod_test".to_string(),
             name: "Team".to_string(),
+            billing_period: None,
         },
         customer: ParsedCustomer {
             id: "cust_test".to_string(),
@@ -813,6 +1000,7 @@ async fn subscription_granted_missing_user_id() {
         product: ParsedProduct {
             id: "prod_test".to_string(),
             name: "Team".to_string(),
+            billing_period: None,
         },
         customer: ParsedCustomer {
             id: "cust_test".to_string(),
@@ -858,6 +1046,7 @@ async fn subscription_granted_upsert_fails() {
         product: ParsedProduct {
             id: "prod_test".to_string(),
             name: "Team".to_string(),
+            billing_period: None,
         },
         customer: ParsedCustomer {
             id: "cust_test".to_string(),
@@ -883,6 +1072,45 @@ async fn subscription_granted_upsert_fails() {
     );
 }
 
+#[tokio::test]
+#[serial]
+async fn switching_to_yearly_ends_the_old_monthly_plan() {
+    // Monthly -> yearly is a new Creem subscription. Once the yearly one
+    // is active, the old monthly one is canceled, so nobody pays twice.
+    let pool = test_pool().await;
+    let email = "switch_to_yearly_test@example.com";
+    let (user, _) = create_test_user(&pool, email).await;
+    let (team_yearly_id, _) = yearly_product_ids();
+
+    let old_monthly = "sub_switch_old_monthly_001";
+    let new_yearly = "sub_switch_new_yearly_001";
+    cleanup_test_subscription(&pool, old_monthly).await;
+    cleanup_test_subscription(&pool, new_yearly).await;
+    insert_test_subscription(&pool, user.id, old_monthly, "Team", "active").await;
+
+    let parsed = creem_subscription(
+        new_yearly,
+        user.id,
+        &team_yearly_id,
+        "Team",
+        Some("every-year"),
+        "2027-10-06T00:00:00Z",
+    );
+    handle_subscription_granted(&pool, &parsed).await;
+
+    let (plan, interval, _, _, used, status) = subscription_row(&pool, new_yearly).await;
+    assert_eq!((plan.as_str(), interval.as_str()), ("Team", "year"));
+    assert_eq!((used, status.as_str()), (0, "active"));
+
+    assert_eq!(
+        get_subscription_status_text(&pool, old_monthly).await,
+        Some("canceled".to_string()),
+        "expected the old monthly plan to be ended once the yearly one is active"
+    );
+
+    cleanup_test_user(&pool, email).await;
+}
+
 // Extract Metadata User ID Tests
 #[test]
 fn extract_metadata_user_id_missing_metadata() {
@@ -894,6 +1122,7 @@ fn extract_metadata_user_id_missing_metadata() {
         product: ParsedProduct {
             id: "prod_test".to_string(),
             name: "Team".to_string(),
+            billing_period: None,
         },
         customer: ParsedCustomer {
             id: "cust_test".to_string(),
@@ -919,6 +1148,7 @@ fn extract_metadata_user_id_missing_safely_user_id() {
         product: ParsedProduct {
             id: "prod_test".to_string(),
             name: "Team".to_string(),
+            billing_period: None,
         },
         customer: ParsedCustomer {
             id: "cust_test".to_string(),
@@ -946,6 +1176,7 @@ fn extract_metadata_user_id_invalid_uuid() {
         product: ParsedProduct {
             id: "prod_test".to_string(),
             name: "Team".to_string(),
+            billing_period: None,
         },
         customer: ParsedCustomer {
             id: "cust_test".to_string(),
@@ -975,6 +1206,7 @@ fn extract_metadata_user_id_success() {
         product: ParsedProduct {
             id: "prod_test".to_string(),
             name: "Team".to_string(),
+            billing_period: None,
         },
         customer: ParsedCustomer {
             id: "cust_test".to_string(),
@@ -1011,6 +1243,7 @@ async fn upsert_subscription_creates_new_row_with_full_data() {
         product: ParsedProduct {
             id: "prod_test".to_string(),
             name: "Team".to_string(),
+            billing_period: None,
         },
         customer: ParsedCustomer {
             id: "cust_test".to_string(),
@@ -1066,6 +1299,7 @@ async fn upsert_subscription_update_unconditionally_overwrites() {
         product: ParsedProduct {
             id: "prod_test".to_string(),
             name: "Team".to_string(),
+            billing_period: None,
         },
         customer: ParsedCustomer {
             id: "cust_test".to_string(),
@@ -1118,12 +1352,13 @@ async fn upsert_subscription_missing_period_end_saves_as_null() {
 
     let parsed = ParsedSubscription {
         id: sub_id.to_string(),
-        status: "trialing".to_string(),
+        status: "active".to_string(),
         current_period_end_date: None,
         canceled_at: None,
         product: ParsedProduct {
             id: "prod_test".to_string(),
             name: "Team".to_string(),
+            billing_period: None,
         },
         customer: ParsedCustomer {
             id: "cust_test".to_string(),
@@ -1132,7 +1367,7 @@ async fn upsert_subscription_missing_period_end_saves_as_null() {
         metadata: None,
     };
 
-    upsert_subscription(&pool, user.id, &parsed, "trialing")
+    upsert_subscription(&pool, user.id, &parsed, "active")
         .await
         .expect("expected the upsert to succeed");
 
@@ -1179,6 +1414,7 @@ async fn upsert_subscription_malformed_period_end_saves_as_null() {
         product: ParsedProduct {
             id: "prod_test".to_string(),
             name: "Team".to_string(),
+            billing_period: None,
         },
         customer: ParsedCustomer {
             id: "cust_test".to_string(),
@@ -1231,6 +1467,7 @@ async fn upsert_subscription_fails_for_nonexistent_user() {
         product: ParsedProduct {
             id: "prod_test".to_string(),
             name: "Team".to_string(),
+            billing_period: None,
         },
         customer: ParsedCustomer {
             id: "cust_test".to_string(),
@@ -1244,6 +1481,187 @@ async fn upsert_subscription_fails_for_nonexistent_user() {
         result.is_err(),
         "expected a genuine foreign-key failure for a user that doesn't exist"
     );
+}
+
+#[tokio::test]
+#[serial]
+async fn upsert_subscription_saves_a_yearly_product_as_team_on_yearly_billing() {
+    let pool = test_pool().await;
+    let email = "upsert_yearly_product_test@example.com";
+    let (user, _) = create_test_user(&pool, email).await;
+    let (team_yearly_id, _) = yearly_product_ids();
+
+    let sub_id = "sub_upsert_yearly_001";
+    cleanup_test_subscription(&pool, sub_id).await;
+
+    // The product name doesn't matter: our own product ID decides.
+    let parsed = creem_subscription(
+        sub_id,
+        user.id,
+        &team_yearly_id,
+        "Some other name",
+        None,
+        "2027-10-06T00:00:00Z",
+    );
+    upsert_subscription(&pool, user.id, &parsed, "active")
+        .await
+        .expect("expected the upsert to succeed");
+
+    let (plan, interval, product, _, _, _) = subscription_row(&pool, sub_id).await;
+    assert_eq!(plan, "Team");
+    assert_eq!(interval, "year");
+    assert_eq!(product, team_yearly_id);
+
+    cleanup_test_user(&pool, email).await;
+}
+
+#[tokio::test]
+async fn upsert_subscription_falls_back_to_the_product_name_and_billing_period() {
+    // A product ID that isn't in .env: the name and billing period
+    // still give the right plan, so it never gets 0 scans by mistake.
+    let pool = test_pool().await;
+    let email = "upsert_name_fallback_test@example.com";
+    let (user, _) = create_test_user(&pool, email).await;
+
+    let sub_id = "sub_upsert_name_fallback_001";
+    cleanup_test_subscription(&pool, sub_id).await;
+
+    let parsed = creem_subscription(
+        sub_id,
+        user.id,
+        "prod_not_in_env",
+        "Safely Enterprise Yearly",
+        Some("every-year"),
+        "2027-10-06T00:00:00Z",
+    );
+    upsert_subscription(&pool, user.id, &parsed, "active")
+        .await
+        .expect("expected the upsert to succeed");
+
+    let (plan, interval, _, _, _, _) = subscription_row(&pool, sub_id).await;
+    assert_eq!((plan.as_str(), interval.as_str()), ("Enterprise", "year"));
+
+    cleanup_test_user(&pool, email).await;
+}
+
+#[tokio::test]
+async fn upsert_subscription_resets_scans_only_when_a_new_period_starts() {
+    let pool = test_pool().await;
+    let email = "upsert_renewal_reset_test@example.com";
+    let (user, _) = create_test_user(&pool, email).await;
+
+    let sub_id = "sub_upsert_renewal_reset_001";
+    cleanup_test_subscription(&pool, sub_id).await;
+
+    let first = creem_subscription(
+        sub_id,
+        user.id,
+        "prod_test",
+        "Team",
+        None,
+        "2026-11-06T00:00:00Z",
+    );
+    upsert_subscription(&pool, user.id, &first, "active")
+        .await
+        .expect("expected the first upsert to succeed");
+    query("UPDATE subscriptions SET scans_used_this_period = 300 WHERE creem_subscription_id = $1")
+        .bind(sub_id)
+        .execute(&pool)
+        .await
+        .expect("expected to set the scan count");
+
+    // Same period sent again: the count stays.
+    upsert_subscription(&pool, user.id, &first, "active")
+        .await
+        .expect("expected the repeat upsert to succeed");
+    assert_eq!(subscription_row(&pool, sub_id).await.4, 300);
+
+    // Renewal (period end moved forward): back to 0.
+    let renewed = creem_subscription(
+        sub_id,
+        user.id,
+        "prod_test",
+        "Team",
+        None,
+        "2026-12-06T00:00:00Z",
+    );
+    upsert_subscription(&pool, user.id, &renewed, "active")
+        .await
+        .expect("expected the renewal upsert to succeed");
+    assert_eq!(subscription_row(&pool, sub_id).await.4, 0);
+
+    cleanup_test_user(&pool, email).await;
+}
+
+#[tokio::test]
+#[serial]
+async fn upsert_subscription_keeps_the_paid_plan_until_a_scheduled_downgrade_renews() {
+    let pool = test_pool().await;
+    let email = "upsert_scheduled_downgrade_test@example.com";
+    let (user, _) = create_test_user(&pool, email).await;
+    let (team_yearly_id, enterprise_yearly_id) = yearly_product_ids();
+
+    let sub_id = "sub_upsert_scheduled_downgrade_001";
+    cleanup_test_subscription(&pool, sub_id).await;
+
+    let enterprise = creem_subscription(
+        sub_id,
+        user.id,
+        &enterprise_yearly_id,
+        "Enterprise",
+        None,
+        "2027-01-01T00:00:00Z",
+    );
+    upsert_subscription(&pool, user.id, &enterprise, "active")
+        .await
+        .expect("expected the first upsert to succeed");
+    query(
+        "UPDATE subscriptions SET scheduled_product_id = $1, scheduled_plan_name = 'Team',
+         scans_used_this_period = 40 WHERE creem_subscription_id = $2",
+    )
+    .bind(&team_yearly_id)
+    .bind(sub_id)
+    .execute(&pool)
+    .await
+    .expect("expected to schedule the downgrade");
+
+    // Creem already switched the product (same period): still Enterprise.
+    let switched = creem_subscription(
+        sub_id,
+        user.id,
+        &team_yearly_id,
+        "Team",
+        None,
+        "2027-01-01T00:00:00Z",
+    );
+    upsert_subscription(&pool, user.id, &switched, "active")
+        .await
+        .expect("expected the update upsert to succeed");
+    let (plan, _, product, scheduled, used, _) = subscription_row(&pool, sub_id).await;
+    assert_eq!(plan, "Enterprise");
+    assert_eq!(product, enterprise_yearly_id);
+    assert_eq!(scheduled.as_deref(), Some(team_yearly_id.as_str()));
+    assert_eq!(used, 40);
+
+    // The renewal arrives: now it's Team, the schedule is cleared.
+    let renewed = creem_subscription(
+        sub_id,
+        user.id,
+        &team_yearly_id,
+        "Team",
+        None,
+        "2028-01-01T00:00:00Z",
+    );
+    upsert_subscription(&pool, user.id, &renewed, "active")
+        .await
+        .expect("expected the renewal upsert to succeed");
+    let (plan, _, product, scheduled, used, _) = subscription_row(&pool, sub_id).await;
+    assert_eq!(plan, "Team");
+    assert_eq!(product, team_yearly_id);
+    assert_eq!(scheduled, None);
+    assert_eq!(used, 0);
+
+    cleanup_test_user(&pool, email).await;
 }
 
 // Handle Subscription Past Due Tests
@@ -1268,6 +1686,7 @@ async fn subscription_past_due_success() {
         product: ParsedProduct {
             id: "prod_test".to_string(),
             name: "Team".to_string(),
+            billing_period: None,
         },
         customer: ParsedCustomer {
             id: "cust_test".to_string(),
@@ -1315,6 +1734,7 @@ async fn subscription_past_due_missing_user_id() {
         product: ParsedProduct {
             id: "prod_test".to_string(),
             name: "Team".to_string(),
+            billing_period: None,
         },
         customer: ParsedCustomer {
             id: "cust_test".to_string(),
@@ -1361,6 +1781,7 @@ async fn subscription_past_due_upsert_fails() {
         product: ParsedProduct {
             id: "prod_test".to_string(),
             name: "Team".to_string(),
+            billing_period: None,
         },
         customer: ParsedCustomer {
             id: "cust_test".to_string(),
@@ -1407,6 +1828,7 @@ async fn subscription_past_due_email_fails_but_upsert_still_succeeds() {
         product: ParsedProduct {
             id: "prod_test".to_string(),
             name: "Team".to_string(),
+            billing_period: None,
         },
         customer: ParsedCustomer {
             id: "cust_test".to_string(),
@@ -1530,6 +1952,7 @@ async fn subscription_lost_paused() {
         product: ParsedProduct {
             id: "prod_test".to_string(),
             name: "Team".to_string(),
+            billing_period: None,
         },
         customer: ParsedCustomer {
             id: "cust_test".to_string(),
@@ -1580,6 +2003,7 @@ async fn subscription_lost_expired() {
         product: ParsedProduct {
             id: "prod_test".to_string(),
             name: "Team".to_string(),
+            billing_period: None,
         },
         customer: ParsedCustomer {
             id: "cust_test".to_string(),
@@ -1630,6 +2054,7 @@ async fn subscription_lost_canceled_genuinely_new() {
         product: ParsedProduct {
             id: "prod_test".to_string(),
             name: "Team".to_string(),
+            billing_period: None,
         },
         customer: ParsedCustomer {
             id: "cust_test".to_string(),
@@ -1680,6 +2105,7 @@ async fn subscription_lost_canceled_already_canceled() {
         product: ParsedProduct {
             id: "prod_test".to_string(),
             name: "Team".to_string(),
+            billing_period: None,
         },
         customer: ParsedCustomer {
             id: "cust_test".to_string(),
@@ -1732,6 +2158,7 @@ async fn subscription_lost_missing_user_id() {
         product: ParsedProduct {
             id: "prod_test".to_string(),
             name: "Team".to_string(),
+            billing_period: None,
         },
         customer: ParsedCustomer {
             id: "cust_test".to_string(),
@@ -1779,6 +2206,7 @@ async fn subscription_lost_upsert_fails() {
         product: ParsedProduct {
             id: "prod_test".to_string(),
             name: "Team".to_string(),
+            billing_period: None,
         },
         customer: ParsedCustomer {
             id: "cust_test".to_string(),
@@ -1906,12 +2334,13 @@ async fn subscription_update_success() {
 
     let parsed = ParsedSubscription {
         id: sub_id.to_string(),
-        status: "trialing".to_string(),
+        status: "past_due".to_string(),
         current_period_end_date: None,
         canceled_at: None,
         product: ParsedProduct {
             id: "prod_test".to_string(),
             name: "Team".to_string(),
+            billing_period: None,
         },
         customer: ParsedCustomer {
             id: "cust_test".to_string(),
@@ -1927,7 +2356,7 @@ async fn subscription_update_success() {
 
     assert_eq!(
         saved_status,
-        Some("trialing".to_string()),
+        Some("past_due".to_string()),
         "expected the exact status from parsed.status to be saved, unchanged"
     );
 
@@ -1953,12 +2382,13 @@ async fn subscription_update_missing_user_id() {
 
     let parsed = ParsedSubscription {
         id: sub_id.to_string(),
-        status: "trialing".to_string(),
+        status: "active".to_string(),
         current_period_end_date: None,
         canceled_at: None,
         product: ParsedProduct {
             id: "prod_test".to_string(),
             name: "Team".to_string(),
+            billing_period: None,
         },
         customer: ParsedCustomer {
             id: "cust_test".to_string(),
@@ -1999,12 +2429,13 @@ async fn subscription_update_upsert_fails() {
 
     let parsed = ParsedSubscription {
         id: sub_id.to_string(),
-        status: "trialing".to_string(),
+        status: "active".to_string(),
         current_period_end_date: None,
         canceled_at: None,
         product: ParsedProduct {
             id: "prod_test".to_string(),
             name: "Team".to_string(),
+            billing_period: None,
         },
         customer: ParsedCustomer {
             id: "cust_test".to_string(),
@@ -2340,7 +2771,7 @@ async fn get_subscription_status_unauthorized() {
 }
 
 #[tokio::test]
-async fn get_subscription_status_no_subscription() {
+async fn get_subscription_status_no_subscription_reports_the_free_plan() {
     let pool = test_pool().await;
     let email = "get_status_no_sub_test@example.com";
     let (user, _) = create_test_user(&pool, email).await;
@@ -2350,15 +2781,22 @@ async fn get_subscription_status_no_subscription() {
         .expect("expected the request itself to succeed, even with no subscription")
         .0;
 
+    assert_eq!(result["plan_name"], json!(null));
+    assert_eq!(result["billing_interval"], json!(null));
+    assert_eq!(result["status"], json!(null));
+    assert_eq!(result["current_period_end"], json!(null));
+    assert_eq!(result["scheduled_plan_name"], json!(null));
+
+    let usage = &result["usage"];
+    assert_eq!(usage["plan"], json!("Free"));
+    assert_eq!(usage["interval"], json!(null));
+    assert_eq!(usage["used"], json!(0));
+    assert_eq!(usage["limit"], json!(FREE_MONTHLY_SCANS));
+    let expected_reset = sign_up_date_plus_months(&pool, user.id, 1).await;
     assert_eq!(
-        result,
-        json!({
-            "plan_name": null,
-            "status": null,
-            "current_period_end": null,
-            "scheduled_plan_name": null,
-        }),
-        "expected the exact, hardcoded all-null response"
+        usage["resets_on"],
+        json!(expected_reset.to_string()),
+        "expected Free scans to come back one month after sign-up, not on the 1st"
     );
 
     cleanup_test_user(&pool, email).await;
@@ -2399,14 +2837,51 @@ async fn get_subscription_status_no_scheduled_downgrade() {
         .expect("expected the request to succeed");
 
     assert_eq!(result["plan_name"], json!("Team"));
+    assert_eq!(result["billing_interval"], json!("month"));
     assert_eq!(result["status"], json!("active"));
     assert_eq!(result["scheduled_plan_name"], json!(null));
+    assert_eq!(result["usage"]["plan"], json!("Team"));
+    assert_eq!(result["usage"]["limit"], json!(750));
 
     query("DELETE FROM subscriptions WHERE creem_subscription_id = $1")
         .bind(sub_id)
         .execute(&pool)
         .await
         .expect("expected final cleanup to succeed");
+
+    cleanup_test_user(&pool, email).await;
+}
+
+#[tokio::test]
+async fn get_subscription_status_reports_a_yearly_plan() {
+    let pool = test_pool().await;
+    let email = "get_status_yearly_test@example.com";
+    let (user, _) = create_test_user(&pool, email).await;
+    let headers = auth_headers_for(&pool, user.id).await;
+
+    insert_subscription_with_scans(
+        &pool,
+        user.id,
+        "sub_status_yearly_001",
+        TestPaidPlan {
+            plan_name: "Enterprise",
+            status: "active",
+            billing_interval: "year",
+            scans_used: 12,
+            bought_days_ago: 3,
+        },
+    )
+    .await;
+
+    let result = get_subscription_status(State(pool.clone()), headers)
+        .await
+        .expect("expected the request to succeed");
+
+    assert_eq!(result["plan_name"], json!("Enterprise"));
+    assert_eq!(result["billing_interval"], json!("year"));
+    assert_eq!(result["usage"]["interval"], json!("year"));
+    assert_eq!(result["usage"]["used"], json!(12));
+    assert_eq!(result["usage"]["limit"], json!(null));
 
     cleanup_test_user(&pool, email).await;
 }
@@ -2459,7 +2934,9 @@ async fn get_subscription_status_downgrade_not_yet_due() {
 }
 
 #[tokio::test]
-async fn get_subscription_status_downgrade_due_but_creem_rejects() {
+async fn get_subscription_status_applies_a_due_downgrade_when_the_renewal_is_late() {
+    // The paid period has ended but the renewal webhook hasn't arrived
+    // yet: the status check switches to the scheduled plan itself.
     let pool = test_pool().await;
     let email = "get_status_downgrade_due_test@example.com";
     let (user, _) = create_test_user(&pool, email).await;
@@ -2490,19 +2967,15 @@ async fn get_subscription_status_downgrade_due_but_creem_rejects() {
 
     let result = get_subscription_status(State(pool.clone()), headers)
         .await
-        .expect("expected the request to still succeed, even though Creem rejected the downgrade");
+        .expect("expected the request to succeed");
 
     assert_eq!(
         result["plan_name"],
-        json!("Enterprise"),
-        "expected the ORIGINAL plan to still be reported, since the downgrade genuinely failed"
+        json!("Team"),
+        "expected the scheduled plan to be applied once the paid period has ended"
     );
     assert_eq!(result["status"], json!("active"));
-    assert_eq!(
-        result["scheduled_plan_name"],
-        json!("Team"),
-        "expected the schedule to remain, since it was never successfully applied"
-    );
+    assert_eq!(result["scheduled_plan_name"], json!(null));
 
     query("DELETE FROM subscriptions WHERE creem_subscription_id = $1")
         .bind(sub_id)
@@ -2591,9 +3064,11 @@ async fn apply_scheduled_downgrade_not_yet_due() {
 }
 
 #[tokio::test]
-async fn apply_scheduled_downgrade_creem_rejects() {
+async fn apply_scheduled_downgrade_switches_the_plan_locally_once_due() {
+    // Creem was already told when the downgrade was scheduled, so this
+    // only updates our own row - no Creem call that could fail.
     let pool = test_pool().await;
-    let email = "apply_downgrade_creem_rejects_test@example.com";
+    let email = "apply_downgrade_due_test@example.com";
     let (user, _) = create_test_user(&pool, email).await;
 
     let sub_id = "sub_apply_downgrade_fake_001";
@@ -2628,27 +3103,22 @@ async fn apply_scheduled_downgrade_creem_rejects() {
     )
     .await;
 
-    assert!(
-        result.is_none(),
-        "expected None when Creem genuinely rejects the downgrade"
-    );
+    assert_eq!(result, Some("Team".to_string()));
 
-    let (plan_name, scheduled_plan_name): (String, Option<String>) = query_as(
-        "SELECT plan_name, scheduled_plan_name FROM subscriptions WHERE creem_subscription_id = $1",
+    let (plan_name, product_id, scheduled_plan_name): (String, String, Option<String>) = query_as(
+        "SELECT plan_name, creem_product_id, scheduled_plan_name
+             FROM subscriptions WHERE creem_subscription_id = $1",
     )
     .bind(sub_id)
     .fetch_one(&pool)
     .await
     .expect("expected the query itself to succeed");
 
+    assert_eq!(plan_name, "Team");
+    assert_eq!(product_id, "prod_team_scheduled");
     assert_eq!(
-        plan_name, "Enterprise",
-        "expected the plan_name to remain unchanged, since the update never ran"
-    );
-    assert_eq!(
-        scheduled_plan_name,
-        Some("Team".to_string()),
-        "expected the schedule to remain, since it was never successfully cleared"
+        scheduled_plan_name, None,
+        "expected the schedule to be cleared"
     );
 
     query("DELETE FROM subscriptions WHERE creem_subscription_id = $1")
@@ -2755,7 +3225,6 @@ async fn change_plan_unauthorized() {
 
     let body = ChangePlanBody {
         product_id: "prod_does_not_matter".to_string(),
-        plan_name: "Enterprise".to_string(),
     };
 
     let result = change_plan_handler(State(pool), headers, Json(body)).await;
@@ -2768,6 +3237,29 @@ async fn change_plan_unauthorized() {
 }
 
 #[tokio::test]
+#[serial]
+async fn change_plan_rejects_a_product_that_is_not_one_of_the_4_plans() {
+    let pool = test_pool().await;
+    let email = "change_plan_unknown_product_test@example.com";
+    let (user, _) = create_test_user(&pool, email).await;
+    let headers = auth_headers_for(&pool, user.id).await;
+
+    let body = ChangePlanBody {
+        product_id: "prod_does_not_exist".to_string(),
+    };
+
+    let result = change_plan_handler(State(pool.clone()), headers, Json(body)).await;
+
+    match result {
+        Err(BillingError::InvalidRequest(_)) => {}
+        other => panic!("expected InvalidRequest, got: {:?}", other.map(|j| j.0)),
+    }
+
+    cleanup_test_user(&pool, email).await;
+}
+
+#[tokio::test]
+#[serial]
 async fn change_plan_not_found() {
     let pool = test_pool().await;
     let email = "change_plan_not_found_test@example.com";
@@ -2775,8 +3267,7 @@ async fn change_plan_not_found() {
     let headers = auth_headers_for(&pool, user.id).await;
 
     let body = ChangePlanBody {
-        product_id: "prod_does_not_matter".to_string(),
-        plan_name: "Enterprise".to_string(),
+        product_id: enterprise_product_id(),
     };
 
     let result = change_plan_handler(State(pool.clone()), headers, Json(body)).await;
@@ -2793,44 +3284,7 @@ async fn change_plan_not_found() {
 }
 
 #[tokio::test]
-async fn change_plan_conflict_while_trialing() {
-    let pool = test_pool().await;
-    let email = "change_plan_trialing_test@example.com";
-    let (user, _) = create_test_user(&pool, email).await;
-    let headers = auth_headers_for(&pool, user.id).await;
-
-    let sub_id = "sub_change_plan_trialing_001";
-    query("DELETE FROM subscriptions WHERE creem_subscription_id = $1")
-        .bind(sub_id)
-        .execute(&pool)
-        .await
-        .expect("expected cleanup to succeed");
-
-    insert_test_subscription(&pool, user.id, sub_id, "Team", "trialing").await;
-
-    let body = ChangePlanBody {
-        product_id: "prod_enterprise_target".to_string(),
-        plan_name: "Enterprise".to_string(),
-    };
-
-    let result = change_plan_handler(State(pool.clone()), headers, Json(body)).await;
-
-    match result {
-        Err(BillingError::Conflict(_)) => {}
-        Err(other) => panic!("expected Conflict, got a different error: {:?}", other),
-        Ok(_) => panic!("expected trialing status to block the change, but it succeeded"),
-    }
-
-    query("DELETE FROM subscriptions WHERE creem_subscription_id = $1")
-        .bind(sub_id)
-        .execute(&pool)
-        .await
-        .expect("expected final cleanup to succeed");
-
-    cleanup_test_user(&pool, email).await;
-}
-
-#[tokio::test]
+#[serial]
 async fn change_plan_invalid_request() {
     let pool = test_pool().await;
     let email = "change_plan_invalid_test@example.com";
@@ -2846,9 +3300,9 @@ async fn change_plan_invalid_request() {
 
     insert_test_subscription(&pool, user.id, sub_id, "Team", "active").await;
 
+    // Team monthly -> Team monthly: already on that plan.
     let body = ChangePlanBody {
-        product_id: "prod_team_current".to_string(),
-        plan_name: "Team".to_string(),
+        product_id: team_product_id(),
     };
 
     let result = change_plan_handler(State(pool.clone()), headers, Json(body)).await;
@@ -2872,7 +3326,44 @@ async fn change_plan_invalid_request() {
 }
 
 #[tokio::test]
+#[serial]
+async fn change_plan_monthly_to_yearly_goes_through_checkout_instead() {
+    let pool = test_pool().await;
+    let email = "change_plan_monthly_to_yearly_test@example.com";
+    let (user, _) = create_test_user(&pool, email).await;
+    let headers = auth_headers_for(&pool, user.id).await;
+    let (team_yearly_id, _) = yearly_product_ids();
+
+    insert_test_subscription(&pool, user.id, "sub_change_plan_m2y_001", "Team", "active").await;
+
+    let result = change_plan_handler(
+        State(pool.clone()),
+        headers,
+        Json(ChangePlanBody {
+            product_id: team_yearly_id,
+        }),
+    )
+    .await;
+
+    match result {
+        Err(BillingError::InvalidRequest(msg)) => {
+            assert!(msg.contains("checkout"), "got: {}", msg)
+        }
+        other => panic!("expected InvalidRequest, got: {:?}", other.map(|j| j.0)),
+    }
+
+    cleanup_test_user(&pool, email).await;
+}
+
+#[tokio::test]
+#[serial]
 async fn change_plan_downgrade_success() {
+    use wiremock::{
+        Mock, MockServer, ResponseTemplate,
+        matchers::{method, path},
+    };
+    load_env_once();
+
     let pool = test_pool().await;
     let email = "change_plan_downgrade_test@example.com";
     let (user, _) = create_test_user(&pool, email).await;
@@ -2887,16 +3378,39 @@ async fn change_plan_downgrade_success() {
 
     insert_test_subscription(&pool, user.id, sub_id, "Enterprise", "active").await;
 
-    let body = ChangePlanBody {
-        product_id: "prod_team_target".to_string(),
-        plan_name: "Team".to_string(),
-    };
+    // A local, fake Creem that accepts the plan change.
+    let mock_server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path(format!("/v1/subscriptions/{}/upgrade", sub_id)))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "id": sub_id })))
+        .expect(1)
+        .mount(&mock_server)
+        .await;
+    let original_base_url = var("CREEM_API_BASE_URL").ok();
+    unsafe {
+        set_var("CREEM_API_BASE_URL", mock_server.uri());
+    }
 
-    let result = change_plan_handler(State(pool.clone()), headers, Json(body))
-        .await
-        .expect("expected the downgrade to be scheduled successfully");
+    let team_id = team_product_id();
+    let result = change_plan_handler(
+        State(pool.clone()),
+        headers,
+        Json(ChangePlanBody {
+            product_id: team_id.clone(),
+        }),
+    )
+    .await;
 
+    unsafe {
+        match original_base_url {
+            Some(url) => set_var("CREEM_API_BASE_URL", url),
+            None => remove_var("CREEM_API_BASE_URL"),
+        }
+    }
+
+    let result = result.expect("expected the downgrade to be scheduled successfully");
     assert_eq!(result.0, json!({ "applied": "scheduled" }));
+    mock_server.verify().await;
 
     let (plan_name, scheduled_product_id, scheduled_plan_name): (
         String,
@@ -2915,19 +3429,50 @@ async fn change_plan_downgrade_success() {
         plan_name, "Enterprise",
         "expected the CURRENT plan to remain Enterprise - the downgrade is only scheduled"
     );
-    assert_eq!(scheduled_product_id, Some("prod_team_target".to_string()));
+    assert_eq!(scheduled_product_id, Some(team_id));
     assert_eq!(scheduled_plan_name, Some("Team".to_string()));
-
-    query("DELETE FROM subscriptions WHERE creem_subscription_id = $1")
-        .bind(sub_id)
-        .execute(&pool)
-        .await
-        .expect("expected final cleanup to succeed");
 
     cleanup_test_user(&pool, email).await;
 }
 
 #[tokio::test]
+#[serial]
+async fn change_plan_downgrade_creem_rejects_and_nothing_stays_scheduled() {
+    let pool = test_pool().await;
+    let email = "change_plan_downgrade_rejected_test@example.com";
+    let (user, _) = create_test_user(&pool, email).await;
+    let headers = auth_headers_for(&pool, user.id).await;
+
+    let sub_id = "sub_change_plan_downgrade_fake_001";
+    cleanup_test_subscription(&pool, sub_id).await;
+    insert_test_subscription(&pool, user.id, sub_id, "Enterprise", "active").await;
+
+    let result = change_plan_handler(
+        State(pool.clone()),
+        headers,
+        Json(ChangePlanBody {
+            product_id: team_product_id(),
+        }),
+    )
+    .await;
+
+    match result {
+        Err(BillingError::ServiceUnavailable(_)) => {}
+        other => panic!("expected ServiceUnavailable, got: {:?}", other.map(|j| j.0)),
+    }
+
+    let (plan, _, _, scheduled, _, _) = subscription_row(&pool, sub_id).await;
+    assert_eq!(plan, "Enterprise");
+    assert_eq!(
+        scheduled, None,
+        "expected the schedule to be undone when Creem rejects the change"
+    );
+
+    cleanup_test_user(&pool, email).await;
+}
+
+#[tokio::test]
+#[serial]
 async fn change_plan_upgrade_creem_rejects() {
     let pool = test_pool().await;
     let email = "change_plan_upgrade_test@example.com";
@@ -2944,8 +3489,7 @@ async fn change_plan_upgrade_creem_rejects() {
     insert_test_subscription(&pool, user.id, sub_id, "Team", "active").await;
 
     let body = ChangePlanBody {
-        product_id: "prod_enterprise_target".to_string(),
-        plan_name: "Enterprise".to_string(),
+        product_id: enterprise_product_id(),
     };
 
     let result = change_plan_handler(State(pool.clone()), headers, Json(body)).await;
@@ -2991,12 +3535,14 @@ async fn apply_upgrade_creem_rejects() {
     cleanup_test_subscription(&pool, sub_id).await;
     insert_test_subscription(&pool, user.id, sub_id, "Team", "active").await;
 
-    let body = ChangePlanBody {
-        product_id: "prod_enterprise_target".to_string(),
-        plan_name: "Enterprise".to_string(),
-    };
-
-    let result = apply_upgrade(&pool, sub_id, &body).await;
+    let result = apply_upgrade(
+        &pool,
+        sub_id,
+        "prod_enterprise_target",
+        "Enterprise",
+        BillingInterval::Month,
+    )
+    .await;
     match result {
         Err(BillingError::ServiceUnavailable(_)) => {}
         Err(other) => panic!("expected ServiceUnavailable, got: {:?}", other),
@@ -3026,17 +3572,22 @@ async fn get_product_ids_success() {
         .expect("expected CREEM_TEAM_PRODUCT_ID to be genuinely set for this test");
     let expected_enterprise_id = var("CREEM_ENTERPRISE_PRODUCT_ID")
         .expect("expected CREEM_ENTERPRISE_PRODUCT_ID to be genuinely set for this test");
+    // Yearly IDs are optional: null until they're in .env.
+    let expected_team_yearly = var("CREEM_TEAM_YEARLY_PRODUCT_ID").ok();
+    let expected_enterprise_yearly = var("CREEM_ENTERPRISE_YEARLY_PRODUCT_ID").ok();
 
     let result = get_product_ids()
         .await
-        .expect("expected the request to succeed with both real IDs present")
+        .expect("expected the request to succeed with both monthly IDs present")
         .0;
 
     assert_eq!(
         result,
         json!({
             "Team": expected_team_id,
+            "TeamYearly": expected_team_yearly,
             "Enterprise": expected_enterprise_id,
+            "EnterpriseYearly": expected_enterprise_yearly,
         }),
         "expected the real, actual product IDs to be returned"
     );
@@ -3241,48 +3792,25 @@ async fn mark_event_processed_correctly_handles_two_genuinely_simultaneous_attem
         .ok();
 }
 
+// Scan Limit For Plan Tests
 #[test]
-fn team_plan_on_an_active_subscription_gets_the_real_750_limit() {
-    assert_eq!(scan_limit_for_plan_and_status("Team", "active"), Some(750));
+fn team_plan_gets_750_scans_a_month() {
+    assert_eq!(scan_limit_for_plan("Team"), Some(750));
 }
 
 #[test]
-fn enterprise_plan_on_an_active_subscription_is_genuinely_unlimited() {
-    assert_eq!(scan_limit_for_plan_and_status("Enterprise", "active"), None);
+fn enterprise_plan_is_unlimited() {
+    assert_eq!(scan_limit_for_plan("Enterprise"), None);
 }
 
 #[test]
 fn an_unrecognized_plan_name_gets_zero_scans_rather_than_silently_being_unlimited() {
-    assert_eq!(
-        scan_limit_for_plan_and_status("SomeFuturePlan", "active"),
-        Some(0)
-    );
+    assert_eq!(scan_limit_for_plan("SomeFuturePlan"), Some(0));
 }
 
 #[test]
-fn a_trialing_team_subscription_is_capped_at_the_real_trial_limit_not_the_full_plan_limit() {
-    assert_eq!(
-        scan_limit_for_plan_and_status("Team", "trialing"),
-        Some(100)
-    );
-}
-
-#[test]
-fn a_trialing_enterprise_subscription_is_still_capped_this_is_the_whole_point_of_this_function() {
-    assert_eq!(
-        scan_limit_for_plan_and_status("Enterprise", "trialing"),
-        Some(100),
-        "a trialing Enterprise subscription must be capped, never genuinely unlimited"
-    );
-}
-
-#[test]
-fn a_trialing_subscription_on_an_unrecognized_plan_still_gets_the_real_trial_cap_not_zero() {
-    assert_eq!(
-        scan_limit_for_plan_and_status("SomeFuturePlan", "trialing"),
-        Some(100),
-        "trial status must win over the unknown-plan fallback of Some(0) too"
-    );
+fn the_free_plan_is_100_scans_a_month() {
+    assert_eq!(FREE_MONTHLY_SCANS, 100);
 }
 
 fn dt(offset_days: i64) -> DateTime<Utc> {
@@ -3326,6 +3854,284 @@ fn a_genuinely_missing_incoming_period_end_is_never_treated_as_a_new_period() {
 fn an_existing_row_with_a_genuinely_missing_stored_period_end_is_never_treated_as_a_new_period() {
     let existing = Some(None);
     assert!(!is_new_billing_period(existing, Some(dt(30))));
+}
+
+// Free Plan Scan Tests
+#[tokio::test]
+async fn free_plan_allows_exactly_100_scans_even_when_they_arrive_at_once() {
+    let pool = test_pool().await;
+    let email = "free_plan_concurrency_test@example.com";
+    let (user, _) = create_test_user(&pool, email).await;
+
+    let mut handles = Vec::new();
+    for _ in 0..150 {
+        let pool = pool.clone();
+        let user_id = user.id;
+        handles.push(tokio::spawn(async move {
+            check_and_increment_scan_usage(&pool, user_id).await.is_ok()
+        }));
+    }
+    let mut allowed = 0;
+    for handle in handles {
+        if handle.await.expect("expected the task to finish") {
+            allowed += 1;
+        }
+    }
+    assert_eq!(
+        allowed, 100,
+        "expected exactly 100 of 150 scans to be allowed"
+    );
+
+    let usage = get_scan_usage(&pool, user.id).await;
+    assert_eq!(usage["plan"], json!("Free"));
+    assert_eq!(usage["used"], json!(100));
+
+    let expected_reset = sign_up_date_plus_months(&pool, user.id, 1).await;
+    match check_and_increment_scan_usage(&pool, user.id).await {
+        Err(ScanLimitError::FreeLimitReached { limit, resets_on }) => {
+            assert_eq!(limit, 100);
+            assert_eq!(
+                resets_on, expected_reset,
+                "expected the scans to come back one month after sign-up"
+            );
+        }
+        other => panic!("expected FreeLimitReached, got: {:?}", other),
+    }
+
+    cleanup_test_user(&pool, email).await;
+}
+
+#[tokio::test]
+async fn free_scans_come_back_on_the_sign_up_day_not_the_first() {
+    let pool = test_pool().await;
+    let email = "free_plan_sign_up_day_test@example.com";
+    let (user, _) = create_test_user(&pool, email).await;
+    query("UPDATE users SET created_at = NOW() - interval '40 days' WHERE id = $1")
+        .bind(user.id)
+        .execute(&pool)
+        .await
+        .expect("expected to move the sign-up date back");
+
+    // All 100 used in the current Free month (which started on the
+    // first monthly anniversary of the sign-up).
+    query(
+        "INSERT INTO free_scan_usage (user_id, period_start, scans_used)
+         SELECT id, created_at + interval '1 month', 100 FROM users WHERE id = $1",
+    )
+    .bind(user.id)
+    .execute(&pool)
+    .await
+    .expect("expected to use up the free scans");
+
+    assert!(
+        check_and_increment_scan_usage(&pool, user.id)
+            .await
+            .is_err(),
+        "expected the 101st scan this month to be refused"
+    );
+    assert_eq!(
+        get_scan_usage(&pool, user.id).await["resets_on"],
+        json!(
+            sign_up_date_plus_months(&pool, user.id, 2)
+                .await
+                .to_string()
+        ),
+        "expected the reset on the sign-up day of next month"
+    );
+
+    // The count belongs to the previous Free month -> a new month began.
+    query(
+        "UPDATE free_scan_usage SET period_start = period_start - interval '1 month'
+         WHERE user_id = $1",
+    )
+    .bind(user.id)
+    .execute(&pool)
+    .await
+    .expect("expected to move the count back a month");
+
+    assert_eq!(get_scan_usage(&pool, user.id).await["used"], json!(0));
+    assert!(check_and_increment_scan_usage(&pool, user.id).await.is_ok());
+    assert_eq!(get_scan_usage(&pool, user.id).await["used"], json!(1));
+
+    cleanup_test_user(&pool, email).await;
+}
+
+#[tokio::test]
+async fn a_past_due_subscription_falls_back_to_the_free_plan() {
+    let pool = test_pool().await;
+    let email = "past_due_uses_free_test@example.com";
+    let (user, _) = create_test_user(&pool, email).await;
+    insert_test_subscription(&pool, user.id, "sub_past_due_free_001", "Team", "past_due").await;
+
+    assert!(check_and_increment_scan_usage(&pool, user.id).await.is_ok());
+    let usage = get_scan_usage(&pool, user.id).await;
+    assert_eq!(usage["plan"], json!("Free"));
+    assert_eq!(usage["used"], json!(1));
+
+    cleanup_test_user(&pool, email).await;
+}
+
+// Paid Plan Scan Tests
+#[tokio::test]
+async fn team_monthly_stops_at_750_scans() {
+    let pool = test_pool().await;
+    let email = "team_monthly_limit_test@example.com";
+    let (user, _) = create_test_user(&pool, email).await;
+    insert_subscription_with_scans(
+        &pool,
+        user.id,
+        "sub_team_monthly_limit_001",
+        TestPaidPlan {
+            plan_name: "Team",
+            status: "active",
+            billing_interval: "month",
+            scans_used: 749,
+            bought_days_ago: 10,
+        },
+    )
+    .await;
+
+    assert!(check_and_increment_scan_usage(&pool, user.id).await.is_ok());
+    match check_and_increment_scan_usage(&pool, user.id).await {
+        Err(ScanLimitError::LimitReached { limit }) => assert_eq!(limit, 750),
+        other => panic!("expected LimitReached, got: {:?}", other),
+    }
+
+    let free_rows: i64 = query_scalar("SELECT COUNT(*) FROM free_scan_usage WHERE user_id = $1")
+        .bind(user.id)
+        .fetch_one(&pool)
+        .await
+        .expect("expected the count to succeed");
+    assert_eq!(free_rows, 0, "expected a paid plan never to use Free scans");
+
+    cleanup_test_user(&pool, email).await;
+}
+
+#[tokio::test]
+async fn enterprise_is_unlimited() {
+    let pool = test_pool().await;
+    let email = "enterprise_unlimited_test@example.com";
+    let (user, _) = create_test_user(&pool, email).await;
+    insert_subscription_with_scans(
+        &pool,
+        user.id,
+        "sub_enterprise_unlimited_001",
+        TestPaidPlan {
+            plan_name: "Enterprise",
+            status: "active",
+            billing_interval: "month",
+            scans_used: 100_000,
+            bought_days_ago: 10,
+        },
+    )
+    .await;
+
+    assert!(check_and_increment_scan_usage(&pool, user.id).await.is_ok());
+    assert_eq!(get_scan_usage(&pool, user.id).await["limit"], json!(null));
+
+    cleanup_test_user(&pool, email).await;
+}
+
+#[tokio::test]
+async fn a_monthly_plan_does_not_reset_by_itself_only_on_renewal() {
+    let pool = test_pool().await;
+    let email = "monthly_no_self_reset_test@example.com";
+    let (user, _) = create_test_user(&pool, email).await;
+    let sub_id = "sub_monthly_no_self_reset_001";
+    insert_subscription_with_scans(
+        &pool,
+        user.id,
+        sub_id,
+        TestPaidPlan {
+            plan_name: "Team",
+            status: "active",
+            billing_interval: "month",
+            scans_used: 750,
+            bought_days_ago: 10,
+        },
+    )
+    .await;
+    query(
+        "UPDATE subscriptions SET scan_period_start = scan_period_start - interval '1 month'
+         WHERE creem_subscription_id = $1",
+    )
+    .bind(sub_id)
+    .execute(&pool)
+    .await
+    .expect("expected to move the count back a month");
+
+    assert!(
+        check_and_increment_scan_usage(&pool, user.id)
+            .await
+            .is_err(),
+        "expected a monthly plan to wait for its renewal webhook"
+    );
+
+    cleanup_test_user(&pool, email).await;
+}
+
+#[tokio::test]
+async fn yearly_team_gets_its_750_scans_back_every_month() {
+    let pool = test_pool().await;
+    let email = "yearly_team_monthly_reset_test@example.com";
+    let (user, _) = create_test_user(&pool, email).await;
+    let sub_id = "sub_yearly_team_reset_001";
+    insert_subscription_with_scans(
+        &pool,
+        user.id,
+        sub_id,
+        TestPaidPlan {
+            plan_name: "Team",
+            status: "active",
+            billing_interval: "year",
+            scans_used: 750,
+            bought_days_ago: 40,
+        },
+    )
+    .await;
+
+    // 750 used in the current scan month: refused.
+    assert!(
+        check_and_increment_scan_usage(&pool, user.id)
+            .await
+            .is_err()
+    );
+
+    // The count belongs to last scan month: a new month began.
+    query(
+        "UPDATE subscriptions SET scan_period_start = scan_period_start - interval '1 month'
+         WHERE creem_subscription_id = $1",
+    )
+    .bind(sub_id)
+    .execute(&pool)
+    .await
+    .expect("expected to move the count back a month");
+
+    let usage = get_scan_usage(&pool, user.id).await;
+    assert_eq!(usage["used"], json!(0));
+    assert_eq!(usage["interval"], json!("year"));
+
+    assert!(check_and_increment_scan_usage(&pool, user.id).await.is_ok());
+
+    let (used, on_the_purchase_day): (i32, bool) = query_as(
+        "SELECT scans_used_this_period,
+                scan_period_start = scan_anchor + make_interval(months => 1)
+         FROM subscriptions WHERE creem_subscription_id = $1",
+    )
+    .bind(sub_id)
+    .fetch_one(&pool)
+    .await
+    .expect("expected the row to exist");
+    assert_eq!(
+        used, 1,
+        "expected the new scan month to start counting at 1"
+    );
+    assert!(
+        on_the_purchase_day,
+        "expected the new scan month to start on the purchase day of the month"
+    );
+
+    cleanup_test_user(&pool, email).await;
 }
 
 // Insert Active Subscription Tests

@@ -82,7 +82,6 @@ document.addEventListener("DOMContentLoaded", async () => {
   if (profileEditBtn) {
     profileEditBtn.addEventListener("click", () => toggleProfileEdit(true));
   }
-
   const profileCancelBtn = document.getElementById("profile-cancel-btn");
   if (profileCancelBtn) {
     profileCancelBtn.addEventListener("click", () => toggleProfileEdit(false));
@@ -174,17 +173,14 @@ document.addEventListener("DOMContentLoaded", async () => {
     googleConnectBtn.addEventListener("click", handleGoogleButtonClick);
   }
 
+  // Creem product IDs: { Team, TeamYearly, Enterprise, EnterpriseYearly }.
+  // A yearly ID is null until it's set up on the server.
+  let productIds: Record<string, string | null> = {};
   async function loadProductIds(): Promise<void> {
     try {
       const res = await fetch(API_BASE + "/billing/product-ids");
       if (!res.ok) return;
-      const ids = await res.json();
-      document.querySelectorAll<HTMLElement>(".plan-option").forEach((opt) => {
-        const realId = ids[opt.dataset.plan as string];
-        if (realId) {
-          opt.dataset.productId = realId;
-        }
-      });
+      productIds = await res.json();
     } catch (e) {
       console.error("Safely: failed to load product IDs", e);
     }
@@ -201,11 +197,86 @@ document.addEventListener("DOMContentLoaded", async () => {
   const cancelSubBtn = document.getElementById("cancel-subscription-btn");
   const cancelSubConfirm = document.getElementById("cancel-sub-confirm");
   const currentPlanBadge = document.getElementById("current-plan-badge");
+  const cancelSubArea = document.getElementById("cancel-subscription-area");
 
-  let selectedProductId: string | null = null;
+  type Interval = "month" | "year";
   let selectedPlanName: string | null = null;
+  let selectedInterval: Interval = "month";
   let realSubscriptionStatus: string | null = null;
   let realSubscriptionPlan: string | null = null;
+  let realSubscriptionInterval: Interval | null = null;
+  const intervalNote = document.getElementById("plan-interval-note");
+
+  function productIdFor(plan: string, interval: Interval): string | null {
+    return productIds[interval === "year" ? plan + "Yearly" : plan] || null;
+  }
+
+  function planLabel(plan: string, interval: Interval | null): string {
+    const name = plan === "Enterprise" ? t("dash.plan.enterprise", "Enterprise") : t("dash.plan.team", "Team");
+    if (!interval) return name;
+    return interval === "year"
+      ? name + " · " + t("dash.plan.yearly", "Yearly")
+      : name + " · " + t("dash.plan.monthly", "Monthly");
+  }
+
+  // Ticks the plan the user is on - only while its billing (monthly or
+  // yearly) is the one shown - or the plan they just picked.
+  function renderChecks(): void {
+    document.querySelectorAll<HTMLElement>(".plan-option").forEach((opt) => {
+      const check = opt.querySelector(".plan-check");
+      if (!check) return;
+      const plan = opt.dataset.plan;
+      const on = selectedPlanName
+        ? plan === selectedPlanName
+        : plan === realSubscriptionPlan && selectedInterval === realSubscriptionInterval;
+      check.classList.toggle("hidden", !on);
+    });
+  }
+
+  // The line under the plans when moving between monthly and yearly.
+  function renderIntervalNote(): void {
+    if (!intervalNote) return;
+    let text = "";
+    if (realSubscriptionPlan && realSubscriptionInterval === "month" && selectedInterval === "year") {
+      text = t(
+        "dash.plan.note_to_yearly",
+        "Your yearly plan starts as soon as you pay, and your monthly plan ends automatically. The rest of the current month isn't refunded.",
+      );
+    } else if (realSubscriptionPlan && realSubscriptionInterval === "year" && selectedInterval === "month") {
+      text = t(
+        "dash.plan.note_to_monthly",
+        "To move a yearly plan to monthly billing, email help@safely.sh.",
+      );
+    }
+    intervalNote.textContent = text;
+    intervalNote.classList.toggle("hidden", !text);
+  }
+
+  // Monthly / Yearly switch: swaps the prices and clears the pick.
+  function setBillingInterval(interval: Interval): void {
+    selectedInterval = interval;
+    selectedPlanName = null;
+    if (continueBtn) continueBtn.disabled = true;
+    document.querySelectorAll<HTMLElement>(".billing-interval-btn").forEach((btn) => {
+      const on = btn.dataset.interval === interval;
+      btn.classList.toggle("bg-surface3", on);
+      btn.classList.toggle("text-ink", on);
+      btn.classList.toggle("text-muted", !on);
+    });
+    document.querySelectorAll<HTMLElement>(".plan-desc").forEach((el) => {
+      const key = interval === "year" ? el.dataset.i18nYear : el.dataset.i18nMonth;
+      const fallback = (interval === "year" ? el.dataset.textYear : el.dataset.textMonth) || "";
+      if (key) el.setAttribute("data-i18n", key);
+      el.textContent = key ? t(key, fallback) : fallback;
+    });
+    renderChecks();
+    renderIntervalNote();
+  }
+
+  document.querySelectorAll<HTMLElement>(".billing-interval-btn").forEach((btn) => {
+    btn.addEventListener("click", () => setBillingInterval(btn.dataset.interval as Interval));
+  });
+  setBillingInterval("month");
 
   function togglePlanSection(show: boolean): void {
     if (!planBillingExpanded) return;
@@ -225,6 +296,94 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
   }
 
+  // "2026-11-01" or a full timestamp -> "Nov 1". Built from the date
+  // parts, so a UTC date never shows as the day before in local time.
+  function formatShortDate(value: string | null | undefined): string {
+    if (!value) return "";
+    const p = value.slice(0, 10).split("-").map((n) => parseInt(n, 10));
+    if (p.length !== 3 || p.some((n) => isNaN(n))) return "";
+    return new Date(p[0], p[1] - 1, p[2]).toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    });
+  }
+
+  // The bar under the plan name: "37 of 100 scans used · resets Nov 1".
+  function renderUsage(
+    usage: { plan: string; used: number; limit: number | null; resets_on: string | null } | null,
+  ): void {
+    const box = document.getElementById("current-plan-usage");
+    const bar = document.getElementById("current-plan-usage-bar");
+    const text = document.getElementById("current-plan-usage-text");
+    if (!box || !bar || !text) return;
+    if (!usage) {
+      box.classList.add("hidden");
+      return;
+    }
+    const resets = formatShortDate(usage.resets_on);
+    if (usage.limit === null) {
+      bar.style.width = "100%";
+      text.textContent = t(
+        "dash.settings.usage_unlimited",
+        "{used} scans this month · unlimited",
+      ).replace("{used}", String(usage.used));
+    } else {
+      const pct = usage.limit > 0 ? Math.min(100, (usage.used / usage.limit) * 100) : 100;
+      bar.style.width = pct + "%";
+      bar.classList.toggle("bg-coral", pct >= 100);
+      bar.classList.toggle("bg-brand", pct < 100);
+      let line = t("dash.settings.usage_text", "{used} of {limit} scans used")
+        .replace("{used}", String(usage.used))
+        .replace("{limit}", String(usage.limit));
+      if (resets) line += " · " + t("dash.settings.resets_on", "resets") + " " + resets;
+      text.textContent = line;
+    }
+    box.classList.remove("hidden");
+  }
+
+  // Shows either the active paid plan, or the Free plan (everyone
+  // without an active paid plan is on Free: 100 scans a month).
+  function renderPlan(
+    planName: string | null,
+    interval: Interval | null,
+    periodEnd: string | null,
+    scheduledPlan: string | null,
+  ): void {
+    const isPaid = !!planName;
+    const nameEl = document.getElementById("current-plan-name");
+    const priceEl = document.getElementById("current-plan-price");
+
+    if (isPaid) {
+      if (nameEl) nameEl.textContent = planLabel(planName as string, interval);
+      if (priceEl) {
+        const renews = formatShortDate(periodEnd);
+        let line = renews ? t("dash.settings.renews_at", "Renews at") + " " + renews : "";
+        // A downgrade waiting for the renewal (e.g. Enterprise -> Team).
+        if (scheduledPlan && scheduledPlan !== planName) {
+          line +=
+            (line ? " · " : "") +
+            t("dash.settings.then_switches_to", "then switches to") +
+            " " +
+            planLabel(scheduledPlan, interval);
+        }
+        priceEl.textContent = line;
+      }
+      if (currentPlanBadge) {
+        currentPlanBadge.classList.remove("hidden");
+        currentPlanBadge.textContent = t("dash.settings.active_badge", "Active");
+      }
+    } else {
+      if (nameEl) nameEl.textContent = t("dash.settings.free_plan", "Free plan");
+      if (priceEl) priceEl.textContent = t("dash.settings.free_desc", "100 free scans every month");
+      if (currentPlanBadge) currentPlanBadge.classList.add("hidden");
+    }
+    if (cancelSubArea) cancelSubArea.classList.toggle("hidden", !isPaid);
+
+    // Open the switch on the billing the user already has.
+    setBillingInterval(isPaid && interval === "year" ? "year" : "month");
+  }
+
   async function loadRealSubscriptionStatus(): Promise<void> {
     try {
       const res = await fetch(API_BASE + "/billing/subscription-status", {
@@ -233,44 +392,19 @@ document.addEventListener("DOMContentLoaded", async () => {
       if (!res.ok) return;
       const data = await res.json();
       realSubscriptionStatus = data.status;
-      realSubscriptionPlan = data.plan_name;
-
-      const isActive = data.status === "active" || data.status === "trialing";
-      const nameEl = document.getElementById("current-plan-name");
-      const priceEl = document.getElementById("current-plan-price");
-
-      if (isActive) {
-        if (nameEl) nameEl.textContent = data.plan_name;
-        if (priceEl && data.current_period_end) {
-          const renewDate = new Date(data.current_period_end);
-          const formatted = renewDate.toLocaleDateString("en-US", {
-            month: "short",
-            day: "numeric",
-            year: "numeric",
-          });
-          const label = data.status === "trialing"
-            ? t("dash.settings.trial_ends", "Trial ends")
-            : t("dash.settings.renews_at", "Renews at");
-          priceEl.textContent = label + " " + formatted;
-        }
-        if (currentPlanBadge) {
-          currentPlanBadge.classList.remove("hidden");
-          currentPlanBadge.textContent =
-            data.status === "trialing"
-              ? t("dash.settings.trial_badge", "In Trial")
-              : t("dash.settings.active_badge", "Active");
-        }
-      } else {
-        if (nameEl) nameEl.textContent = t("dash.settings.no_active_plan", "No active plan");
-        if (priceEl) priceEl.textContent = t("dash.settings.choose_plan", "Choose a plan below to get started");
-        if (currentPlanBadge) currentPlanBadge.classList.add("hidden");
-      }
-
-      document.querySelectorAll<HTMLElement>(".plan-option").forEach((opt) => {
-        const check = opt.querySelector(".plan-check");
-        if (!check) return;
-        check.classList.toggle("hidden", !(isActive && opt.dataset.plan === data.plan_name));
-      });
+      realSubscriptionPlan = data.status === "active" ? data.plan_name : null;
+      realSubscriptionInterval = realSubscriptionPlan
+        ? data.billing_interval === "year"
+          ? "year"
+          : "month"
+        : null;
+      renderPlan(
+        realSubscriptionPlan,
+        realSubscriptionInterval,
+        data.current_period_end,
+        realSubscriptionPlan ? data.scheduled_plan_name || null : null,
+      );
+      renderUsage(data.usage || null);
     } catch (e) {
       console.error("Safely: failed to load subscription status", e);
     }
@@ -291,46 +425,64 @@ document.addEventListener("DOMContentLoaded", async () => {
   if (checkoutParams.get("checkout") === "success") {
     history.replaceState(null, "", window.location.pathname);
     loadRealSubscriptionStatus().then(() => {
-      if (realSubscriptionStatus === "trialing") {
-        showToast(t("dash.toast.trial_started", "Welcome! Your 7-day free trial has started."));
-      } else {
-        showToast(t("dash.toast.sub_active", "Welcome! Your subscription is now active."));
-      }
+      showToast(t("dash.toast.sub_active", "Welcome! Your subscription is now active."));
     });
   }
 
   document.querySelectorAll<HTMLElement>(".plan-option").forEach((opt) => {
     opt.addEventListener("click", () => {
-      document.querySelectorAll(".plan-option .plan-check").forEach((c) => {
-        c.classList.add("hidden");
-      });
-      const check = opt.querySelector(".plan-check");
-      if (check) check.classList.remove("hidden");
-      selectedProductId = opt.dataset.productId || null;
       selectedPlanName = opt.dataset.plan as string;
+      renderChecks();
       if (continueBtn) continueBtn.disabled = false;
     });
   });
 
+  async function startCheckout(productId: string): Promise<void> {
+    const res = await fetch(API_BASE + "/billing/checkout", {
+      method: "POST",
+      headers: Object.assign(
+        { "Content-Type": "application/json" },
+        (window as any).safelyAuth.authHeader(),
+      ),
+      body: JSON.stringify({ product_id: productId }),
+    });
+    if (res.status === 401) {
+      (window as any).safelyAuth.logout();
+      return;
+    }
+    if (!res.ok) throw new Error("Checkout creation failed");
+    const data = await res.json();
+    window.location.href = data.checkout_url;
+  }
+
   if (continueBtn) {
     continueBtn.addEventListener("click", async () => {
       if (!selectedPlanName) return;
-      if (!selectedProductId) {
-        showToast(selectedPlanName + " " + t("dash.toast.not_available", "isn't available yet - check back soon."));
+      const plan = selectedPlanName;
+      const interval = selectedInterval;
+      const label = planLabel(plan, interval);
+      const productId = productIdFor(plan, interval);
+      if (!productId) {
+        showToast(label + " " + t("dash.toast.not_available", "isn't available yet - check back soon."));
         return;
       }
 
-      const isActive =
-        realSubscriptionStatus === "active" || realSubscriptionStatus === "trialing";
-      if (isActive && realSubscriptionPlan === selectedPlanName) {
-        showToast(t("dash.toast.already_subscribed", "You're already subscribed to") + " " + selectedPlanName + ".");
+      const isActive = realSubscriptionStatus === "active" && !!realSubscriptionPlan;
+      if (isActive && realSubscriptionPlan === plan && realSubscriptionInterval === interval) {
+        showToast(t("dash.toast.already_subscribed", "You're already subscribed to") + " " + label + ".");
+        return;
+      }
+      if (isActive && realSubscriptionInterval === "year" && interval === "month") {
+        showToast(t("dash.plan.note_to_monthly", "To move a yearly plan to monthly billing, email help@safely.sh."));
         return;
       }
 
       const originalText = continueBtn.textContent;
       continueBtn.disabled = true;
 
-      if (isActive) {
+      // Same billing (monthly -> monthly, yearly -> yearly): change the
+      // plan in place. Monthly -> yearly, or no plan yet: checkout.
+      if (isActive && realSubscriptionInterval === interval) {
         continueBtn.textContent = t("dash.common.updating", "Updating...");
         try {
           const res = await fetch(API_BASE + "/billing/change-plan", {
@@ -339,22 +491,18 @@ document.addEventListener("DOMContentLoaded", async () => {
               { "Content-Type": "application/json" },
               (window as any).safelyAuth.authHeader(),
             ),
-            body: JSON.stringify({ product_id: selectedProductId, plan_name: selectedPlanName }),
+            body: JSON.stringify({ product_id: productId }),
           });
           if (res.status === 401) {
             (window as any).safelyAuth.logout();
             return;
           }
-          if (res.status === 409) {
-            showToast(t("dash.toast.switch_after_trial", "You can switch plans once your trial ends."));
-            return;
-          }
           if (!res.ok) throw new Error("Plan change failed");
           const data = await res.json();
           if (data.applied === "immediately") {
-            showToast(t("dash.toast.upgraded", "You've been upgraded to") + " " + selectedPlanName + ".");
+            showToast(t("dash.toast.upgraded", "You've been upgraded to") + " " + label + ".");
           } else {
-            showToast(t("dash.toast.switch_at_period_end", "You'll switch to") + " " + selectedPlanName + " " + t("dash.toast.when_period_ends", "when your current period ends."));
+            showToast(t("dash.toast.switch_at_period_end", "You'll switch to") + " " + label + " " + t("dash.toast.when_period_ends", "when your current period ends."));
           }
           await loadRealSubscriptionStatus();
           togglePlanSection(false);
@@ -369,21 +517,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
       continueBtn.textContent = t("dash.common.redirecting", "Redirecting...");
       try {
-        const res = await fetch(API_BASE + "/billing/checkout", {
-          method: "POST",
-          headers: Object.assign(
-            { "Content-Type": "application/json" },
-            (window as any).safelyAuth.authHeader(),
-          ),
-          body: JSON.stringify({ product_id: selectedProductId }),
-        });
-        if (res.status === 401) {
-          (window as any).safelyAuth.logout();
-          return;
-        }
-        if (!res.ok) throw new Error("Checkout creation failed");
-        const data = await res.json();
-        window.location.href = data.checkout_url;
+        await startCheckout(productId);
       } catch (e) {
         console.error("Safely: failed to start checkout", e);
         showToast(t("dash.toast.checkout_failed", "Couldn't start checkout. Please try again."));
@@ -400,8 +534,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   if (cancelSubBtn) {
     cancelSubBtn.addEventListener("click", () => {
-      const isActive =
-        realSubscriptionStatus === "active" || realSubscriptionStatus === "trialing";
+      const isActive = realSubscriptionStatus === "active";
       if (!isActive) {
         showToast(t("dash.toast.no_sub_to_cancel", "You don't have an active subscription to cancel."));
         return;
@@ -414,7 +547,6 @@ document.addEventListener("DOMContentLoaded", async () => {
   if (cancelSubConfirmNo) {
     cancelSubConfirmNo.addEventListener("click", () => toggleCancelConfirm(false));
   }
-
   const cancelSubConfirmYes = document.getElementById("cancel-sub-confirm-yes") as HTMLButtonElement | null;
   if (cancelSubConfirmYes) {
     cancelSubConfirmYes.addEventListener("click", async () => {
@@ -432,19 +564,9 @@ document.addEventListener("DOMContentLoaded", async () => {
         }
         if (!res.ok) throw new Error("Cancel failed");
 
-        // Update the screen directly, right now - the real database
-        // row only updates later, once Creem's webhook actually
-        // arrives, so a fresh fetch here would show stale data.
-        realSubscriptionStatus = "canceled";
-        realSubscriptionPlan = null;
-        const nameEl = document.getElementById("current-plan-name");
-        const priceEl = document.getElementById("current-plan-price");
-        if (nameEl) nameEl.textContent = t("dash.settings.no_active_plan", "No active plan");
-        if (priceEl) priceEl.textContent = t("dash.settings.choose_plan", "Choose a plan below to get started");
-        if (currentPlanBadge) currentPlanBadge.classList.add("hidden");
-        document.querySelectorAll(".plan-option .plan-check").forEach((c) => {
-          c.classList.add("hidden");
-        });
+        // The server marks the subscription canceled straight away, so
+        // re-reading the status now shows the Free plan and its usage.
+        await loadRealSubscriptionStatus();
         toggleCancelConfirm(false);
         togglePlanSection(false);
         showToast(t("dash.toast.sub_canceled", "Your subscription has been canceled."));
@@ -477,7 +599,6 @@ document.addEventListener("DOMContentLoaded", async () => {
   document.addEventListener("keydown", (e: KeyboardEvent) => {
     if (e.key === "Escape") toggleTermsModal(false);
   });
-
   const avatarInput = document.getElementById("settings-avatar-input") as HTMLInputElement | null;
   if (avatarInput) {
     avatarInput.addEventListener("change", (e: Event) => {

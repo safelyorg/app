@@ -88,6 +88,54 @@ describe("analyze", () => {
     expect(result).toEqual({ error: "unauthorized" });
   });
 
+  it("returns the Free limit and its reset date when the 100 free scans are used up", async () => {
+    (globalThis as any).fetch.mockResolvedValue({
+      ok: false,
+      status: 402,
+      text: async () =>
+        JSON.stringify({
+          error: "free_scan_limit_reached",
+          message: "You've used your 100 free scans for this month.",
+          limit: 100,
+          resets_on: "2026-11-14",
+        }),
+    });
+
+    const result = await api.analyze({} as any);
+    expect(result).toEqual({
+      error: "free_scan_limit_reached",
+      scanLimit: 100,
+      resetsOn: "2026-11-14",
+    });
+  });
+
+  it("returns the paid plan limit when a Team plan has used its 750 scans", async () => {
+    (globalThis as any).fetch.mockResolvedValue({
+      ok: false,
+      status: 402,
+      text: async () =>
+        JSON.stringify({
+          error: "scan_limit_reached",
+          message: "You've used all 750 scans included in your plan this month.",
+          limit: 750,
+        }),
+    });
+
+    const result = await api.analyze({} as any);
+    expect(result).toEqual({ error: "scan_limit_reached", scanLimit: 750 });
+  });
+
+  it("still reports a scan limit when a 402 body can't be read", async () => {
+    (globalThis as any).fetch.mockResolvedValue({
+      ok: false,
+      status: 402,
+      text: async () => "not json",
+    });
+
+    const result = await api.analyze({} as any);
+    expect(result).toEqual({ error: "scan_limit_reached", scanLimit: null });
+  });
+
   it("returns null for any other, unrecognized failure", async () => {
     (globalThis as any).fetch.mockResolvedValue({
       ok: false,
@@ -149,37 +197,55 @@ describe("submitReport", () => {
   });
 });
 
-describe("checkSubscriptionStatus", () => {
-  it("returns the real status string on success", async () => {
+describe("getScanUsage", () => {
+  it("returns the usage block from the subscription status", async () => {
+    const usage = { plan: "Free", interval: null, used: 37, limit: 100, resets_on: "2026-11-14" };
+    (globalThis as any).fetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({ plan_name: null, status: null, usage }),
+    });
+
+    const result = await api.getScanUsage();
+    expect(result).toEqual(usage);
+  });
+
+  it("reads the subscription-status endpoint with the session token", async () => {
+    fakeChrome.storage.local.get = vi.fn().mockResolvedValue({
+      safely_session_token: "real-token-456",
+    });
+    (globalThis as any).fetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({ usage: { plan: "Team", used: 1, limit: 750, resets_on: null } }),
+    });
+
+    await api.getScanUsage();
+
+    const callArgs = (globalThis as any).fetch.mock.calls[0];
+    expect(callArgs[0]).toContain("/billing/subscription-status");
+    expect(callArgs[1].headers.Authorization).toBe("Bearer real-token-456");
+  });
+
+  it("returns null when the response has no usage at all", async () => {
     (globalThis as any).fetch.mockResolvedValue({
       ok: true,
       json: async () => ({ status: "active" }),
     });
-    const result = await api.checkSubscriptionStatus();
-    expect(result).toBe("active");
-  });
-
-  it("returns null when the response has no status field at all", async () => {
-    (globalThis as any).fetch.mockResolvedValue({
-      ok: true,
-      json: async () => ({}),
-    });
-    const result = await api.checkSubscriptionStatus();
+    const result = await api.getScanUsage();
     expect(result).toBeNull();
   });
 
   it("returns null when the response is not ok", async () => {
     (globalThis as any).fetch.mockResolvedValue({
       ok: false,
-      json: async () => ({ status: "active" }),
+      json: async () => ({ usage: { plan: "Free", used: 1, limit: 100 } }),
     });
-    const result = await api.checkSubscriptionStatus();
+    const result = await api.getScanUsage();
     expect(result).toBeNull();
   });
 
   it("returns null when the fetch call itself throws", async () => {
     (globalThis as any).fetch.mockRejectedValue(new Error("network down"));
-    const result = await api.checkSubscriptionStatus();
+    const result = await api.getScanUsage();
     expect(result).toBeNull();
   });
 });
@@ -341,6 +407,27 @@ describe("fetchAnalysis", () => {
     );
     expect(finishedEvent).toBeDefined();
     expect((finishedEvent![0] as CustomEvent).detail.error).toBe("unauthorized");
+  });
+
+  it("passes the Free limit and reset date on to the panel when the free scans are used up", async () => {
+    setupScraperMocks();
+    (globalThis as any).fetch.mockResolvedValue({
+      ok: false,
+      status: 402,
+      text: async () =>
+        JSON.stringify({ error: "free_scan_limit_reached", limit: 100, resets_on: "2026-11-14" }),
+    });
+    const dispatchSpy = vi.spyOn(window, "dispatchEvent");
+
+    await api.fetchAnalysis();
+
+    const finishedEvent = dispatchSpy.mock.calls.find(
+      (call) => (call[0] as CustomEvent).type === "safely-analysis-finished",
+    );
+    const detail = (finishedEvent![0] as CustomEvent).detail;
+    expect(detail.error).toBe("free_scan_limit_reached");
+    expect(detail.scanLimit).toBe(100);
+    expect(detail.resetsOn).toBe("2026-11-14");
   });
 
   it("waits before scraping when the platform requires client-side scraping", async () => {

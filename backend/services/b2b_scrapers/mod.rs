@@ -328,6 +328,56 @@ pub async fn fetch_b2b_page(platform: &str, page_url: &str) -> Option<B2bPageRes
     })
 }
 
+/// How many more times a company page is asked for when the site
+/// answers with its robot-check page instead of the real page. Every
+/// ScraperAPI request goes out through a different connection (IP), so
+/// the next try is often let through. Only the company's own pages are
+/// tried again - the listing page is fetched exactly as before. Each
+/// extra try costs ScraperAPI credits and, on Alibaba, up to about a
+/// minute. Set to 0 to turn the extra try off.
+const BLOCK_PAGE_RETRIES: u32 = 1;
+
+/// What came back when a company page was fetched.
+enum CompanyPage {
+    /// The real page.
+    Loaded(String),
+    /// Only the site's robot-check page, even after BLOCK_PAGE_RETRIES.
+    Blocked,
+    /// Something that isn't a web page (size in bytes).
+    NotAPage(usize),
+    /// The request failed (the reason is already in the log).
+    Failed,
+}
+
+/// Fetches one company page, asking again (up to BLOCK_PAGE_RETRIES
+/// times) when the site shows its robot-check page.
+async fn fetch_company_page(
+    client: &reqwest::Client,
+    fetch_url: &str,
+    page_url: &str,
+) -> CompanyPage {
+    let mut blocked = 0;
+    loop {
+        match fetch_with_retries(client, fetch_url, page_url, PROFILE_FETCH_RETRIES).await {
+            None => return CompanyPage::Failed,
+            Some(html) if looks_like_a_block_page(&html) => {
+                if blocked >= BLOCK_PAGE_RETRIES {
+                    return CompanyPage::Blocked;
+                }
+                blocked += 1;
+                eprintln!(
+                    "Safely: company page {} was a robot-check page - asking again through a different connection (attempt {} of {})",
+                    page_url,
+                    blocked + 1,
+                    BLOCK_PAGE_RETRIES + 1
+                );
+            }
+            Some(html) if looks_like_a_real_page(&html) => return CompanyPage::Loaded(html),
+            Some(html) => return CompanyPage::NotAPage(html.len()),
+        }
+    }
+}
+
 /// Fetches the company's own profile pages (through ScraperAPI) and adds
 /// what they show - founding year, employees, description - to the
 /// supplier. Optional: if a fetch fails, the supplier keeps what the
@@ -347,68 +397,52 @@ async fn enrich_from_profile_pages(
         let profile_fetch_url = wrap_scraper_url_for_platform(&profile_url, platform);
         // A failure is logged inside fetch_with_retries (status + reason),
         // and the listing-page data is kept.
-        match fetch_with_retries(
-            &client,
-            &profile_fetch_url,
-            &profile_url,
-            PROFILE_FETCH_RETRIES,
-        )
-        .await
-        {
-            Some(profile_html) if looks_like_a_block_page(&profile_html) => {
+        match fetch_company_page(&client, &profile_fetch_url, &profile_url).await {
+            CompanyPage::Loaded(profile_html) => {
+                take_and_replace(supplier, |s| {
+                    scraper.enrich_from_company_profile(s, &profile_html)
+                });
+            }
+            CompanyPage::Blocked => {
                 all_loaded = false;
                 eprintln!(
                     "Safely: company page {} was a robot-check page, not the real page - company details skipped",
                     profile_url
                 );
             }
-            Some(profile_html) if looks_like_a_real_page(&profile_html) => {
-                take_and_replace(supplier, |s| {
-                    scraper.enrich_from_company_profile(s, &profile_html)
-                });
-            }
-            Some(profile_html) => {
+            CompanyPage::NotAPage(len) => {
                 all_loaded = false;
                 eprintln!(
                     "Safely: DEPENDENCY DOWN: B2B enrichment fetch for {} returned {} bytes that don't look like a real page - skipping enrichment, keeping listing-page data only",
-                    profile_url,
-                    profile_html.len()
+                    profile_url, len
                 );
             }
-            None => all_loaded = false,
+            CompanyPage::Failed => all_loaded = false,
         }
 
         if let Some(extended_url) = scraper.build_extended_profile_url(&profile_url) {
             let extended_fetch_url = wrap_scraper_url_for_platform(&extended_url, platform);
-            match fetch_with_retries(
-                &client,
-                &extended_fetch_url,
-                &extended_url,
-                PROFILE_FETCH_RETRIES,
-            )
-            .await
-            {
-                Some(extended_html) if looks_like_a_block_page(&extended_html) => {
+            match fetch_company_page(&client, &extended_fetch_url, &extended_url).await {
+                CompanyPage::Loaded(extended_html) => {
+                    take_and_replace(supplier, |s| {
+                        scraper.enrich_from_extended_profile(s, &extended_html)
+                    });
+                }
+                CompanyPage::Blocked => {
                     all_loaded = false;
                     eprintln!(
                         "Safely: extended company page {} was a robot-check page, not the real page - those details skipped",
                         extended_url
                     );
                 }
-                Some(extended_html) if looks_like_a_real_page(&extended_html) => {
-                    take_and_replace(supplier, |s| {
-                        scraper.enrich_from_extended_profile(s, &extended_html)
-                    });
-                }
-                Some(extended_html) => {
+                CompanyPage::NotAPage(len) => {
                     all_loaded = false;
                     eprintln!(
                         "Safely: DEPENDENCY DOWN: B2B extended-profile fetch for {} returned {} bytes that don't look like a real page - skipping",
-                        extended_url,
-                        extended_html.len()
+                        extended_url, len
                     );
                 }
-                None => all_loaded = false,
+                CompanyPage::Failed => all_loaded = false,
             }
         }
     } else {
@@ -536,5 +570,61 @@ mod browser_page_tests {
                 .await
                 .is_none()
         );
+    }
+
+    /// A tiny local web server that answers each request with the next
+    /// page in `pages`.
+    fn serve(pages: Vec<String>) -> String {
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        std::thread::spawn(move || {
+            for (stream, body) in listener.incoming().zip(pages) {
+                let mut stream = stream.unwrap();
+                let mut buf = [0u8; 2048];
+                let _ = stream.read(&mut buf);
+                let reply = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                    body.len(),
+                    body
+                );
+                let _ = stream.write_all(reply.as_bytes());
+            }
+        });
+        format!("http://{}/company_profile.html", addr)
+    }
+
+    fn real_page() -> String {
+        format!(
+            "<!DOCTYPE html><html><body>{}</body></html>",
+            "x".repeat(3000)
+        )
+    }
+
+    fn robot_page() -> String {
+        format!(
+            "<!DOCTYPE html><html><body><div id=\"sufei-punish\"></div>{}</body></html>",
+            "x".repeat(3000)
+        )
+    }
+
+    #[tokio::test]
+    async fn robot_check_company_page_is_asked_for_again() {
+        let url = serve(vec![robot_page(), real_page()]);
+        let client = build_scraper_client();
+        assert!(matches!(
+            fetch_company_page(&client, &url, &url).await,
+            CompanyPage::Loaded(_)
+        ));
+    }
+
+    #[tokio::test]
+    async fn robot_check_twice_gives_up() {
+        let url = serve(vec![robot_page(), robot_page(), real_page()]);
+        let client = build_scraper_client();
+        assert!(matches!(
+            fetch_company_page(&client, &url, &url).await,
+            CompanyPage::Blocked
+        ));
     }
 }

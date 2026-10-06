@@ -4,28 +4,22 @@
   "dash.nav.your_account": "Sua Conta",
   "dash.nav.settings": "Configurações",
   "dash.nav.logout": "Sair",
-
   "dash.stat.checked": "Verificados",
   "dash.stat.reported": "Denunciados",
-
   "dash.history.title": "Histórico de Análises",
   "dash.history.search": "Buscar",
-
   "dash.filter.all": "Todos",
   "dash.filter.low": "Baixo",
   "dash.filter.caution": "Cautela",
   "dash.filter.high": "Alto",
-
   "dash.table.date": "Data",
   "dash.table.listing": "Anúncio",
   "dash.table.risk": "Risco",
   "dash.table.reported": "Denunciado",
-
   "dash.reports.title": "Denúncias de Fraude",
   "dash.reports.reason": "Motivo",
   "dash.reports.platform": "Plataforma",
   "dash.reports.seller": "Vendedor",
-
   "dash.settings.title": "Configurações da Conta",
   "dash.common.loading": "Carregando...",
   "dash.settings.account": "Conta",
@@ -36,15 +30,12 @@
   "dash.settings.email": "E-mail",
   "dash.settings.signed_in_with": "Conectado com",
   "dash.settings.plan_billing": "Plano e Cobrança",
-  "dash.settings.choose_plan": "Escolha um plano abaixo para começar",
-  "dash.settings.no_active_plan": "Nenhum plano ativo",
   "dash.settings.active_badge": "Ativo",
-  "dash.settings.trial_badge": "Em Teste",
   "dash.plan.team": "Team",
   "dash.plan.enterprise": "Enterprise",
   "dash.common.continue": "Continuar",
   "dash.settings.cancel_subscription": "Cancelar assinatura",
-  "dash.settings.cancel_confirm_text": "Tem certeza? Você perderá o acesso aos recursos do seu plano no final do período de cobrança atual.",
+  "dash.settings.cancel_confirm_text": "Tem certeza? Seu plano pago termina e você passa para o plano gratuito (100 verificações por mês).",
   "dash.settings.yes_cancel": "Sim, cancelar",
   "dash.settings.keep_subscription": "Manter assinatura",
   "dash.settings.account_history": "Histórico da conta",
@@ -63,7 +54,6 @@
   "dash.settings.delete_input_placeholder": "Digite seu e-mail para confirmar",
   "dash.settings.delete_confirm_btn": "Excluir minha conta permanentemente",
   "dash.settings.change_photo": "Alterar foto",
-
   "dash.common.back": "Voltar",
   "dash.detail.pdf": "PDF",
   "dash.detail.tab_risk": "Risco",
@@ -84,7 +74,6 @@
   "dash.detail.report_reason": "Motivo da denúncia",
   "dash.detail.no_report": "Nenhuma denúncia registrada",
   "dash.detail.no_report_desc": "Você não denunciou este vendedor.",
-
   "dash.month.jan": "Jan",
   "dash.month.feb": "Fev",
   "dash.month.mar": "Mar",
@@ -97,11 +86,9 @@
   "dash.month.oct": "Out",
   "dash.month.nov": "Nov",
   "dash.month.dec": "Dez",
-
   "dash.terms.using_safely": "<span class=\"text-ink font-semibold\">Usando o Safely.</span> Os índices de risco são orientações para ajudar na sua decisão - não uma garantia - então sempre use seu próprio julgamento antes de pagar um vendedor.",
   "dash.terms.your_data": "<span class=\"text-ink font-semibold\">Seus dados.</span> O Safely só lê dados de anúncios e vendedores das páginas que você visita ativamente em marketplaces compatíveis. Nunca rastreamos seu histórico geral de navegação e nunca vendemos seus dados a terceiros.",
   "dash.terms.your_control": "<span class=\"text-ink font-semibold\">Seu controle.</span> Você pode exportar ou excluir sua conta e todos os dados associados a qualquer momento nesta página de Configurações.",
-
   "dash.settings.load_failed": "Não foi possível carregar as configurações da conta.",
   "dash.common.unknown": "Desconhecido",
   "dash.settings.default_user": "Usuário",
@@ -117,14 +104,11 @@
   "dash.settings.google_already_linked": "Essa conta do Google já está conectada a uma conta Safely diferente.",
   "dash.settings.google_email_mismatch": "Essa conta do Google usa um endereço de e-mail diferente da sua conta Safely. Conecte uma conta do Google que use o mesmo endereço de e-mail.",
   "dash.settings.session_expired": "Sua sessão expirou - entre novamente e tente conectar o Google outra vez.",
-  "dash.settings.trial_ends": "Teste termina em",
   "dash.settings.renews_at": "Renova em",
-  "dash.toast.trial_started": "Bem-vindo! Seu teste grátis de 7 dias começou.",
   "dash.toast.sub_active": "Bem-vindo! Sua assinatura está ativa agora.",
   "dash.toast.not_available": "ainda não está disponível - volte em breve.",
   "dash.toast.already_subscribed": "Você já está inscrito no plano",
   "dash.common.updating": "Atualizando...",
-  "dash.toast.switch_after_trial": "Você poderá trocar de plano quando seu teste terminar.",
   "dash.toast.upgraded": "Você foi atualizado para",
   "dash.toast.switch_at_period_end": "Você mudará para",
   "dash.toast.when_period_ends": "quando o período atual terminar.",
@@ -135,7 +119,6 @@
   "dash.common.canceling": "Cancelando...",
   "dash.toast.sub_canceled": "Sua assinatura foi cancelada.",
   "dash.toast.cancel_failed": "Não foi possível cancelar sua assinatura. Tente novamente.",
-
   "dash.detail.load_failed": "Não foi possível carregar este anúncio.",
   "dash.detail.untitled_listing": "Anúncio sem título",
   "dash.risk.low": "Baixo risco",
@@ -155,7 +138,6 @@
   "dash.detail.severity_pattern_match": "Padrão identificado",
   "dash.detail.severity_worth_noting": "Vale observar",
   "dash.detail.submitted": "Enviado em",
-
   "dash.label.domain_check": "Verificação de domínio",
   "dash.label.price_analysis": "Análise de preço",
   "dash.label.urgency_language": "Linguagem de urgência",
@@ -173,7 +155,6 @@
   "dash.label.listing_completeness": "Completude do anúncio",
   "dash.label.seller_track_record": "Histórico do vendedor",
   "dash.label.store_page_check": "Verificação da página da loja",
-
   "dash.value.verified": "Verificado",
   "dash.value.not_found": "Não encontrado",
   "dash.value.none_found": "Nenhum encontrado",
@@ -187,11 +168,9 @@
   "dash.value.not_verified": "Não verificado",
   "dash.value.candidates_found": "Candidatos encontrados",
   "dash.value.not_checked": "Não verificado",
-
   "dash.network.clean": "Registro limpo na rede Safely. Nenhuma denúncia de fraude encontrada.",
   "dash.network.one_report": "1 denúncia de fraude encontrada na rede Safely. Prossiga com cautela.",
   "dash.network.many_reports": "{n} denúncias de fraude encontradas na rede Safely. Vendedor de alto risco.",
-
   "dash.field.employee_count": "Número de funcionários",
   "dash.field.sales_revenue": "Receita de vendas",
   "dash.field.export_percentage": "Percentual de exportação",
@@ -206,12 +185,10 @@
   "dash.field.packaging_details": "Detalhes da embalagem",
   "dash.completeness.transparency": "{n} de 3 campos de transparência (funcionários, volume de vendas, percentual de exportação) foram preenchidos.",
   "dash.completeness.listing": "{filled} de {total} detalhes do anúncio (preço, MOQ, Incoterms, etc.) foram fornecidos pelo fornecedor.",
-
   "dash.age.this_month": "Este mês",
   "dash.age.months": "{m} meses",
   "dash.age.years": "{y} anos",
   "dash.age.years_months": "{y} anos e {m} meses",
-
   "dash.rf.name.legitimacy_concern": "Preocupação de legitimidade confirmada",
   "dash.rf.name.high_risk_seller": "Vendedor de alto risco confirmado pela rede",
   "dash.rf.name.counterfeit": "Produto provavelmente falsificado ou inexistente",
@@ -222,6 +199,21 @@
   "dash.rf.desc.counterfeit": "Um anúncio padronizado e duplicado, combinado com imagens não verificáveis, sugere que o produto em si pode não existir de fato ou não ser autêntico.",
   "dash.rf.desc.advance_fee": "Este anúncio combina linguagem de pressão/urgência com uma solicitação de pagamento antes da entrega - um padrão clássico de golpe de pagamento antecipado.",
   "dash.rf.desc.newly_created": "Uma entidade criada muito recentemente, combinada com uma preocupação de legitimidade identificada, é uma combinação forte e bem conhecida vista em anúncios fraudulentos.",
-
-  "dash.rf.flagged_suffix": "sinalizado"
+  "dash.rf.flagged_suffix": "sinalizado",
+  "dash.settings.free_plan": "Plano gratuito",
+  "dash.settings.free_desc": "100 verificações grátis por mês",
+  "dash.settings.usage_text": "{used} de {limit} verificações usadas",
+  "dash.settings.usage_unlimited": "{used} verificações neste mês · ilimitado",
+  "dash.settings.resets_on": "renova em",
+  "dash.settings.upgrade_label": "Faça upgrade para mais verificações",
+  "dash.plan.team_desc": "750 verificações/mês · US$ 200/mês",
+  "dash.plan.enterprise_desc": "Verificações ilimitadas · US$ 500/mês",
+  "dash.plan.monthly": "Mensal",
+  "dash.plan.yearly": "Anual",
+  "dash.plan.save_40": "-40%",
+  "dash.plan.team_desc_yearly": "750 verificações/mês · US$ 1.440/ano (US$ 120/mês)",
+  "dash.plan.enterprise_desc_yearly": "Verificações ilimitadas · US$ 3.600/ano (US$ 300/mês)",
+  "dash.plan.note_to_yearly": "Seu plano anual começa assim que você pagar, e seu plano mensal termina automaticamente. O restante do mês atual não é reembolsado.",
+  "dash.plan.note_to_monthly": "Para mudar um plano anual para cobrança mensal, envie um e-mail para help@safely.sh.",
+  "dash.settings.then_switches_to": "depois muda para"
 }

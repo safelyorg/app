@@ -31,7 +31,6 @@ interface AnalyzePayload {
   // BROWSER_PAGE_PLATFORMS below).
   page_html?: string | null;
 }
-
 interface SocialCandidateLink {
   platform: string;
   title: string;
@@ -43,10 +42,23 @@ interface PlatformCheckResult {
   found: boolean;
   candidates: SocialCandidateLink[];
 }
+// What GET /billing/subscription-status returns as "usage":
+// plan "Free" | "Team" | "Enterprise", interval "month" | "year" (null
+// on Free), limit null = unlimited, resets_on = when the count starts
+// again (Free: the monthly date the user signed up).
+interface ScanUsage {
+  plan: string;
+  interval: string | null;
+  used: number;
+  limit: number | null;
+  resets_on: string | null;
+}
 interface AnalyzeResponse {
   error?: string;
   retryAfterSeconds?: number | null;
   scanLimit?: number | null;
+  // Free plan only: the date its scans come back ("2026-11-14").
+  resetsOn?: string | null;
   analysis_id: string;
   risk_score: number;
   fraud_report_count: number;
@@ -93,7 +105,6 @@ function formatPlatformName(platform: string | null | undefined): string {
   };
   return names[platform] || platform;
 }
-
 (function () {
   "use strict";
 
@@ -145,7 +156,6 @@ function formatPlatformName(platform: string | null | undefined): string {
       return null;
     }
   }
-
   (window as any).__safelyAPI = {
     SITE_BASE,
 
@@ -173,18 +183,16 @@ function formatPlatformName(platform: string | null | undefined): string {
           if (response.status === 402) {
             try {
               const parsed = JSON.parse(rawText);
-              if (parsed.error === "scan_limit_reached") {
-                return { error: "scan_limit_reached", scanLimit: parsed.limit || null } as AnalyzeResponse;
-              }
-              if (parsed.error === "trial_scan_limit_reached") {
+              if (parsed.error === "free_scan_limit_reached") {
                 return {
-                  error: "trial_scan_limit_reached",
+                  error: "free_scan_limit_reached",
                   scanLimit: parsed.limit || null,
+                  resetsOn: parsed.resets_on || null,
                 } as AnalyzeResponse;
               }
-              return { error: "subscription_required" } as AnalyzeResponse;
+              return { error: "scan_limit_reached", scanLimit: parsed.limit || null } as AnalyzeResponse;
             } catch (e) {
-              return { error: "subscription_required" } as AnalyzeResponse;
+              return { error: "scan_limit_reached", scanLimit: null } as AnalyzeResponse;
             }
           }
           return null;
@@ -196,24 +204,23 @@ function formatPlatformName(platform: string | null | undefined): string {
       }
     },
 
-    checkSubscriptionStatus: async function (): Promise<{ ok: true; status: string | null } | { ok: false }> {
+    // The person's plan and scans used this month, for the small
+    // "63/100" line. Never blocks a scan - the server decides that.
+    // Returns null if it can't be read.
+    getScanUsage: async function (): Promise<ScanUsage | null> {
       try {
         const authHeaders = await getAuthHeaders();
         const response = await fetch(API_BASE + "/billing/subscription-status", {
           headers: authHeaders,
         });
-        if (!response.ok) {
-          console.error("Safely: subscription status check failed - status", response.status);
-          return { ok: false };
-        }
+        if (!response.ok) return null;
         const data = await response.json();
-        return { ok: true, status: data.status || null };
+        return data.usage || null;
       } catch (error) {
-        console.error("Safely: could not reach Safely server to check subscription", error);
-        return { ok: false };
+        console.error("Safely: could not read scan usage", error);
+        return null;
       }
     },
-
     submitOutcome: async function (analysisId: string, action: "proceeded" | "aborted"): Promise<boolean> {
       try {
         const authHeaders = await getAuthHeaders();
@@ -266,7 +273,6 @@ function formatPlatformName(platform: string | null | undefined): string {
         return null;
       }
     },
-
     fetchAnalysis: async function (): Promise<void> {
       // Tags this exact call with the real page it's running for - the
       // only thing that gets checked later is "is the user still on
@@ -313,7 +319,6 @@ function formatPlatformName(platform: string | null | undefined): string {
           scraped.seller_phone = phone;
         }
       }
-
       const domainCheck = (window as any).__safelyScrapers.checkDomain();
       const payload: AnalyzePayload = {
         platform,
@@ -362,12 +367,12 @@ function formatPlatformName(platform: string | null | undefined): string {
               error: data && data.error ? data.error : "generic",
               retryAfterSeconds: data && data.retryAfterSeconds,
               scanLimit: data && data.scanLimit,
+              resetsOn: data && data.resetsOn,
             },
           }),
         );
         return;
       }
-
       (window as any).__safelyData = {
         analysisId: data.analysis_id,
         riskScore: data.risk_score,
