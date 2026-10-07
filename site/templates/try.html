@@ -1,0 +1,500 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Safely / Spot fake suppliers before you pay</title>
+        <meta
+            name="description"
+            content="Safely checks any supplier on Alibaba and other B2B marketplaces in about 10 seconds and shows a clear risk score before you pay. 100 free scans every month."
+        />
+        <link rel="icon" type="image/x-icon" href="images/favicon.ico" />
+        <link rel="icon" type="image/png" sizes="32x32" href="images/favicon-32x32.png" />
+        <link rel="icon" type="image/png" sizes="16x16" href="images/favicon-16x16.png" />
+        <link rel="apple-touch-icon" sizes="180x180" href="images/apple-touch-icon.png" />
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+        <link
+            href="https://fonts.googleapis.com/css2?family=Archivo:ital,wght@0,600;0,700;0,800;0,900;1,700;1,800;1,900&family=Archivo+Black&family=Gasoek+One&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500&family=Sora:wght@500;600;700;800&display=swap"
+            rel="stylesheet"
+        />
+        <link rel="stylesheet" href="css/base.css?v=20261007b" />
+        <link rel="stylesheet" href="css/nav.css?v=20261007b" />
+        <link rel="stylesheet" href="css/hero.css?v=20261007b" />
+        <link rel="stylesheet" href="css/how_it_works.css?v=20261007b" />
+        <link rel="stylesheet" href="css/cta_footer.css?v=20261007b" />
+        <link rel="stylesheet" href="css/responsive.css?v=20261007b" />
+        <link rel="stylesheet" href="css/try.css?v=20261007b" />
+        <noscript><style>.reveal { opacity: 1 !important; animation: none !important; }</style></noscript>
+
+        <!--
+            META PIXEL: paste the Pixel code from Meta Events Manager here.
+            Then the "Add to Chrome" buttons below already send a "Lead"
+            event (see the small script at the bottom of this page).
+        -->
+    </head>
+    <body class="try-page">
+        <!-- ============ NAV (logo + one button, no links out) ============ -->
+        <div class="navwrap">
+            <div class="wrap">
+                <nav class="nav">
+                    <a href="/" class="brand" aria-label="Safely home">
+                        <span class="mk" aria-hidden="true">
+                            <img src="images/black_logo.png" alt="" />
+                        </span>
+                        Safely
+                    </a>
+                    <div class="nav-right">
+                        <a
+                            href="https://chromewebstore.google.com/detail/safely/bmjdfmkocaaeephfpokmpffhlogmjlnf"
+                            class="btn btn-sun try-nav-btn"
+                            target="_blank"
+                            rel="noopener"
+                            data-install
+                            >Add to Chrome
+                            <svg viewBox="0 0 24 24" fill="none">
+                                <path d="M12 3v12m0 0l-4-4m4 4l4-4M5 21h14" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" />
+                            </svg>
+                        </a>
+                    </div>
+                </nav>
+            </div>
+        </div>
+
+        <!-- ============ HERO ============ -->
+        <section class="hero">
+            <div class="wrap">
+                <span class="badge r"><span class="bd"></span>For buyers on Alibaba &amp; B2B marketplaces</span>
+                <div class="hero-title">
+                    <svg class="hero-eyes" viewBox="0 0 130 96" fill="none" aria-hidden="true">
+                        <path d="M12 22 Q24 4 44 14" stroke="#161616" stroke-width="8" fill="none" stroke-linecap="round" />
+                        <path d="M70 16 Q84 2 104 12" stroke="#161616" stroke-width="8" fill="none" stroke-linecap="round" />
+                        <circle cx="36" cy="56" r="28" fill="#fff" stroke="#161616" stroke-width="7" />
+                        <circle cx="92" cy="56" r="28" fill="#fff" stroke="#161616" stroke-width="7" />
+                        <circle cx="44" cy="46" r="12" fill="#161616" />
+                        <circle cx="100" cy="46" r="12" fill="#161616" />
+                    </svg>
+                    <h1 class="disp">
+                        SPOT<br />
+                        FAKE<br />
+                        SUPPLIERS
+                    </h1>
+                </div>
+                <p class="sub">
+                    Open any supplier's page and Safely checks them in about
+                    10 seconds — company age, verification, contact details,
+                    payment terms and scam reports — before you send a single
+                    payment.
+                </p>
+                <div class="hero-cta">
+                    <a
+                        href="https://chromewebstore.google.com/detail/safely/bmjdfmkocaaeephfpokmpffhlogmjlnf"
+                        class="btn btn-lg btn-sun"
+                        target="_blank"
+                        rel="noopener"
+                        data-install
+                        >Add to Chrome — It's Free
+                        <svg viewBox="0 0 24 24" fill="none">
+                            <path d="M12 3v12m0 0l-4-4m4 4l4-4M5 21h14" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" />
+                        </svg>
+                    </a>
+                </div>
+                <p class="try-note">100 free scans every month · No credit card · Chrome on desktop</p>
+                <p class="try-mobile">
+                    On your phone? Safely runs in Chrome on a computer. Open
+                    <b>safely.sh/try</b> on your laptop to install it.
+                </p>
+
+                <!-- live scan preview -->
+                <div class="hero-stage" aria-hidden="true">
+                    <div class="hs-win">
+                        <div class="hs-bar"><i></i><i></i><i></i><span class="hs-url">alibaba.com/product-detail/led-panel-light…</span></div>
+                        <div class="hs-page">
+                            <div class="hs-gallery"><span class="hs-scan"></span></div>
+                            <div class="hs-info">
+                                <span class="hs-l w90 dark"></span>
+                                <span class="hs-l w60 dark"></span>
+                                <div class="hs-price">US$1.20 – 2.80 <small>/ piece</small></div>
+                                <span class="hs-l w75"></span>
+                                <span class="hs-l w50"></span>
+                                <div class="hs-btns"><span></span><span></span></div>
+                            </div>
+                            <div class="hs-panel">
+                                <div class="hs-ph"><span class="hs-shield"><svg viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17l-5-5" stroke="#191c22" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round" /></svg></span>Safely</div>
+                                <div class="hs-score"><b>82</b><span>/100</span></div>
+                                <div class="hs-verdict">High risk</div>
+                                <div class="hs-bars"><i style="--w: 92%"></i><i style="--w: 70%"></i><i style="--w: 45%"></i></div>
+                            </div>
+                        </div>
+                    </div>
+                    <span class="hs-flag fl1 bad"><span class="d"><svg viewBox="0 0 24 24" fill="none"><path d="M12 8v5m0 4h.01" stroke="#191c22" stroke-width="3" stroke-linecap="round" /></svg></span>Full prepayment requested</span>
+                    <span class="hs-flag fl2 good"><span class="d"><svg viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17l-5-5" stroke="#191c22" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" /></svg></span>Verified on platform</span>
+                    <span class="hs-flag fl3 warn"><span class="d"><svg viewBox="0 0 24 24" fill="none"><path d="M12 8v5m0 4h.01" stroke="#191c22" stroke-width="3" stroke-linecap="round" /></svg></span>Company founded this year</span>
+                    <span class="hs-flag fl4 bad"><span class="d"><svg viewBox="0 0 24 24" fill="none"><path d="M12 8v5m0 4h.01" stroke="#191c22" stroke-width="3" stroke-linecap="round" /></svg></span>Reported by 2 buyers</span>
+                </div>
+            </div>
+            <div class="wv down" aria-hidden="true">
+                <svg viewBox="0 0 1440 80" preserveAspectRatio="none">
+                    <path d="M0,40 C 240,75 480,5 720,28 C 960,50 1200,80 1440,38 L1440,80 L0,80 Z" fill="#fbf7ed" />
+                </svg>
+            </div>
+        </section>
+
+        <!-- ============ PLATFORMS ============ -->
+        <section class="try-platforms">
+            <div class="wrap">
+                <p class="lblabel">Works today on</p>
+                <div class="try-chips reveal">
+                    <span class="mp">Alibaba</span>
+                    <span class="mp">TradeWheel</span>
+                    <span class="mp">ExportHub</span>
+                    <span class="mp">B2Brazil</span>
+                    <span class="mp">ThomasNet</span>
+                    <span class="mp">B2BMap</span>
+                    <span class="mp">Kompass</span>
+                </div>
+            </div>
+        </section>
+
+
+        <!-- ============ BEFORE / AFTER ============ -->
+        <section class="sec try-vs">
+            <div class="wv down" aria-hidden="true">
+                <svg viewBox="0 0 1440 80" preserveAspectRatio="none">
+                    <path d="M0,40 C 240,75 480,5 720,28 C 960,50 1200,80 1440,38 L1440,80 L0,80 Z" fill="#f1ebda" />
+                </svg>
+            </div>
+            <div class="wrap">
+                <div class="head reveal">
+                    <span class="badge r"><span class="bd"></span>The old way vs Safely</span>
+                    <h2 class="disp gasoek">Hours of checking. Or 10 seconds.</h2>
+                </div>
+                <div class="vs-grid">
+                    <div class="vs-card vs-old reveal">
+                        <span class="vs-tag">Without Safely</span>
+                        <ul>
+                            <li><span class="x">✕</span>Google the company name and hope something comes up</li>
+                            <li><span class="x">✕</span>Guess whether the badge on the profile means anything</li>
+                            <li><span class="x">✕</span>Miss that the company was founded this year</li>
+                            <li><span class="x">✕</span>Find out about the scam after the money is gone</li>
+                        </ul>
+                        <div class="vs-time"><b>1–3 hours</b> per supplier</div>
+                    </div>
+                    <div class="vs-arrow" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" fill="none"><path d="M5 12h14M13 5l7 7-7 7" stroke="#191c22" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" /></svg>
+                    </div>
+                    <div class="vs-card vs-new reveal d1">
+                        <span class="vs-tag">With Safely</span>
+                        <ul>
+                            <li><span class="ok">✓</span>Open the supplier's page — the check starts by itself</li>
+                            <li><span class="ok">✓</span>See company age, verification and contact checks</li>
+                            <li><span class="ok">✓</span>Spot risky payment terms and scam reports</li>
+                            <li><span class="ok">✓</span>Decide before you pay, with plain reasons</li>
+                        </ul>
+                        <div class="vs-time"><b>10 seconds</b> per supplier</div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ============ SAMPLE REPORT ============ -->
+        <section class="sec try-report" style="background: var(--cream-2)">
+            <div class="wv down" aria-hidden="true">
+                <svg viewBox="0 0 1440 80" preserveAspectRatio="none">
+                    <path d="M0,40 C 240,75 480,5 720,28 C 960,50 1200,80 1440,38 L1440,80 L0,80 Z" fill="#fbf7ed" />
+                </svg>
+            </div>
+            <div class="wrap rep-grid">
+                <div class="rep-text reveal">
+                    <span class="badge p"><span class="bd"></span>What you see</span>
+                    <h2 class="disp gasoek">A clear answer, with the reasons.</h2>
+                    <p>Safely opens beside the supplier's page with a 0–100 risk score. Every signal says what was found, so you know exactly why a supplier looks safe or risky.</p>
+                    <ul class="rep-legend">
+                        <li><i class="lg-bad"></i><b>Red</b> — a serious warning</li>
+                        <li><i class="lg-warn"></i><b>Yellow</b> — worth a closer look</li>
+                        <li><i class="lg-good"></i><b>Green</b> — looks fine</li>
+                    </ul>
+                    <a href="https://chromewebstore.google.com/detail/safely/bmjdfmkocaaeephfpokmpffhlogmjlnf" class="btn btn-sun" target="_blank" rel="noopener" data-install
+                        >Try it on your next supplier
+                        <svg viewBox="0 0 24 24" fill="none"><path d="M5 12h14M13 5l7 7-7 7" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" /></svg>
+                    </a>
+                </div>
+                <div class="rep-shell reveal d1" aria-label="Example Safely risk report">
+                    <span class="rep-sticker">Example report</span>
+                    <div class="rep">
+                        <div class="rep-head">
+                            <span class="brand"><span class="mk" aria-hidden="true"><img src="images/black_logo.png" alt="" /></span>Safely</span>
+                            <span class="rep-lab">Supplier check</span>
+                        </div>
+                        <div class="rep-score">
+                            <svg class="rep-gauge" viewBox="0 0 120 120" aria-hidden="true">
+                                <circle cx="60" cy="60" r="50" fill="none" stroke="#ffe2dd" stroke-width="13" />
+                                <circle class="rep-arc" cx="60" cy="60" r="50" fill="none" stroke="#ff6656" stroke-width="13" stroke-linecap="round" stroke-dasharray="314.16" stroke-dashoffset="56.5" transform="rotate(-90 60 60)" />
+                                <text x="60" y="62" text-anchor="middle" dominant-baseline="middle" class="rep-num">82</text>
+                                <text x="60" y="82" text-anchor="middle" class="rep-of">/ 100</text>
+                            </svg>
+                            <div>
+                                <div class="rep-verdict">High risk</div>
+                                <div class="rep-why">Full payment asked up front by a company founded this year.</div>
+                            </div>
+                        </div>
+                        <div class="rep-rows">
+                            <div class="rr"><i class="lg-bad"></i>Advance payment request<span class="rv bad">Full prepayment</span></div>
+                            <div class="rr"><i class="lg-bad"></i>Safely history<span class="rv bad">Reported twice</span></div>
+                            <div class="rr"><i class="lg-warn"></i>Account age<span class="rv warn">Founded this year</span></div>
+                            <div class="rr"><i class="lg-warn"></i>Platform verification<span class="rv warn">Unverified</span></div>
+                            <div class="rr"><i class="lg-warn"></i>Contact info<span class="rv warn">Not confirmed</span></div>
+                            <div class="rr"><i class="lg-good"></i>Listing detail<span class="rv good">Specific</span></div>
+                            <div class="rr"><i class="lg-good"></i>Domain check<span class="rv good">Verified</span></div>
+                        </div>
+                        <div class="rep-foot">
+                            <svg viewBox="0 0 24 24" fill="none"><path d="M12 8v5m0 4h.01M10.3 3.9l-8 14A2 2 0 004 21h16a2 2 0 001.7-3.1l-8-14a2 2 0 00-3.4 0z" stroke="#bd3022" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" /></svg>
+                            Pattern match: full prepayment to a brand-new company
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ============ WHAT IT CATCHES ============ -->
+        <section class="sec try-catch">
+            <div class="wv down" aria-hidden="true">
+                <svg viewBox="0 0 1440 80" preserveAspectRatio="none">
+                    <path d="M0,40 C 240,75 480,5 720,28 C 960,50 1200,80 1440,38 L1440,80 L0,80 Z" fill="#f1ebda" />
+                </svg>
+            </div>
+            <div class="wrap">
+                <div class="head reveal">
+                    <span class="badge o"><span class="bd"></span>What Safely catches</span>
+                    <h2 class="disp gasoek">The warning signs you'd miss.</h2>
+                    <p>Each supplier is checked on 15 signals. These are the ones that matter most before you pay.</p>
+                </div>
+                <div class="catch-grid reveal d1">
+                    <article class="catch">
+                        <span class="catch-ic bad"><svg viewBox="0 0 24 24" fill="none"><path d="M12 3v18M17 7H9.5a3 3 0 000 6h5a3 3 0 010 6H6" stroke="#191c22" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" /></svg></span>
+                        <h3>Risky payment terms</h3>
+                        <p>Full payment before shipping, or untraceable methods like Western Union.</p>
+                    </article>
+                    <article class="catch">
+                        <span class="catch-ic warn"><svg viewBox="0 0 24 24" fill="none"><rect x="3" y="5" width="18" height="16" rx="3" stroke="#191c22" stroke-width="2.3" /><path d="M3 10h18M8 3v4M16 3v4" stroke="#191c22" stroke-width="2.3" stroke-linecap="round" /></svg></span>
+                        <h3>Brand-new companies</h3>
+                        <p>Suppliers founded this year, with no track record to rely on.</p>
+                    </article>
+                    <article class="catch">
+                        <span class="catch-ic warn"><svg viewBox="0 0 24 24" fill="none"><path d="M12 3l8 3v6c0 5-3.4 8-8 9-4.6-1-8-4-8-9V6l8-3z" stroke="#191c22" stroke-width="2.3" stroke-linejoin="round" /><path d="M12 9v4m0 3h.01" stroke="#191c22" stroke-width="2.4" stroke-linecap="round" /></svg></span>
+                        <h3>Unverified profiles</h3>
+                        <p>No platform verification, and contact details that don't add up.</p>
+                    </article>
+                    <article class="catch">
+                        <span class="catch-ic info"><svg viewBox="0 0 24 24" fill="none"><path d="M6 3h9l4 4v14H6z" stroke="#191c22" stroke-width="2.3" stroke-linejoin="round" /><path d="M9 12h7M9 16h5" stroke="#191c22" stroke-width="2.3" stroke-linecap="round" /></svg></span>
+                        <h3>Vague listings</h3>
+                        <p>Copy-paste product pages with no real price, order or delivery details.</p>
+                    </article>
+                    <article class="catch">
+                        <span class="catch-ic info"><svg viewBox="0 0 24 24" fill="none"><rect x="4" y="10" width="16" height="11" rx="2.5" stroke="#191c22" stroke-width="2.3" /><path d="M8 10V7a4 4 0 018 0v3" stroke="#191c22" stroke-width="2.3" stroke-linecap="round" /></svg></span>
+                        <h3>Licensed products</h3>
+                        <p>Products that need a licence, sold by someone who isn't the maker.</p>
+                    </article>
+                    <article class="catch">
+                        <span class="catch-ic bad"><svg viewBox="0 0 24 24" fill="none"><path d="M5 21V4M5 4h11l-2 4 2 4H5" stroke="#191c22" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" /></svg></span>
+                        <h3>Reported by other buyers</h3>
+                        <p>Suppliers that other Safely users have already reported as scams.</p>
+                    </article>
+                </div>
+            </div>
+        </section>
+
+        <!-- ============ HOW IT WORKS ============ -->
+        <section class="sec try-how" style="background: var(--cream-2)">
+            <div class="wrap">
+                <div class="head reveal">
+                    <span class="badge p"><span class="bd"></span>How it works</span>
+                    <h2 class="disp gasoek">Install once. Check every supplier.</h2>
+                </div>
+                <div class="steps reveal d1">
+                    <div class="step">
+                        <span class="snum">01 · Install</span>
+                        <span class="sic"><svg viewBox="0 0 24 24" fill="none"><path d="M12 3v12m0 0l-4-4m4 4l4-4M5 21h14" stroke="#161616" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" /></svg></span>
+                        <h3>Add to Chrome</h3>
+                        <p>One click from the Chrome Web Store. No setup.</p>
+                    </div>
+                    <div class="step">
+                        <span class="snum">02 · Browse</span>
+                        <span class="sic"><svg viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="#161616" stroke-width="2.2" /><path d="M16 16l5 5" stroke="#161616" stroke-width="2.2" stroke-linecap="round" /></svg></span>
+                        <h3>Open a supplier</h3>
+                        <p>Visit any product or company page on a supported marketplace.</p>
+                    </div>
+                    <div class="step">
+                        <span class="snum">03 · Decide</span>
+                        <span class="sic"><svg viewBox="0 0 24 24" fill="none"><path d="M12 3l8 3v6c0 5-3.4 8-8 9-4.6-1-8-4-8-9V6l8-3z" stroke="#161616" stroke-width="2.2" stroke-linejoin="round" /><path d="M9 12l2 2 4-4" stroke="#161616" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" /></svg></span>
+                        <h3>See the risk score</h3>
+                        <p>A 0–100 score with plain reasons, in about 10 seconds.</p>
+                    </div>
+                </div>
+                <div class="try-stats reveal d2">
+                    <div><b>15</b><span>signals per supplier</span></div>
+                    <div><b>10s</b><span>per check</span></div>
+                    <div><b>7</b><span>marketplaces</span></div>
+                    <div><b>100</b><span>free scans a month</span></div>
+                </div>
+            </div>
+            <div class="wv down" aria-hidden="true">
+                <svg viewBox="0 0 1440 80" preserveAspectRatio="none">
+                    <path d="M0,40 C 240,75 480,5 720,28 C 960,50 1200,80 1440,38 L1440,80 L0,80 Z" fill="#ffffff" />
+                </svg>
+            </div>
+        </section>
+
+
+        <!-- ============ PLANS (short) ============ -->
+        <section class="sec try-plans" style="background: #ffffff">
+            <div class="wv down" aria-hidden="true">
+                <svg viewBox="0 0 1440 80" preserveAspectRatio="none">
+                    <path d="M0,40 C 240,75 480,5 720,28 C 960,50 1200,80 1440,38 L1440,80 L0,80 Z" fill="#f1ebda" />
+                </svg>
+            </div>
+            <div class="wrap">
+                <div class="head reveal">
+                    <span class="badge o"><span class="bd"></span>Free to start</span>
+                    <h2 class="disp gasoek">Start free. Upgrade only if you need more.</h2>
+                </div>
+                <div class="plan-row reveal d1">
+                    <div class="plan plan-free">
+                        <span class="plan-pill">Start here</span>
+                        <div class="plan-name">Free</div>
+                        <div class="plan-price">$0</div>
+                        <div class="plan-scans">100 scans a month</div>
+                        <p>No credit card. Full risk score on every supplier.</p>
+                    </div>
+                    <div class="plan">
+                        <div class="plan-name">Team</div>
+                        <div class="plan-price">$200<small>/mo</small></div>
+                        <div class="plan-scans">750 scans a month</div>
+                        <p>For procurement teams checking suppliers every week.</p>
+                    </div>
+                    <div class="plan">
+                        <div class="plan-name">Enterprise</div>
+                        <div class="plan-price">$500<small>/mo</small></div>
+                        <div class="plan-scans">Unlimited scans</div>
+                        <p>For high-volume sourcing, with API access.</p>
+                    </div>
+                </div>
+                <p class="plan-note reveal d2">Yearly plans save 40%. You can upgrade any time from inside Safely.</p>
+            </div>
+        </section>
+
+        <!-- ============ FAQ (short) ============ -->
+        <section class="sec try-faq" style="background: var(--cream-2)">
+            <div class="wv down" aria-hidden="true">
+                <svg viewBox="0 0 1440 80" preserveAspectRatio="none">
+                    <path d="M0,40 C 240,75 480,5 720,28 C 960,50 1200,80 1440,38 L1440,80 L0,80 Z" fill="#ffffff" />
+                </svg>
+            </div>
+            <div class="wrap">
+                <div class="head reveal">
+                    <span class="badge p"><span class="bd"></span>Questions</span>
+                    <h2 class="disp gasoek">Before you install.</h2>
+                </div>
+                <div class="tq reveal d1">
+                    <details open>
+                        <summary>Is it really free?<span class="tq-ic">+</span></summary>
+                        <p>Yes. Every account gets 100 supplier scans a month with no credit card. They come back every month on the day you signed up.</p>
+                    </details>
+                    <details>
+                        <summary>Which sites does it work on?<span class="tq-ic">+</span></summary>
+                        <p>Alibaba, TradeWheel, ExportHub, B2Brazil, ThomasNet, B2BMap and Kompass. Open a product or company page and the check starts by itself.</p>
+                    </details>
+                    <details>
+                        <summary>Does it work on my phone?<span class="tq-ic">+</span></summary>
+                        <p>Not yet. Safely is a Chrome extension, so it runs in Chrome on a laptop or desktop computer.</p>
+                    </details>
+                    <details>
+                        <summary>What data does Safely collect?<span class="tq-ic">+</span></summary>
+                        <p>Only the supplier and listing details on the pages you open on supported marketplaces. We never track your other browsing and never sell your data.</p>
+                    </details>
+                    <details>
+                        <summary>Is the score a guarantee?<span class="tq-ic">+</span></summary>
+                        <p>No. It's a fast, clear check that shows you the warning signs. The final decision is always yours.</p>
+                    </details>
+                </div>
+            </div>
+        </section>
+
+        <!-- ============ FINAL CTA ============ -->
+        <section class="sec finalcta">
+            <div class="wrap">
+                <div class="cta-stage reveal">
+                    <svg class="cta-eyes" viewBox="0 0 130 96" fill="none" aria-hidden="true">
+                        <path d="M12 22 Q24 4 44 14" stroke="#161616" stroke-width="8" fill="none" stroke-linecap="round" />
+                        <path d="M70 16 Q84 2 104 12" stroke="#161616" stroke-width="8" fill="none" stroke-linecap="round" />
+                        <circle cx="36" cy="56" r="28" fill="#fff" stroke="#161616" stroke-width="7" />
+                        <circle cx="92" cy="56" r="28" fill="#fff" stroke="#161616" stroke-width="7" />
+                        <circle cx="44" cy="46" r="12" fill="#161616" />
+                        <circle cx="100" cy="46" r="12" fill="#161616" />
+                    </svg>
+                    <span class="cta-sticker" aria-hidden="true">Free to start</span>
+                    <div class="box">
+                        <span class="deco d1" aria-hidden="true">✦</span><span class="deco d2" aria-hidden="true">✦</span>
+                        <h2 class="disp gasoek" style="margin-top: 6px">Check your next supplier first.</h2>
+                        <p>100 free scans every month. No credit card. Works the moment you open a supplier's page.</p>
+                        <div class="cta-row">
+                            <a
+                                href="https://chromewebstore.google.com/detail/safely/bmjdfmkocaaeephfpokmpffhlogmjlnf"
+                                class="btn btn-lg btn-sun"
+                                target="_blank"
+                                rel="noopener"
+                                data-install
+                                >Add to Chrome — It's Free
+                                <svg viewBox="0 0 24 24" fill="none">
+                                    <path d="M12 3v12m0 0l-4-4m4 4l4-4M5 21h14" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" />
+                                </svg>
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ============ FOOTER (short) ============ -->
+        <footer class="try-footer">
+            <div class="wrap">
+                <div class="fbottom">
+                    <div class="cp">© 2026 Safely. All rights reserved.</div>
+                    <div class="links">
+                        <a href="/#m-privacy">Privacy</a><a href="/#m-terms">Terms</a><a href="mailto:help@safely.sh">help@safely.sh</a>
+                    </div>
+                </div>
+            </div>
+        </footer>
+
+        <script>
+            // Fades sections in as they scroll into view.
+            (function () {
+                var items = document.querySelectorAll(".reveal");
+                if (!("IntersectionObserver" in window)) {
+                    items.forEach(function (el) { el.classList.add("in"); });
+                    return;
+                }
+                var seen = new IntersectionObserver(function (entries) {
+                    entries.forEach(function (e) {
+                        if (e.isIntersecting) {
+                            e.target.classList.add("in");
+                            seen.unobserve(e.target);
+                        }
+                    });
+                }, { rootMargin: "0px 0px -8% 0px" });
+                items.forEach(function (el) { seen.observe(el); });
+            })();
+
+            // Tells the Meta Pixel (once it is added in <head>) that someone
+            // clicked an "Add to Chrome" button. Does nothing without the Pixel.
+            document.querySelectorAll("[data-install]").forEach(function (link) {
+                link.addEventListener("click", function () {
+                    if (typeof window.fbq === "function") {
+                        window.fbq("track", "Lead");
+                    }
+                });
+            });
+        </script>
+    </body>
+</html>

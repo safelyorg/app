@@ -103,6 +103,14 @@ fn build_router(app_pool: Pool<Postgres>) -> Router {
                 "/../site/templates/partners.html"
             )),
         )
+        // Landing page for ads (Facebook etc.): one goal, install the extension.
+        .route_service(
+            "/try",
+            ServeFile::new(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../site/templates/try.html"
+            )),
+        )
         .fallback_service(
             ServeDir::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../site"))
                 .append_index_html_on_directories(true),
