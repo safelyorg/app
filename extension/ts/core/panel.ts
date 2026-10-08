@@ -43,7 +43,7 @@ interface PendingTabRegistration {
     "</div>" +
     '<div class="safely-tab-content" id="safely-tab-signin-required" style="display:none; padding: 20px; text-align: center;">' +
     '<div style="font-size:13px; line-height:1.6; color:#8a8a93; margin-bottom:16px;">' +
-    "Sign in free to analyze this listing. You get 50 free scans every " +
+    "Sign in free to analyze this listing. You get 10 free scans every " +
     "month \u2014 no credit card needed." +
     "</div>" +
     '<a href="' +
@@ -309,7 +309,7 @@ interface PendingTabRegistration {
       chrome.storage.local.get("safely_session_token", async (result) => {
         if (!isStillCurrentPage()) return;
         if (result.safely_session_token) {
-          // Everyone signed in can scan: Free gets 50 scans a month,
+          // Everyone signed in can scan: Free gets 10 scans a month,
           // paid plans get more. The server checks the limit on each
           // scan and replies with free_scan_limit_reached /
           // scan_limit_reached when it's used up.
@@ -470,7 +470,7 @@ interface PendingTabRegistration {
     if (loadingOverlay) loadingOverlay.classList.remove("safely-visible");
     if (tabsArea) tabsArea.classList.remove("safely-loading-blur");
 
-    // Refresh the "63/50" scans-used line after every scan attempt.
+    // Refresh the "63/10" scans-used line after every scan attempt.
     // It never blocks anything.
     refreshUsageLine();
 

@@ -3809,8 +3809,8 @@ fn an_unrecognized_plan_name_gets_zero_scans_rather_than_silently_being_unlimite
 }
 
 #[test]
-fn the_free_plan_is_50_scans_a_month() {
-    assert_eq!(FREE_MONTHLY_SCANS, 50);
+fn the_free_plan_is_10_scans_a_month() {
+    assert_eq!(FREE_MONTHLY_SCANS, 10);
 }
 
 fn dt(offset_days: i64) -> DateTime<Utc> {
@@ -3858,7 +3858,7 @@ fn an_existing_row_with_a_genuinely_missing_stored_period_end_is_never_treated_a
 
 // Free Plan Scan Tests
 #[tokio::test]
-async fn free_plan_allows_exactly_50_scans_even_when_they_arrive_at_once() {
+async fn free_plan_allows_exactly_10_scans_even_when_they_arrive_at_once() {
     let pool = test_pool().await;
     let email = "free_plan_concurrency_test@example.com";
     let (user, _) = create_test_user(&pool, email).await;
@@ -3878,18 +3878,18 @@ async fn free_plan_allows_exactly_50_scans_even_when_they_arrive_at_once() {
         }
     }
     assert_eq!(
-        allowed, 50,
-        "expected exactly 50 of 150 scans to be allowed"
+        allowed, 10,
+        "expected exactly 10 of 150 scans to be allowed"
     );
 
     let usage = get_scan_usage(&pool, user.id).await;
     assert_eq!(usage["plan"], json!("Free"));
-    assert_eq!(usage["used"], json!(50));
+    assert_eq!(usage["used"], json!(10));
 
     let expected_reset = sign_up_date_plus_months(&pool, user.id, 1).await;
     match check_and_increment_scan_usage(&pool, user.id).await {
         Err(ScanLimitError::FreeLimitReached { limit, resets_on }) => {
-            assert_eq!(limit, 50);
+            assert_eq!(limit, 10);
             assert_eq!(
                 resets_on, expected_reset,
                 "expected the scans to come back one month after sign-up"
@@ -3912,11 +3912,11 @@ async fn free_scans_come_back_on_the_sign_up_day_not_the_first() {
         .await
         .expect("expected to move the sign-up date back");
 
-    // All 50 used in the current Free month (which started on the
+    // All 10 used in the current Free month (which started on the
     // first monthly anniversary of the sign-up).
     query(
         "INSERT INTO free_scan_usage (user_id, period_start, scans_used)
-         SELECT id, created_at + interval '1 month', 50 FROM users WHERE id = $1",
+         SELECT id, created_at + interval '1 month', 10 FROM users WHERE id = $1",
     )
     .bind(user.id)
     .execute(&pool)

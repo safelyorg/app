@@ -4734,17 +4734,17 @@ async fn scan_limit_reached_returns_payment_required_with_the_real_limit() {
 async fn free_scan_limit_reached_returns_payment_required_with_the_reset_date() {
     let resets_on = NaiveDate::from_ymd_opt(2026, 11, 14).unwrap();
     let (status, body) = response_json(AnalyzeError::FreeScanLimitReached {
-        limit: 50,
+        limit: 10,
         resets_on,
     })
     .await;
 
     assert_eq!(status, StatusCode::PAYMENT_REQUIRED);
     assert_eq!(body["error"], "free_scan_limit_reached");
-    assert_eq!(body["limit"], 50);
+    assert_eq!(body["limit"], 10);
     assert_eq!(body["resets_on"], "2026-11-14");
     let message = body["message"].as_str().unwrap();
-    assert!(message.contains("50 free scans"), "got: {}", message);
+    assert!(message.contains("10 free scans"), "got: {}", message);
     assert!(
         message.contains("November 14, 2026"),
         "expected the user's own reset date in the message, got: {}",
@@ -4777,7 +4777,7 @@ async fn database_error_passes_the_real_message_straight_through() {
 async fn scan_limit_reached_and_free_scan_limit_reached_use_different_error_codes() {
     let (_, paid_body) = response_json(AnalyzeError::ScanLimitReached(750)).await;
     let (_, free_body) = response_json(AnalyzeError::FreeScanLimitReached {
-        limit: 50,
+        limit: 10,
         resets_on: NaiveDate::from_ymd_opt(2026, 11, 14).unwrap(),
     })
     .await;
@@ -4813,7 +4813,7 @@ async fn authorize_request_lets_a_free_user_scan_without_any_subscription() {
 }
 
 #[tokio::test]
-async fn authorize_request_refuses_a_free_user_after_50_scans_this_month() {
+async fn authorize_request_refuses_a_free_user_after_10_scans_this_month() {
     let pool = test_pool().await;
     let email = "authorize_free_user_used_up@example.com";
     cleanup_test_user(&pool, email).await;
@@ -4831,10 +4831,10 @@ async fn authorize_request_refuses_a_free_user_after_50_scans_this_month() {
             .expect("expected to insert the header value"),
     );
 
-    // All 50 used in the current Free month (it starts on the sign-up date).
+    // All 10 used in the current Free month (it starts on the sign-up date).
     query(
         "INSERT INTO free_scan_usage (user_id, period_start, scans_used)
-         SELECT id, created_at, 50 FROM users WHERE id = $1",
+         SELECT id, created_at, 10 FROM users WHERE id = $1",
     )
     .bind(user.id)
     .execute(&pool)
@@ -4842,7 +4842,7 @@ async fn authorize_request_refuses_a_free_user_after_50_scans_this_month() {
     .expect("expected to use up the free scans");
 
     match authorize_request(&headers, &pool).await {
-        Err(AnalyzeError::FreeScanLimitReached { limit, .. }) => assert_eq!(limit, 50),
+        Err(AnalyzeError::FreeScanLimitReached { limit, .. }) => assert_eq!(limit, 10),
         other => panic!("expected FreeScanLimitReached, got: {:?}", other),
     }
 
