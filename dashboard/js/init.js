@@ -294,7 +294,7 @@ document.addEventListener("DOMContentLoaded", async () => {
             year: "numeric",
         });
     }
-    // The bar under the plan name: "37 of 100 scans used · resets Nov 1".
+    // The bar under the plan name: "37 of 50 scans used · resets Nov 1".
     function renderUsage(usage) {
         const box = document.getElementById("current-plan-usage");
         const bar = document.getElementById("current-plan-usage-bar");
@@ -325,7 +325,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         box.classList.remove("hidden");
     }
     // Shows either the active paid plan, or the Free plan (everyone
-    // without an active paid plan is on Free: 100 scans a month).
+    // without an active paid plan is on Free: 50 scans a month).
     function renderPlan(planName, interval, periodEnd, scheduledPlan) {
         const isPaid = !!planName;
         const nameEl = document.getElementById("current-plan-name");
@@ -355,7 +355,7 @@ document.addEventListener("DOMContentLoaded", async () => {
             if (nameEl)
                 nameEl.textContent = t("dash.settings.free_plan", "Free plan");
             if (priceEl)
-                priceEl.textContent = t("dash.settings.free_desc", "100 free scans every month");
+                priceEl.textContent = t("dash.settings.free_desc", "50 free scans every month");
             if (currentPlanBadge)
                 currentPlanBadge.classList.add("hidden");
         }

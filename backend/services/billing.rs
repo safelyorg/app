@@ -43,7 +43,7 @@ pub enum ScanLimitError {
 /// paid subscription. The month runs from the day the user signed up
 /// (signed up on the 14th -> resets every 14th); unused scans do not
 /// carry over.
-pub const FREE_MONTHLY_SCANS: i32 = 100;
+pub const FREE_MONTHLY_SCANS: i32 = 50;
 
 /// How often Creem bills a subscription. Scan limits are monthly on
 /// both - a yearly plan still gets its scans back every month.

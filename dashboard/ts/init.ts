@@ -309,7 +309,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
   }
 
-  // The bar under the plan name: "37 of 100 scans used · resets Nov 1".
+  // The bar under the plan name: "37 of 50 scans used · resets Nov 1".
   function renderUsage(
     usage: { plan: string; used: number; limit: number | null; resets_on: string | null } | null,
   ): void {
@@ -343,7 +343,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   // Shows either the active paid plan, or the Free plan (everyone
-  // without an active paid plan is on Free: 100 scans a month).
+  // without an active paid plan is on Free: 50 scans a month).
   function renderPlan(
     planName: string | null,
     interval: Interval | null,
@@ -375,7 +375,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       }
     } else {
       if (nameEl) nameEl.textContent = t("dash.settings.free_plan", "Free plan");
-      if (priceEl) priceEl.textContent = t("dash.settings.free_desc", "100 free scans every month");
+      if (priceEl) priceEl.textContent = t("dash.settings.free_desc", "50 free scans every month");
       if (currentPlanBadge) currentPlanBadge.classList.add("hidden");
     }
     if (cancelSubArea) cancelSubArea.classList.toggle("hidden", !isPaid);

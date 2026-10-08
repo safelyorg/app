@@ -205,7 +205,7 @@ function formatPlatformName(platform: string | null | undefined): string {
     },
 
     // The person's plan and scans used this month, for the small
-    // "63/100" line. Never blocks a scan - the server decides that.
+    // "63/50" line. Never blocks a scan - the server decides that.
     // Returns null if it can't be read.
     getScanUsage: async function (): Promise<ScanUsage | null> {
       try {

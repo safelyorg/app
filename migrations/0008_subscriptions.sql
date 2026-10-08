@@ -51,10 +51,11 @@ CREATE TABLE IF NOT EXISTS subscriptions (
 CREATE INDEX IF NOT EXISTS idx_subscriptions_user_id ON subscriptions(user_id);
 CREATE INDEX IF NOT EXISTS idx_subscriptions_creem_subscription_id ON subscriptions(creem_subscription_id);
 
--- Free plan: 100 scans a month for anyone without an active paid
--- subscription. The Free month runs from the day the user signed up
--- (users.created_at): signed up on the 14th -> scans come back every
--- 14th. One row per user, created on their first free scan.
+-- Free plan: a fixed number of scans a month for anyone without an
+-- active paid subscription (the number is FREE_MONTHLY_SCANS in
+-- services/billing.rs). The Free month runs from the day the user
+-- signed up (users.created_at): signed up on the 14th -> scans come
+-- back every 14th. One row per user, created on their first free scan.
 -- period_start is when the Free month the count belongs to started;
 -- once a new Free month begins, the next scan starts the count again
 -- at 1 (see use_free_scan in services/billing.rs). Unused scans do not
