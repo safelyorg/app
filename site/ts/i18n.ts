@@ -42,9 +42,28 @@
 
   const DEFAULT_LANG = "en";
 
+  function isSupported(code: string | null | undefined): code is string {
+    return !!code && SUPPORTED_LANGS.some((l) => l.code === code);
+  }
+
+  // Which language to show, in this order:
+  // 1. ?lang=pt-br in the link (used by the Brazilian Facebook ads) -
+  //    it is also saved, so the rest of the site stays in that language;
+  // 2. the language the visitor picked before;
+  // 3. Portuguese if the visitor's browser is set to Portuguese;
+  // 4. English.
   function getSavedLang(): string {
+    const fromLink = new URLSearchParams(window.location.search)
+      .get("lang")
+      ?.toLowerCase();
+    if (isSupported(fromLink)) {
+      saveLang(fromLink);
+      return fromLink;
+    }
     const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved && SUPPORTED_LANGS.some((l) => l.code === saved)) return saved;
+    if (isSupported(saved)) return saved;
+    const browser = (navigator.language || "").toLowerCase();
+    if (browser.startsWith("pt")) return "pt-br";
     return DEFAULT_LANG;
   }
 

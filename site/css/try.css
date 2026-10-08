@@ -657,3 +657,12 @@
         border-bottom: var(--bd-thin);
     }
 }
+
+/* ---------- Portuguese: "FORNECEDOR" is longer than "SUPPLIERS" ---------- */
+html[lang="pt-br"] .try-page .hero-title {
+    max-width: 860px;
+}
+html[lang="pt-br"] .try-page .hero-title h1 {
+    font-size: clamp(36px, 8.4vw, 88px);
+    max-width: none;
+}
