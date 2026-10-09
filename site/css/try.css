@@ -3,10 +3,20 @@
    Only used by try.html, so the other pages are never affected.
    ============================================================ */
 
-/* Keep the one nav button visible on phones too (responsive.css
-   hides nav buttons under 980px because the home page has a menu). */
+/* Nav on smaller screens: the menu (three lines) shows under 980px,
+   like the home page, and holds the language switch. The "Add to
+   Chrome" button stays next to it on tablets and moves into the menu
+   on phones, where there is no room for both. */
 .nav-right .btn.try-nav-btn {
     display: inline-flex;
+}
+@media (max-width: 560px) {
+    .nav-right .btn.try-nav-btn {
+        display: none;
+    }
+}
+.try-page .drawer .lang-select-drawer {
+    margin-top: 0;
 }
 
 

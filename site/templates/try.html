@@ -18,13 +18,13 @@
             href="https://fonts.googleapis.com/css2?family=Archivo:ital,wght@0,600;0,700;0,800;0,900;1,700;1,800;1,900&family=Archivo+Black&family=Gasoek+One&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500&family=Sora:wght@500;600;700;800&display=swap"
             rel="stylesheet"
         />
-        <link rel="stylesheet" href="css/base.css?v=20261008a" />
-        <link rel="stylesheet" href="css/nav.css?v=20261008a" />
-        <link rel="stylesheet" href="css/hero.css?v=20261008a" />
-        <link rel="stylesheet" href="css/how_it_works.css?v=20261008a" />
-        <link rel="stylesheet" href="css/cta_footer.css?v=20261008a" />
-        <link rel="stylesheet" href="css/responsive.css?v=20261008a" />
-        <link rel="stylesheet" href="css/try.css?v=20261008a" />
+        <link rel="stylesheet" href="css/base.css?v=20261009a" />
+        <link rel="stylesheet" href="css/nav.css?v=20261009a" />
+        <link rel="stylesheet" href="css/hero.css?v=20261009a" />
+        <link rel="stylesheet" href="css/how_it_works.css?v=20261009a" />
+        <link rel="stylesheet" href="css/cta_footer.css?v=20261009a" />
+        <link rel="stylesheet" href="css/responsive.css?v=20261009a" />
+        <link rel="stylesheet" href="css/try.css?v=20261009a" />
         <noscript><style>.reveal { opacity: 1 !important; animation: none !important; }</style></noscript>
 
         <!--
@@ -34,6 +34,14 @@
         -->
     </head>
     <body class="try-page">
+        <!-- menu toggle for phones (pure CSS, same as the home page) -->
+        <input
+            type="checkbox"
+            id="nav-toggle"
+            class="sr-toggle"
+            aria-label="Toggle navigation menu"
+        />
+
         <!-- ============ NAV (logo + one button, no links out) ============ -->
         <div class="navwrap">
             <div class="wrap">
@@ -61,10 +69,41 @@
                                 <path d="M12 3v12m0 0l-4-4m4 4l4-4M5 21h14" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" />
                             </svg>
                         </a>
+                        <label
+                            class="hamb"
+                            for="nav-toggle"
+                            aria-label="Open menu"
+                            ><span></span
+                        ></label>
                     </div>
                 </nav>
             </div>
         </div>
+
+        <!-- phone menu: language + install button -->
+        <div class="drawer" id="drawer">
+            <select
+                data-safely-lang-select
+                class="lang-select lang-select-drawer"
+                aria-label="Choose language"
+            ></select>
+            <a
+                href="https://chromewebstore.google.com/detail/safely/bmjdfmkocaaeephfpokmpffhlogmjlnf"
+                class="btn btn-sun"
+                target="_blank"
+                rel="noopener"
+                data-install
+                ><span data-i18n="try.nav_btn">Add to Chrome</span>
+                <svg viewBox="0 0 24 24" fill="none">
+                    <path d="M12 3v12m0 0l-4-4m4 4l4-4M5 21h14" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+            </a>
+        </div>
+        <label
+            class="drawer-backdrop"
+            for="nav-toggle"
+            aria-hidden="true"
+        ></label>
 
         <!-- ============ HERO ============ -->
         <section class="hero">
@@ -86,10 +125,8 @@
                     </h1>
                 </div>
                 <p class="sub" data-i18n="try.sub">
-                    Open any supplier's page and Safely checks them in about
-                    10 seconds — company age, verification, contact details,
-                    payment terms and scam reports — before you send a single
-                    payment.
+                    Open any supplier's page and Safely checks them in 10
+                    seconds, before you pay.
                 </p>
                 <div class="hero-cta">
                     <a
