@@ -1,5 +1,8 @@
 interface AnalyzePayload {
   platform: string;
+  // The language the person reads Safely in ("en" or "pt-br"). The
+  // backend writes the result text in this language.
+  language: string;
   listing_url: string;
   seller_id: string | null;
   listing_id: string | null;
@@ -128,6 +131,20 @@ function formatPlatformName(platform: string | null | undefined): string {
     }
   }
 
+  // The language for this scan ("en" or "pt-br"). Waits until the
+  // saved choice has been read, so the first scan on a page already
+  // asks for the right language.
+  async function scanLanguage(): Promise<string> {
+    const i18n = (window as any).__safelyI18n;
+    if (!i18n) return "en";
+    try {
+      await i18n.ready;
+    } catch (e) {
+      // Use whatever language is set right now.
+    }
+    return i18n.getLang();
+  }
+
   // Platforms whose listing page is also sent from this browser, as a
   // BACKUP: Safely fetches the listing through ScraperAPI first and
   // reads this copy only if that fails. Must match
@@ -218,6 +235,35 @@ function formatPlatformName(platform: string | null | undefined): string {
         return data.usage || null;
       } catch (error) {
         console.error("Safely: could not read scan usage", error);
+        return null;
+      }
+    },
+    // The reasons under each check and the risk factor explanations of
+    // a scan already done, in another language. Uses the dashboard's
+    // own address, so the extension and the dashboard show the same
+    // saved translation. Does not count as a scan. Null if it fails.
+    getResultTexts: async function (
+      analysisId: string,
+      language: string,
+    ): Promise<{ subs: string[]; descriptions: string[] } | null> {
+      try {
+        const authHeaders = await getAuthHeaders();
+        const response = await fetch(
+          API_BASE +
+            "/history/" +
+            encodeURIComponent(analysisId) +
+            "?language=" +
+            encodeURIComponent(language),
+          { headers: authHeaders },
+        );
+        if (!response.ok) return null;
+        const data = await response.json();
+        return {
+          subs: (data.signals || []).map((s: any) => (s && s.sub) || ""),
+          descriptions: (data.risk_factors || []).map((f: any) => (f && f.description) || ""),
+        };
+      } catch (error) {
+        console.error("Safely: could not load the translated result", error);
         return null;
       }
     },
@@ -320,8 +366,10 @@ function formatPlatformName(platform: string | null | undefined): string {
         }
       }
       const domainCheck = (window as any).__safelyScrapers.checkDomain();
+      const language = await scanLanguage();
       const payload: AnalyzePayload = {
         platform,
+        language,
         listing_url,
         seller_id: null,
         listing_id: scraped.listing_id || null,
@@ -375,6 +423,8 @@ function formatPlatformName(platform: string | null | undefined): string {
       }
       (window as any).__safelyData = {
         analysisId: data.analysis_id,
+        // The language the reasons below are written in.
+        textLanguage: language,
         riskScore: data.risk_score,
         fraudReportCount: data.fraud_report_count,
         riskFactors: data.risk_factors || [],

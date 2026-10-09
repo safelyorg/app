@@ -6,6 +6,17 @@ use sqlx::{Pool, Postgres, query, query_as};
 use std::env::var;
 use uuid::Uuid;
 
+/// Translation is plain text work, so it uses the fast model: it runs
+/// while the person waits for their scan result.
+const TRANSLATION_MODEL: &str = "claude-haiku-4-5-20251001";
+
+/// Some signal texts end with a checklist the extension turns into a
+/// dropdown: "...provided.###CHECKLIST###Unit price|true;FOB price|false".
+/// That part is data, not text, so it is never sent for translation -
+/// it is cut off first and put back afterwards, unchanged (the
+/// extension translates the item names itself).
+const CHECKLIST_MARKER: &str = "###CHECKLIST###";
+
 #[derive(Debug, sqlx::FromRow)]
 pub struct AnalysisTranslation {
     pub signals: serde_json::Value,
@@ -31,6 +42,26 @@ pub fn language_instruction(language_code: &str) -> &'static str {
             "English"
         }
     }
+}
+
+/// "3 of 9 details provided.###CHECKLIST###Unit price|true" ->
+/// ("3 of 9 details provided.", "###CHECKLIST###Unit price|true").
+/// Text without a checklist -> (text, "").
+fn split_checklist(text: &str) -> (&str, &str) {
+    match text.find(CHECKLIST_MARKER) {
+        Some(index) => (&text[..index], &text[index..]),
+        None => (text, ""),
+    }
+}
+
+/// The text part of a JSON field, without any checklist ("" if missing).
+fn text_part<'a>(item: &'a Value, field: &str) -> &'a str {
+    split_checklist(item.get(field).and_then(Value::as_str).unwrap_or("")).0
+}
+
+/// The checklist part of a JSON field ("" if it has none).
+fn checklist_part<'a>(item: &'a Value, field: &str) -> &'a str {
+    split_checklist(item.get(field).and_then(Value::as_str).unwrap_or("")).1
 }
 
 #[derive(Debug, Deserialize)]
@@ -68,18 +99,26 @@ async fn translate_text_fields(
 
     let signals_input: Vec<Value> = signals
         .iter()
-        .map(|s| json!({ "sub": s.get("sub").cloned().unwrap_or(Value::Null) }))
+        .map(|s| json!({ "sub": text_part(s, "sub") }))
         .collect();
     let factors_input: Vec<Value> = risk_factors
         .iter()
-        .map(|f| json!({ "description": f.get("description").cloned().unwrap_or(Value::Null) }))
+        .map(|f| json!({ "description": text_part(f, "description") }))
         .collect();
 
     let prompt = format!(
         r#"
         Translate the following fraud-analysis text into {language}. This
         is translation only - do not add, remove, or reinterpret any
-        information, just translate the real, existing text faithfully.
+        information, just translate the real, existing text faithfully,
+        in plain, natural words a buyer would use.
+
+        Keep these exactly as they are: company, brand, product and
+        people's names, platform and service names (Alibaba, Trade
+        Assurance, Western Union, MoneyGram...), website addresses,
+        email addresses, phone numbers, numbers, prices and currencies,
+        and any HTML tags. An empty text stays empty.
+
         Preserve the exact same array order and length as given. Return
         ONLY a raw JSON object with no markdown, no code fences, no
         explanation. Start your response with {{ and end with }}.
@@ -121,12 +160,13 @@ async fn translate_text_fields(
     }
     #[derive(Deserialize)]
     struct Block {
+        #[serde(default)]
         text: String,
     }
 
     let payload = Req {
-        model: "claude-sonnet-4-6".to_string(),
-        max_tokens: 2048,
+        model: TRANSLATION_MODEL.to_string(),
+        max_tokens: 4096,
         messages: vec![Msg {
             role: "user".to_string(),
             content: prompt,
@@ -158,7 +198,11 @@ async fn translate_text_fields(
 
     let envelope: Envelope =
         from_str(&body_text).map_err(|e| ClaudeError::ParseFailed(e.to_string()))?;
-    let inner = &envelope.content[0].text;
+    let inner = envelope
+        .content
+        .first()
+        .map(|block| block.text.as_str())
+        .ok_or_else(|| ClaudeError::ParseFailed("empty translation response".to_string()))?;
     let cleaned = inner
         .trim()
         .trim_start_matches("```json")
@@ -215,13 +259,16 @@ pub async fn get_or_create_translation(
         });
     }
 
+    // Translated text + the original checklist (if any), every other
+    // field untouched.
     let merged_signals: Vec<Value> = signals_arr
         .iter()
         .zip(translated.signals.iter())
         .map(|(orig, t)| {
             let mut merged = orig.clone();
+            let sub = format!("{}{}", t.sub.trim(), checklist_part(orig, "sub"));
             if let Some(obj) = merged.as_object_mut() {
-                obj.insert("sub".to_string(), json!(t.sub));
+                obj.insert("sub".to_string(), json!(sub));
             }
             merged
         })
@@ -232,8 +279,13 @@ pub async fn get_or_create_translation(
         .zip(translated.risk_factors.iter())
         .map(|(orig, t)| {
             let mut merged = orig.clone();
+            let description = format!(
+                "{}{}",
+                t.description.trim(),
+                checklist_part(orig, "description")
+            );
             if let Some(obj) = merged.as_object_mut() {
-                obj.insert("description".to_string(), json!(t.description));
+                obj.insert("description".to_string(), json!(description));
             }
             merged
         })
@@ -311,4 +363,33 @@ pub async fn save_english_baseline(
     )
     .await?;
     Ok(())
+}
+
+#[cfg(test)]
+mod checklist_tests {
+    use super::*;
+
+    #[test]
+    fn checklist_is_kept_out_of_the_text() {
+        let text = "3 of 9 provided.###CHECKLIST###Unit price|true;FOB price|false";
+        assert_eq!(
+            split_checklist(text),
+            (
+                "3 of 9 provided.",
+                "###CHECKLIST###Unit price|true;FOB price|false"
+            )
+        );
+        assert_eq!(split_checklist("No list here."), ("No list here.", ""));
+    }
+
+    #[test]
+    fn reads_text_and_checklist_from_json() {
+        let item = json!({ "sub": "Two of 3.###CHECKLIST###Sales revenue|false" });
+        assert_eq!(text_part(&item, "sub"), "Two of 3.");
+        assert_eq!(
+            checklist_part(&item, "sub"),
+            "###CHECKLIST###Sales revenue|false"
+        );
+        assert_eq!(text_part(&json!({}), "sub"), "");
+    }
 }

@@ -32,6 +32,24 @@ interface PlatformCheckResult {
 (async function () {
   "use strict";
 
+  // Translates through core/i18n.ts; plain English if it isn't loaded.
+  // Only what is SHOWN is translated - the signal labels and values
+  // the code below checks ("Advance payment request", "Full
+  // prepayment"...) always stay in English in the data itself.
+  function tr(en: string, vars?: Record<string, string | number>): string {
+    const i18n = (window as any).__safelyI18n;
+    if (i18n) return i18n.t(en, vars);
+    if (!vars) return en;
+    return en.replace(/\{(\w+)\}/g, (whole, key) =>
+      Object.prototype.hasOwnProperty.call(vars, key) ? String(vars[key]) : whole,
+    );
+  }
+
+  function isPortuguese(): boolean {
+    const i18n = (window as any).__safelyI18n;
+    return !!i18n && i18n.getLang() === "pt-br";
+  }
+
   let wasm: SafelyWasmModule;
 
   try {
@@ -130,7 +148,9 @@ interface PlatformCheckResult {
         const links = grouped[platform];
         const body =
           links.length === 0
-            ? '<div style="padding:4px;font-size:12px;color:#8e8e93;">Not found</div>'
+            ? '<div style="padding:4px;font-size:12px;color:#8e8e93;">' +
+              tr("Not found") +
+              "</div>"
             : links
                 .map(
                   (link) =>
@@ -148,7 +168,7 @@ interface PlatformCheckResult {
           borderStyle +
           '">' +
           '<div style="font-size:11px;font-weight:700;color:#8e8e93;text-transform:uppercase;letter-spacing:0.4px;margin-bottom:4px;padding:0 4px;">' +
-          (window as any).escapeHtml(platform) +
+          (window as any).escapeHtml(tr(platform)) +
           "</div>" +
           body +
           "</div>"
@@ -157,10 +177,14 @@ interface PlatformCheckResult {
       .join("");
 
     return (
-      '<div class="safely-section-label" style="margin-top:18px">Social presence check</div>' +
+      '<div class="safely-section-label" style="margin-top:18px">' +
+      tr("Social presence check") +
+      "</div>" +
       '<div class="safely-check-card">' +
       '<button id="safely-social-toggle" type="button" style="width:100%;text-align:left;background:none;border:none;cursor:pointer;padding:0;font-size:13px;font-weight:600;color:#f2f1ed;display:flex;justify-content:space-between;align-items:center;">' +
-      '<span id="safely-social-toggle-text">Click to drop down</span><span id="safely-social-arrow">&#9662;</span>' +
+      '<span id="safely-social-toggle-text">' +
+      tr("Click to drop down") +
+      '</span><span id="safely-social-arrow">&#9662;</span>' +
       "</button>" +
       '<div id="safely-social-dropdown" style="display:none;margin-top:12px;">' +
       groupsHTML +
@@ -195,7 +219,7 @@ interface PlatformCheckResult {
           '<div style="display:flex;align-items:center;gap:8px;padding:6px 4px;">' +
           icon +
           '<span style="font-size:12px;color:#f2f1ed;">' +
-          (window as any).escapeHtml(name) +
+          (window as any).escapeHtml(tr(name)) +
           "</span></div>"
         );
       })
@@ -206,7 +230,9 @@ interface PlatformCheckResult {
       '-toggle" type="button" style="width:100%;text-align:left;background:none;border:none;cursor:pointer;padding:8px 0 0 0;font-size:12px;font-weight:600;color:#8e8e93;display:flex;justify-content:space-between;align-items:center;">' +
       '<span id="' +
       id +
-      '-toggle-text">Click to see checks</span><span id="' +
+      '-toggle-text">' +
+      tr("Click to see checks") +
+      '</span><span id="' +
       id +
       '-arrow">&#9662;</span>' +
       "</button>" +
@@ -228,7 +254,7 @@ interface PlatformCheckResult {
         const isOpen = dropdown.style.display !== "none";
         dropdown.style.display = isOpen ? "none" : "block";
         arrow.innerHTML = isOpen ? "&#9662;" : "&#9652;";
-        toggleText.textContent = isOpen ? "Click to see checks" : "Click to hide checks";
+        toggleText.textContent = isOpen ? tr("Click to see checks") : tr("Click to hide checks");
       });
     }
   }
@@ -253,12 +279,12 @@ interface PlatformCheckResult {
           '<div class="safely-check-card">' +
           '<div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;">' +
           '<div class="safely-check-title">' +
-          (window as any).escapeHtml(capitalizeFirst(s.label)) +
+          (window as any).escapeHtml(tr(capitalizeFirst(s.label))) +
           "</div>" +
           '<div style="font-weight:700;white-space:nowrap;font-size:13px;color:' +
           color +
           ';">' +
-          (window as any).escapeHtml(capitalizeFirst(s.value)) +
+          (window as any).escapeHtml(tr(capitalizeFirst(s.value))) +
           "</div></div>" +
           '<div class="safely-check-body">' +
           (window as any).escapeHtml(capitalizeFirst(realSub) || "") +
@@ -280,7 +306,7 @@ interface PlatformCheckResult {
         const isOpen = dropdown.style.display !== "none";
         dropdown.style.display = isOpen ? "none" : "block";
         arrow.innerHTML = isOpen ? "&#9662;" : "&#9652;";
-        toggleText.textContent = isOpen ? "Click to drop down" : "Click to drop up";
+        toggleText.textContent = isOpen ? tr("Click to drop down") : tr("Click to drop up");
       });
     }
   }
@@ -358,25 +384,39 @@ interface PlatformCheckResult {
       .map(
         ([title, body]) =>
           '<div class="safely-check-card"><div class="safely-check-title">' +
-          (window as any).escapeHtml(title) +
+          (window as any).escapeHtml(tr(title)) +
           '</div><div class="safely-check-body">' +
-          (window as any).escapeHtml(body) +
+          (window as any).escapeHtml(tr(body)) +
           "</div></div>",
       )
       .join("");
     return (
-      '<div class="safely-section-label" style="margin-top:18px">Recommended checks</div>' +
+      '<div class="safely-section-label" style="margin-top:18px">' +
+      tr("Recommended checks") +
+      "</div>" +
       '<div style="display:flex;flex-direction:column;gap:8px">' +
       cards +
       "</div>"
     );
   }
 
+  // The coloured summary line at the top. The level always comes from
+  // WASM; in Portuguese the sentence is written here, since WASM only
+  // writes English.
+  function summaryFor(signals: SafelySignal[]): SignalAnalysisResult {
+    const result: SignalAnalysisResult = JSON.parse(wasm.analyze_signals(JSON.stringify(signals)));
+    if (!isPortuguese()) return result;
+    const bad = signals.filter((s) => s.type === "bad" || s.type === "caution").length;
+    const text =
+      bad === 0
+        ? tr("All {n} signals checked. No red flags detected.", { n: signals.length })
+        : tr("{bad} of {n} signals need your attention.", { bad, n: signals.length });
+    return { level: result.level, text };
+  }
+
   function buildIntelligenceTab(): string {
     const pageData = (window as any).__safelyData;
-    const sigResult: SignalAnalysisResult = JSON.parse(
-      wasm.analyze_signals(JSON.stringify(pageData.signals)),
-    );
+    const sigResult = summaryFor(pageData.signals || []);
     const summaryLvl = sigResult.level;
     const summaryText = sigResult.text;
 
@@ -386,7 +426,9 @@ interface PlatformCheckResult {
       '"><span>&#9679;</span><span>' +
       summaryText +
       "</span></div>" +
-      '<div class="safely-section-label" style="margin-top:14px">Listing signals</div><div style="display:flex;flex-direction:column;gap:8px">' +
+      '<div class="safely-section-label" style="margin-top:14px">' +
+      tr("Listing signals") +
+      '</div><div style="display:flex;flex-direction:column;gap:8px">' +
       buildSignalRowsTs(pageData.signals) +
       "</div>" +
       buildSocialPresenceSection() +
@@ -396,19 +438,20 @@ interface PlatformCheckResult {
         if (isB2bScan(pageData.signals)) return "";
         const priceSignal = pageData.signals.find((s: SafelySignal) => s.label === "Price analysis");
         const verdict = priceSignal ? priceSignal.value : "unknown";
-        const reasoning = priceSignal ? priceSignal.sub : "No price data available.";
+        const reasoning = priceSignal ? priceSignal.sub : tr("No price data available.");
         const verdictClass = verdict === "normal" ? "low" : verdict === "unknown" ? "low" : "caution";
 
         return (
-          '<div class="safely-section-label" style="margin-top:18px">Price vs market</div>' +
+          '<div class="safely-section-label" style="margin-top:18px">' +
+          tr("Price vs market") +
+          "</div>" +
           '<div class="safely-network-alert safely-alert-' +
           verdictClass +
           '" style="margin-top:8px">' +
           "<span>&#9679;</span>" +
           "<div>" +
           '<div style="font-weight:600;margin-bottom:4px">' +
-          verdict.charAt(0).toUpperCase() +
-          verdict.slice(1) +
+          tr(verdict.charAt(0).toUpperCase() + verdict.slice(1)) +
           "</div>" +
           '<div style="font-size:12px;opacity:0.85">' +
           reasoning +
@@ -454,10 +497,10 @@ interface PlatformCheckResult {
     const rows = riskFactors
       .map((factor, idx) => {
         const color = SEVERITY_COLORS[factor.severity] || "#8e8e93";
-        const severityLabel = SEVERITY_LABELS[factor.severity] || factor.severity;
+        const severityLabel = tr(SEVERITY_LABELS[factor.severity] || factor.severity);
         const shortTitle =
           factor.contributing_signals && factor.contributing_signals.length > 0
-            ? factor.contributing_signals.join(" + ")
+            ? factor.contributing_signals.map((label: string) => tr(label)).join(" + ")
             : capitalizeFirst(factor.name.replace(/_/g, " "));
         const { realSub, checklist } = parseChecklistSignal(factor.description || "");
         const dropdownId = "safely-riskfactor-checklist-" + idx;
@@ -482,7 +525,9 @@ interface PlatformCheckResult {
       .join("");
 
     return (
-      '<div class="safely-section-label" style="margin-top:18px">Risk Factors</div><div style="display:flex;flex-direction:column;gap:8px">' +
+      '<div class="safely-section-label" style="margin-top:18px">' +
+      tr("Risk Factors") +
+      '</div><div style="display:flex;flex-direction:column;gap:8px">' +
       rows +
       "</div>"
     );
@@ -499,6 +544,14 @@ interface PlatformCheckResult {
     });
   }
 
+  function redrawIntelligenceTab(): void {
+    const tabEl = document.getElementById("safely-tab-intelligence");
+    if (tabEl) {
+      tabEl.innerHTML = buildIntelligenceTab();
+      attachAllChecklistListeners();
+    }
+  }
+
   (window as any).__safelyAddTab(
     "intelligence",
     "Intelligence",
@@ -507,11 +560,7 @@ interface PlatformCheckResult {
     attachAllChecklistListeners,
   );
 
-  window.addEventListener("safely-data-ready", () => {
-    const tabEl = document.getElementById("safely-tab-intelligence");
-    if (tabEl) {
-      tabEl.innerHTML = buildIntelligenceTab();
-      attachAllChecklistListeners();
-    }
-  });
+  window.addEventListener("safely-data-ready", redrawIntelligenceTab);
+  window.addEventListener("safely-lang-changed", redrawIntelligenceTab);
+  window.addEventListener("safely-result-text-changed", redrawIntelligenceTab);
 })();

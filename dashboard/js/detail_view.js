@@ -1,11 +1,21 @@
 "use strict";
+// The Portuguese words here are the same as the extension's
+// (extension/ts/core/i18n.ts), so a result reads the same in both -
+// change both together.
+//
+// Only fixed words are translated here: check names, results and
+// field names. The reason under each check and the risk factor
+// explanations come already translated from the backend (the
+// ?language= on the detail request).
 const SIGNAL_LABEL_TRANSLATIONS = {
     "Domain check": "dash.label.domain_check",
     "Price analysis": "dash.label.price_analysis",
     "Urgency language": "dash.label.urgency_language",
     "Advance payment request": "dash.label.advance_payment",
-    "Entity age": "dash.label.entity_age",
+    "Account age": "dash.label.account_age",
     "Duplicate listing": "dash.label.duplicate_listing",
+    "Listing detail": "dash.label.listing_detail",
+    "Regulated product": "dash.label.regulated_product",
     "Image authenticity": "dash.label.image_authenticity",
     "Overall legitimacy check": "dash.label.overall_legitimacy",
     "Safely history": "dash.label.safely_history",
@@ -17,30 +27,87 @@ const SIGNAL_LABEL_TRANSLATIONS = {
     "Listing completeness": "dash.label.listing_completeness",
     "Seller track record": "dash.label.seller_track_record",
     "Store page check": "dash.label.store_page_check",
+    "Company details": "dash.label.company_details",
 };
 function translateSignalLabel(label) {
     const key = SIGNAL_LABEL_TRANSLATIONS[label];
     return key ? t(key, label) : label;
 }
-// Same real, known-fixed-set approach as labels above - these are
-// exact-match lookups, so anything genuinely novel (an AI-written
-// value we haven't seen) safely falls through to the original
-// English text rather than showing blank or wrong.
+// Exact-match lookups, so anything genuinely novel (an AI-written
+// value we haven't seen) safely falls through to the original English
+// text rather than showing blank or wrong.
 const SIGNAL_VALUE_TRANSLATIONS = {
-    "Verified": "dash.value.verified",
+    Verified: "dash.value.verified",
+    Unverified: "dash.value.unverified",
+    "Not verified": "dash.value.not_verified",
+    "not verified": "dash.value.not_verified",
     "Not found": "dash.value.not_found",
     "None found": "dash.value.none_found",
-    "Detected": "dash.value.detected",
-    "Confirmed": "dash.value.confirmed",
+    Detected: "dash.value.detected",
+    Confirmed: "dash.value.confirmed",
     "Not confirmed": "dash.value.not_confirmed",
-    "Suspicious": "dash.value.suspicious",
-    "Unverifiable": "dash.value.unverifiable",
-    "Unknown": "dash.value.unknown",
-    "normal": "dash.value.normal",
-    "not verified": "dash.value.not_verified",
+    Suspicious: "dash.value.suspicious",
+    Unverifiable: "dash.value.unverifiable",
+    Unknown: "dash.value.unknown",
+    unknown: "dash.value.unknown",
+    Normal: "dash.value.normal",
+    normal: "dash.value.normal",
+    Original: "dash.value.original",
+    original: "dash.value.original",
     "Candidates found": "dash.value.candidates_found",
     "Not checked": "dash.value.not_checked",
+    Unregistered: "dash.value.unregistered",
+    Registered: "dash.value.registered",
+    "Fully confirmed": "dash.value.fully_confirmed",
+    "Name confirmed only": "dash.value.name_confirmed_only",
+    Unconfirmed: "dash.value.unconfirmed",
+    "Not offered": "dash.value.not_offered",
+    "No badge": "dash.value.no_badge",
+    "Not provided": "dash.value.not_provided",
+    "Invalid date": "dash.value.invalid_date",
+    "Not shown on this platform": "dash.value.not_shown",
+    Specific: "dash.value.specific",
+    Vague: "dash.value.vague",
+    "Licence needed": "dash.value.licence_needed",
+    "Licence needed, not the maker": "dash.value.licence_needed_not_maker",
+    "Untraceable payment": "dash.value.untraceable_payment",
+    "Full prepayment": "dash.value.full_prepayment",
+    "Website found": "dash.value.website_found",
+    "No website found": "dash.value.no_website_found",
+    "No store page found": "dash.value.no_store_page_found",
+    "Couldn't be loaded": "dash.value.couldnt_be_loaded",
+    "New to Safely": "dash.value.new_to_safely",
+    "Checked once before": "dash.value.checked_once",
 };
+// Results that carry a number ("3/9 fields provided", "Checked 4 times
+// before", "Gold member").
+function translatePatternValue(value) {
+    const fields = value.match(/^(\d+)\/(\d+) fields provided$/);
+    if (fields) {
+        return t("dash.value.fields_provided", "{filled}/{total} fields provided")
+            .replace("{filled}", fields[1])
+            .replace("{total}", fields[2]);
+    }
+    const checked = value.match(/^Checked (\d+) times before$/);
+    if (checked) {
+        return t("dash.value.checked_times", "Checked {n} times before").replace("{n}", checked[1]);
+    }
+    const prior = value.match(/^(\d+) prior checks?$/);
+    if (prior) {
+        return t("dash.value.prior_checks", "{n} prior checks").replace("{n}", prior[1]);
+    }
+    const rating = value.match(/^([\d.]+) rating, (\d+) listings$/);
+    if (rating) {
+        return t("dash.value.rating_listings", "{rating} rating, {count} listings")
+            .replace("{rating}", rating[1])
+            .replace("{count}", rating[2]);
+    }
+    const member = value.match(/^(.+) member$/);
+    if (member) {
+        return t("dash.value.member", "{tier} member").replace("{tier}", member[1]);
+    }
+    return value;
+}
 function translateSignalValue(value) {
     const key = SIGNAL_VALUE_TRANSLATIONS[value];
     if (key)
@@ -48,27 +115,19 @@ function translateSignalValue(value) {
     const ageTranslated = translateAccountAge(value);
     if (ageTranslated !== value)
         return ageTranslated;
-    return value;
+    return translatePatternValue(value);
 }
-// Real, known-fixed set (build_network_summary in the backend only
-// ever produces one of these three shapes) - a genuine regex match,
-// not a free-text AI explanation, so this is safely translatable the
-// same way labels/values are.
-function translateNetworkSummary(summary) {
-    if (!summary)
-        return "";
-    if (summary === "Clean record on Safely network. No fraud reports found.") {
-        return t("dash.network.clean", summary);
+// The seller's fraud-report line, written from the report count, so it
+// reads exactly the same as in the extension. In English the server's
+// own sentence is kept.
+function networkSummaryText(count, serverText) {
+    if (count <= 0) {
+        return t("dash.network.clean", serverText || "Clean record on Safely network. No fraud reports found.");
     }
-    const oneMatch = summary.match(/^1 fraud report found on Safely network\. Proceed with caution\.$/);
-    if (oneMatch) {
-        return t("dash.network.one_report", summary);
+    if (count === 1) {
+        return t("dash.network.one_report", serverText || "1 fraud report found on Safely network. Proceed with caution.");
     }
-    const manyMatch = summary.match(/^(\d+) fraud reports found on Safely network\. High risk seller\.$/);
-    if (manyMatch) {
-        return t("dash.network.many_reports", "{n} fraud reports found on Safely network. High risk seller.").replace("{n}", manyMatch[1]);
-    }
-    return summary;
+    return t("dash.network.many_reports", serverText || "{n} fraud reports found on Safely network. High risk seller.").replace("{n}", String(count));
 }
 // Real, fixed field-name checklist, confirmed straight from
 // services/signals.rs's own hardcoded field arrays - not AI-generated,
@@ -84,13 +143,25 @@ const CHECKLIST_FIELD_TRANSLATIONS = {
     "Preferred port": "dash.field.preferred_port",
     "Production capacity": "dash.field.production_capacity",
     "Delivery timeframe": "dash.field.delivery_timeframe",
-    "Incoterms": "dash.field.incoterms",
+    Incoterms: "dash.field.incoterms",
     "Packaging details": "dash.field.packaging_details",
 };
 function translateChecklistField(name) {
     const key = CHECKLIST_FIELD_TRANSLATIONS[name];
     return key ? t(key, name) : name;
 }
+function ageYears(y) {
+    return y === "1"
+        ? t("dash.age.one_year", "1 year")
+        : t("dash.age.years", "{y} years").replace("{y}", y);
+}
+function ageMonths(m) {
+    return m === "1"
+        ? t("dash.age.one_month", "1 month")
+        : t("dash.age.months", "{m} months").replace("{m}", m);
+}
+// "About 11 years", "2 years 3 months", "This month"... Anything else
+// is returned unchanged.
 function translateAccountAge(value) {
     if (value === "Unknown") {
         return t("dash.common.unknown", "Unknown");
@@ -98,37 +169,47 @@ function translateAccountAge(value) {
     if (value === "This month") {
         return t("dash.age.this_month", "This month");
     }
-    const monthsOnly = value.match(/^(\d+) months$/);
-    if (monthsOnly) {
-        return t("dash.age.months", "{m} months").replace("{m}", monthsOnly[1]);
+    if (value === "Founded this year") {
+        return t("dash.age.founded_this_year", "Founded this year");
     }
-    const yearsOnly = value.match(/^(\d+) years$/);
-    if (yearsOnly) {
-        return t("dash.age.years", "{y} years").replace("{y}", yearsOnly[1]);
+    const about = value.match(/^About (\d+) years?$/);
+    if (about) {
+        return about[1] === "1"
+            ? t("dash.age.about_one_year", "About 1 year")
+            : t("dash.age.about_years", "About {y} years").replace("{y}", about[1]);
     }
-    const both = value.match(/^(\d+) years (\d+) months$/);
+    const both = value.match(/^(\d+) years? (?:and )?(\d+) months?$/);
     if (both) {
-        return t("dash.age.years_months", "{y} years {m} months")
-            .replace("{y}", both[1])
-            .replace("{m}", both[2]);
+        return ageYears(both[1]) + t("dash.age.joiner", " ") + ageMonths(both[2]);
     }
+    const yearsOnly = value.match(/^(\d+) years?$/);
+    if (yearsOnly)
+        return ageYears(yearsOnly[1]);
+    const monthsOnly = value.match(/^(\d+) months?$/);
+    if (monthsOnly)
+        return ageMonths(monthsOnly[1]);
     return value;
 }
-// Real, fixed sentence templates confirmed straight from
-// build_b2b_transparency_signal / build_b2b_listing_completeness_signal
-// in services/signals.rs - not AI-generated.
-function translateCompletenessSub(sub) {
-    const transparencyMatch = sub.match(/^(\d+) of 3 transparency fields \(employees, sales volume, export percentage\) are filled in\.$/);
-    if (transparencyMatch) {
-        return t("dash.completeness.transparency", "{n} of 3 transparency fields (employees, sales volume, export percentage) are filled in.").replace("{n}", transparencyMatch[1]);
-    }
-    const listingMatch = sub.match(/^(\d+) of (\d+) listing details \(price, MOQ, Incoterms, etc\.\) were provided by the supplier\.$/);
-    if (listingMatch) {
-        return t("dash.completeness.listing", "{filled} of {total} listing details (price, MOQ, Incoterms, etc.) were provided by the supplier.")
-            .replace("{filled}", listingMatch[1])
-            .replace("{total}", listingMatch[2]);
-    }
-    return sub;
+const REPORT_REASON_TRANSLATIONS = {
+    scam: ["dash.report.scam", "Scam"],
+    fake_item: ["dash.report.fake_item", "Fake item"],
+    no_delivery: ["dash.report.no_delivery", "No delivery"],
+    wrong_item: ["dash.report.wrong_item", "Wrong item"],
+    non_responsive: ["dash.report.non_responsive", "Non responsive"],
+};
+function translateReportReason(reason) {
+    const entry = REPORT_REASON_TRANSLATIONS[reason];
+    return entry ? t(entry[0], entry[1]) : reason;
+}
+const SOCIAL_PLATFORM_TRANSLATIONS = {
+    Reviews: "dash.social.reviews",
+    "Contact (Facebook)": "dash.social.contact_facebook",
+    "Contact (LinkedIn)": "dash.social.contact_linkedin",
+    "Contact (Web)": "dash.social.contact_web",
+};
+function translateSocialPlatform(platform) {
+    const key = SOCIAL_PLATFORM_TRANSLATIONS[platform];
+    return key ? t(key, platform) : platform;
 }
 function buildRiskGauge(score, level) {
     const color = riskHex(level);
@@ -286,7 +367,7 @@ function renderDetailBody(data) {
     })
         .join("");
     document.getElementById("detail-network-summary").textContent =
-        translateNetworkSummary(data.seller.network_summary) || "";
+        networkSummaryText(data.fraud_report_count || 0, data.seller.network_summary);
     const signals = data.signals || [];
     const badCount = signals.filter((s) => s.type !== "good" && s.type !== "info").length;
     const summaryEl = document.getElementById("detail-intel-summary");
@@ -324,7 +405,7 @@ function renderDetailBody(data) {
                     escapeHtml(translateSignalValue(verdict.charAt(0).toUpperCase() + verdict.slice(1))) +
                     "</div>" +
                     '<div class="text-[12px] text-muted mt-1.5">' +
-                    (priceSignal.sub || "") +
+                    escapeHtml(parseChecklistSignal(priceSignal.sub).realSub) +
                     "</div></div>";
         }
         else {
@@ -347,7 +428,7 @@ function renderDetailBody(data) {
             escapeHtml(translateSignalValue(s.value)) +
             "</div></div>" +
             '<div class="text-[12px] text-muted mt-1.5">' +
-            (realSub ? escapeHtml(translateCompletenessSub(realSub)) : "") +
+            escapeHtml(realSub) +
             "</div>" +
             buildChecklistDropdown(dropdownId, checklist) +
             "</div>");
@@ -367,43 +448,22 @@ function renderDetailBody(data) {
                 compound: "text-amber",
                 soft: "text-muted",
             };
+            // Not "Confirmed": the same check's row above can read "Not
+            // confirmed", and the two looked like they contradicted each
+            // other. Same words as the extension.
             const severityLabels = {
-                hard: t("dash.detail.severity_confirmed", "Confirmed"),
+                hard: t("dash.detail.severity_serious", "Serious"),
                 compound: t("dash.detail.severity_pattern_match", "Pattern match"),
                 soft: t("dash.detail.severity_worth_noting", "Worth noting"),
             };
             const capitalizeFirst = (str) => str ? str.charAt(0).toUpperCase() + str.slice(1) : str;
-            // Real, fixed set confirmed from derive_risk_factors() in
-            // services/risk_factors.rs - "soft" factors (name ends in
-            // "_flagged") reuse the originating signal's own sub text and
-            // are NOT translated here, since that text may itself be
-            // Claude-generated (e.g. Contact info's evidence).
-            const RISK_FACTOR_NAMES = {
-                confirmed_legitimacy_concern: t("dash.rf.name.legitimacy_concern", "Confirmed legitimacy concern"),
-                network_confirmed_high_risk_seller: t("dash.rf.name.high_risk_seller", "Network confirmed high risk seller"),
-                likely_counterfeit_or_nonexistent_product: t("dash.rf.name.counterfeit", "Likely counterfeit or nonexistent product"),
-                advance_fee_scam_pattern: t("dash.rf.name.advance_fee", "Advance fee scam pattern"),
-                newly_created_high_risk_entity: t("dash.rf.name.newly_created", "Newly created high risk entity"),
-            };
-            const RISK_FACTOR_DESCRIPTIONS = {
-                "A specific, known fraud pattern or legitimacy concern was identified in this listing.": t("dash.rf.desc.legitimacy_concern", "A specific, known fraud pattern or legitimacy concern was identified in this listing."),
-                "Safely's own network has previously scored this seller as high-risk.": t("dash.rf.desc.high_risk_seller", "Safely's own network has previously scored this seller as high-risk."),
-                "A templated, duplicate-style listing combined with unverifiable images suggests the product itself may not genuinely exist or be authentic.": t("dash.rf.desc.counterfeit", "A templated, duplicate-style listing combined with unverifiable images suggests the product itself may not genuinely exist or be authentic."),
-                "This listing combines pressure/urgency language with a request for payment before delivery - a classic advance-fee scam pattern.": t("dash.rf.desc.advance_fee", "This listing combines pressure/urgency language with a request for payment before delivery - a classic advance-fee scam pattern."),
-                "A very recently established entity combined with a matched legitimacy concern is a strong, well-known combination seen in scam listings.": t("dash.rf.desc.newly_created", "A very recently established entity combined with a matched legitimacy concern is a strong, well-known combination seen in scam listings."),
-            };
-            function translateRiskFactorName(name) {
-                if (RISK_FACTOR_NAMES[name])
-                    return RISK_FACTOR_NAMES[name];
-                if (name.endsWith("_flagged")) {
-                    const rawLabel = name.slice(0, -"_flagged".length).replace(/_/g, " ");
-                    const matchedEnglishLabel = Object.keys(SIGNAL_LABEL_TRANSLATIONS).find((label) => label.toLowerCase() === rawLabel);
-                    const translatedLabel = matchedEnglishLabel
-                        ? translateSignalLabel(matchedEnglishLabel)
-                        : capitalizeFirst(rawLabel);
-                    return translatedLabel + " " + t("dash.rf.flagged_suffix", "flagged");
+            // The title is the checks the factor comes from ("Advance
+            // payment request + Account age"), exactly like the extension.
+            function riskFactorTitle(f) {
+                if (f.contributing_signals && f.contributing_signals.length > 0) {
+                    return f.contributing_signals.map((label) => translateSignalLabel(label)).join(" + ");
                 }
-                return capitalizeFirst(name.replace(/_/g, " "));
+                return capitalizeFirst(f.name.replace(/_/g, " "));
             }
             riskFactorsSection.classList.remove("hidden");
             riskFactorsSection.innerHTML =
@@ -414,29 +474,24 @@ function renderDetailBody(data) {
                         .map((f, idx) => {
                         const colorClass = severityColors[f.severity] || "text-muted";
                         const severityLabel = severityLabels[f.severity] || f.severity;
-                        const displayName = translateRiskFactorName(f.name);
                         // Same ###CHECKLIST### parsing the signals list above
                         // already uses - a risk factor's description is very
                         // often the exact same text as the signal.sub it was
-                        // derived from (e.g. "Listing completeness"), so without
-                        // this, the raw marker and "Name|true;Name|false" data
-                        // was leaking straight into the visible text here
-                        // instead of becoming a real, clickable checklist.
+                        // derived from (e.g. "Listing completeness").
                         const { realSub, checklist } = parseChecklistSignal(f.description);
                         const dropdownId = "detail-rf-checklist-" + idx;
-                        const displayDescription = RISK_FACTOR_DESCRIPTIONS[realSub] || translateCompletenessSub(realSub);
                         return ('<div class="bg-surface border border-line rounded-xl p-4 mb-2.5 last:mb-0">' +
                             '<div class="flex justify-between items-baseline gap-3">' +
                             '<div class="font-semibold text-[13px]">' +
-                            escapeHtml(displayName) +
+                            escapeHtml(riskFactorTitle(f)) +
                             "</div>" +
                             '<div class="text-[13px] font-bold whitespace-nowrap ' +
                             colorClass +
                             '">' +
-                            severityLabel +
+                            escapeHtml(severityLabel) +
                             "</div></div>" +
                             '<div class="text-[12px] text-muted mt-1.5">' +
-                            escapeHtml(displayDescription) +
+                            escapeHtml(capitalizeFirst(realSub)) +
                             "</div>" +
                             buildChecklistDropdown(dropdownId, checklist) +
                             "</div>");
@@ -457,9 +512,11 @@ function renderDetailBody(data) {
         emptyBlock.classList.add("hidden");
         filedBlock.innerHTML = reports
             .map((r) => '<div class="bg-surface border border-line rounded-xl p-4 mb-2.5 last:mb-0">' +
-            '<div class="text-[10px] font-extrabold uppercase tracking-wider text-muted mb-1.5">Report reason</div>' +
+            '<div class="text-[10px] font-extrabold uppercase tracking-wider text-muted mb-1.5">' +
+            t("dash.detail.report_reason", "Report reason") +
+            "</div>" +
             '<div class="text-[14px] font-semibold">' +
-            r.report_type +
+            escapeHtml(translateReportReason(r.report_type)) +
             "</div>" +
             '<div class="text-[12px] text-muted mt-2">' +
             t("dash.detail.submitted", "Submitted") +
@@ -551,7 +608,7 @@ function buildSocialPresenceSection(results) {
             (isLast ? "" : " border-b border-line") +
             '">' +
             '<div class="text-[10px] font-extrabold uppercase tracking-wider text-muted mb-1.5">' +
-            escapeHtml(platform) +
+            escapeHtml(translateSocialPlatform(platform)) +
             "</div>" +
             body +
             "</div>");

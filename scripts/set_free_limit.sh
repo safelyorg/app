@@ -1,15 +1,33 @@
 #!/bin/bash
 # Changes how many free scans the Free plan gets each month, everywhere:
-# backend limit, welcome email, extension, dashboard, website, /try page
-# and the tests.
+# backend limit, welcome email, extension (English and Portuguese),
+# dashboard, website, /try page and the tests.
 #
 # Usage (from anywhere):
-#   sed -i 's/\r$//' scripts/set_free_limit.sh
-#   bash scripts/set_free_limit.sh 30        <- the new number of free scans
+#   sed -i 's/\r$//' set_free_limit.sh
+#   bash set_free_limit.sh 30        <- the new number of free scans
 #
 # It reads the CURRENT number from the backend by itself, so you only
 # type the new one. Safe to run again later with another number.
 # The 0-100 risk score, "750 scans" and "100%" are never touched.
+#
+# Good to know:
+# - Run this ONLY when you want a new free limit. It edits the files
+#   once and saves them; you never need to run it (or any sed) again
+#   before testing. Normal testing is just:
+#       cd extension && npx vitest run
+#       cargo test
+# - The `sed -i 's/\r$//'` line above is needed only once after
+#   downloading this file from Windows (it removes Windows line endings).
+# - It never touches migrations/, so the database never needs a reset
+#   when the free limit changes. The limit lives only in the backend
+#   code (FREE_MONTHLY_SCANS in services/billing.rs).
+# - It changes the tests too (backend tests and the extension's
+#   tests/subscription-status.test.ts), so they keep passing.
+# - It does NOT change ad images. Remake any image that shows the
+#   old number.
+# - After running it: rebuild the dashboard (npx tsc) and the extension,
+#   run the tests, then deploy and purge the Cloudflare cache.
 set -e
 
 NEW="$1"
@@ -40,6 +58,7 @@ sed -i "s/pub const FREE_MONTHLY_SCANS: i32 = $OLD;/pub const FREE_MONTHLY_SCANS
 # ---------- 2. Text shown to users ----------
 TEXT_FILES=$(ls \
     backend/templates/*.html \
+    extension/ts/core/i18n.ts \
     extension/ts/core/panel.ts \
     extension/ts/core/api.ts \
     extension/ts/core/panel-subscription-logic.ts \

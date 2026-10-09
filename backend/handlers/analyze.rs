@@ -16,12 +16,12 @@ use crate::{
         scoring::calculate_risk_score,
         sellers::update_seller_from_b2b,
         signals::sort_signals_by_table,
-        translation::save_english_baseline,
+        translation::{AnalysisTranslation, get_or_create_translation, save_english_baseline},
     },
 };
 use axum::{Json, extract::State, http::HeaderMap};
 use chrono::NaiveDate;
-use serde_json::to_value;
+use serde_json::{Value, to_value};
 use sqlx::{Pool, Postgres, query};
 use uuid::Uuid;
 
@@ -51,6 +51,15 @@ pub struct VerifySocialLinkResponse {
 /// Claude analysis, builds the complete signal list, domain check included,
 /// calculates the actual risk score, and converts it into a risk level and
 /// saves everything, and builds the final response.
+///
+/// Language: the analysis itself always runs in English, because the
+/// scoring, the risk factors and the extension all read fixed English
+/// words (verdicts like "normal", values like "Full prepayment"). When
+/// the person reads Safely in another language ("pt-br"), only the
+/// finished text (the reason under each check, the risk factor
+/// explanations) is translated at the end. Labels and values stay in
+/// English in the response; the extension shows them in the person's
+/// language itself.
 pub async fn analyze(
     State(pool): State<Pool<Postgres>>,
     headers: HeaderMap,
@@ -58,6 +67,8 @@ pub async fn analyze(
 ) -> Result<Json<AnalyzeResponse>, AnalyzeError> {
     let user_id = authorize_request(&headers, &pool).await?;
     let mut request = request;
+    let reader_language = reader_language(request.language.as_deref());
+    request.language = Some("en".to_string());
     if !requires_client_side_scraping(&request.platform) {
         if let Some(scraped) = check_listing_page(&request.platform, &request.listing_url).await {
             if request.title.is_none() {
@@ -289,28 +300,85 @@ pub async fn analyze(
         social_candidates,
     };
 
-    let language = request.language.clone().unwrap_or_else(|| "en".to_string());
-    let response = save_and_build_response(data).await?;
+    let mut response = save_and_build_response(data).await?;
 
+    // The English result is always saved first: it is the source every
+    // translation is made from. The summary saved with it is the
+    // seller's fraud-report line (seller.network_summary) - the same one
+    // the dashboard translates - because the dashboard and the extension
+    // share these saved translations.
+    let analysis_id = response.0.analysis_id;
     let signals_value = to_value(&response.0.signals).unwrap_or_default();
     let factors_value = to_value(&response.0.risk_factors).unwrap_or_default();
     if let Err(e) = save_english_baseline(
         &pool,
-        response.0.analysis_id,
+        analysis_id,
         &signals_value,
         &factors_value,
-        &response.0.network_summary,
-        &language,
+        &response.0.seller.network_summary,
+        "en",
     )
     .await
     {
         eprintln!(
             "Safely: failed to save translation baseline for analysis {}: {:?}",
-            response.0.analysis_id, e
+            analysis_id, e
         );
     }
 
+    // Reader wants another language: translate the text. If that fails,
+    // the scan is still shown, in English, never lost.
+    if reader_language != "en" {
+        match get_or_create_translation(
+            &pool,
+            analysis_id,
+            &signals_value,
+            &factors_value,
+            &response.0.seller.network_summary,
+            reader_language,
+        )
+        .await
+        {
+            Ok(translation) => apply_translation(&mut response.0, &translation),
+            Err(e) => eprintln!(
+                "Safely: could not translate analysis {} into {}, showing English: {:?}",
+                analysis_id, reader_language, e
+            ),
+        }
+    }
+
     Ok(response)
+}
+
+/// The language the person reads Safely in: "pt-br" or "en". Anything
+/// else (missing, a typo, a language Safely doesn't have yet) is English.
+fn reader_language(code: Option<&str>) -> &'static str {
+    match code.map(str::trim) {
+        Some(c) if c.eq_ignore_ascii_case("pt-br") || c.eq_ignore_ascii_case("pt") => "pt-br",
+        _ => "en",
+    }
+}
+
+/// Puts the translated text into the response: the reason under each
+/// check, each risk factor's explanation and the seller's fraud-report
+/// line. Labels, values, types and severities are never changed - the
+/// scoring and the extension read them as fixed English words.
+fn apply_translation(response: &mut AnalyzeResponse, translation: &AnalysisTranslation) {
+    if let Some(items) = translation.signals.as_array() {
+        for (signal, item) in response.signals.iter_mut().zip(items) {
+            if let Some(sub) = item.get("sub").and_then(Value::as_str) {
+                signal.sub = sub.to_string();
+            }
+        }
+    }
+    if let Some(items) = translation.risk_factors.as_array() {
+        for (factor, item) in response.risk_factors.iter_mut().zip(items) {
+            if let Some(description) = item.get("description").and_then(Value::as_str) {
+                factor.description = description.to_string();
+            }
+        }
+    }
+    response.seller.network_summary = translation.network_summary.clone();
 }
 
 /// The note shown when the company's own page could not be loaded.
@@ -371,4 +439,19 @@ pub async fn verify_social_link_handler(
         confidence: result.confidence,
         message,
     }))
+}
+
+#[cfg(test)]
+mod reader_language_tests {
+    use super::reader_language;
+
+    #[test]
+    fn only_portuguese_switches_the_language() {
+        assert_eq!(reader_language(Some("pt-br")), "pt-br");
+        assert_eq!(reader_language(Some("PT-BR")), "pt-br");
+        assert_eq!(reader_language(Some("pt")), "pt-br");
+        assert_eq!(reader_language(Some("en")), "en");
+        assert_eq!(reader_language(Some("fr")), "en");
+        assert_eq!(reader_language(None), "en");
+    }
 }

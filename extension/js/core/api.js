@@ -33,6 +33,21 @@ function formatPlatformName(platform) {
             return {};
         }
     }
+    // The language for this scan ("en" or "pt-br"). Waits until the
+    // saved choice has been read, so the first scan on a page already
+    // asks for the right language.
+    async function scanLanguage() {
+        const i18n = window.__safelyI18n;
+        if (!i18n)
+            return "en";
+        try {
+            await i18n.ready;
+        }
+        catch (e) {
+            // Use whatever language is set right now.
+        }
+        return i18n.getLang();
+    }
     // Platforms whose listing page is also sent from this browser, as a
     // BACKUP: Safely fetches the listing through ScraperAPI first and
     // reads this copy only if that fails. Must match
@@ -130,6 +145,31 @@ function formatPlatformName(platform) {
                 return null;
             }
         },
+        // The reasons under each check and the risk factor explanations of
+        // a scan already done, in another language. Uses the dashboard's
+        // own address, so the extension and the dashboard show the same
+        // saved translation. Does not count as a scan. Null if it fails.
+        getResultTexts: async function (analysisId, language) {
+            try {
+                const authHeaders = await getAuthHeaders();
+                const response = await fetch(API_BASE +
+                    "/history/" +
+                    encodeURIComponent(analysisId) +
+                    "?language=" +
+                    encodeURIComponent(language), { headers: authHeaders });
+                if (!response.ok)
+                    return null;
+                const data = await response.json();
+                return {
+                    subs: (data.signals || []).map((s) => (s && s.sub) || ""),
+                    descriptions: (data.risk_factors || []).map((f) => (f && f.description) || ""),
+                };
+            }
+            catch (error) {
+                console.error("Safely: could not load the translated result", error);
+                return null;
+            }
+        },
         submitOutcome: async function (analysisId, action) {
             try {
                 const authHeaders = await getAuthHeaders();
@@ -224,8 +264,10 @@ function formatPlatformName(platform) {
                 }
             }
             const domainCheck = window.__safelyScrapers.checkDomain();
+            const language = await scanLanguage();
             const payload = {
                 platform,
+                language,
                 listing_url,
                 seller_id: null,
                 listing_id: scraped.listing_id || null,
@@ -274,6 +316,8 @@ function formatPlatformName(platform) {
             }
             window.__safelyData = {
                 analysisId: data.analysis_id,
+                // The language the reasons below are written in.
+                textLanguage: language,
                 riskScore: data.risk_score,
                 fraudReportCount: data.fraud_report_count,
                 riskFactors: data.risk_factors || [],

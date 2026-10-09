@@ -1,6 +1,22 @@
 "use strict";
 (async function () {
     "use strict";
+    // Translates through core/i18n.ts; plain English if it isn't loaded.
+    // Only what is SHOWN is translated - the signal labels and values
+    // the code below checks ("Advance payment request", "Full
+    // prepayment"...) always stay in English in the data itself.
+    function tr(en, vars) {
+        const i18n = window.__safelyI18n;
+        if (i18n)
+            return i18n.t(en, vars);
+        if (!vars)
+            return en;
+        return en.replace(/\{(\w+)\}/g, (whole, key) => Object.prototype.hasOwnProperty.call(vars, key) ? String(vars[key]) : whole);
+    }
+    function isPortuguese() {
+        const i18n = window.__safelyI18n;
+        return !!i18n && i18n.getLang() === "pt-br";
+    }
     let wasm;
     try {
         const wasmUrl = chrome.runtime.getURL("pkg/wasm.js");
@@ -90,7 +106,9 @@
             const borderStyle = isLast ? "" : "border-bottom:1px solid rgba(255,255,255,0.08);";
             const links = grouped[platform];
             const body = links.length === 0
-                ? '<div style="padding:4px;font-size:12px;color:#8e8e93;">Not found</div>'
+                ? '<div style="padding:4px;font-size:12px;color:#8e8e93;">' +
+                    tr("Not found") +
+                    "</div>"
                 : links
                     .map((link) => '<div style="display:flex;align-items:flex-start;gap:8px;padding:6px 4px;">' +
                     '<span style="color:#8e8e93;flex-shrink:0;margin-top:1px;">&#8226;</span>' +
@@ -104,16 +122,20 @@
                 borderStyle +
                 '">' +
                 '<div style="font-size:11px;font-weight:700;color:#8e8e93;text-transform:uppercase;letter-spacing:0.4px;margin-bottom:4px;padding:0 4px;">' +
-                window.escapeHtml(platform) +
+                window.escapeHtml(tr(platform)) +
                 "</div>" +
                 body +
                 "</div>");
         })
             .join("");
-        return ('<div class="safely-section-label" style="margin-top:18px">Social presence check</div>' +
+        return ('<div class="safely-section-label" style="margin-top:18px">' +
+            tr("Social presence check") +
+            "</div>" +
             '<div class="safely-check-card">' +
             '<button id="safely-social-toggle" type="button" style="width:100%;text-align:left;background:none;border:none;cursor:pointer;padding:0;font-size:13px;font-weight:600;color:#f2f1ed;display:flex;justify-content:space-between;align-items:center;">' +
-            '<span id="safely-social-toggle-text">Click to drop down</span><span id="safely-social-arrow">&#9662;</span>' +
+            '<span id="safely-social-toggle-text">' +
+            tr("Click to drop down") +
+            '</span><span id="safely-social-arrow">&#9662;</span>' +
             "</button>" +
             '<div id="safely-social-dropdown" style="display:none;margin-top:12px;">' +
             groupsHTML +
@@ -146,7 +168,7 @@
             return ('<div style="display:flex;align-items:center;gap:8px;padding:6px 4px;">' +
                 icon +
                 '<span style="font-size:12px;color:#f2f1ed;">' +
-                window.escapeHtml(name) +
+                window.escapeHtml(tr(name)) +
                 "</span></div>");
         })
             .join("");
@@ -155,7 +177,9 @@
             '-toggle" type="button" style="width:100%;text-align:left;background:none;border:none;cursor:pointer;padding:8px 0 0 0;font-size:12px;font-weight:600;color:#8e8e93;display:flex;justify-content:space-between;align-items:center;">' +
             '<span id="' +
             id +
-            '-toggle-text">Click to see checks</span><span id="' +
+            '-toggle-text">' +
+            tr("Click to see checks") +
+            '</span><span id="' +
             id +
             '-arrow">&#9662;</span>' +
             "</button>" +
@@ -175,7 +199,7 @@
                 const isOpen = dropdown.style.display !== "none";
                 dropdown.style.display = isOpen ? "none" : "block";
                 arrow.innerHTML = isOpen ? "&#9662;" : "&#9652;";
-                toggleText.textContent = isOpen ? "Click to see checks" : "Click to hide checks";
+                toggleText.textContent = isOpen ? tr("Click to see checks") : tr("Click to hide checks");
             });
         }
     }
@@ -198,12 +222,12 @@
             return ('<div class="safely-check-card">' +
                 '<div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;">' +
                 '<div class="safely-check-title">' +
-                window.escapeHtml(capitalizeFirst(s.label)) +
+                window.escapeHtml(tr(capitalizeFirst(s.label))) +
                 "</div>" +
                 '<div style="font-weight:700;white-space:nowrap;font-size:13px;color:' +
                 color +
                 ';">' +
-                window.escapeHtml(capitalizeFirst(s.value)) +
+                window.escapeHtml(tr(capitalizeFirst(s.value))) +
                 "</div></div>" +
                 '<div class="safely-check-body">' +
                 window.escapeHtml(capitalizeFirst(realSub) || "") +
@@ -223,7 +247,7 @@
                 const isOpen = dropdown.style.display !== "none";
                 dropdown.style.display = isOpen ? "none" : "block";
                 arrow.innerHTML = isOpen ? "&#9662;" : "&#9652;";
-                toggleText.textContent = isOpen ? "Click to drop down" : "Click to drop up";
+                toggleText.textContent = isOpen ? tr("Click to drop down") : tr("Click to drop up");
             });
         }
     }
@@ -290,19 +314,34 @@
         const checks = isB2b ? regulatedCheck.concat(paymentCheck, B2B_CHECKS) : B2C_CHECKS;
         const cards = checks
             .map(([title, body]) => '<div class="safely-check-card"><div class="safely-check-title">' +
-            window.escapeHtml(title) +
+            window.escapeHtml(tr(title)) +
             '</div><div class="safely-check-body">' +
-            window.escapeHtml(body) +
+            window.escapeHtml(tr(body)) +
             "</div></div>")
             .join("");
-        return ('<div class="safely-section-label" style="margin-top:18px">Recommended checks</div>' +
+        return ('<div class="safely-section-label" style="margin-top:18px">' +
+            tr("Recommended checks") +
+            "</div>" +
             '<div style="display:flex;flex-direction:column;gap:8px">' +
             cards +
             "</div>");
     }
+    // The coloured summary line at the top. The level always comes from
+    // WASM; in Portuguese the sentence is written here, since WASM only
+    // writes English.
+    function summaryFor(signals) {
+        const result = JSON.parse(wasm.analyze_signals(JSON.stringify(signals)));
+        if (!isPortuguese())
+            return result;
+        const bad = signals.filter((s) => s.type === "bad" || s.type === "caution").length;
+        const text = bad === 0
+            ? tr("All {n} signals checked. No red flags detected.", { n: signals.length })
+            : tr("{bad} of {n} signals need your attention.", { bad, n: signals.length });
+        return { level: result.level, text };
+    }
     function buildIntelligenceTab() {
         const pageData = window.__safelyData;
-        const sigResult = JSON.parse(wasm.analyze_signals(JSON.stringify(pageData.signals)));
+        const sigResult = summaryFor(pageData.signals || []);
         const summaryLvl = sigResult.level;
         const summaryText = sigResult.text;
         return ('<div class="safely-intel-summary safely-alert-' +
@@ -310,7 +349,9 @@
             '"><span>&#9679;</span><span>' +
             summaryText +
             "</span></div>" +
-            '<div class="safely-section-label" style="margin-top:14px">Listing signals</div><div style="display:flex;flex-direction:column;gap:8px">' +
+            '<div class="safely-section-label" style="margin-top:14px">' +
+            tr("Listing signals") +
+            '</div><div style="display:flex;flex-direction:column;gap:8px">' +
             buildSignalRowsTs(pageData.signals) +
             "</div>" +
             buildSocialPresenceSection() +
@@ -321,17 +362,18 @@
                     return "";
                 const priceSignal = pageData.signals.find((s) => s.label === "Price analysis");
                 const verdict = priceSignal ? priceSignal.value : "unknown";
-                const reasoning = priceSignal ? priceSignal.sub : "No price data available.";
+                const reasoning = priceSignal ? priceSignal.sub : tr("No price data available.");
                 const verdictClass = verdict === "normal" ? "low" : verdict === "unknown" ? "low" : "caution";
-                return ('<div class="safely-section-label" style="margin-top:18px">Price vs market</div>' +
+                return ('<div class="safely-section-label" style="margin-top:18px">' +
+                    tr("Price vs market") +
+                    "</div>" +
                     '<div class="safely-network-alert safely-alert-' +
                     verdictClass +
                     '" style="margin-top:8px">' +
                     "<span>&#9679;</span>" +
                     "<div>" +
                     '<div style="font-weight:600;margin-bottom:4px">' +
-                    verdict.charAt(0).toUpperCase() +
-                    verdict.slice(1) +
+                    tr(verdict.charAt(0).toUpperCase() + verdict.slice(1)) +
                     "</div>" +
                     '<div style="font-size:12px;opacity:0.85">' +
                     reasoning +
@@ -372,9 +414,9 @@
         const rows = riskFactors
             .map((factor, idx) => {
             const color = SEVERITY_COLORS[factor.severity] || "#8e8e93";
-            const severityLabel = SEVERITY_LABELS[factor.severity] || factor.severity;
+            const severityLabel = tr(SEVERITY_LABELS[factor.severity] || factor.severity);
             const shortTitle = factor.contributing_signals && factor.contributing_signals.length > 0
-                ? factor.contributing_signals.join(" + ")
+                ? factor.contributing_signals.map((label) => tr(label)).join(" + ")
                 : capitalizeFirst(factor.name.replace(/_/g, " "));
             const { realSub, checklist } = parseChecklistSignal(factor.description || "");
             const dropdownId = "safely-riskfactor-checklist-" + idx;
@@ -395,7 +437,9 @@
                 "</div>");
         })
             .join("");
-        return ('<div class="safely-section-label" style="margin-top:18px">Risk Factors</div><div style="display:flex;flex-direction:column;gap:8px">' +
+        return ('<div class="safely-section-label" style="margin-top:18px">' +
+            tr("Risk Factors") +
+            '</div><div style="display:flex;flex-direction:column;gap:8px">' +
             rows +
             "</div>");
     }
@@ -409,12 +453,15 @@
             attachChecklistListener("safely-riskfactor-checklist-" + idx);
         });
     }
-    window.__safelyAddTab("intelligence", "Intelligence", buildIntelligenceTab(), '<svg viewBox="0 0 24 24" fill="none" stroke="#8e8e93" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="2"/><path d="M16.24 7.76a6 6 0 010 8.48"/><path d="M19.07 4.93a10 10 0 010 14.14"/><path d="M7.76 16.24a6 6 0 010-8.48"/><path d="M4.93 19.07a10 10 0 010-14.14"/></svg>', attachAllChecklistListeners);
-    window.addEventListener("safely-data-ready", () => {
+    function redrawIntelligenceTab() {
         const tabEl = document.getElementById("safely-tab-intelligence");
         if (tabEl) {
             tabEl.innerHTML = buildIntelligenceTab();
             attachAllChecklistListeners();
         }
-    });
+    }
+    window.__safelyAddTab("intelligence", "Intelligence", buildIntelligenceTab(), '<svg viewBox="0 0 24 24" fill="none" stroke="#8e8e93" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="2"/><path d="M16.24 7.76a6 6 0 010 8.48"/><path d="M19.07 4.93a10 10 0 010 14.14"/><path d="M7.76 16.24a6 6 0 010-8.48"/><path d="M4.93 19.07a10 10 0 010-14.14"/></svg>', attachAllChecklistListeners);
+    window.addEventListener("safely-data-ready", redrawIntelligenceTab);
+    window.addEventListener("safely-lang-changed", redrawIntelligenceTab);
+    window.addEventListener("safely-result-text-changed", redrawIntelligenceTab);
 })();

@@ -1,6 +1,19 @@
 "use strict";
 (async function () {
     "use strict";
+    // Translates through core/i18n.ts; plain English if it isn't loaded.
+    function tr(en, vars) {
+        const i18n = window.__safelyI18n;
+        if (i18n)
+            return i18n.t(en, vars);
+        if (!vars)
+            return en;
+        return en.replace(/\{(\w+)\}/g, (whole, key) => Object.prototype.hasOwnProperty.call(vars, key) ? String(vars[key]) : whole);
+    }
+    function isPortuguese() {
+        const i18n = window.__safelyI18n;
+        return !!i18n && i18n.getLang() === "pt-br";
+    }
     let wasm;
     try {
         const wasmUrl = chrome.runtime.getURL("pkg/wasm.js");
@@ -52,6 +65,51 @@
         caution: "#f2b84c",
         high: "#ff5d5d",
     };
+    // English words for each risk level, used as keys for the Portuguese
+    // text (the WASM module only speaks English).
+    const LEVEL_LABEL = {
+        low: "Low risk",
+        caution: "Caution",
+        high: "High risk",
+    };
+    const LEVEL_DESC = {
+        low: "Safe to proceed",
+        caution: "Review before proceeding",
+        high: "High risk detected",
+    };
+    function riskLabelFor(level) {
+        return isPortuguese() ? tr(LEVEL_LABEL[level] || LEVEL_LABEL.high) : wasm.risk_label(level);
+    }
+    function riskDescFor(level) {
+        return isPortuguese() ? tr(LEVEL_DESC[level] || LEVEL_DESC.high) : wasm.risk_desc(level);
+    }
+    // The status badge comes from WASM in English; in Portuguese only its
+    // visible word is swapped, so its colour and style stay the same.
+    function verificationBadgeFor(status) {
+        const html = wasm.verification_badge(status);
+        if (!isPortuguese() || !status)
+            return html;
+        const word = status.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        return html.replace(new RegExp(">\\s*" + word + "\\s*<", "i"), ">" + escapeHtml(tr(status)) + "<");
+    }
+    // The line under the activity chart. In Portuguese it is written
+    // here from the report count; in English the server's sentence is
+    // shown as before.
+    function networkSummaryFor(pageData) {
+        if (!isPortuguese())
+            return pageData.seller.networkSummary;
+        const count = pageData.fraudReportCount || 0;
+        if (count === 0)
+            return tr("No fraud reports found on the Safely network.");
+        if (count === 1)
+            return tr("1 fraud report found on the Safely network. Proceed with caution.");
+        return tr("{n} fraud reports found on the Safely network. High-risk seller.", { n: count });
+    }
+    // A seller detail ("Not found", "About 11 years", a name...) in the
+    // current language, made safe to put in the page.
+    function detail(value) {
+        return escapeHtml(tr(value === null || value === undefined ? "" : String(value)));
+    }
     function buildRiskGauge(score, level) {
         const color = RISK_HEX[level] || RISK_HEX.high;
         const r = 44;
@@ -102,8 +160,8 @@
         const pageData = window.__safelyData;
         const score = pageData.riskScore || 0;
         const lvl = wasm.risk_level(score);
-        const riskLabel = wasm.risk_label(lvl);
-        const riskDesc = wasm.risk_desc(lvl);
+        const riskLabel = riskLabelFor(lvl);
+        const riskDesc = riskDescFor(lvl);
         const riskColor = RISK_HEX[lvl] || RISK_HEX.high;
         const activityBars = wasm.build_activity_bars(new Uint8Array(pageData.seller.monthlyActivity.map((v) => Math.min(255, Math.max(0, v)))));
         const circleHTML = '<div style="text-align:center;padding:20px 16px 10px">' +
@@ -119,28 +177,48 @@
             riskDesc +
             "</div>" +
             "</div>";
-        const sellerCardHTML = '<div class="safely-section-label">Seller Information</div><div class="safely-seller-card"><div class="safely-seller-name">' +
-            pageData.seller.name +
-            '</div><div class="safely-seller-detail"><span>Username</span><span>' +
-            pageData.seller.handle +
-            '</span></div><div class="safely-seller-detail"><span>Phone</span><span>' +
-            pageData.seller.phone +
-            '</span></div><div class="safely-seller-detail"><span>Account age</span><span>' +
-            pageData.seller.accountAge +
-            '</span></div><div class="safely-seller-detail"><span>Location</span><span>' +
-            pageData.seller.location +
-            '</span></div><div class="safely-seller-detail"><span>Last active</span><span>' +
-            pageData.seller.lastActive +
-            '</span></div><div class="safely-seller-detail"><span>Status</span>' +
-            wasm.verification_badge(pageData.seller.verification) +
-            '</div><div class="safely-seller-detail"><span>Fraud Reports</span><span style="color:' +
+        const sellerCardHTML = '<div class="safely-section-label">' +
+            tr("Seller Information") +
+            '</div><div class="safely-seller-card"><div class="safely-seller-name">' +
+            detail(pageData.seller.name) +
+            '</div><div class="safely-seller-detail"><span>' +
+            tr("Username") +
+            "</span><span>" +
+            detail(pageData.seller.handle) +
+            '</span></div><div class="safely-seller-detail"><span>' +
+            tr("Phone") +
+            "</span><span>" +
+            detail(pageData.seller.phone) +
+            '</span></div><div class="safely-seller-detail"><span>' +
+            tr("Account age") +
+            "</span><span>" +
+            detail(pageData.seller.accountAge) +
+            '</span></div><div class="safely-seller-detail"><span>' +
+            tr("Location") +
+            "</span><span>" +
+            detail(pageData.seller.location) +
+            '</span></div><div class="safely-seller-detail"><span>' +
+            tr("Last active") +
+            "</span><span>" +
+            detail(pageData.seller.lastActive) +
+            '</span></div><div class="safely-seller-detail"><span>' +
+            tr("Status") +
+            "</span>" +
+            verificationBadgeFor(pageData.seller.verification) +
+            '</div><div class="safely-seller-detail"><span>' +
+            tr("Fraud Reports") +
+            '</span><span style="color:' +
             (pageData.fraudReportCount > 0 ? "#ff5d5d" : "#8a8a93") +
             '">' +
             (pageData.fraudReportCount || 0) +
-            '</span></div><div class="safely-seller-detail"><span>Platform</span><span style="text-transform:capitalize">' +
-            pageData.seller.platform +
+            '</span></div><div class="safely-seller-detail"><span>' +
+            tr("Platform") +
+            '</span><span style="text-transform:capitalize">' +
+            detail(pageData.seller.platform) +
             "</span></div></div>";
-        const activityHTML = '<div class="safely-section-label" style="margin-top:18px">Visit activity \u2014 12 months</div>' +
+        const activityHTML = '<div class="safely-section-label" style="margin-top:18px">' +
+            tr("Visit activity — 12 months") +
+            "</div>" +
             '<div class="safely-activity-card">' +
             '<div style="display:flex;align-items:flex-end;gap:3px;height:56px">' +
             activityBars +
@@ -152,37 +230,65 @@
                     "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
                 ];
                 return months
-                    .map((m) => '<span style="flex:1;text-align:center;font-size:8px;color:#8a8a93;">' + m + "</span>")
+                    .map((m) => '<span style="flex:1;text-align:center;font-size:8px;color:#8a8a93;">' +
+                    tr(m) +
+                    "</span>")
                     .join("");
             })() +
             "</div></div>";
         const networkHTML = '<div class="safely-network-alert safely-alert-' +
             lvl +
             '" style="margin-top:14px"><span>&#9679;</span><span>' +
-            pageData.seller.networkSummary +
+            networkSummaryFor(pageData) +
             "</span></div>";
         const outcomeButtonsHTML = '<div style="display:flex;gap:8px;margin-top:14px;">' +
-            '<button id="safely-outcome-proceed" style="flex:1;padding:10px;border-radius:8px;border:1px solid #35d0a6;background:transparent;color:#35d0a6;font-size:12px;font-weight:600;cursor:pointer;">I\'m proceeding</button>' +
-            '<button id="safely-outcome-abort" style="flex:1;padding:10px;border-radius:8px;border:1px solid #ff5d5d;background:transparent;color:#ff5d5d;font-size:12px;font-weight:600;cursor:pointer;">I\'m backing out</button>' +
+            '<button id="safely-outcome-proceed" style="flex:1;padding:10px;border-radius:8px;border:1px solid #35d0a6;background:transparent;color:#35d0a6;font-size:12px;font-weight:600;cursor:pointer;">' +
+            escapeHtml(tr("I'm proceeding")) +
+            "</button>" +
+            '<button id="safely-outcome-abort" style="flex:1;padding:10px;border-radius:8px;border:1px solid #ff5d5d;background:transparent;color:#ff5d5d;font-size:12px;font-weight:600;cursor:pointer;">' +
+            escapeHtml(tr("I'm backing out")) +
+            "</button>" +
             "</div>" +
-            '<div id="safely-outcome-confirmed" style="display:none;text-align:center;margin-top:10px;font-size:12px;color:#8a8a93;">Thanks - your response has been recorded.</div>';
+            '<div id="safely-outcome-confirmed" style="display:none;text-align:center;margin-top:10px;font-size:12px;color:#8a8a93;">' +
+            tr("Thanks - your response has been recorded.") +
+            "</div>";
         return circleHTML + sellerCardHTML + activityHTML + networkHTML + outcomeButtonsHTML;
     }
+    // The report reasons: [value sent to the server, name, description].
+    const REPORT_REASONS = [
+        ["scam", "Scam", "Seller took payment and disappeared"],
+        ["fake_item", "Fake item", "Item was counterfeit or misrepresented"],
+        ["no_delivery", "No delivery", "Payment sent but item never arrived"],
+        ["wrong_item", "Wrong item", "Received something different"],
+        ["non_responsive", "Non responsive", "Seller stopped responding after payment"],
+    ];
     function buildReportSection() {
+        const reasons = REPORT_REASONS.map(([value, name, desc]) => '<label class="safely-report-reason"><input type="radio" name="safely-report-reason" value="' +
+            value +
+            '"><div class="safely-report-reason-text"><span class="safely-report-reason-name">' +
+            tr(name) +
+            '</span><span class="safely-reason-desc">' +
+            tr(desc) +
+            "</span></div></label>").join("");
         return ('<div class="safely-report-section">' +
-            '<div class="safely-section-label">Report this seller</div>' +
-            '<p class="safely-report-desc">If you experienced fraud or suspicious behavior from this seller, help protect others by submitting a report.</p>' +
-            '<div class="safely-section-label" style="margin-top:14px">Select reason</div>' +
-            '<div class="safely-report-reasons" id="safely-report-reasons">' +
-            '<label class="safely-report-reason"><input type="radio" name="safely-report-reason" value="scam"><div class="safely-report-reason-text"><span class="safely-report-reason-name">Scam</span><span class="safely-reason-desc">Seller took payment and disappeared</span></div></label>' +
-            '<label class="safely-report-reason"><input type="radio" name="safely-report-reason" value="fake_item"><div class="safely-report-reason-text"><span class="safely-report-reason-name">Fake item</span><span class="safely-reason-desc">Item was counterfeit or misrepresented</span></div></label>' +
-            '<label class="safely-report-reason"><input type="radio" name="safely-report-reason" value="no_delivery"><div class="safely-report-reason-text"><span class="safely-report-reason-name">No delivery</span><span class="safely-reason-desc">Payment sent but item never arrived</span></div></label>' +
-            '<label class="safely-report-reason"><input type="radio" name="safely-report-reason" value="wrong_item"><div class="safely-report-reason-text"><span class="safely-report-reason-name">Wrong item</span><span class="safely-reason-desc">Received something different</span></div></label>' +
-            '<label class="safely-report-reason"><input type="radio" name="safely-report-reason" value="non_responsive"><div class="safely-report-reason-text"><span class="safely-report-reason-name">Non responsive</span><span class="safely-reason-desc">Seller stopped responding after payment</span></div></label>' +
+            '<div class="safely-section-label">' +
+            tr("Report this seller") +
             "</div>" +
-            '<button class="safely-report-btn" id="safely-report-submit">Submit Report</button>' +
+            '<p class="safely-report-desc">' +
+            tr("If you experienced fraud or suspicious behavior from this seller, help protect others by submitting a report.") +
+            "</p>" +
+            '<div class="safely-section-label" style="margin-top:14px">' +
+            tr("Select reason") +
+            "</div>" +
+            '<div class="safely-report-reasons" id="safely-report-reasons">' +
+            reasons +
+            "</div>" +
+            '<button class="safely-report-btn" id="safely-report-submit">' +
+            tr("Submit Report") +
+            "</button>" +
             '<div class="safely-report-success" id="safely-report-success" style="display:none">' +
-            "<span>&#10003;</span> Report submitted. Thank you for helping protect the community." +
+            "<span>&#10003;</span> " +
+            tr("Report submitted. Thank you for helping protect the community.") +
             "</div>" +
             "</div>");
     }
@@ -191,10 +297,14 @@
         return ('<div class="safely-sub-tabs">' +
             '<button class="safely-sub-tab' +
             (sellerVisible ? " safely-active" : "") +
-            '" id="safely-risk-subtab-seller">Risk</button>' +
+            '" id="safely-risk-subtab-seller">' +
+            tr("Risk") +
+            "</button>" +
             '<button class="safely-sub-tab' +
             (!sellerVisible ? " safely-active" : "") +
-            '" id="safely-risk-subtab-report">Report</button>' +
+            '" id="safely-risk-subtab-report">' +
+            tr("Report") +
+            "</button>" +
             "</div>" +
             '<div id="safely-risk-seller-content"' +
             (sellerVisible ? "" : ' style="display:none"') +
@@ -245,11 +355,11 @@
             submitBtn.addEventListener("click", async () => {
                 const selected = root.querySelector('input[name="safely-report-reason"]:checked');
                 if (!selected) {
-                    alert("Please select a reason before submitting.");
+                    alert(tr("Please select a reason before submitting."));
                     return;
                 }
                 const pageData = window.__safelyData;
-                submitBtn.textContent = "Submitting...";
+                submitBtn.textContent = tr("Submitting...");
                 submitBtn.disabled = true;
                 const reportData = {
                     platform: pageData.seller.platform || "olx",
@@ -260,13 +370,13 @@
                 };
                 const result = await window.__safelyAPI.submitReport(reportData);
                 if (!result || result.error) {
-                    submitBtn.textContent = "Submit Report";
+                    submitBtn.textContent = tr("Submit Report");
                     submitBtn.disabled = false;
                     if (result && result.error === "unauthorized") {
-                        alert("Please sign in again to submit a report.");
+                        alert(tr("Please sign in again to submit a report."));
                     }
                     else {
-                        alert("Failed to submit report. Please try again.");
+                        alert(tr("Failed to submit report. Please try again."));
                     }
                     return;
                 }
@@ -290,7 +400,8 @@
                 window.__safelyData.riskScore = Math.min(100, (window.__safelyData.riskScore || 0) + delta);
                 // The network-alert sentence is plain text from the last
                 // analyze call - swap in the new count wherever a standalone
-                // number appears in it.
+                // number appears in it. (In Portuguese the sentence is written
+                // from the count itself, so it is always right.)
                 if (window.__safelyData.seller.networkSummary) {
                     window.__safelyData.seller.networkSummary = window.__safelyData.seller.networkSummary.replace(/\d+/, String(newCount));
                 }
@@ -333,17 +444,20 @@
             abortBtn.addEventListener("click", () => handleOutcomeClick("aborted"));
         }
     }
+    function redrawRiskTab() {
+        const tabEl = document.getElementById("safely-tab-risk");
+        if (tabEl) {
+            tabEl.innerHTML = buildRiskTab();
+            attachRiskTabListeners();
+        }
+    }
     window.__safelyAddTab("risk", "Risk", buildRiskTab(), '<svg viewBox="0 0 24 24" fill="none" stroke="#8a8a93" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="9 12 11 14 15 10"/></svg>', () => {
         if (window.__safelyPreventInputBubbling) {
             window.__safelyPreventInputBubbling();
         }
         attachRiskTabListeners();
     });
-    window.addEventListener("safely-data-ready", () => {
-        const tabEl = document.getElementById("safely-tab-risk");
-        if (tabEl) {
-            tabEl.innerHTML = buildRiskTab();
-            attachRiskTabListeners();
-        }
-    });
+    window.addEventListener("safely-data-ready", redrawRiskTab);
+    window.addEventListener("safely-lang-changed", redrawRiskTab);
+    window.addEventListener("safely-result-text-changed", redrawRiskTab);
 })();

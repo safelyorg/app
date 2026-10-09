@@ -11,6 +11,21 @@ interface PendingTabRegistration {
 
   if (document.getElementById("safely-root")) return;
 
+  // Translates through i18n.ts; plain English if it isn't loaded.
+  function tr(en: string, vars?: Record<string, string | number>): string {
+    const i18n = (window as any).__safelyI18n;
+    if (i18n) return i18n.t(en, vars);
+    if (!vars) return en;
+    return en.replace(/\{(\w+)\}/g, (whole, key) =>
+      Object.prototype.hasOwnProperty.call(vars, key) ? String(vars[key]) : whole,
+    );
+  }
+
+  const UNSUPPORTED_TEXT =
+    "Safely doesn't check this page — open a listing on a supported marketplace to scan it.";
+  const SIGNIN_TEXT =
+    "Sign in free to analyze this listing. You get 10 free scans every month — no credit card needed.";
+
   let panelVisible = false;
   let toolbarExpanded = false;
   let currentTab = "";
@@ -20,6 +35,13 @@ interface PendingTabRegistration {
   let pendingTabRegistrations: PendingTabRegistration[] = [];
   const tabIds: string[] = [];
   const tabTitles: Record<string, string> = {};
+  // Redraws the current "couldn't analyze" / "scan limit" message when
+  // the language changes. Null when no such message is showing.
+  let renderFailedMessage: (() => void) | null = null;
+  let renderScanLimitMessage: (() => void) | null = null;
+  // The scraper's own "not supported" message, when it gave one.
+  let unsupportedCustomMessage: string | null = null;
+
   // Base DOM Structure — the unsupported notice exists from the start
   // as its own permanent piece of the panel, separate from tabsArea
   // (where the 3 real tabs get built) - this way there's no possibility
@@ -31,40 +53,33 @@ interface PendingTabRegistration {
     '<div class="safely-panel-header">' +
     '<span class="safely-panel-title" id="safely-panel-title">Safely</span>' +
     '<span id="safely-usage-line" style="display:none; margin-left:10px; font-size:11px; color:#8a8a93; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;"></span>' +
-    '<div class="safely-close-btn" id="safely-close-btn">\u00d7</div>' +
+    '<button type="button" id="safely-lang-btn" style="margin-left:auto; margin-right:8px; padding:3px 8px; border:1px solid #3a3a42; border-radius:6px; background:transparent; color:#8a8a93; font-size:11px; font-weight:700; letter-spacing:0.4px; line-height:1.4; cursor:pointer;"></button>' +
+    '<div class="safely-close-btn" id="safely-close-btn" style="margin-left:0;">×</div>' +
     "</div>" +
     '<div class="safely-tabs-area" id="safely-tabs-area"></div>' +
     '<div class="safely-loading-overlay" id="safely-loading-overlay"><div class="safely-loading-dots"><span></span><span></span><span></span></div></div>' +
     '<div class="safely-tab-content" id="safely-tab-unsupported" style="display:none; padding: 20px; font-size: 13px; line-height: 1.5; color: #8a8a93;">' +
-    '<span id="safely-unsupported-message">' +
-    "Safely doesn't check this page — open a listing on a supported " +
-    "marketplace to scan it." +
-    "</span>" +
+    '<span id="safely-unsupported-message"></span>' +
     "</div>" +
     '<div class="safely-tab-content" id="safely-tab-signin-required" style="display:none; padding: 20px; text-align: center;">' +
-    '<div style="font-size:13px; line-height:1.6; color:#8a8a93; margin-bottom:16px;">' +
-    "Sign in free to analyze this listing. You get 10 free scans every " +
-    "month \u2014 no credit card needed." +
-    "</div>" +
+    '<div id="safely-signin-text" style="font-size:13px; line-height:1.6; color:#8a8a93; margin-bottom:16px;"></div>' +
     '<a href="' +
     (window as any).__safelyAPI.SITE_BASE +
-    '" target="_blank" class="safely-signin-required-btn">Sign in free</a>' +
+    '" target="_blank" class="safely-signin-required-btn" id="safely-signin-btn"></a>' +
     "</div>" +
     '<div class="safely-tab-content" id="safely-tab-analysis-failed" style="display:none; padding: 20px; text-align: center;">' +
     '<div class="safely-failed-icon">&#9888;</div>' +
     '<div class="safely-failed-message" id="safely-failed-message" style="font-size:13px; line-height:1.6; color:#8a8a93; margin-top:10px;"></div>' +
     '<button class="safely-retry-btn" id="safely-retry-btn" style="display:none;">' +
     '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"></polyline><path d="M3.51 15a9 9 0 102.13-9.36L1 10"></path></svg>' +
-    "Reload" +
+    '<span id="safely-retry-text"></span>' +
     "</button>" +
     "</div>" +
     '<div class="safely-tab-content" id="safely-tab-scan-limit-reached" style="display:none; padding: 20px; text-align: center;">' +
-    '<div style="font-size:13px; line-height:1.6; color:#8a8a93; margin-bottom:16px;" id="safely-scan-limit-message">' +
-    "You've used all your scans for this month." +
-    "</div>" +
+    '<div style="font-size:13px; line-height:1.6; color:#8a8a93; margin-bottom:16px;" id="safely-scan-limit-message"></div>' +
     '<a href="' +
     (window as any).__safelyAPI.SITE_BASE +
-    '/dashboard/?manage_billing=1" target="_blank" class="safely-signin-required-btn">See plans</a>' +
+    '/dashboard/?manage_billing=1" target="_blank" class="safely-signin-required-btn" id="safely-see-plans-btn"></a>' +
     "</div>" +
     "</div>" +
     '<div id="safely-toolbar"><img class="safely-toolbar-letter" src="' +
@@ -79,6 +94,7 @@ interface PendingTabRegistration {
   const collapseBtn = document.getElementById("safely-collapse-btn") as HTMLElement;
   const panelTitle = document.getElementById("safely-panel-title") as HTMLElement;
   const closeBtn = document.getElementById("safely-close-btn") as HTMLElement;
+  const langBtn = document.getElementById("safely-lang-btn") as HTMLButtonElement | null;
   const tabsArea = document.getElementById("safely-tabs-area") as HTMLElement;
   const loadingOverlay = document.getElementById("safely-loading-overlay") as HTMLElement | null;
   const toolbarInner = document.getElementById("safely-toolbar-inner") as HTMLElement;
@@ -89,6 +105,8 @@ interface PendingTabRegistration {
   const signinRequiredContent = document.getElementById(
     "safely-tab-signin-required",
   ) as HTMLElement;
+  const signinText = document.getElementById("safely-signin-text") as HTMLElement | null;
+  const signinBtn = document.getElementById("safely-signin-btn") as HTMLElement | null;
   const analysisFailedContent = document.getElementById(
     "safely-tab-analysis-failed",
   ) as HTMLElement;
@@ -99,8 +117,10 @@ interface PendingTabRegistration {
   const scanLimitMessage = document.getElementById(
     "safely-scan-limit-message",
   ) as HTMLElement | null;
+  const seePlansBtn = document.getElementById("safely-see-plans-btn") as HTMLElement | null;
   const failedMessage = document.getElementById("safely-failed-message") as HTMLElement | null;
   const retryBtn = document.getElementById("safely-retry-btn") as HTMLElement | null;
+  const retryText = document.getElementById("safely-retry-text") as HTMLElement | null;
 
   if (retryBtn) {
     retryBtn.addEventListener("click", () => {
@@ -109,6 +129,18 @@ interface PendingTabRegistration {
       updateSupportState();
     });
   }
+
+  // EN / PT switch in the panel header. The choice is saved and used
+  // on every page and tab.
+  if (langBtn) {
+    langBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const i18n = (window as any).__safelyI18n;
+      if (!i18n) return;
+      i18n.setLang(i18n.getLang() === "pt-br" ? "en" : "pt-br");
+    });
+  }
+
   // ── Reserve icon positions: the 3 real tabs PLUS one dedicated
   // "unsupported" icon, kept as separate slots so exactly one relevant
   // set is ever visible at a time. ──
@@ -131,7 +163,6 @@ interface PendingTabRegistration {
   const unsupportedIcon = document.createElement("div");
   unsupportedIcon.className = "safely-toolbar-icon";
   unsupportedIcon.dataset.open = "unsupported";
-  unsupportedIcon.title = "Not a listing page";
   unsupportedIcon.style.display = "none";
   unsupportedIcon.innerHTML =
     '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>';
@@ -144,7 +175,6 @@ interface PendingTabRegistration {
   const signinRequiredIcon = document.createElement("div");
   signinRequiredIcon.className = "safely-toolbar-icon";
   signinRequiredIcon.dataset.open = "signin-required";
-  signinRequiredIcon.title = "Sign in required";
   signinRequiredIcon.style.display = "none";
   signinRequiredIcon.innerHTML =
     '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 012 2v14a2 2 0 01-2 2h-4"></path><polyline points="10 17 15 12 10 7"></polyline><line x1="15" y1="12" x2="3" y2="12"></line></svg>';
@@ -156,7 +186,6 @@ interface PendingTabRegistration {
   const scanLimitReachedIcon = document.createElement("div");
   scanLimitReachedIcon.className = "safely-toolbar-icon";
   scanLimitReachedIcon.dataset.open = "scan-limit-reached";
-  scanLimitReachedIcon.title = "Scan limit reached";
   scanLimitReachedIcon.style.display = "none";
   scanLimitReachedIcon.innerHTML =
     '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M12 6v6l4 2"></path></svg>';
@@ -169,7 +198,6 @@ interface PendingTabRegistration {
   const analysisFailedIcon = document.createElement("div");
   analysisFailedIcon.className = "safely-toolbar-icon";
   analysisFailedIcon.dataset.open = "analysis-failed";
-  analysisFailedIcon.title = "Couldn't analyze this listing";
   analysisFailedIcon.style.display = "none";
   analysisFailedIcon.innerHTML =
     '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>';
@@ -179,15 +207,47 @@ interface PendingTabRegistration {
     togglePanel("analysis-failed");
   });
 
+  const SPECIAL_STATES = ["unsupported", "signin-required", "analysis-failed", "scan-limit-reached"];
+
+  // Every fixed text in the panel, in the current language. Runs once
+  // now and again whenever the language changes.
+  function applyStaticTexts(): void {
+    const i18n = (window as any).__safelyI18n;
+    if (langBtn) {
+      if (i18n) {
+        langBtn.textContent = i18n.getLang() === "pt-br" ? "PT" : "EN";
+        langBtn.title = tr("Change language");
+      } else {
+        langBtn.style.display = "none";
+      }
+    }
+    if (unsupportedMessageEl) {
+      unsupportedMessageEl.textContent = tr(unsupportedCustomMessage || UNSUPPORTED_TEXT);
+    }
+    if (signinText) signinText.textContent = tr(SIGNIN_TEXT);
+    if (signinBtn) signinBtn.textContent = tr("Sign in free");
+    if (retryText) retryText.textContent = tr("Reload");
+    if (seePlansBtn) seePlansBtn.textContent = tr("See plans");
+    if (scanLimitMessage && !renderScanLimitMessage) {
+      scanLimitMessage.textContent = tr("You've used all your scans for this month.");
+    }
+    unsupportedIcon.title = tr("Not a listing page");
+    signinRequiredIcon.title = tr("Sign in required");
+    scanLimitReachedIcon.title = tr("Scan limit reached");
+    analysisFailedIcon.title = tr("Couldn't analyze this listing");
+    tabIds.forEach((id) => {
+      if (iconSlots[id]) iconSlots[id].title = tr(tabTitles[id] || id);
+    });
+    if (currentTab && SPECIAL_STATES.indexOf(currentTab) === -1) {
+      panelTitle.textContent = tr(tabTitles[currentTab] || currentTab);
+    }
+    if (renderFailedMessage) renderFailedMessage();
+    if (renderScanLimitMessage) renderScanLimitMessage();
+  }
+
   function switchTab(tab: string): void {
     currentTab = tab;
-    const specialStates = [
-      "unsupported",
-      "signin-required",
-      "analysis-failed",
-      "scan-limit-reached",
-    ];
-    if (specialStates.indexOf(tab) !== -1) {
+    if (SPECIAL_STATES.indexOf(tab) !== -1) {
       panelTitle.textContent = "Safely";
       tabIds.forEach((id) => {
         const el = document.getElementById("safely-tab-" + id);
@@ -198,7 +258,7 @@ interface PendingTabRegistration {
       analysisFailedContent.style.display = tab === "analysis-failed" ? "block" : "none";
       scanLimitReachedContent.style.display = tab === "scan-limit-reached" ? "block" : "none";
     } else {
-      panelTitle.textContent = tabTitles[tab] || tab;
+      panelTitle.textContent = tr(tabTitles[tab] || tab);
       unsupportedContent.style.display = "none";
       signinRequiredContent.style.display = "none";
       analysisFailedContent.style.display = "none";
@@ -234,7 +294,8 @@ interface PendingTabRegistration {
   }
 
   // The REAL tab-building logic - this only ever actually runs once
-  // we're certain we're on a genuine listing.
+  // we're certain we're on a genuine listing. The title is kept in
+  // English and translated when shown.
   function reallyAddTab(
     id: string,
     title: string,
@@ -253,7 +314,7 @@ interface PendingTabRegistration {
 
     const iconDiv = iconSlots[id];
     if (iconDiv) {
-      iconDiv.title = title;
+      iconDiv.title = tr(title);
       iconDiv.innerHTML = iconSvg;
       iconDiv.style.display = "flex";
     }
@@ -316,6 +377,8 @@ interface PendingTabRegistration {
           signinRequiredIcon.style.display = "none";
           analysisFailedIcon.style.display = "none";
           scanLimitReachedIcon.style.display = "none";
+          renderFailedMessage = null;
+          renderScanLimitMessage = null;
 
           buildQueuedTabsIfNeeded();
           TAB_ORDER.forEach((id) => {
@@ -348,11 +411,10 @@ interface PendingTabRegistration {
       scanLimitReachedIcon.style.display = "none";
       unsupportedIcon.style.display = "flex";
 
+      unsupportedCustomMessage =
+        (window as any).__safelyScrapers.getUnsupportedMessage?.() || null;
       if (unsupportedMessageEl) {
-        const customMessage = (window as any).__safelyScrapers.getUnsupportedMessage?.();
-        unsupportedMessageEl.textContent =
-          customMessage ||
-          "Safely doesn't check this page — open a listing on a supported marketplace to scan it.";
+        unsupportedMessageEl.textContent = tr(unsupportedCustomMessage || UNSUPPORTED_TEXT);
       }
 
       switchTab("unsupported");
@@ -439,14 +501,15 @@ interface PendingTabRegistration {
       if (failedMessage) {
         failedMessage.textContent =
           remaining > 0
-            ? "You've checked several listings quickly. Try again in " +
-              formatCountdown(remaining) +
-              "."
-            : "You can check another listing now.";
+            ? tr("You've checked several listings quickly. Try again in {time}.", {
+                time: formatCountdown(remaining),
+              })
+            : tr("You can check another listing now.");
       }
       if (retryBtn) retryBtn.style.display = remaining > 0 ? "none" : "flex";
     }
 
+    renderFailedMessage = render;
     render();
     rateLimitCountdownTimer = setInterval(() => {
       remaining -= 1;
@@ -458,12 +521,21 @@ interface PendingTabRegistration {
       render();
     }, 1000);
   }
-  async function refreshUsageLine(): Promise<void> {
+  // The last plan / usage the server sent, so the line can be redrawn
+  // in another language without asking the server again.
+  let lastUsage: unknown = null;
+
+  function showUsageLine(): void {
     if (!usageLine) return;
-    const usage = await (window as any).__safelyAPI.getScanUsage();
-    const text = (globalThis as any).__safelyFormatUsageLine(usage);
+    const text = (globalThis as any).__safelyFormatUsageLine(lastUsage);
     usageLine.textContent = text;
     usageLine.style.display = text ? "inline" : "none";
+  }
+
+  async function refreshUsageLine(): Promise<void> {
+    if (!usageLine) return;
+    lastUsage = await (window as any).__safelyAPI.getScanUsage();
+    showUsageLine();
   }
 
   window.addEventListener("safely-analysis-finished", (e: any) => {
@@ -487,13 +559,18 @@ interface PendingTabRegistration {
     }
 
     if (reason === "scan_limit_reached" || reason === "free_scan_limit_reached") {
-      if (scanLimitMessage) {
-        scanLimitMessage.textContent = (globalThis as any).__safelyScanLimitMessage(
-          reason,
-          e.detail.scanLimit,
-          e.detail.resetsOn,
-        );
-      }
+      const scanLimit = e.detail.scanLimit;
+      const resetsOn = e.detail.resetsOn;
+      renderScanLimitMessage = () => {
+        if (scanLimitMessage) {
+          scanLimitMessage.textContent = (globalThis as any).__safelyScanLimitMessage(
+            reason,
+            scanLimit,
+            resetsOn,
+          );
+        }
+      };
+      renderScanLimitMessage();
       scanLimitReachedIcon.style.display = "flex";
       TAB_ORDER.forEach((id) => {
         if (iconSlots[id]) iconSlots[id].style.display = "none";
@@ -505,8 +582,14 @@ interface PendingTabRegistration {
     if (reason === "rate_limited" && e.detail.retryAfterSeconds) {
       startRateLimitCountdown(e.detail.retryAfterSeconds);
     } else if (failedMessage) {
-      failedMessage.textContent =
-        "Couldn't analyze this listing right now. Please try again in a moment.";
+      renderFailedMessage = () => {
+        if (failedMessage) {
+          failedMessage.textContent = tr(
+            "Couldn't analyze this listing right now. Please try again in a moment.",
+          );
+        }
+      };
+      renderFailedMessage();
       if (retryBtn) retryBtn.style.display = "flex";
     }
 
@@ -524,7 +607,86 @@ interface PendingTabRegistration {
     }
   });
 
+  // ── Result text in the other language ──
+  // The labels switch on their own (i18n.ts). The reasons under each
+  // check and the risk factor explanations were written by the backend
+  // in the language of the scan, so they are fetched again, once per
+  // language, from the scan saved on the server (no new scan is used).
+  // Both versions are kept here, so switching back and forth after that
+  // is instant.
+  interface ResultTexts {
+    subs: string[];
+    descriptions: string[];
+  }
+  let textsForAnalysis: string | null = null;
+  let textsByLanguage: Record<string, ResultTexts> = {};
+
+  function currentResultTexts(data: any): ResultTexts {
+    return {
+      subs: (data.signals || []).map((s: any) => s.sub || ""),
+      descriptions: (data.riskFactors || []).map((f: any) => f.description || ""),
+    };
+  }
+
+  async function showResultIn(language: string): Promise<void> {
+    const data = (window as any).__safelyData;
+    if (!data || !data.analysisId) return;
+    const analysisId: string = data.analysisId;
+    const shownLanguage: string = data.textLanguage || "en";
+
+    if (textsForAnalysis !== analysisId) {
+      textsForAnalysis = analysisId;
+      textsByLanguage = {};
+    }
+    if (!textsByLanguage[shownLanguage]) {
+      textsByLanguage[shownLanguage] = currentResultTexts(data);
+    }
+    if (shownLanguage === language) return;
+
+    let texts: ResultTexts | null = textsByLanguage[language] || null;
+    if (!texts) {
+      if (loadingOverlay) loadingOverlay.classList.add("safely-visible");
+      if (tabsArea) tabsArea.classList.add("safely-loading-blur");
+      texts = await (window as any).__safelyAPI.getResultTexts(analysisId, language);
+      if (loadingOverlay) loadingOverlay.classList.remove("safely-visible");
+      if (tabsArea) tabsArea.classList.remove("safely-loading-blur");
+      if (!texts) return;
+      textsByLanguage[language] = texts;
+    }
+
+    // Still the same result, and still the language that was asked for?
+    const now = (window as any).__safelyData;
+    const i18n = (window as any).__safelyI18n;
+    if (!now || now.analysisId !== analysisId) return;
+    if (i18n && i18n.getLang() !== language) return;
+
+    const signals = now.signals || [];
+    const factors = now.riskFactors || [];
+    if (texts.subs.length !== signals.length || texts.descriptions.length !== factors.length) {
+      return;
+    }
+    signals.forEach((s: any, i: number) => {
+      s.sub = texts!.subs[i];
+    });
+    factors.forEach((f: any, i: number) => {
+      f.description = texts!.descriptions[i];
+    });
+    now.textLanguage = language;
+    window.dispatchEvent(new CustomEvent("safely-result-text-changed"));
+  }
+
+  // The language changed (EN / PT button, here or in another tab):
+  // redraw every fixed text, then bring the result text along. The
+  // tabs redraw themselves.
+  window.addEventListener("safely-lang-changed", () => {
+    applyStaticTexts();
+    if (lastUsage) showUsageLine();
+    const i18n = (window as any).__safelyI18n;
+    if (i18n) showResultIn(i18n.getLang());
+  });
+
   // ── Initial check, then keep checking on every URL change ──
+  applyStaticTexts();
   updateSupportState();
   let lastUrl = window.location.href;
   new MutationObserver(() => {
