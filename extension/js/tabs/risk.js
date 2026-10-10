@@ -28,7 +28,7 @@
             risk_level: (s) => (s <= 33 ? "low" : s <= 66 ? "caution" : "high"),
             risk_label: (l) => l === "low" ? "Low risk" : l === "caution" ? "Caution" : "High risk",
             risk_desc: (l) => l === "low"
-                ? "Safe to proceed"
+                ? "No major warnings found"
                 : l === "caution"
                     ? "Review before proceeding"
                     : "High risk detected",
@@ -65,23 +65,73 @@
         caution: "#f2b84c",
         high: "#ff5d5d",
     };
-    // English words for each risk level, used as keys for the Portuguese
-    // text (the WASM module only speaks English).
+    // The words under the score for each risk level, in English (the
+    // keys for the Portuguese text). Same words as risk_label / risk_desc
+    // in wasm/src/lib.rs. Low risk never says "safe": no check can
+    // promise that, and the buyer should stay careful.
     const LEVEL_LABEL = {
         low: "Low risk",
         caution: "Caution",
         high: "High risk",
     };
     const LEVEL_DESC = {
-        low: "Safe to proceed",
+        low: "No major warnings found",
         caution: "Review before proceeding",
         high: "High risk detected",
     };
-    function riskLabelFor(level) {
-        return isPortuguese() ? tr(LEVEL_LABEL[level] || LEVEL_LABEL.high) : wasm.risk_label(level);
+    // Set by the backend when Safely could check too little about the
+    // supplier (most checks came back empty). The score is then at least
+    // Moderate, and the label says why instead of a plain "Caution".
+    const NOT_ENOUGH_INFORMATION = "not_enough_information";
+    function hasTooLittleInformation(pageData) {
+        return (pageData.riskFactors || []).some((f) => f && f.name === NOT_ENOUGH_INFORMATION);
     }
-    function riskDescFor(level) {
-        return isPortuguese() ? tr(LEVEL_DESC[level] || LEVEL_DESC.high) : wasm.risk_desc(level);
+    function riskLabelFor(level, pageData) {
+        if (hasTooLittleInformation(pageData))
+            return tr("Not enough information");
+        return tr(LEVEL_LABEL[level] || LEVEL_LABEL.high);
+    }
+    function riskDescFor(level, pageData) {
+        if (hasTooLittleInformation(pageData))
+            return tr("Check this supplier carefully yourself");
+        return tr(LEVEL_DESC[level] || LEVEL_DESC.high);
+    }
+    // Labels only the backend's B2B (supplier) scans produce.
+    const B2B_ONLY_LABELS = [
+        "Company profile completeness",
+        "Listing completeness",
+        "Registration consistency",
+    ];
+    // What to check before paying, shown at the top of a Moderate result:
+    // Moderate covers a wide range (34-66) and buyers may read it as
+    // "fine". High results already say "High risk detected".
+    const B2B_BEFORE_YOU_PAY = [
+        "Order a sample first",
+        "Pay through the platform's buyer protection, or only to a bank account in the company's own name",
+        "Confirm the bank details on a video call",
+    ];
+    const B2C_BEFORE_YOU_PAY = [
+        "Ask for a live video call",
+        "Do not pay to number in listing",
+        "Don't pay the full amount before delivery",
+    ];
+    function beforeYouPayHTML(level, pageData) {
+        if (level !== "caution")
+            return "";
+        const isB2b = (pageData.signals || []).some((s) => B2B_ONLY_LABELS.includes(s.label));
+        const items = (isB2b ? B2B_BEFORE_YOU_PAY : B2C_BEFORE_YOU_PAY)
+            .map((item) => '<div style="display:flex;gap:8px;align-items:flex-start;margin-top:6px;">' +
+            '<span style="color:#f2b84c;flex-shrink:0;">&#10003;</span>' +
+            "<span>" +
+            escapeHtml(tr(item)) +
+            "</span></div>")
+            .join("");
+        return ('<div class="safely-network-alert safely-alert-caution" style="display:block;margin:0 0 14px;font-size:12px;line-height:1.45;">' +
+            '<div style="font-weight:700;">' +
+            escapeHtml(tr("Before you pay, check:")) +
+            "</div>" +
+            items +
+            "</div>");
     }
     // The status badge comes from WASM in English; in Portuguese only its
     // visible word is swapped, so its colour and style stay the same.
@@ -160,8 +210,8 @@
         const pageData = window.__safelyData;
         const score = pageData.riskScore || 0;
         const lvl = wasm.risk_level(score);
-        const riskLabel = riskLabelFor(lvl);
-        const riskDesc = riskDescFor(lvl);
+        const riskLabel = riskLabelFor(lvl, pageData);
+        const riskDesc = riskDescFor(lvl, pageData);
         const riskColor = RISK_HEX[lvl] || RISK_HEX.high;
         const activityBars = wasm.build_activity_bars(new Uint8Array(pageData.seller.monthlyActivity.map((v) => Math.min(255, Math.max(0, v)))));
         const circleHTML = '<div style="text-align:center;padding:20px 16px 10px">' +
@@ -252,7 +302,12 @@
             '<div id="safely-outcome-confirmed" style="display:none;text-align:center;margin-top:10px;font-size:12px;color:#8a8a93;">' +
             tr("Thanks - your response has been recorded.") +
             "</div>";
-        return circleHTML + sellerCardHTML + activityHTML + networkHTML + outcomeButtonsHTML;
+        return (circleHTML +
+            beforeYouPayHTML(lvl, pageData) +
+            sellerCardHTML +
+            activityHTML +
+            networkHTML +
+            outcomeButtonsHTML);
     }
     // The report reasons: [value sent to the server, name, description].
     const REPORT_REASONS = [

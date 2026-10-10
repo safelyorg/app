@@ -640,17 +640,27 @@ pub fn b2b_content(arg: &CallB2bClaudeArguments) -> String {
         terms that still add up to 100% before shipment (e.g. "40%
         advance, 60% before shipment"). Partial deposits with the balance
         paid against shipping documents (e.g. "30% advance, 70% against
-        copy of B/L"), L/C, D/A, D/P and platform escrow are standard B2B
-        terms and must NOT be flagged. Judge only how much is paid before
-        shipment here, not the payment method.
+        copy of B/L"), L/C, D/A, D/P and platform escrow (including
+        Alibaba Trade Assurance, Alibaba's own order protection) are
+        standard B2B terms and must NOT be flagged. Judge only how much is
+        paid before shipment here, not the payment method.
 
-        For untraceable_payment_method: set found to true only if the
-        accepted payment methods or the description include Western
-        Union, MoneyGram, cryptocurrency, gift cards, or paying a personal
-        (individual's) account instead of the company's account. These
-        cannot be reversed or traced to a company. Name the method in the
-        evidence. Bank wire (T/T), L/C, D/A, D/P and platform escrow are
-        normal and must not be flagged here.
+        For untraceable_payment_method: Western Union, MoneyGram,
+        cryptocurrency, gift cards and paying a personal (individual's)
+        account cannot be reversed or traced to a company. Set found to
+        true only if ONE of these is true:
+        (a) such a method is the ONLY way to pay that is offered;
+        (b) the supplier pushes buyers toward it (e.g. "Western Union
+            only", "discount for Western Union", "pay by crypto");
+        (c) payment goes to a personal account instead of the company's.
+        If such a method is only one option in a list that also offers a
+        protected or traceable way to pay - platform order protection such
+        as Alibaba Trade Assurance, bank wire (T/T) to the company, L/C,
+        D/A, D/P, credit card or PayPal - and nothing pushes the risky
+        option, set found to false. In that case still name the risky
+        method in the evidence and say the buyer should use the protected
+        option instead. Bank wire (T/T), L/C, D/A, D/P and platform escrow
+        are normal and are never flagged here.
 
         For regulated_product: set found to true only if the product is
         one that legally needs a licence or prescription to sell or buy:
@@ -826,7 +836,21 @@ mod b2b_prompt_tests {
         let p = b2b_content(&args("exporthub", "", ""));
         assert!(p.contains("Accepted payment methods: Bank wire (T/T), Western Union (WU)"));
         let flat = p.split_whitespace().collect::<Vec<_>>().join(" ");
-        assert!(flat.contains("include Western Union, MoneyGram"));
+        assert!(flat.contains("Western Union, MoneyGram, cryptocurrency, gift cards"));
+    }
+
+    #[test]
+    fn a_risky_method_is_flagged_only_when_forced_or_pushed() {
+        let p = b2b_content(&args("alibaba", "", ""));
+        let flat = p.split_whitespace().collect::<Vec<_>>().join(" ");
+        assert!(flat.contains("(a) such a method is the ONLY way to pay that is offered"));
+        assert!(flat.contains("(b) the supplier pushes buyers toward it"));
+        assert!(flat.contains("(c) payment goes to a personal account"));
+        assert!(flat.contains(
+            "only one option in a list that also offers a protected or traceable way to pay"
+        ));
+        assert!(flat.contains("Alibaba Trade Assurance"));
+        assert!(flat.contains("say the buyer should use the protected option instead"));
     }
 
     #[test]
@@ -835,7 +859,8 @@ mod b2b_prompt_tests {
         let flat = p.split_whitespace().collect::<Vec<_>>().join(" ");
         assert!(flat.contains("\"40% advance, 60% before shipment\""));
         assert!(flat.contains("\"30% advance, 70% against copy of B/L\""));
-        assert!(flat.contains("For untraceable_payment_method: set found to true only if"));
+        assert!(flat.contains("For untraceable_payment_method: Western Union, MoneyGram"));
+        assert!(flat.contains("Set found to true only if ONE of these is true"));
         assert!(flat.contains("\"untraceable_payment_method\": { \"found\": false"));
     }
 

@@ -1,4 +1,6 @@
-use crate::services::b2b_scrapers::{B2bListingProfile, B2bScraper, B2bSupplierProfile};
+use crate::services::b2b_scrapers::{
+    B2bListingProfile, B2bScraper, B2bSupplierProfile, SupplierRecord,
+};
 use scraper::{Html, Selector};
 use serde_json::Value;
 
@@ -76,6 +78,77 @@ fn json_str(value: &Value, key: &str) -> Option<String> {
         .filter(|s| !s.is_empty())
 }
 
+/// A number Alibaba writes either as a JSON number or as text
+/// ("4.8", "197").
+fn json_f64(value: &Value, key: &str) -> Option<f64> {
+    match value.get(key)? {
+        Value::Number(n) => n.as_f64(),
+        Value::String(s) => s.trim().replace(',', "").parse().ok(),
+        _ => None,
+    }
+}
+
+fn json_u64(value: &Value, key: &str) -> Option<u64> {
+    json_f64(value, key).filter(|n| *n >= 0.0).map(|n| n as u64)
+}
+
+fn json_bool(value: &Value, key: &str) -> bool {
+    value.get(key).and_then(|v| v.as_bool()).unwrap_or(false)
+}
+
+/// Incoterms Alibaba uses for its price type ("FOB", "EXW"...).
+const INCOTERMS: [&str; 11] = [
+    "EXW", "FCA", "FAS", "FOB", "CFR", "CIF", "CPT", "CIP", "DAP", "DPU", "DDP",
+];
+
+/// "FOB" from globalData.trade.tradeInfo.tradePriceType - the price
+/// basis Alibaba shows for this listing. Only real Incoterms are kept.
+fn detail_incoterms(data: &Value) -> Option<String> {
+    let kind = data
+        .pointer("/globalData/trade/tradeInfo/tradePriceType")?
+        .as_str()?
+        .trim()
+        .to_uppercase();
+    INCOTERMS.contains(&kind.as_str()).then_some(kind)
+}
+
+/// How the buyer can pay, from three places on the page:
+/// - the supplier's own "Payment Term" attribute, e.g.
+///   "Trade Assurance/Paypal/Western Union/T/T";
+/// - whether Alibaba Trade Assurance (Alibaba's own order protection)
+///   is available for this supplier;
+/// - Alibaba's "This supplier also supports L/C,D/P,D/A,T/T payments."
+/// All are passed to the AI, which decides whether a risky method
+/// (e.g. Western Union) is forced or just one option among safe ones.
+fn detail_payment_terms(data: &Value) -> Option<String> {
+    let mut parts = Vec::new();
+    if let Some((_, terms)) = detail_attribute_groups(data)
+        .into_iter()
+        .flat_map(|(_, pairs)| pairs)
+        .find(|(name, _)| name.to_lowercase().starts_with("payment term"))
+    {
+        parts.push(terms);
+    }
+    let seller = data.pointer("/globalData/seller");
+    if seller.map_or(false, |s| json_bool(s, "baoAccountIsService")) {
+        parts.push(
+            "Alibaba Trade Assurance (Alibaba's own order protection for orders paid through Alibaba) is available"
+                .to_string(),
+        );
+    }
+    if let Some(more) = data
+        .pointer("/globalData/product")
+        .and_then(|p| json_str(p, "morePaymentTerms"))
+    {
+        parts.push(more.trim_end_matches('.').to_string());
+    }
+    if parts.is_empty() {
+        None
+    } else {
+        Some(format!("{}.", parts.join(". ")))
+    }
+}
+
 /// The contact person's name from `globalData.seller`. Some sellers set
 /// the contact name to a single initial ("Z") while their first name is
 /// in accountFirstName ("Linda") - then the full "Linda Z" is used.
@@ -127,6 +200,21 @@ fn seller_facts(seller: &Value) -> Vec<String> {
                 "On Alibaba for {} {}.",
                 n,
                 if n == 1 { "year" } else { "years" }
+            ));
+        }
+    }
+    // Alibaba's own count of orders paid through Alibaba - real trade,
+    // not something the supplier writes about itself.
+    if let Some(trade) = seller.get("tradeHalfYear") {
+        if let Some(orders) = json_u64(trade, "ordCnt6m") {
+            let value = json_str(trade, "ordAmt")
+                .map(|v| format!(" (US$ {})", v))
+                .unwrap_or_default();
+            facts.push(format!(
+                "Alibaba shows {} {} paid through Alibaba in the last 6 months{}.",
+                orders,
+                if orders == 1 { "order" } else { "orders" },
+                value
             ));
         }
     }
@@ -356,6 +444,64 @@ impl B2bScraper for AlibabaScraper {
             })
     }
 
+    /// Alibaba's own record of the supplier, all from the listing
+    /// page's window.detailData (present on the plain fetch and on the
+    /// page sent by the browser, so it is there even when the company
+    /// page can't be loaded):
+    /// - seller.companyHasPassAssessment / companyHasPassOnsite: Alibaba
+    ///   checked the company (on-site check or third-party assessment);
+    /// - seller.accountIsPaidMember + the company card's medal
+    ///   ("Gold Supplier"): paid membership;
+    /// - seller.companyJoinYears: years on Alibaba;
+    /// - seller.tradeHalfYear: orders and order value, last 6 months;
+    /// - review.storeReview: average rating and number of reviews;
+    /// - seller.supplierOnTimeDeliveryRate and the mini company card's
+    ///   reorder rate.
+    fn supplier_record(&self, listing_html: &str) -> Option<SupplierRecord> {
+        let data = extract_detail_data(listing_html)?;
+        let seller = data.pointer("/globalData/seller")?;
+        let card = data.pointer("/nodeMap/module_unifed_company_card/privateData");
+        let mini_card = data.pointer("/nodeMap/module_mini_company_card/privateData");
+
+        let member_label = if json_bool(seller, "accountIsPaidMember") {
+            card.and_then(|c| json_str(c, "medalText"))
+                .or_else(|| Some("paid member".to_string()))
+        } else {
+            None
+        };
+        let trade = seller.get("tradeHalfYear");
+        let store_review = data.pointer("/globalData/review/storeReview");
+        let seller_reviews = seller.get("supplierRatingReviews");
+        let rating = store_review
+            .and_then(|r| json_f64(r, "averageStar"))
+            .or_else(|| seller_reviews.and_then(|r| json_f64(r, "averageStar")))
+            .filter(|r| *r > 0.0);
+        let review_count = store_review
+            .and_then(|r| json_u64(r, "totalReviewCount"))
+            .or_else(|| seller_reviews.and_then(|r| json_u64(r, "totalReviewOrderCount")));
+
+        let record = SupplierRecord {
+            platform: "Alibaba".to_string(),
+            checked_by_platform: json_bool(seller, "companyHasPassAssessment")
+                || json_bool(seller, "companyHasPassOnsite"),
+            member_label,
+            years_on_platform: json_str(seller, "companyJoinYears")
+                .and_then(|y| y.parse::<u32>().ok()),
+            orders_6_months: trade.and_then(|t| json_u64(t, "ordCnt6m")),
+            order_value_6_months: trade.and_then(|t| json_str(t, "ordAmt")),
+            rating,
+            review_count,
+            on_time_rate: json_str(seller, "supplierOnTimeDeliveryRate"),
+            reorder_rate: mini_card.and_then(|c| json_str(c, "reorderRateValue")),
+        };
+        let has_anything = record.checked_by_platform
+            || record.member_label.is_some()
+            || record.years_on_platform.is_some()
+            || record.orders_6_months.is_some()
+            || record.rating.is_some();
+        has_anything.then_some(record)
+    }
+
     fn enrich_from_company_profile(
         &self,
         mut supplier: B2bSupplierProfile,
@@ -538,6 +684,9 @@ impl B2bScraper for AlibabaScraper {
             }
         }
 
+        let payment_type = detail.as_ref().and_then(detail_payment_terms);
+        let incoterms = detail.as_ref().and_then(detail_incoterms);
+
         B2bListingProfile {
             title,
             description,
@@ -545,12 +694,12 @@ impl B2bScraper for AlibabaScraper {
             unit_price,
             fob_price: None,
             minimum_order_quantity,
-            payment_type: None,
+            payment_type,
             preferred_port: None,
             reference: None,
             production_capacity: None,
             delivery_timeframe,
-            incoterms: None,
+            incoterms,
             packaging_details,
             listing_url: listing_url.to_string(),
             source_platform: "alibaba".to_string(),
@@ -1399,6 +1548,71 @@ mod tests {
             s.year_established, None,
             "years on Alibaba is not a founding year"
         );
+    }
+
+    // Trimmed from the real Yiwu Yingmo Glasses Factory listing (Oct
+    // 2026): Gold Supplier, checked by Alibaba, 7 years, 197 orders,
+    // "Payment Term" that lists Western Union next to Trade Assurance.
+    const YINGMO_DATA: &str = r#"<script>window.detailData = {"globalData":{"product":{"morePaymentTerms":"This supplier also supports L/C,D/P,D/A,T/T payments."},"review":{"storeReview":{"averageStar":4.8,"reviewRatingText":"Store rating:","totalReviewCount":466}},"seller":{"accountIsPaidMember":true,"baoAccountIsService":true,"companyBusinessType":"Manufacturer,Trading Company","companyHasPassAssessment":true,"companyJoinYears":"7","companyName":"Yiwu Yingmo Glasses Factory","contactName":"Mr. Lee","supplierOnTimeDeliveryRate":"100.0%","supplierRatingReviews":{"averageStar":"4.8","totalReviewOrderCount":36},"tradeHalfYear":{"ordAmt":"260,000+","ordAmt6m":265417.16000000003,"ordCnt6m":197}},"trade":{"tradeInfo":{"tradePriceType":"FOB"}}},"nodeMap":{"module_unifed_company_card":{"privateData":{"medalText":"Gold Supplier"}},"module_mini_company_card":{"privateData":{"reorderRateValue":"21%"}},"module_sorted_attribute":{"privateData":{"productSortedProperties":[{"title":"","attributeList":[{"attribute":"MOQ","value":"12pcs"},{"attribute":"Payment Term","value":"Trade Assurance/Paypal/Western Union/T/T"}]}]}}}};</script>"#;
+
+    #[test]
+    fn supplier_record_reads_alibabas_own_figures() {
+        let r = AlibabaScraper.supplier_record(YINGMO_DATA).unwrap();
+        assert_eq!(r.platform, "Alibaba");
+        assert!(r.checked_by_platform);
+        assert_eq!(r.member_label.as_deref(), Some("Gold Supplier"));
+        assert_eq!(r.years_on_platform, Some(7));
+        assert_eq!(r.orders_6_months, Some(197));
+        assert_eq!(r.order_value_6_months.as_deref(), Some("260,000+"));
+        assert_eq!(r.rating, Some(4.8));
+        assert_eq!(r.review_count, Some(466));
+        assert_eq!(r.on_time_rate.as_deref(), Some("100.0%"));
+        assert_eq!(r.reorder_rate.as_deref(), Some("21%"));
+    }
+
+    #[test]
+    fn supplier_record_is_none_without_page_data() {
+        assert!(
+            AlibabaScraper
+                .supplier_record(&product_page(BADGED_CARD, TIERS, ""))
+                .is_none()
+        );
+        let empty = r#"<script>window.detailData = {"globalData":{"seller":{"contactName":"X"}}};</script>"#;
+        assert!(AlibabaScraper.supplier_record(empty).is_none());
+    }
+
+    #[test]
+    fn rating_falls_back_to_supplier_reviews_and_text_numbers_parse() {
+        let script = r#"<script>window.detailData = {"globalData":{"seller":{"supplierRatingReviews":{"averageStar":"4.5","totalReviewOrderCount":"12"},"tradeHalfYear":{"ordCnt6m":"3"}}}};</script>"#;
+        let r = AlibabaScraper.supplier_record(script).unwrap();
+        assert_eq!(r.rating, Some(4.5));
+        assert_eq!(r.review_count, Some(12));
+        assert_eq!(r.orders_6_months, Some(3));
+        assert!(!r.checked_by_platform);
+        assert_eq!(r.member_label, None);
+    }
+
+    #[test]
+    fn payment_terms_and_incoterms_come_from_detail_data() {
+        let l = AlibabaScraper.parse_listing(YINGMO_DATA, "u");
+        assert_eq!(
+            l.payment_type.as_deref(),
+            Some(
+                "Trade Assurance/Paypal/Western Union/T/T. Alibaba Trade Assurance (Alibaba's own order protection for orders paid through Alibaba) is available. This supplier also supports L/C,D/P,D/A,T/T payments."
+            )
+        );
+        assert_eq!(l.incoterms.as_deref(), Some("FOB"));
+        let none = AlibabaScraper.parse_listing(SHUNQI_DATA, "u");
+        assert_eq!(none.payment_type, None);
+        assert_eq!(none.incoterms, None);
+    }
+
+    #[test]
+    fn listing_page_facts_include_alibabas_order_count() {
+        let s = AlibabaScraper.parse_supplier(YINGMO_DATA, "u");
+        assert!(s.company_description.unwrap().contains(
+            "Alibaba shows 197 orders paid through Alibaba in the last 6 months (US$ 260,000+)."
+        ));
     }
 
     // Shop header module from a real company page (new layout).

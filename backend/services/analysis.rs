@@ -8,7 +8,7 @@ use crate::{
     },
     services::{
         auth::extract_user_id,
-        b2b_scrapers::{B2bListingProfile, B2bSupplierProfile},
+        b2b_scrapers::{B2bListingProfile, B2bSupplierProfile, SupplierRecord},
         b2c_scrapers::check_store_page,
         billing::{ScanLimitError, check_and_increment_scan_usage},
         claude::{
@@ -25,7 +25,7 @@ use crate::{
         risk_factors::{derive_risk_factors, not_enough_information_factor},
         sellers::{create_seller, find_seller},
         signals::{
-            build_b2b_claude_signals, build_b2b_company_age_signal,
+            apply_supplier_record, build_b2b_claude_signals, build_b2b_company_age_signal,
             build_b2b_listing_completeness_signal, build_b2b_transparency_signal,
             build_b2b_verification_signal, build_domain_signal, build_seller_verification_signals,
             build_signals, build_store_page_signal, build_whois_signal,
@@ -760,6 +760,7 @@ pub async fn build_b2b_analysis_path(
     known_join_date: Option<NaiveDate>,
     supplier: B2bSupplierProfile,
     listing: B2bListingProfile,
+    record: Option<SupplierRecord>,
 ) -> Result<
     (
         Vec<Signal>,
@@ -826,6 +827,10 @@ pub async fn build_b2b_analysis_path(
     signals.extend(build_b2b_claude_signals(&claude_result));
     signals.push(build_b2b_verification_signal(&supplier));
     signals.push(build_b2b_company_age_signal(&supplier));
+    // The platform's own record (Alibaba: on-site check, paid
+    // membership, years on Alibaba, orders, rating). Corrects the two
+    // cards above and adds "Seller track record". None elsewhere.
+    apply_supplier_record(&mut signals, record.as_ref());
     signals.push(build_b2b_transparency_signal(&supplier));
     signals.push(build_b2b_listing_completeness_signal(&listing));
     // Social presence search runs on Serper, which costs credits. It is

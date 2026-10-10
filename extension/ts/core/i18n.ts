@@ -257,6 +257,9 @@
     "Candidates found": "Candidatos encontrados",
     "Scam mentions found": "Menções a golpe encontradas",
     "No presence found": "Nenhuma presença encontrada",
+    "Checked by Alibaba": "Checado pelo Alibaba",
+    "Paid membership": "Assinatura paga",
+    "No recent orders": "Nenhum pedido recente",
     "New to Safely": "Novo no Safely",
     "Checked once before": "Verificado 1 vez antes",
     Normal: "Normal",
@@ -301,6 +304,8 @@
     [/^Checked (\d+) times before$/, (m) => "Verificado " + m[1] + " vezes antes"],
     [/^(\d+) prior checks?$/, (m) => m[1] + plural(m[1], " verificação anterior", " verificações anteriores")],
     [/^([\d.]+) rating, (\d+) listings$/, (m) => "Nota " + m[1] + ", " + m[2] + " anúncios"],
+    [/^(\d+) orders?, ([\d.]+) rating$/, (m) => m[1] + plural(m[1], " pedido", " pedidos") + ", nota " + m[2]],
+    [/^(\d+) orders?$/, (m) => m[1] + plural(m[1], " pedido", " pedidos")],
     [/^(.+) member$/, (m) => "Membro " + m[1]],
   ];
 

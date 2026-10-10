@@ -417,7 +417,7 @@
             const severityLabel = tr(SEVERITY_LABELS[factor.severity] || factor.severity);
             const shortTitle = factor.contributing_signals && factor.contributing_signals.length > 0
                 ? factor.contributing_signals.map((label) => tr(label)).join(" + ")
-                : capitalizeFirst(factor.name.replace(/_/g, " "));
+                : tr(capitalizeFirst(factor.name.replace(/_/g, " ")));
             const { realSub, checklist } = parseChecklistSignal(factor.description || "");
             const dropdownId = "safely-riskfactor-checklist-" + idx;
             return ('<div class="safely-check-card">' +

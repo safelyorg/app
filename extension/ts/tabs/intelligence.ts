@@ -501,7 +501,7 @@ interface PlatformCheckResult {
         const shortTitle =
           factor.contributing_signals && factor.contributing_signals.length > 0
             ? factor.contributing_signals.map((label: string) => tr(label)).join(" + ")
-            : capitalizeFirst(factor.name.replace(/_/g, " "));
+            : tr(capitalizeFirst(factor.name.replace(/_/g, " ")));
         const { realSub, checklist } = parseChecklistSignal(factor.description || "");
         const dropdownId = "safely-riskfactor-checklist-" + idx;
         return (

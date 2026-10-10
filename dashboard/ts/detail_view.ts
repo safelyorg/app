@@ -120,6 +120,9 @@ const SIGNAL_VALUE_TRANSLATIONS: Record<string, string> = {
   "Candidates found": "dash.value.candidates_found",
   "Scam mentions found": "dash.value.scam_mentions_found",
   "No presence found": "dash.value.no_presence_found",
+  "Checked by Alibaba": "dash.value.checked_by_alibaba",
+  "Paid membership": "dash.value.paid_membership",
+  "No recent orders": "dash.value.no_recent_orders",
   "Not checked": "dash.value.not_checked",
   Unregistered: "dash.value.unregistered",
   Registered: "dash.value.registered",
@@ -167,6 +170,16 @@ function translatePatternValue(value: string): string {
     return t("dash.value.rating_listings", "{rating} rating, {count} listings")
       .replace("{rating}", rating[1])
       .replace("{count}", rating[2]);
+  }
+  const ordersRating = value.match(/^(\d+) orders?, ([\d.]+) rating$/);
+  if (ordersRating) {
+    return t("dash.value.orders_rating", "{n} orders, {rating} rating")
+      .replace("{n}", ordersRating[1])
+      .replace("{rating}", ordersRating[2]);
+  }
+  const orders = value.match(/^(\d+) orders?$/);
+  if (orders) {
+    return t("dash.value.orders", "{n} orders").replace("{n}", orders[1]);
   }
   const member = value.match(/^(.+) member$/);
   if (member) {

@@ -50,6 +50,38 @@ pub struct B2bListingProfile {
     pub source_platform: String,
 }
 
+/// What the platform itself shows about a supplier's history on it -
+/// numbers the platform keeps, not text the supplier writes. Only
+/// Alibaba fills this in for now; every other platform returns None
+/// (see B2bScraper::supplier_record), so nothing changes for them.
+/// Every field is optional: a missing number is simply not shown.
+#[derive(Debug, Default, Clone)]
+pub struct SupplierRecord {
+    /// The platform's name as buyers know it, e.g. "Alibaba".
+    pub platform: String,
+    /// The platform checked the company itself (Alibaba: an on-site
+    /// check or a third-party assessment). Not the same as the
+    /// "Verified" badge, which is kept in platform_verified_badge.
+    pub checked_by_platform: bool,
+    /// A paid membership level, e.g. "Gold Supplier". Paid, so never
+    /// treated as a check on the company.
+    pub member_label: Option<String>,
+    /// How long the account has been on the platform (not how old
+    /// the company is).
+    pub years_on_platform: Option<u32>,
+    /// Orders paid through the platform in the last 6 months.
+    pub orders_6_months: Option<u64>,
+    /// Their value as the platform shows it, e.g. "260,000+" (US$).
+    pub order_value_6_months: Option<String>,
+    /// Average buyer rating out of 5.
+    pub rating: Option<f64>,
+    pub review_count: Option<u64>,
+    /// e.g. "100.0%".
+    pub on_time_rate: Option<String>,
+    /// Share of buyers who order again, e.g. "21%".
+    pub reorder_rate: Option<String>,
+}
+
 pub trait B2bScraper: Send + Sync {
     fn matches_platform(&self, platform: &str) -> bool;
     fn parse_supplier(&self, html: &str, profile_url: &str) -> B2bSupplierProfile;
@@ -83,6 +115,12 @@ pub trait B2bScraper: Send + Sync {
     /// then falls back to the old per-listing ID, so platforms that
     /// haven't implemented this keep working exactly as before.
     fn company_key(&self, _listing_html: &str) -> Option<String> {
+        None
+    }
+    /// The platform's own record of this supplier (orders, rating,
+    /// checks), read from the listing page. Default: None - platforms
+    /// that don't implement it keep working exactly as before.
+    fn supplier_record(&self, _listing_html: &str) -> Option<SupplierRecord> {
         None
     }
 }
@@ -141,6 +179,9 @@ pub struct B2bPageResult {
     /// user to scan again. false when the pages loaded, or when the
     /// platform has no company page.
     pub company_page_missing: bool,
+    /// The platform's own record of the supplier (see SupplierRecord).
+    /// None on platforms that don't show one.
+    pub record: Option<SupplierRecord>,
 }
 
 /// Unchanged signature, kept so existing callers and tests keep
@@ -304,6 +345,7 @@ pub async fn fetch_b2b_page(platform: &str, page_url: &str) -> Option<B2bPageRes
     let listing = scraper.parse_listing(&html, page_url);
     let company_key = scraper.company_key(&html);
     let company_url = scraper.extract_company_profile_url(&html);
+    let record = scraper.supplier_record(&html);
 
     if supplier.company_name.is_none() && listing.title.is_none() {
         eprintln!(
@@ -325,6 +367,7 @@ pub async fn fetch_b2b_page(platform: &str, page_url: &str) -> Option<B2bPageRes
         company_key,
         company_url,
         company_page_missing,
+        record,
     })
 }
 
@@ -513,6 +556,7 @@ pub async fn b2b_page_from_browser(
     }
     let company_key = scraper.company_key(html);
     let company_url = scraper.extract_company_profile_url(html);
+    let record = scraper.supplier_record(html);
 
     let company_page_missing =
         !enrich_from_profile_pages(scraper.as_ref(), platform, page_url, html, &mut supplier).await;
@@ -528,6 +572,7 @@ pub async fn b2b_page_from_browser(
         company_key,
         company_url,
         company_page_missing,
+        record,
     })
 }
 

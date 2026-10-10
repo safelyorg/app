@@ -1,7 +1,7 @@
 use crate::{
     models::{analysis::Signal, helpers::format_account_age, sellers::Sellers},
     services::{
-        b2b_scrapers::{B2bListingProfile, B2bSupplierProfile},
+        b2b_scrapers::{B2bListingProfile, B2bSupplierProfile, SupplierRecord},
         b2c_scrapers::B2cProfileResult,
         claude::{
             B2bClaudeAnalysis, ClaudeAnalysis, Finding, IMAGE_ANALYSIS_ENABLED, ImageAssessment,
@@ -510,6 +510,181 @@ pub fn build_b2b_company_age_signal(supplier: &B2bSupplierProfile) -> Signal {
         category: "company".to_string(),
         check_type: "anomaly".to_string(),
     }
+}
+
+/// Uses the platform's own record of a supplier (see SupplierRecord in
+/// b2b_scrapers - only Alibaba has one for now) to correct two cards
+/// and add one. Runs after the normal B2B cards are built and before
+/// the score is added up. With no record, nothing changes.
+///
+/// - "Platform verification": a company without the Verified badge
+///   that the platform has still checked (on-site check / third-party
+///   assessment) reads "Checked by Alibaba" and is good. One that only
+///   pays for a membership (e.g. Gold Supplier) reads "Paid membership"
+///   and is info - paid, so it counts neither for nor against it.
+///   Neither: stays "Unverified" (a caution), as before.
+/// - "Account age": when no founding year was found but the account
+///   has been on the platform for 2 years or more, it shows those
+///   years as info instead of the "Not provided" warning. Under 2
+///   years the warning stays - a brand-new account is worth noting.
+/// - "Seller track record" (new): the platform's own figures - orders
+///   in the last 6 months, rating, on-time rate, reorder rate.
+pub fn apply_supplier_record(signals: &mut Vec<Signal>, record: Option<&SupplierRecord>) {
+    let Some(r) = record else {
+        return;
+    };
+    let platform = r.platform.as_str();
+    let years_text = |y: u32| format!("{} {}", y, if y == 1 { "year" } else { "years" });
+
+    if let Some(s) = signals
+        .iter_mut()
+        .find(|s| s.label == "Platform verification" && s.value == "Unverified")
+    {
+        let membership = match (&r.member_label, r.years_on_platform) {
+            (Some(label), Some(y)) => format!(
+                " It has also been a paying {} on {} for {}.",
+                label,
+                platform,
+                years_text(y)
+            ),
+            (Some(label), None) => format!(" It is also a paying {} on {}.", label, platform),
+            _ => String::new(),
+        };
+        if r.checked_by_platform {
+            s.value = format!("Checked by {}", platform);
+            s.signal_type = "good".to_string();
+            s.sub = format!(
+                "This company does not have {p}'s Verified badge, but {p} has checked the company itself (an on-site check or a third-party assessment).{m}",
+                p = platform,
+                m = membership
+            );
+        } else if let Some(label) = &r.member_label {
+            s.value = "Paid membership".to_string();
+            s.signal_type = "info".to_string();
+            let since = r
+                .years_on_platform
+                .map(|y| format!(" for {}", years_text(y)))
+                .unwrap_or_default();
+            s.sub = format!(
+                "This company is a paying {label} on {p}{since}. That is a paid membership, not a check on the company, so it counts neither for nor against it. It does not have {p}'s Verified badge.",
+                label = label,
+                p = platform,
+                since = since
+            );
+        }
+    }
+
+    if let Some(y) = r.years_on_platform.filter(|y| *y >= 2) {
+        if let Some(s) = signals
+            .iter_mut()
+            .find(|s| s.label == "Account age" && s.value == "Not provided")
+        {
+            s.value = years_text(y);
+            s.signal_type = "info".to_string();
+            s.sub = format!(
+                "This company does not show its founding year, but its account has been on {p} for {y}. That is how long it has sold on {p}, not how old the company is - ask the supplier for its business licence to see the founding year.",
+                p = platform,
+                y = years_text(y)
+            );
+        }
+    }
+
+    if let Some(track) = track_record_signal(r) {
+        signals.push(track);
+    }
+}
+
+/// Below this average rating (with enough reviews to mean something),
+/// the track record is a warning.
+const LOW_RATING: f64 = 3.5;
+const MIN_REVIEWS_FOR_RATING: u64 = 5;
+
+/// The "Seller track record" card from the platform's own figures.
+/// None when the platform shows no order count.
+fn track_record_signal(r: &SupplierRecord) -> Option<Signal> {
+    let orders = r.orders_6_months?;
+    let platform = r.platform.as_str();
+
+    let mut facts = vec![format!(
+        "{} {} paid through {} in the last 6 months{}",
+        orders,
+        if orders == 1 { "order" } else { "orders" },
+        platform,
+        r.order_value_6_months
+            .as_deref()
+            .map(|v| format!(" (US$ {})", v))
+            .unwrap_or_default()
+    )];
+    if let Some(rating) = r.rating {
+        facts.push(match r.review_count {
+            Some(n) => format!(
+                "a rating of {:.1} out of 5 from {} {}",
+                rating,
+                n,
+                if n == 1 { "review" } else { "reviews" }
+            ),
+            None => format!("a rating of {:.1} out of 5", rating),
+        });
+    }
+    if let Some(on_time) = &r.on_time_rate {
+        facts.push(format!("{} on-time dispatch", on_time));
+    }
+    if let Some(reorder) = &r.reorder_rate {
+        facts.push(format!("{} of buyers order again", reorder));
+    }
+    let listed = match facts.len() {
+        1 => facts[0].clone(),
+        n => format!("{} and {}", facts[..n - 1].join(", "), facts[n - 1]),
+    };
+    let source = format!(
+        "These are {p}'s own figures for orders paid through {p}.",
+        p = platform
+    );
+
+    let low_rating = r.rating.map_or(false, |x| x < LOW_RATING)
+        && r.review_count.unwrap_or(0) >= MIN_REVIEWS_FOR_RATING;
+
+    let (value, signal_type, sub) = if low_rating {
+        (
+            format!(
+                "{} orders, {:.1} rating",
+                orders,
+                r.rating.unwrap_or_default()
+            ),
+            "caution",
+            format!(
+                "Buyers rate this supplier low. {} shows {}. {} Read the reviews before ordering.",
+                platform, listed, source
+            ),
+        )
+    } else if orders == 0 {
+        (
+            "No recent orders".to_string(),
+            "info",
+            format!(
+                "{} shows {}. {} No recent orders is common for new or mostly offline suppliers, but it means there is less proof that this supplier delivers.",
+                platform, listed, source
+            ),
+        )
+    } else {
+        (
+            match r.rating {
+                Some(x) => format!("{} orders, {:.1} rating", orders, x),
+                None => format!("{} orders", orders),
+            },
+            "good",
+            format!("{} shows {}. {}", platform, listed, source),
+        )
+    };
+
+    Some(Signal {
+        label: "Seller track record".to_string(),
+        sub,
+        value,
+        signal_type: signal_type.to_string(),
+        category: "reputation".to_string(),
+        check_type: "anomaly".to_string(),
+    })
 }
 
 /// "Founded this year", "About 1 year", "About 11 years".
@@ -1091,6 +1266,152 @@ mod b2b_signal_tests {
             ("Not provided", "caution")
         );
         assert!(s.sub.contains("does not say when it was founded"));
+    }
+
+    fn yingmo_record() -> SupplierRecord {
+        SupplierRecord {
+            platform: "Alibaba".into(),
+            checked_by_platform: true,
+            member_label: Some("Gold Supplier".into()),
+            years_on_platform: Some(7),
+            orders_6_months: Some(197),
+            order_value_6_months: Some("260,000+".into()),
+            rating: Some(4.8),
+            review_count: Some(466),
+            on_time_rate: Some("100.0%".into()),
+            reorder_rate: Some("21%".into()),
+        }
+    }
+
+    fn alibaba_cards() -> Vec<Signal> {
+        let s = supplier("alibaba", false, None);
+        vec![
+            build_b2b_verification_signal(&s),
+            build_b2b_company_age_signal(&s),
+        ]
+    }
+
+    #[test]
+    fn no_record_changes_nothing() {
+        let mut cards = alibaba_cards();
+        apply_supplier_record(&mut cards, None);
+        assert_eq!(cards.len(), 2);
+        assert_eq!(cards[0].value, "Unverified");
+        assert_eq!(cards[1].value, "Not provided");
+    }
+
+    #[test]
+    fn checked_supplier_with_history_has_no_warnings() {
+        let mut cards = alibaba_cards();
+        apply_supplier_record(&mut cards, Some(&yingmo_record()));
+        let v = get(&cards, "Platform verification");
+        assert_eq!(
+            (v.value.as_str(), v.signal_type.as_str()),
+            ("Checked by Alibaba", "good")
+        );
+        assert!(
+            v.sub
+                .contains("paying Gold Supplier on Alibaba for 7 years")
+        );
+        let a = get(&cards, "Account age");
+        assert_eq!(
+            (a.value.as_str(), a.signal_type.as_str()),
+            ("7 years", "info")
+        );
+        assert!(a.sub.contains("not how old the company is"));
+        let t = get(&cards, "Seller track record");
+        assert_eq!(
+            (t.value.as_str(), t.signal_type.as_str()),
+            ("197 orders, 4.8 rating", "good")
+        );
+        assert_eq!(
+            t.sub,
+            "Alibaba shows 197 orders paid through Alibaba in the last 6 months (US$ 260,000+), a rating of 4.8 out of 5 from 466 reviews, 100.0% on-time dispatch and 21% of buyers order again. These are Alibaba's own figures for orders paid through Alibaba."
+        );
+        assert!(cards.iter().all(|c| c.signal_type != "caution"));
+    }
+
+    #[test]
+    fn paid_membership_alone_is_info_not_verified() {
+        let mut r = yingmo_record();
+        r.checked_by_platform = false;
+        let mut cards = alibaba_cards();
+        apply_supplier_record(&mut cards, Some(&r));
+        let v = get(&cards, "Platform verification");
+        assert_eq!(
+            (v.value.as_str(), v.signal_type.as_str()),
+            ("Paid membership", "info")
+        );
+        assert!(v.sub.contains("not a check on the company"));
+    }
+
+    #[test]
+    fn no_check_and_no_membership_stays_unverified() {
+        let mut r = yingmo_record();
+        r.checked_by_platform = false;
+        r.member_label = None;
+        let mut cards = alibaba_cards();
+        apply_supplier_record(&mut cards, Some(&r));
+        assert_eq!(get(&cards, "Platform verification").signal_type, "caution");
+    }
+
+    #[test]
+    fn verified_badge_is_never_replaced() {
+        let s = supplier("alibaba", true, None);
+        let mut cards = vec![build_b2b_verification_signal(&s)];
+        apply_supplier_record(&mut cards, Some(&yingmo_record()));
+        assert_eq!(cards[0].value, "Verified");
+    }
+
+    #[test]
+    fn a_new_account_without_a_founding_year_is_still_a_warning() {
+        let mut r = yingmo_record();
+        r.years_on_platform = Some(1);
+        let mut cards = alibaba_cards();
+        apply_supplier_record(&mut cards, Some(&r));
+        let a = get(&cards, "Account age");
+        assert_eq!(
+            (a.value.as_str(), a.signal_type.as_str()),
+            ("Not provided", "caution")
+        );
+    }
+
+    #[test]
+    fn a_real_founding_year_is_never_replaced() {
+        let mut s = supplier("alibaba", false, None);
+        s.year_established = Some("2020".into());
+        let mut cards = vec![build_b2b_company_age_signal(&s)];
+        apply_supplier_record(&mut cards, Some(&yingmo_record()));
+        assert!(cards[0].value.starts_with("About"));
+    }
+
+    #[test]
+    fn low_rating_is_a_warning_and_no_orders_is_info() {
+        let mut r = yingmo_record();
+        r.rating = Some(2.9);
+        r.review_count = Some(40);
+        let t = track_record_signal(&r).unwrap();
+        assert_eq!(
+            (t.value.as_str(), t.signal_type.as_str()),
+            ("197 orders, 2.9 rating", "caution")
+        );
+        assert!(t.sub.starts_with("Buyers rate this supplier low."));
+
+        // A low rating from only a few reviews is not enough.
+        r.review_count = Some(2);
+        assert_eq!(track_record_signal(&r).unwrap().signal_type, "good");
+
+        let mut r = yingmo_record();
+        r.orders_6_months = Some(0);
+        r.rating = None;
+        let t = track_record_signal(&r).unwrap();
+        assert_eq!(
+            (t.value.as_str(), t.signal_type.as_str()),
+            ("No recent orders", "info")
+        );
+
+        r.orders_6_months = None;
+        assert!(track_record_signal(&r).is_none());
     }
 
     #[test]

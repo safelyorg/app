@@ -185,6 +185,7 @@ pub async fn analyze(
                 resolved.seller.join_date,
                 page.supplier,
                 page.listing,
+                page.record,
             )
             .await?;
         let join_date = supplier.year_established.as_deref().and_then(|y| {
