@@ -25,10 +25,11 @@ use crate::{
         risk_factors::{derive_risk_factors, not_enough_information_factor},
         sellers::{create_seller, find_seller},
         signals::{
-            apply_supplier_record, build_b2b_claude_signals, build_b2b_company_age_signal,
-            build_b2b_listing_completeness_signal, build_b2b_transparency_signal,
-            build_b2b_verification_signal, build_domain_signal, build_seller_verification_signals,
-            build_signals, build_store_page_signal, build_whois_signal,
+            apply_risky_payment_note, apply_supplier_record, build_b2b_claude_signals,
+            build_b2b_company_age_signal, build_b2b_listing_completeness_signal,
+            build_b2b_transparency_signal, build_b2b_verification_signal, build_domain_signal,
+            build_seller_verification_signals, build_signals, build_store_page_signal,
+            build_whois_signal,
         },
         whois::check_domain_whois,
     },
@@ -648,6 +649,19 @@ fn warning_points(signal: &Signal) -> i16 {
     }
 }
 
+/// Points each "info" card adds to a B2B score. Info is not a warning,
+/// but it is not good news either (photos not confirmed, a risky
+/// payment option listed, a company page that would not load...), so
+/// it adds a little. Capped so info alone can never leave Low risk:
+/// a supplier with only info cards scores at most 15.
+const INFO_POINTS: i16 = 5;
+const INFO_POINTS_MAX: i16 = 15;
+
+fn info_points(signals: &[Signal]) -> i16 {
+    let count = signals.iter().filter(|s| s.signal_type == "info").count() as i16;
+    (count * INFO_POINTS).min(INFO_POINTS_MAX)
+}
+
 /// The lowest score a B2B scan shows when Safely could check too little
 /// about the supplier (see not_enough_information_factor): the start of
 /// Moderate, so "nothing found" never reads as "Low risk".
@@ -825,6 +839,9 @@ pub async fn build_b2b_analysis_path(
     .map_err(|e| AnalyzeError::ClaudeAnalysisFailed(e.to_string()))?;
 
     signals.extend(build_b2b_claude_signals(&claude_result));
+    // Always warn about Western Union / MoneyGram / crypto / gift cards
+    // in the listing's payment methods, even when Claude did not flag them.
+    apply_risky_payment_note(&mut signals, listing.payment_type.as_deref());
     signals.push(build_b2b_verification_signal(&supplier));
     signals.push(build_b2b_company_age_signal(&supplier));
     // The platform's own record (Alibaba: on-site check, paid
@@ -853,7 +870,8 @@ pub async fn build_b2b_analysis_path(
         Vec::new()
     };
 
-    let warning_score: i16 = signals.iter().map(warning_points).sum();
+    let warning_score: i16 =
+        signals.iter().map(warning_points).sum::<i16>() + info_points(&signals);
     let base_score = warning_score.min(100) + (fraud_count as i16 * 5).min(20);
     // Counting warnings alone treats a Western Union demand the same as
     // a missing field. Any "Serious" risk factor (legitimacy concern,
@@ -880,7 +898,7 @@ pub async fn build_b2b_analysis_path(
 
 #[cfg(test)]
 mod b2b_score_tests {
-    use super::{b2b_risk_score, warning_points};
+    use super::{b2b_risk_score, info_points, warning_points};
     use crate::models::analysis::Signal;
 
     fn sig(label: &str, value: &str, signal_type: &str) -> Signal {
@@ -967,6 +985,25 @@ mod b2b_score_tests {
         .sum();
         assert_eq!(total, 40, "was 30 (Low) when every warning counted 15");
         assert!(total >= 34);
+    }
+
+    #[test]
+    fn info_cards_add_a_little_but_never_leave_low_risk() {
+        let info = |n: usize| -> Vec<Signal> {
+            (0..n)
+                .map(|_| sig("Image authenticity", "not verified", "info"))
+                .collect()
+        };
+        assert_eq!(info_points(&info(0)), 0);
+        assert_eq!(info_points(&info(1)), 5);
+        assert_eq!(info_points(&info(3)), 15);
+        assert_eq!(info_points(&info(9)), 15, "capped, so still Low risk");
+        let mixed = vec![
+            sig("Price analysis", "normal", "good"),
+            sig("Account age", "Not provided", "caution"),
+            sig("Image authenticity", "not verified", "info"),
+        ];
+        assert_eq!(info_points(&mixed), 5, "only info cards count");
     }
 
     #[test]

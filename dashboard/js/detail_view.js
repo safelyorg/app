@@ -63,6 +63,7 @@ const SIGNAL_VALUE_TRANSLATIONS = {
     "Checked by Alibaba": "dash.value.checked_by_alibaba",
     "Paid membership": "dash.value.paid_membership",
     "No recent orders": "dash.value.no_recent_orders",
+    "Risky option listed": "dash.value.risky_option_listed",
     "Not checked": "dash.value.not_checked",
     Unregistered: "dash.value.unregistered",
     Registered: "dash.value.registered",
@@ -310,6 +311,266 @@ async function openDetail(analysisId) {
         loading.textContent = t("dash.detail.load_failed", "Could not load this listing.");
     }
 }
+// Worst first: on a tie, the more serious kind is the dominant one.
+const MIX_ORDER = ["bad", "caution", "info", "good"];
+const MIX_COLORS = {
+    good: "#35d0a6",
+    info: "#6fb3ef",
+    caution: "#f2b84c",
+    bad: "#ff5d5d",
+};
+function mixName(type) {
+    const names = {
+        good: ["dash.mix.good", "Good"],
+        info: ["dash.mix.info", "Info"],
+        caution: ["dash.mix.warning", "Warning"],
+        bad: ["dash.mix.red_flag", "Red flag"],
+    };
+    return t(names[type][0], names[type][1]);
+}
+function mixType(type) {
+    return type === "good" || type === "info" || type === "caution" ? type : "bad";
+}
+// Whole percentages that always add up to 100 (largest remainder).
+function mixParts(signals) {
+    const total = signals.length;
+    if (total === 0)
+        return [];
+    const counts = { good: 0, info: 0, caution: 0, bad: 0 };
+    signals.forEach((s) => (counts[mixType(s.type)] += 1));
+    const parts = ["good", "info", "caution", "bad"]
+        .filter((k) => counts[k] > 0)
+        .map((k) => {
+        const exact = (counts[k] * 100) / total;
+        return { type: k, count: counts[k], pct: Math.floor(exact), rest: exact % 1 };
+    });
+    let left = 100 - parts.reduce((sum, p) => sum + p.pct, 0);
+    parts
+        .slice()
+        .sort((a, b) => b.rest - a.rest)
+        .forEach((p) => {
+        if (left > 0) {
+            p.pct += 1;
+            left -= 1;
+        }
+    });
+    return parts.map(({ type, count, pct }) => ({ type, count, pct }));
+}
+function dominantPart(parts) {
+    return parts.reduce((best, p) => p.count > best.count ||
+        (p.count === best.count && MIX_ORDER.indexOf(p.type) < MIX_ORDER.indexOf(best.type))
+        ? p
+        : best);
+}
+// Labels only B2B (supplier) scans have - the info points apply to
+// B2B scores only.
+const MIX_B2B_ONLY_LABELS = [
+    "Company profile completeness",
+    "Listing completeness",
+    "Registration consistency",
+];
+const MIX_STYLE = "<style>" +
+    ".smx{display:flex;align-items:center;gap:20px;padding:16px;margin-bottom:12px;border-radius:14px;border:1px solid rgba(127,127,127,0.2);}" +
+    ".smx-ring{width:132px;height:132px;flex-shrink:0;cursor:pointer;-webkit-tap-highlight-color:transparent;}" +
+    ".smx-ring svg{width:100%;height:100%;overflow:visible;}" +
+    ".smx-seg{fill:none;stroke-width:12;stroke:var(--dom);stroke-dasharray:var(--whole);transition:stroke .45s ease,stroke-dasharray .45s ease,stroke-width .2s ease,opacity .2s ease;}" +
+    ".smx-open .smx-seg{stroke:var(--c);stroke-dasharray:var(--split);}" +
+    ".smx-open .smx-seg.smx-dim{opacity:.35;}" +
+    ".smx-open .smx-seg.smx-hot{stroke-width:16;}" +
+    ".smx-glow{fill:none;stroke:var(--dom);stroke-width:22;opacity:.10;transition:opacity .45s ease,stroke .45s ease;}" +
+    ".smx-open .smx-glow{opacity:0;}" +
+    ".smx-pct{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:24px;transition:fill .3s ease;}" +
+    ".smx-name{font-weight:700;font-size:9px;letter-spacing:.6px;text-transform:uppercase;transition:fill .3s ease;}" +
+    ".smx-count{font-size:8px;fill:#8a8a93;}" +
+    ".smx-side{flex:1;min-width:0;}" +
+    ".smx-title{font-size:10px;font-weight:800;color:#8a8a93;text-transform:uppercase;letter-spacing:.08em;}" +
+    ".smx-lead{font-size:15px;font-weight:800;margin:3px 0 8px;}" +
+    ".smx-row{display:flex;align-items:center;gap:8px;padding:5px 8px;margin:0 -8px;border-radius:8px;font-size:12px;cursor:default;transition:background .2s ease,opacity .2s ease;}" +
+    ".smx-row.smx-hot{background:rgba(127,127,127,0.12);}" +
+    ".smx-row.smx-dim{opacity:.45;}" +
+    ".smx-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;}" +
+    ".smx-row b{margin-left:auto;font-family:'JetBrains Mono',monospace;font-size:11px;}" +
+    ".smx-hint{font-size:11px;color:#8a8a93;margin-top:8px;line-height:1.4;}" +
+    "[data-smx-type]{transition:opacity .2s ease;}" +
+    "</style>";
+function buildSignalMix(signals) {
+    const parts = mixParts(signals);
+    if (parts.length === 0)
+        return "";
+    const dom = dominantPart(parts);
+    const r = 46;
+    const c = 2 * Math.PI * r;
+    // Gap between parts when split; none when there is only one part.
+    const gap = parts.length > 1 ? 3 : 0;
+    let start = 0;
+    const segs = parts
+        .map((p) => {
+        const len = (p.count / signals.length) * c;
+        // At rest every part runs a hair past its end, so the ring reads
+        // as one solid colour with no seams.
+        const whole = Math.min(len + 1, c) + " " + c;
+        const split = Math.max(len - gap, 0.5) + " " + c;
+        const seg = '<circle class="smx-seg" data-smx="' +
+            p.type +
+            '" cx="60" cy="60" r="' +
+            r +
+            '" stroke-dashoffset="' +
+            -start +
+            '" transform="rotate(-90 60 60)" style="--c:' +
+            MIX_COLORS[p.type] +
+            ";--whole:" +
+            whole +
+            ";--split:" +
+            split +
+            '"><title>' +
+            escapeHtml(mixName(p.type) + ": " + p.pct + "%") +
+            "</title></circle>";
+        start += len;
+        return seg;
+    })
+        .join("");
+    const rows = parts
+        .map((p) => '<div class="smx-row" data-smx="' +
+        p.type +
+        '"><span class="smx-dot" style="background:' +
+        MIX_COLORS[p.type] +
+        '"></span><span>' +
+        escapeHtml(mixName(p.type)) +
+        " · " +
+        p.count +
+        '</span><b style="color:' +
+        MIX_COLORS[p.type] +
+        '">' +
+        p.pct +
+        "%</b></div>")
+        .join("");
+    const isB2b = signals.some((s) => MIX_B2B_ONLY_LABELS.includes(s.label));
+    const hint = isB2b && parts.some((p) => p.type === "info")
+        ? t("dash.mix.info_points", "Info cards are not warnings, but each adds 5 points to the score (15 at most).")
+        : t("dash.mix.hint", "Hover the ring to see each part.");
+    return (MIX_STYLE +
+        '<div class="smx" id="detail-smx" style="--dom:' +
+        MIX_COLORS[dom.type] +
+        '">' +
+        '<div class="smx-ring" id="detail-smx-ring" role="img" aria-label="' +
+        escapeHtml(t("dash.mix.title", "Signal mix")) +
+        '"><svg viewBox="0 0 120 120">' +
+        '<circle class="smx-glow" cx="60" cy="60" r="' +
+        r +
+        '"/>' +
+        '<circle cx="60" cy="60" r="' +
+        r +
+        '" fill="none" stroke="rgba(127,127,127,0.18)" stroke-width="12"/>' +
+        segs +
+        '<text id="detail-smx-pct" class="smx-pct" x="60" y="62" text-anchor="middle"></text>' +
+        '<text id="detail-smx-name" class="smx-name" x="60" y="76" text-anchor="middle"></text>' +
+        '<text id="detail-smx-count" class="smx-count" x="60" y="87" text-anchor="middle"></text>' +
+        "</svg></div>" +
+        '<div class="smx-side">' +
+        '<div class="smx-title">' +
+        escapeHtml(t("dash.mix.title", "Signal mix")) +
+        "</div>" +
+        '<div class="smx-lead" style="color:' +
+        MIX_COLORS[dom.type] +
+        '">' +
+        escapeHtml(t("dash.mix.mostly", "Mostly: {type}").replace("{type}", mixName(dom.type))) +
+        "</div>" +
+        rows +
+        '<div class="smx-hint">' +
+        escapeHtml(hint) +
+        "</div></div></div>");
+}
+function attachSignalMixListeners(signals) {
+    const box = document.getElementById("detail-smx");
+    const ring = document.getElementById("detail-smx-ring");
+    const pctEl = document.getElementById("detail-smx-pct");
+    const nameEl = document.getElementById("detail-smx-name");
+    const countEl = document.getElementById("detail-smx-count");
+    if (!box || !ring || !pctEl || !nameEl || !countEl)
+        return;
+    const parts = mixParts(signals);
+    if (parts.length === 0)
+        return;
+    const dom = dominantPart(parts);
+    const list = document.getElementById("detail-signals-list") || document;
+    function show(p) {
+        pctEl.textContent = p.pct + "%";
+        pctEl.setAttribute("fill", MIX_COLORS[p.type]);
+        nameEl.textContent = mixName(p.type);
+        nameEl.setAttribute("fill", MIX_COLORS[p.type]);
+        countEl.textContent = t("dash.mix.count", "{n} of {total} cards")
+            .replace("{n}", String(p.count))
+            .replace("{total}", String(signals.length));
+    }
+    // Highlights one kind everywhere: its ring part, its legend row and
+    // its cards in the list. null clears the highlight.
+    function focus(type) {
+        box.querySelectorAll("[data-smx]").forEach((el) => {
+            const mine = el.getAttribute("data-smx") === type;
+            el.classList.toggle("smx-hot", type !== null && mine);
+            el.classList.toggle("smx-dim", type !== null && !mine);
+        });
+        list.querySelectorAll("[data-smx-type]").forEach((card) => {
+            card.style.opacity =
+                type === null || card.getAttribute("data-smx-type") === type ? "" : "0.35";
+        });
+        const part = parts.find((p) => p.type === type);
+        show(part || dom);
+    }
+    function open() {
+        box.classList.add("smx-open");
+    }
+    function close() {
+        box.classList.remove("smx-open");
+        focus(null);
+    }
+    show(dom);
+    ring.addEventListener("mouseenter", open);
+    ring.addEventListener("mouseleave", close);
+    box.querySelectorAll("[data-smx]").forEach((el) => {
+        const type = el.getAttribute("data-smx");
+        el.addEventListener("mouseenter", () => {
+            open();
+            focus(type);
+        });
+        el.addEventListener("mouseleave", () => {
+            if (el.classList.contains("smx-row"))
+                close();
+            else
+                focus(null);
+        });
+    });
+    // Touch screens have no hover: a tap opens the ring and picks the
+    // tapped part, a tap on the middle closes it again.
+    ring.addEventListener("click", (e) => {
+        const target = e.target.closest("[data-smx]");
+        if (target) {
+            open();
+            focus(target.getAttribute("data-smx"));
+        }
+        else if (box.classList.contains("smx-open")) {
+            close();
+        }
+        else {
+            open();
+        }
+    });
+}
+// The ring sits right above the signal list. Its box is made here the
+// first time, so index.html needs no change.
+function renderSignalMix(signals) {
+    const list = document.getElementById("detail-signals-list");
+    if (!list || !list.parentElement)
+        return;
+    let mix = document.getElementById("detail-signal-mix");
+    if (!mix) {
+        mix = document.createElement("div");
+        mix.id = "detail-signal-mix";
+        list.parentElement.insertBefore(mix, list);
+    }
+    mix.innerHTML = buildSignalMix(signals);
+    attachSignalMixListeners(signals);
+}
 function renderDetailBody(data) {
     const tabBtn = document.querySelector(".detail-tab-btn");
     if (tabBtn && tabBtn.parentElement) {
@@ -435,13 +696,15 @@ function renderDetailBody(data) {
         .map((s, idx) => {
         const { realSub, checklist } = parseChecklistSignal(s.sub);
         const dropdownId = "detail-checklist-" + idx;
-        return ('<div class="bg-surface border border-line rounded-xl p-4 mb-2.5 last:mb-0">' +
+        return ('<div class="bg-surface border border-line rounded-xl p-4 mb-2.5 last:mb-0" data-smx-type="' +
+            mixType(s.type) +
+            '">' +
             '<div class="flex justify-between items-baseline gap-3">' +
             '<div class="font-semibold text-[13px]">' +
             escapeHtml(translateSignalLabel(s.label)) +
             "</div>" +
-            '<div class="text-[13px] font-bold whitespace-nowrap ' +
-            signalTextClass(s.type) +
+            '<div class="text-[13px] font-bold whitespace-nowrap" style="color:' +
+            MIX_COLORS[mixType(s.type)] +
             '">' +
             escapeHtml(translateSignalValue(s.value)) +
             "</div></div>" +
@@ -453,6 +716,7 @@ function renderDetailBody(data) {
     })
         .join("");
     signals.forEach((_, idx) => attachChecklistListener("detail-checklist-" + idx));
+    renderSignalMix(signals);
     const socialPresenceEl = document.getElementById("detail-social-presence");
     if (socialPresenceEl) {
         socialPresenceEl.innerHTML = buildSocialPresenceSection(data.social_candidates || []);

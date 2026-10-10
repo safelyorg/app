@@ -643,7 +643,9 @@ pub fn b2b_content(arg: &CallB2bClaudeArguments) -> String {
         copy of B/L"), L/C, D/A, D/P and platform escrow (including
         Alibaba Trade Assurance, Alibaba's own order protection) are
         standard B2B terms and must NOT be flagged. Judge only how much is
-        paid before shipment here, not the payment method.
+        paid before shipment here, not the payment method, and never
+        call Western Union, MoneyGram, crypto or gift cards standard or
+        safe in the evidence.
 
         For untraceable_payment_method: Western Union, MoneyGram,
         cryptocurrency, gift cards and paying a personal (individual's)

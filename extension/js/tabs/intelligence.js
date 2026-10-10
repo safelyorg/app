@@ -47,7 +47,7 @@
                 const COLORS = {
                     good: "#35d0a6",
                     caution: "#f2b84c",
-                    info: "#8e8e93",
+                    info: "#6fb3ef",
                 };
                 return signals
                     .map((s, idx) => {
@@ -203,23 +203,255 @@
             });
         }
     }
+    // Worst first: on a tie, the more serious kind is the dominant one.
+    const MIX_ORDER = ["bad", "caution", "info", "good"];
+    const MIX_COLORS = {
+        good: "#35d0a6",
+        info: "#6fb3ef",
+        caution: "#f2b84c",
+        bad: "#ff5d5d",
+    };
+    const MIX_NAMES = {
+        good: "Good",
+        info: "Info",
+        caution: "Warning",
+        bad: "Red flag",
+    };
+    function mixType(type) {
+        return type === "good" || type === "info" || type === "caution" ? type : "bad";
+    }
+    // Whole percentages that always add up to 100 (largest remainder).
+    function mixParts(signals) {
+        const total = signals.length;
+        if (total === 0)
+            return [];
+        const counts = { good: 0, info: 0, caution: 0, bad: 0 };
+        signals.forEach((s) => (counts[mixType(s.type)] += 1));
+        const parts = ["good", "info", "caution", "bad"]
+            .filter((t) => counts[t] > 0)
+            .map((t) => {
+            const exact = (counts[t] * 100) / total;
+            return { type: t, count: counts[t], pct: Math.floor(exact), rest: exact % 1 };
+        });
+        let left = 100 - parts.reduce((sum, p) => sum + p.pct, 0);
+        parts
+            .slice()
+            .sort((a, b) => b.rest - a.rest)
+            .forEach((p) => {
+            if (left > 0) {
+                p.pct += 1;
+                left -= 1;
+            }
+        });
+        return parts.map(({ type, count, pct }) => ({ type, count, pct }));
+    }
+    function dominantPart(parts) {
+        return parts.reduce((best, p) => p.count > best.count ||
+            (p.count === best.count && MIX_ORDER.indexOf(p.type) < MIX_ORDER.indexOf(best.type))
+            ? p
+            : best);
+    }
+    const MIX_STYLE = "<style>" +
+        ".smx{display:flex;align-items:center;gap:16px;padding:14px;margin-top:12px;border-radius:14px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);}" +
+        ".smx-ring{width:124px;height:124px;flex-shrink:0;cursor:pointer;-webkit-tap-highlight-color:transparent;}" +
+        ".smx-ring svg{width:100%;height:100%;overflow:visible;}" +
+        ".smx-seg{fill:none;stroke-width:12;stroke:var(--dom);stroke-dasharray:var(--whole);transition:stroke .45s ease,stroke-dasharray .45s ease,stroke-width .2s ease,opacity .2s ease;}" +
+        ".smx-open .smx-seg{stroke:var(--c);stroke-dasharray:var(--split);}" +
+        ".smx-open .smx-seg.smx-dim{opacity:.35;}" +
+        ".smx-open .smx-seg.smx-hot{stroke-width:16;}" +
+        ".smx-glow{fill:none;stroke:var(--dom);stroke-width:22;opacity:.10;transition:opacity .45s ease,stroke .45s ease;}" +
+        ".smx-open .smx-glow{opacity:0;}" +
+        ".smx-pct{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:24px;transition:fill .3s ease;}" +
+        ".smx-name{font-family:Inter,sans-serif;font-weight:700;font-size:9px;letter-spacing:.6px;text-transform:uppercase;transition:fill .3s ease;}" +
+        ".smx-count{font-family:Inter,sans-serif;font-size:8px;fill:#8a8a93;}" +
+        ".smx-side{flex:1;min-width:0;}" +
+        ".smx-title{font-size:11px;font-weight:700;color:#8a8a93;text-transform:uppercase;letter-spacing:.5px;}" +
+        ".smx-lead{font-size:14px;font-weight:700;margin:3px 0 8px;}" +
+        ".smx-row{display:flex;align-items:center;gap:8px;padding:4px 6px;margin:0 -6px;border-radius:8px;font-size:12px;color:#c9c8c3;cursor:default;transition:background .2s ease,opacity .2s ease;}" +
+        ".smx-row.smx-hot{background:rgba(255,255,255,0.06);}" +
+        ".smx-row.smx-dim{opacity:.45;}" +
+        ".smx-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;}" +
+        ".smx-row b{margin-left:auto;font-family:'JetBrains Mono',monospace;font-size:11px;}" +
+        ".smx-hint{font-size:10.5px;color:#6f6f78;margin-top:8px;line-height:1.4;}" +
+        "[data-smx-type]{transition:opacity .2s ease;}" +
+        "</style>";
+    function buildSignalMix(signals) {
+        const parts = mixParts(signals);
+        if (parts.length === 0)
+            return "";
+        const dom = dominantPart(parts);
+        const r = 46;
+        const c = 2 * Math.PI * r;
+        // Gap between parts when split; none when there is only one part.
+        const gap = parts.length > 1 ? 3 : 0;
+        let start = 0;
+        const segs = parts
+            .map((p) => {
+            const len = (p.count / signals.length) * c;
+            // At rest every part runs a hair past its end, so the ring
+            // reads as one solid colour with no seams.
+            const whole = Math.min(len + 1, c) + " " + c;
+            const split = Math.max(len - gap, 0.5) + " " + c;
+            const seg = '<circle class="smx-seg" data-smx="' +
+                p.type +
+                '" cx="60" cy="60" r="' +
+                r +
+                '" stroke-dashoffset="' +
+                -start +
+                '" transform="rotate(-90 60 60)" style="--c:' +
+                MIX_COLORS[p.type] +
+                ";--whole:" +
+                whole +
+                ";--split:" +
+                split +
+                '"><title>' +
+                window.escapeHtml(tr(MIX_NAMES[p.type]) + ": " + p.pct + "%") +
+                "</title></circle>";
+            start += len;
+            return seg;
+        })
+            .join("");
+        const rows = parts
+            .map((p) => '<div class="smx-row" data-smx="' +
+            p.type +
+            '"><span class="smx-dot" style="background:' +
+            MIX_COLORS[p.type] +
+            '"></span><span>' +
+            window.escapeHtml(tr(MIX_NAMES[p.type])) +
+            " · " +
+            p.count +
+            "</span><b style=\"color:" +
+            MIX_COLORS[p.type] +
+            '">' +
+            p.pct +
+            "%</b></div>")
+            .join("");
+        const hint = isB2bScan(signals) && parts.some((p) => p.type === "info")
+            ? tr("Info cards are not warnings, but each adds 5 points to the score (15 at most).")
+            : tr("Hover the ring to see each part.");
+        return (MIX_STYLE +
+            '<div class="smx" id="safely-smx" style="--dom:' +
+            MIX_COLORS[dom.type] +
+            '" data-dom="' +
+            dom.type +
+            '">' +
+            '<div class="smx-ring" id="safely-smx-ring" role="img" aria-label="' +
+            window.escapeHtml(tr("Signal mix")) +
+            '"><svg viewBox="0 0 120 120">' +
+            '<circle class="smx-glow" cx="60" cy="60" r="' +
+            r +
+            '"/>' +
+            '<circle cx="60" cy="60" r="' +
+            r +
+            '" fill="none" stroke="#1b1b20" stroke-width="12"/>' +
+            segs +
+            '<text id="safely-smx-pct" class="smx-pct" x="60" y="62" text-anchor="middle"></text>' +
+            '<text id="safely-smx-name" class="smx-name" x="60" y="76" text-anchor="middle"></text>' +
+            '<text id="safely-smx-count" class="smx-count" x="60" y="87" text-anchor="middle"></text>' +
+            "</svg></div>" +
+            '<div class="smx-side">' +
+            '<div class="smx-title">' +
+            window.escapeHtml(tr("Signal mix")) +
+            "</div>" +
+            '<div class="smx-lead" style="color:' +
+            MIX_COLORS[dom.type] +
+            '">' +
+            window.escapeHtml(tr("Mostly: {type}", { type: tr(MIX_NAMES[dom.type]) })) +
+            "</div>" +
+            rows +
+            '<div class="smx-hint">' +
+            window.escapeHtml(hint) +
+            "</div></div></div>");
+    }
+    function attachSignalMixListeners() {
+        const box = document.getElementById("safely-smx");
+        const ring = document.getElementById("safely-smx-ring");
+        const pctEl = document.getElementById("safely-smx-pct");
+        const nameEl = document.getElementById("safely-smx-name");
+        const countEl = document.getElementById("safely-smx-count");
+        if (!box || !ring || !pctEl || !nameEl || !countEl)
+            return;
+        const signals = (window.__safelyData || {}).signals || [];
+        const parts = mixParts(signals);
+        if (parts.length === 0)
+            return;
+        const dom = dominantPart(parts);
+        const tab = document.getElementById("safely-tab-intelligence") || document;
+        function show(p) {
+            pctEl.textContent = p.pct + "%";
+            pctEl.setAttribute("fill", MIX_COLORS[p.type]);
+            nameEl.textContent = tr(MIX_NAMES[p.type]);
+            nameEl.setAttribute("fill", MIX_COLORS[p.type]);
+            countEl.textContent = tr("{n} of {total} cards", { n: p.count, total: signals.length });
+        }
+        // Highlights one kind everywhere: its ring part, its legend row and
+        // its cards in the list. null clears the highlight.
+        function focus(type) {
+            box.querySelectorAll("[data-smx]").forEach((el) => {
+                const mine = el.getAttribute("data-smx") === type;
+                el.classList.toggle("smx-hot", type !== null && mine);
+                el.classList.toggle("smx-dim", type !== null && !mine);
+            });
+            tab.querySelectorAll("[data-smx-type]").forEach((card) => {
+                card.style.opacity =
+                    type === null || card.getAttribute("data-smx-type") === type ? "" : "0.35";
+            });
+            const part = parts.find((p) => p.type === type);
+            show(part || dom);
+        }
+        function open() {
+            box.classList.add("smx-open");
+        }
+        function close() {
+            box.classList.remove("smx-open");
+            focus(null);
+        }
+        show(dom);
+        ring.addEventListener("mouseenter", open);
+        ring.addEventListener("mouseleave", close);
+        box.querySelectorAll("[data-smx]").forEach((el) => {
+            const type = el.getAttribute("data-smx");
+            el.addEventListener("mouseenter", () => {
+                open();
+                focus(type);
+            });
+            el.addEventListener("mouseleave", () => {
+                if (el.classList.contains("smx-row"))
+                    close();
+                else
+                    focus(null);
+            });
+        });
+        // Touch screens have no hover: a tap opens the ring and picks the
+        // tapped part, a tap on the middle closes it again.
+        ring.addEventListener("click", (e) => {
+            const target = e.target.closest("[data-smx]");
+            if (target) {
+                open();
+                focus(target.getAttribute("data-smx"));
+            }
+            else if (box.classList.contains("smx-open")) {
+                close();
+            }
+            else {
+                open();
+            }
+        });
+    }
     // Real, direct TypeScript rendering for signal rows - deliberately
     // bypasses wasm.build_signal_rows, since the compiled WASM module
     // doesn't know how to parse the new ###CHECKLIST### marker. Keeping
     // this logic here, in one, single, real place, avoids needing to
     // touch or recompile the Rust/WASM source at all.
     function buildSignalRowsTs(signals) {
-        const COLORS = {
-            good: "#35d0a6",
-            caution: "#f2b84c",
-            info: "#8e8e93",
-        };
         return signals
             .map((s, idx) => {
-            const color = COLORS[s.type] || "#ff5d5d";
+            const color = MIX_COLORS[mixType(s.type)];
             const { realSub, checklist } = parseChecklistSignal(s.sub);
             const dropdownId = "safely-checklist-" + idx;
-            return ('<div class="safely-check-card">' +
+            return ('<div class="safely-check-card" data-smx-type="' +
+                mixType(s.type) +
+                '">' +
                 '<div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;">' +
                 '<div class="safely-check-title">' +
                 window.escapeHtml(tr(capitalizeFirst(s.label))) +
@@ -349,6 +581,7 @@
             '"><span>&#9679;</span><span>' +
             summaryText +
             "</span></div>" +
+            buildSignalMix(pageData.signals || []) +
             '<div class="safely-section-label" style="margin-top:14px">' +
             tr("Listing signals") +
             '</div><div style="display:flex;flex-direction:column;gap:8px">' +
@@ -445,6 +678,7 @@
     }
     function attachAllChecklistListeners() {
         attachSocialPresenceListeners();
+        attachSignalMixListeners();
         const pageData = window.__safelyData;
         (pageData.signals || []).forEach((_, idx) => {
             attachChecklistListener("safely-checklist-" + idx);

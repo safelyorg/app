@@ -970,6 +970,129 @@ fn b2b_payment_signal(advance: &Finding, untraceable: &Finding) -> Signal {
     }
 }
 
+/// Value of the payment card when a risky way to pay (Western Union,
+/// MoneyGram, crypto, gift cards) is listed next to protected ones.
+pub const RISKY_OPTION_LISTED: &str = "Risky option listed";
+
+/// Ways to pay that cannot be traced or reversed, as (text to find,
+/// name to show). Matched case-insensitively on the listing's payment
+/// methods.
+const RISKY_METHODS: &[(&str, &str)] = &[
+    ("western union", "Western Union"),
+    ("moneygram", "MoneyGram"),
+    ("money gram", "MoneyGram"),
+    ("bitcoin", "cryptocurrency"),
+    ("usdt", "cryptocurrency"),
+    ("crypto", "cryptocurrency"),
+    ("gift card", "gift cards"),
+];
+
+/// Ways to pay that protect the buyer or can be traced to a company,
+/// as (text to find, name to show).
+const PROTECTED_METHODS: &[(&str, &str)] = &[
+    ("trade assurance", "Trade Assurance"),
+    ("escrow", "escrow"),
+    ("paypal", "PayPal"),
+    ("credit card", "credit card"),
+    ("visa", "credit card"),
+    ("mastercard", "credit card"),
+    ("l/c", "L/C"),
+    ("letter of credit", "L/C"),
+    ("d/p", "D/P"),
+    ("d/a", "D/A"),
+    ("t/t", "bank transfer (T/T)"),
+    ("bank", "bank transfer (T/T)"),
+    ("wire", "bank transfer (T/T)"),
+];
+
+/// Names from `methods` found in `text`, each once, in list order.
+fn methods_in(text: &str, methods: &[(&str, &'static str)]) -> Vec<&'static str> {
+    let mut found: Vec<&'static str> = Vec::new();
+    for (needle, name) in methods {
+        if text.contains(needle) && !found.contains(name) {
+            found.push(name);
+        }
+    }
+    found
+}
+
+/// "A", "A and B", "A, B and C".
+fn join_names(names: &[&str]) -> String {
+    match names {
+        [] => String::new(),
+        [one] => one.to_string(),
+        [rest @ .., last] => format!("{} and {}", rest.join(", "), last),
+    }
+}
+
+/// Checks the listing's own payment methods for risky ones, so the
+/// buyer is always told about them - not only when Claude flags them.
+/// It only changes the payment card when it reads "None found":
+/// - a risky method next to protected ones: "Risky option listed",
+///   info (no points). The card names the risky method, says why it is
+///   dangerous and which protected option to use instead.
+/// - risky methods only, nothing protected: "Untraceable payment",
+///   caution - the same as when Claude flags it (Serious risk factor).
+/// A card Claude already flagged (full prepayment / untraceable) stays
+/// as it is.
+pub fn apply_risky_payment_note(signals: &mut [Signal], payment_methods: Option<&str>) {
+    let Some(text) = payment_methods else {
+        return;
+    };
+    let text = text.to_lowercase();
+    let risky = methods_in(&text, RISKY_METHODS);
+    if risky.is_empty() {
+        return;
+    }
+    let Some(card) = signals
+        .iter_mut()
+        .find(|s| s.label == "Advance payment request")
+    else {
+        return;
+    };
+    if card.value != "None found" {
+        return;
+    }
+    let mut protected = methods_in(&text, PROTECTED_METHODS);
+    // Platform order protection is the safest choice - recommend only it.
+    if let Some(best) = protected
+        .iter()
+        .find(|m| **m == "Trade Assurance" || **m == "escrow")
+        .copied()
+    {
+        protected = vec![best];
+    }
+    let risky_names = join_names(&risky);
+    let verb = if risky.len() == 1 && !risky_names.ends_with('s') {
+        "is"
+    } else {
+        "are"
+    };
+    let (value, signal_type, warning) = if protected.is_empty() {
+        (
+            UNTRACEABLE_PAYMENT,
+            "caution",
+            format!(
+                "The only ways to pay listed are {risky_names}. Money sent this way cannot be traced or got back, and scammers often ask for it. Do not pay this way - ask for a protected payment method first."
+            ),
+        )
+    } else {
+        (
+            RISKY_OPTION_LISTED,
+            "info",
+            format!(
+                "{risky_names} {verb} listed as a way to pay. Money sent this way cannot be traced or got back, and scammers often ask for it. Avoid it and pay with {} instead.",
+                join_names(&protected)
+            ),
+        )
+    };
+    card.sub = format!("{} {}", warning, card.sub.trim())
+        .trim()
+        .to_string();
+    card.value = value.to_string();
+    card.signal_type = signal_type.to_string();
+}
+
 /// Image authenticity card, shared by B2C and B2B. While image checking
 /// is switched off (IMAGE_ANALYSIS_ENABLED in claude.rs), Claude never
 /// sees the photos, so "not verified" says nothing about the seller -
@@ -1179,6 +1302,69 @@ mod b2b_signal_tests {
             "the more serious problem wins"
         );
         assert_eq!(both.sub, "e e");
+    }
+
+    fn none_found_card() -> Vec<Signal> {
+        vec![payment(false, false)]
+    }
+
+    #[test]
+    fn risky_method_next_to_protected_ones_is_info_with_a_warning() {
+        let mut s = none_found_card();
+        apply_risky_payment_note(&mut s, Some("Trade Assurance/Paypal/Western Union/T/T"));
+        assert_eq!(
+            (s[0].value.as_str(), s[0].signal_type.as_str()),
+            (RISKY_OPTION_LISTED, "info")
+        );
+        assert!(
+            s[0].sub
+                .starts_with("Western Union is listed as a way to pay.")
+        );
+        assert!(
+            s[0].sub
+                .contains("Avoid it and pay with Trade Assurance instead.")
+        );
+        let mut s = none_found_card();
+        apply_risky_payment_note(&mut s, Some("PayPal, Western Union, T/T"));
+        assert!(
+            s[0].sub
+                .contains("pay with PayPal and bank transfer (T/T) instead")
+        );
+    }
+
+    #[test]
+    fn only_risky_methods_is_untraceable_caution() {
+        let mut s = none_found_card();
+        apply_risky_payment_note(&mut s, Some("Western Union, MoneyGram"));
+        assert_eq!(
+            (s[0].value.as_str(), s[0].signal_type.as_str()),
+            (UNTRACEABLE_PAYMENT, "caution")
+        );
+        assert!(
+            s[0].sub
+                .starts_with("The only ways to pay listed are Western Union and MoneyGram.")
+        );
+    }
+
+    #[test]
+    fn safe_methods_only_leave_the_card_alone() {
+        let mut s = none_found_card();
+        apply_risky_payment_note(&mut s, Some("T/T, L/C, PayPal"));
+        assert_eq!(
+            (s[0].value.as_str(), s[0].signal_type.as_str()),
+            ("None found", "good")
+        );
+        let mut s = none_found_card();
+        apply_risky_payment_note(&mut s, None);
+        assert_eq!(s[0].value, "None found");
+    }
+
+    #[test]
+    fn a_card_claude_already_flagged_is_not_changed() {
+        let mut s = vec![payment(true, false)];
+        apply_risky_payment_note(&mut s, Some("Western Union, T/T"));
+        assert_eq!(s[0].value, FULL_PREPAYMENT);
+        assert_eq!(s[0].sub, "e");
     }
 
     #[test]
