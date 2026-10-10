@@ -15,7 +15,7 @@ function risk_label(l: string): string {
 
 function risk_desc(l: string): string {
   return l === "low"
-    ? "Safe to proceed"
+    ? "No major warnings found"
     : l === "caution"
       ? "Review before proceeding"
       : "High risk detected";
@@ -48,9 +48,15 @@ describe("risk.ts fallback - risk_label", () => {
 
 describe("risk.ts fallback - risk_desc", () => {
   it("returns the correct description for each level", () => {
-    expect(risk_desc("low")).toBe("Safe to proceed");
+    expect(risk_desc("low")).toBe("No major warnings found");
     expect(risk_desc("caution")).toBe("Review before proceeding");
     expect(risk_desc("high")).toBe("High risk detected");
+  });
+
+  it("never promises that a seller is safe", () => {
+    for (const level of ["low", "caution", "high"]) {
+      expect(risk_desc(level).toLowerCase()).not.toContain("safe");
+    }
   });
 });
 

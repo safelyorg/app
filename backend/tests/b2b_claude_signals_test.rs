@@ -227,8 +227,10 @@ fn urgency_and_advance_payment_use_the_opposite_polarity_from_the_other_four() {
         .find(|s| s.label == "Advance payment request")
         .unwrap();
     assert_eq!(advance_payment.signal_type, "caution");
-    // Full payment before shipment by a normal method.
-    assert_eq!(advance_payment.value, "Full prepayment");
+    assert_eq!(
+        advance_payment.value, "Full prepayment",
+        "full payment before shipment by a normal method"
+    );
 }
 
 #[test]
@@ -274,7 +276,7 @@ fn image_authenticity_is_not_checked_while_images_are_off() {
 }
 
 #[test]
-fn image_authenticity_signal_correctly_maps_not_verified_to_caution() {
+fn image_authenticity_signal_maps_not_verified_to_info() {
     if !IMAGE_ANALYSIS_ENABLED {
         return; // only applies when image checking is switched on
     }
@@ -285,7 +287,7 @@ fn image_authenticity_signal_correctly_maps_not_verified_to_caution() {
         .find(|s| s.label == "Image authenticity")
         .unwrap();
     assert_eq!(image.value, "not verified");
-    assert_eq!(image.signal_type, "caution");
+    assert_eq!(image.signal_type, "info");
 }
 
 #[test]

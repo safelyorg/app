@@ -1,4 +1,7 @@
-use backend::services::osint::{build_location_fallback_queries, build_osint_query_matrix};
+use backend::services::osint::{
+    PlatformCheckResult, SCAM_MENTIONS_FOUND, SocialCandidateLink, build_location_fallback_queries,
+    build_osint_query_matrix, social_presence_signal,
+};
 use std::collections::HashSet;
 
 // Build Osint Query Matrix Tests
@@ -163,4 +166,61 @@ fn build_location_fallback_queries_ignores_pairs_that_werent_asked_for() {
             .any(|(platform, _, _)| platform == "Facebook"),
         "expected Facebook to be genuinely skipped, since it wasn't in `needed`"
     );
+}
+
+// Social Presence Signal Tests
+fn result(platform: &str, found: bool, scam_mention: bool) -> PlatformCheckResult {
+    PlatformCheckResult {
+        platform: platform.to_string(),
+        variant_searched: "Acme Co".to_string(),
+        found,
+        candidates: if found {
+            vec![SocialCandidateLink {
+                platform: platform.to_string(),
+                title: "Acme Co".to_string(),
+                url: "https://example.com".to_string(),
+            }]
+        } else {
+            Vec::new()
+        },
+        scam_mention,
+    }
+}
+
+#[test]
+fn scam_mentions_are_a_warning_not_proof_the_company_exists() {
+    // Before: any hit, including "Acme Co golpe", counted as "found
+    // online" and showed as information only.
+    let signal = social_presence_signal(&[
+        result("Facebook", true, false),
+        result("Reddit", true, true),
+    ]);
+    assert_eq!(signal.value, SCAM_MENTIONS_FOUND);
+    assert_eq!(signal.signal_type, "caution");
+    assert!(signal.sub.contains("1 search(es)"));
+}
+
+#[test]
+fn being_found_online_without_scam_words_is_information_only() {
+    let signal = social_presence_signal(&[
+        result("Facebook", true, false),
+        result("LinkedIn", false, false),
+        result("Reddit", false, true),
+    ]);
+    assert_eq!(signal.value, "Candidates found");
+    assert_eq!(signal.signal_type, "info");
+    assert_eq!(
+        signal.sub,
+        "1 of 2 platform checks found a real, candidate result."
+    );
+}
+
+#[test]
+fn no_trace_online_is_a_warning() {
+    let signal = social_presence_signal(&[
+        result("Facebook", false, false),
+        result("Reddit", false, true),
+    ]);
+    assert_eq!(signal.value, "No presence found");
+    assert_eq!(signal.signal_type, "caution");
 }

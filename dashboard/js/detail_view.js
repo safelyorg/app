@@ -28,6 +28,9 @@ const SIGNAL_LABEL_TRANSLATIONS = {
     "Seller track record": "dash.label.seller_track_record",
     "Store page check": "dash.label.store_page_check",
     "Company details": "dash.label.company_details",
+    "Social presence check": "dash.detail.social_presence",
+    // Title of the risk factor shown when Safely could check too little.
+    "Not enough information": "dash.label.not_enough_information",
 };
 function translateSignalLabel(label) {
     const key = SIGNAL_LABEL_TRANSLATIONS[label];
@@ -55,6 +58,8 @@ const SIGNAL_VALUE_TRANSLATIONS = {
     Original: "dash.value.original",
     original: "dash.value.original",
     "Candidates found": "dash.value.candidates_found",
+    "Scam mentions found": "dash.value.scam_mentions_found",
+    "No presence found": "dash.value.no_presence_found",
     "Not checked": "dash.value.not_checked",
     Unregistered: "dash.value.unregistered",
     Registered: "dash.value.registered",
@@ -463,7 +468,7 @@ function renderDetailBody(data) {
                 if (f.contributing_signals && f.contributing_signals.length > 0) {
                     return f.contributing_signals.map((label) => translateSignalLabel(label)).join(" + ");
                 }
-                return capitalizeFirst(f.name.replace(/_/g, " "));
+                return translateSignalLabel(capitalizeFirst(f.name.replace(/_/g, " ")));
             }
             riskFactorsSection.classList.remove("hidden");
             riskFactorsSection.innerHTML =

@@ -46,7 +46,16 @@ pub struct PlatformCheckResult {
     pub variant_searched: String,
     pub found: bool,
     pub candidates: Vec<SocialCandidateLink>,
+    /// True when this search looked for the company's name next to
+    /// scam words ("golpe", "scam", "fraude"...). A result here is a
+    /// warning, not proof the company exists.
+    pub scam_mention: bool,
 }
+
+/// The "Social presence check" value when the company's name was found
+/// online next to scam words. analysis.rs counts this warning more
+/// than a plain "no presence found".
+pub const SCAM_MENTIONS_FOUND: &str = "Scam mentions found";
 
 /// The real, complete scam-word list, split into small, real groups
 /// - each group becomes its OWN, separate Google search, so every
@@ -60,6 +69,13 @@ const SCAM_WORD_SEARCH_GROUPS: &[&str] = &[
     "\"não entregou\" OR sumiu OR processo",
     "polícia OR ripoff OR beware OR avoid OR scammed",
 ];
+
+/// True when this query is one of the scam-word searches.
+fn is_scam_word_query(query: &str) -> bool {
+    SCAM_WORD_SEARCH_GROUPS
+        .iter()
+        .any(|group| query.contains(group))
+}
 
 pub fn score_identifier_match(seller: &SellerIdentifiers, found_text: &str) -> OsintMatch {
     let lower_text = found_text.to_lowercase();
@@ -361,6 +377,7 @@ async fn run_query_batch(
     for (platform_label, query, variant) in queries {
         let permit_holder = semaphore.clone();
         let country_code = country_code.to_string();
+        let scam_mention = is_scam_word_query(&query);
         join_set.spawn(async move {
             let _permit = permit_holder.acquire().await.ok();
             let real_results = run_serper_search(&query, Some(&country_code)).await;
@@ -390,6 +407,7 @@ async fn run_query_batch(
                     variant_searched: variant,
                     found: !real_candidates.is_empty(),
                     candidates: real_candidates,
+                    scam_mention,
                 },
                 search_succeeded,
             )
@@ -407,6 +425,57 @@ async fn run_query_batch(
         }
     }
     (results, failures)
+}
+
+/// The "Social presence check" card, from every search result:
+/// - the company's name found next to scam words -> a warning,
+///   "Scam mentions found" (counts more than other warnings);
+/// - found on social networks / review sites -> information only,
+///   "Candidates found";
+/// - found nowhere -> a warning, "No presence found": a real company
+///   usually leaves some trace online.
+pub fn social_presence_signal(results: &[PlatformCheckResult]) -> Signal {
+    let scam_hits = results.iter().filter(|r| r.found && r.scam_mention).count();
+    let presence_hits = results
+        .iter()
+        .filter(|r| r.found && !r.scam_mention)
+        .count();
+    let presence_searches = results.iter().filter(|r| !r.scam_mention).count();
+
+    let (value, signal_type, sub) = if scam_hits > 0 {
+        (
+            SCAM_MENTIONS_FOUND.to_string(),
+            "caution",
+            format!(
+                "{} search(es) found this company's name next to words like \"scam\", \"golpe\" or \"fraude\". Open the links below and read them before paying - some may be about something else.",
+                scam_hits
+            ),
+        )
+    } else if presence_hits > 0 {
+        (
+            "Candidates found".to_string(),
+            "info",
+            format!(
+                "{} of {} platform checks found a real, candidate result.",
+                presence_hits, presence_searches
+            ),
+        )
+    } else {
+        (
+            "No presence found".to_string(),
+            "caution",
+            "This company was not found on Facebook, LinkedIn, Instagram, TikTok, Reddit, Trustpilot or review sites. A real company usually leaves some trace online.".to_string(),
+        )
+    };
+
+    Signal {
+        label: "Social presence check".to_string(),
+        sub,
+        value,
+        signal_type: signal_type.to_string(),
+        category: "external_intelligence".to_string(),
+        check_type: "existence".to_string(),
+    }
 }
 
 /// Runs the REAL, complete, two-tier matrix - every name variant
@@ -453,7 +522,8 @@ pub async fn build_social_presence_matrix(
     // TIER 2 - only for the platform+variant pairs Tier 1 genuinely
     // found nothing on, and only when we actually have a location to
     // try. This is the real fallback: location refines an already-
-    // empty result, it never gates the first attempt.
+    // empty result, it never gates the first attempt. Scam-word rows
+    // are never retried - only the plain presence searches.
     let clean_location = location
         .and_then(|l| l.split(['/', '|']).next())
         .map(|s| s.trim())
@@ -465,7 +535,7 @@ pub async fn build_social_presence_matrix(
     ) {
         let needed: HashSet<(String, String)> = results
             .iter()
-            .filter(|r| !r.found)
+            .filter(|r| !r.found && !r.scam_mention)
             .map(|r| (r.platform.clone(), r.variant_searched.clone()))
             .collect();
 
@@ -478,14 +548,15 @@ pub async fn build_social_presence_matrix(
                 real_search_failures += fallback_failures;
 
                 // Merge: a Tier 2 hit fills in the matching Tier 1
-                // row (same platform + same variant) instead of
-                // adding a duplicate row.
+                // presence row (same platform + same variant) instead
+                // of adding a duplicate row.
                 for fallback in fallback_results {
                     if !fallback.found {
                         continue;
                     }
                     if let Some(existing) = results.iter_mut().find(|r| {
-                        r.platform == fallback.platform
+                        !r.scam_mention
+                            && r.platform == fallback.platform
                             && r.variant_searched == fallback.variant_searched
                     }) {
                         existing.found = true;
@@ -509,29 +580,7 @@ pub async fn build_social_presence_matrix(
         );
     }
 
-    let found_count = results.iter().filter(|r| r.found).count();
-    let signal = Signal {
-        label: "Social presence check".to_string(),
-        sub: format!(
-            "{} of {} platform checks found a real, candidate result.",
-            found_count,
-            results.len()
-        ),
-        value: if found_count > 0 {
-            "Candidates found".to_string()
-        } else {
-            "No presence found".to_string()
-        },
-        signal_type: if found_count > 0 {
-            "info".to_string()
-        } else {
-            "caution".to_string()
-        },
-        category: "external_intelligence".to_string(),
-        check_type: "existence".to_string(),
-    };
-
-    Ok((signal, results))
+    Ok((social_presence_signal(&results), results))
 }
 
 /// Fetches ONE, real, specific candidate link's actual page content,

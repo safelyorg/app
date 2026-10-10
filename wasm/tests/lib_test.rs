@@ -23,10 +23,17 @@ fn risk_label_all_branches() {
 
 #[test]
 fn risk_desc_all_branches() {
-    assert_eq!(risk_desc("low"), "Safe to proceed");
+    assert_eq!(risk_desc("low"), "No major warnings found");
     assert_eq!(risk_desc("caution"), "Review before proceeding");
     assert_eq!(risk_desc("high"), "High risk detected");
     assert_eq!(risk_desc("anything_else"), "High risk detected");
+}
+
+#[test]
+fn risk_desc_never_promises_safety() {
+    for level in ["low", "caution", "high"] {
+        assert!(!risk_desc(level).to_lowercase().contains("safe"));
+    }
 }
 
 #[test]

@@ -212,10 +212,12 @@ fn or_not_provided<'a>(value: &'a str) -> &'a str {
     }
 }
 
-/// Master switch for sending listing photos to Claude (off to save
-/// cost). The Image authenticity card reads this too: while it is off,
-/// the card shows "Not checked" instead of a caution. Set to true to
-/// turn image checking back on - nothing else needs changing.
+/// Master switch for sending listing photos to Claude. ON: up to 3
+/// photos per listing are sent, and the Image authenticity card judges
+/// them ("original" = good, "not verified" = a warning). Each photo
+/// adds to the cost of a scan. Set to false to stop sending photos -
+/// the card then shows "Not checked" and never counts against the
+/// seller. Nothing else needs changing.
 pub const IMAGE_ANALYSIS_ENABLED: bool = true;
 
 /// The ONE, shared place that builds the real content blocks sent to
@@ -225,8 +227,8 @@ pub const IMAGE_ANALYSIS_ENABLED: bool = true;
 fn build_content_blocks(prompt: String, image_urls: &[String]) -> Vec<ContentItem> {
     let mut content_blocks: Vec<ContentItem> = vec![ContentItem::Text { text: prompt }];
 
-    // Images are only sent when IMAGE_ANALYSIS_ENABLED is true (off
-    // for cost reasons), for both B2C and B2B.
+    // Images are only sent when IMAGE_ANALYSIS_ENABLED is true, for
+    // both B2C and B2B.
     if IMAGE_ANALYSIS_ENABLED {
         for url in image_urls.iter().take(3) {
             content_blocks.push(ContentItem::Image {
@@ -592,6 +594,19 @@ pub fn b2b_content(arg: &CallB2bClaudeArguments) -> String {
         are standard practice on B2B platforms for search visibility and
         are NOT on their own a sign of a template listing - judge the
         attributes and description instead.
+        GENERIC TEXT: also set listing_specificity to false when BOTH the
+        product description and the company description are only generic,
+        copy-paste sales text that could belong to any supplier - e.g. "we
+        are a leading professional manufacturer with high quality and
+        competitive price, OEM/ODM welcome, best service" - with no
+        concrete detail about this product or this company (no specs,
+        materials, factory location, certifications, product range or real
+        numbers). Quote one generic phrase in the evidence. Do NOT judge
+        whether the text was written by AI or machine-translated: fluent,
+        AI-assisted, translated or imperfect English is normal for honest
+        suppliers. Judge only whether real, specific details are present.
+        If either description gives real, specific details, the text is
+        not generic.
 
         For pricing_transparency: assess ONLY whether the unit price and
         MOQ above (if provided) seem plausible for this product type.
@@ -888,6 +903,21 @@ mod b2b_prompt_tests {
         assert!(flat.contains("only if you can name a concrete red flag"));
         assert!(flat.contains("\"hardware product customization\" covers a keyboard"));
         assert!(!flat.contains("generic or nonsensical company name"));
+    }
+
+    #[test]
+    fn generic_copy_paste_text_is_judged_but_ai_writing_is_not() {
+        let p = b2b_content(&args("alibaba", "", ""));
+        let flat = p.split_whitespace().collect::<Vec<_>>().join(" ");
+        assert!(flat.contains("GENERIC TEXT: also set listing_specificity to false when BOTH"));
+        assert!(flat.contains("could belong to any supplier"));
+        assert!(flat.contains("Quote one generic phrase in the evidence"));
+        assert!(
+            flat.contains("Do NOT judge whether the text was written by AI or machine-translated")
+        );
+        assert!(flat.contains(
+            "If either description gives real, specific details, the text is not generic"
+        ));
     }
 
     #[test]

@@ -21,8 +21,8 @@ use crate::{
         fraud_reports::{build_network_summary, count_fraud_reports},
         listings::get_monthly_visit_activity,
         network_memory::build_network_memory_signal,
-        osint::{PlatformCheckResult, build_social_presence_matrix},
-        risk_factors::derive_risk_factors,
+        osint::{PlatformCheckResult, SCAM_MENTIONS_FOUND, build_social_presence_matrix},
+        risk_factors::{derive_risk_factors, not_enough_information_factor},
         sellers::{create_seller, find_seller},
         signals::{
             build_b2b_claude_signals, build_b2b_company_age_signal,
@@ -380,7 +380,14 @@ pub async fn save_and_build_response(
     };
     let (confidence_level, confidence_reasoning) = calculate_confidence(&data.signals);
 
-    let risk_factors = derive_risk_factors(&data.signals);
+    let mut risk_factors = derive_risk_factors(&data.signals);
+    // B2B: when Safely could check too little, say so (the score was
+    // already lifted to Moderate in build_b2b_analysis_path).
+    if data.is_b2b {
+        if let Some(note) = not_enough_information_factor(&data.signals) {
+            risk_factors.push(note);
+        }
+    }
     let risk_factors_json =
         to_value(&risk_factors).map_err(|e| AnalyzeError::SerializationFailed(e.to_string()))?;
 
@@ -615,6 +622,37 @@ fn b2b_company_age(signals: &[Signal]) -> Option<String> {
         .filter(|v| v != "Not provided" && v != "Invalid date")
 }
 
+/// Points one warning adds to a B2B score. Strong scam signs count
+/// more, weak ones less (every warning used to count the same 15):
+/// - 25: a price that doesn't add up, contact details that can't be
+///   confirmed, payment demands, a company that doesn't look real, and
+///   the company's name found next to "scam" words online;
+/// - 10: no verified badge, no order details at all, a hidden founding
+///   year - common on honest listings too;
+/// - 15: every other warning.
+/// Only "caution" results count here; "bad" results (fake website,
+/// scam reports) are handled by the risk factors instead.
+fn warning_points(signal: &Signal) -> i16 {
+    if signal.signal_type != "caution" {
+        return 0;
+    }
+    match signal.label.as_str() {
+        "Price analysis"
+        | "Contact info"
+        | "Advance payment request"
+        | "Overall legitimacy check" => 25,
+        "Social presence check" if signal.value == SCAM_MENTIONS_FOUND => 25,
+        "Platform verification" | "Listing completeness" => 10,
+        "Account age" if signal.value == "Not provided" => 10,
+        _ => 15,
+    }
+}
+
+/// The lowest score a B2B scan shows when Safely could check too little
+/// about the supplier (see not_enough_information_factor): the start of
+/// Moderate, so "nothing found" never reads as "Low risk".
+const NOT_ENOUGH_INFORMATION_FLOOR: i16 = 34;
+
 /// B2B risk score: warnings give the base score, and any "Serious"
 /// risk factor lifts it to at least the High band (67), +10 for each
 /// extra one. A "Pattern match" (compound) factor, e.g. full prepayment
@@ -810,11 +848,8 @@ pub async fn build_b2b_analysis_path(
         Vec::new()
     };
 
-    let caution_count = signals
-        .iter()
-        .filter(|s| s.signal_type == "caution")
-        .count();
-    let base_score = ((caution_count as i16) * 15).min(100) + (fraud_count as i16 * 5).min(20);
+    let warning_score: i16 = signals.iter().map(warning_points).sum();
+    let base_score = warning_score.min(100) + (fraud_count as i16 * 5).min(20);
     // Counting warnings alone treats a Western Union demand the same as
     // a missing field. Any "Serious" risk factor (legitimacy concern,
     // unsafe payment terms, a seller Safely already scored high-risk)
@@ -822,7 +857,10 @@ pub async fn build_b2b_analysis_path(
     let factors = derive_risk_factors(&signals);
     let serious_count = factors.iter().filter(|f| f.severity == "hard").count() as i16;
     let compound_count = factors.iter().filter(|f| f.severity == "compound").count() as i16;
-    let risk_score = b2b_risk_score(base_score, serious_count, compound_count);
+    let mut risk_score = b2b_risk_score(base_score, serious_count, compound_count);
+    if not_enough_information_factor(&signals).is_some() {
+        risk_score = risk_score.max(NOT_ENOUGH_INFORMATION_FLOOR);
+    }
 
     let overall_risk_notes = claude_result.overall_risk_notes.clone();
     Ok((
@@ -837,7 +875,94 @@ pub async fn build_b2b_analysis_path(
 
 #[cfg(test)]
 mod b2b_score_tests {
-    use super::b2b_risk_score;
+    use super::{b2b_risk_score, warning_points};
+    use crate::models::analysis::Signal;
+
+    fn sig(label: &str, value: &str, signal_type: &str) -> Signal {
+        Signal {
+            label: label.to_string(),
+            sub: String::new(),
+            value: value.to_string(),
+            signal_type: signal_type.to_string(),
+            category: String::new(),
+            check_type: String::new(),
+        }
+    }
+
+    #[test]
+    fn strong_warnings_count_more_than_weak_ones() {
+        assert_eq!(
+            warning_points(&sig("Price analysis", "suspiciously low", "caution")),
+            25
+        );
+        assert_eq!(
+            warning_points(&sig("Contact info", "Not confirmed", "caution")),
+            25
+        );
+        assert_eq!(
+            warning_points(&sig("Platform verification", "Unverified", "caution")),
+            10
+        );
+        assert_eq!(
+            warning_points(&sig(
+                "Listing completeness",
+                "0/9 fields provided",
+                "caution"
+            )),
+            10
+        );
+        assert_eq!(
+            warning_points(&sig("Account age", "Not provided", "caution")),
+            10
+        );
+        assert_eq!(
+            warning_points(&sig("Account age", "Founded this year", "caution")),
+            15
+        );
+        assert_eq!(
+            warning_points(&sig("Listing detail", "Vague", "caution")),
+            15
+        );
+        assert_eq!(
+            warning_points(&sig(
+                "Social presence check",
+                super::SCAM_MENTIONS_FOUND,
+                "caution"
+            )),
+            25
+        );
+        assert_eq!(
+            warning_points(&sig(
+                "Social presence check",
+                "No presence found",
+                "caution"
+            )),
+            15
+        );
+    }
+
+    #[test]
+    fn only_warnings_add_points() {
+        assert_eq!(warning_points(&sig("Price analysis", "normal", "good")), 0);
+        assert_eq!(
+            warning_points(&sig("Account age", "Not provided", "info")),
+            0
+        );
+        assert_eq!(warning_points(&sig("Domain check", "Suspicious", "bad")), 0);
+    }
+
+    #[test]
+    fn a_too_cheap_price_and_a_vague_listing_now_reach_moderate() {
+        let total: i16 = [
+            sig("Price analysis", "suspiciously low", "caution"),
+            sig("Listing detail", "Vague", "caution"),
+        ]
+        .iter()
+        .map(warning_points)
+        .sum();
+        assert_eq!(total, 40, "was 30 (Low) when every warning counted 15");
+        assert!(total >= 34);
+    }
 
     #[test]
     fn no_serious_factor_keeps_the_warning_score() {

@@ -1,5 +1,10 @@
 use crate::models::{analysis::Signal, risk_factors::RiskFactor};
-use crate::services::signals::{FULL_PREPAYMENT, REGULATED_NOT_MAKER};
+use crate::services::confidence::calculate_confidence;
+use crate::services::signals::{FULL_PREPAYMENT, REGULATED_NOT_MAKER, UNTRACEABLE_PAYMENT};
+
+/// The risk factor shown when Safely could check too little about a
+/// supplier to trust a low score (see not_enough_information_factor).
+pub const NOT_ENOUGH_INFORMATION: &str = "not_enough_information";
 
 /// True only for a genuinely young account/company - an age measured in
 /// days, weeks or months ("This month", "3 months"), or a company
@@ -28,18 +33,30 @@ fn is_flagged(signal: &Signal) -> bool {
     signal.signal_type == "caution" || signal.signal_type == "bad"
 }
 
-/// How many earlier Safely checks are needed before a high average
-/// score is treated as a Serious, network-confirmed problem.
-const MIN_PRIOR_CHECKS_FOR_SERIOUS: u32 = 3;
+/// How many scam reports from Safely users make the "Safely history"
+/// line a Serious problem. Two matches the seller's fraud-report line,
+/// which already calls 2 or more reports a "High risk seller".
+const MIN_REPORTS_FOR_SERIOUS: u32 = 2;
 
-/// Reads the number of earlier checks from the Safely history signal:
-/// "Checked once before" -> 1, "Checked 4 times before" -> 4,
-/// "New to Safely" -> 0. The old wording ("4 prior checks") is still
-/// understood. Returns 0 when no number can be found.
-fn prior_check_count(signal: &Signal) -> u32 {
+/// Reads the number from the "Safely history" line:
+/// "Reported once" -> 1, "Reported 3 times" -> 3, "No scam reports" -> 0.
+/// Older saved scans counted earlier checks instead ("Checked once
+/// before", "Checked 4 times before", "4 prior checks"); those are still
+/// read the same way. Returns 0 when no number can be found.
+fn history_count(signal: &Signal) -> u32 {
     let text = format!("{} {}", signal.value, signal.sub).to_lowercase();
-    if text.contains("checked once before") {
+    if text.contains("reported once") || text.contains("checked once before") {
         return 1;
+    }
+    if let Some(pos) = text.find("reported ") {
+        let after = &text[pos + "reported ".len()..];
+        if let Some(n) = after
+            .split_whitespace()
+            .next()
+            .and_then(|w| w.parse::<u32>().ok())
+        {
+            return n;
+        }
     }
     let marker = if text.contains(" times before") {
         " times before"
@@ -73,11 +90,34 @@ fn evidence_or(signal: &Signal, fallback: &str) -> String {
 /// text to decide severity - this is what makes these rules genuinely
 /// platform-agnostic, since OLX and B2B use different literal words
 /// ("Detected" vs "Not confirmed") for the same underlying bad outcome.
+///
+/// On B2B scans the severity decides the lowest score (b2b_risk_score
+/// in analysis.rs): any Serious factor -> at least 67 (High), any
+/// Pattern match -> at least 45 (Moderate).
 pub fn derive_risk_factors(signals: &[Signal]) -> Vec<RiskFactor> {
     let mut factors = Vec::new();
     let mut covered_labels: Vec<&str> = Vec::new();
 
     // Hard factors
+
+    // The buyer is not on the marketplace's real website (a look-alike
+    // address such as "a1ibaba.com"). Anything paid or typed in here
+    // can be stolen, whatever the supplier looks like.
+    if let Some(s) = find_signal(signals, "Domain check") {
+        if is_flagged(s) {
+            factors.push(RiskFactor {
+                severity: "hard".to_string(),
+                name: "fake_marketplace_domain".to_string(),
+                description: evidence_or(
+                    s,
+                    "This page is not on the marketplace's real website. It may be a fake copy made to take payments or logins.",
+                ),
+                contributing_signals: vec!["Domain check".to_string()],
+            });
+            covered_labels.push("Domain check");
+        }
+    }
+
     if let Some(s) = find_signal(signals, "Overall legitimacy check") {
         if is_flagged(s) {
             // A very young account on top of a legitimacy concern is a
@@ -107,19 +147,20 @@ pub fn derive_risk_factors(signals: &[Signal]) -> Vec<RiskFactor> {
             covered_labels.push("Overall legitimacy check");
         }
     }
-    // Safely's own past scores only become a Serious flag when there is
-    // a real track record (several earlier checks). A single earlier
-    // scan is just Safely's own opinion from one run - it may even have
-    // been a wrong result - so on its own it stays "Worth noting" at
-    // most (it falls through to the soft factors below).
+
+    // Scam reports from Safely users. Two or more reports make this a
+    // Serious problem. A single report stays "Worth noting" (it falls
+    // through to the soft factors below) - one person's report could be
+    // a mistake or a dispute.
     if let Some(s) = find_signal(signals, "Safely history") {
-        let enough_history = prior_check_count(s) >= MIN_PRIOR_CHECKS_FOR_SERIOUS;
-        if s.signal_type == "bad" && enough_history {
+        if is_flagged(s) && history_count(s) >= MIN_REPORTS_FOR_SERIOUS {
             factors.push(RiskFactor {
                 severity: "hard".to_string(),
                 name: "network_confirmed_high_risk_seller".to_string(),
-                description: "Safely's own network has previously scored this seller as high-risk."
-                    .to_string(),
+                description: evidence_or(
+                    s,
+                    "Several Safely users have reported this seller as a scam.",
+                ),
                 contributing_signals: vec!["Safely history".to_string()],
             });
             covered_labels.push("Safely history");
@@ -133,9 +174,13 @@ pub fn derive_risk_factors(signals: &[Signal]) -> Vec<RiskFactor> {
         .or_else(|| find_signal(signals, "Listing detail"));
     let image_auth = find_signal(signals, "Image authenticity");
     if let (Some(d), Some(i)) = (duplicate, image_auth) {
-        // Both must be real problems. An image that was simply not
-        // checked (images switched off) is "info" and does not count.
-        if is_flagged(d) && is_flagged(i) {
+        // The listing must be flagged, and the photos must be ones
+        // Claude looked at but could not confirm ("not verified" - an
+        // "info" card on its own). Photos that were simply not checked
+        // (images switched off) never count. is_flagged keeps older
+        // saved results, where "not verified" was a caution, working.
+        let photos_unconfirmed = i.value.eq_ignore_ascii_case("not verified") || is_flagged(i);
+        if is_flagged(d) && photos_unconfirmed {
             factors.push(RiskFactor {
                 severity: "compound".to_string(),
                 name: "likely_counterfeit_or_nonexistent_product".to_string(),
@@ -147,12 +192,21 @@ pub fn derive_risk_factors(signals: &[Signal]) -> Vec<RiskFactor> {
         }
     }
 
+    // Pressure to hurry + payment before delivery. When the payment is
+    // untraceable (Western Union, MoneyGram, crypto...), that payment is
+    // Serious on its own, so the pair is Serious too - adding pressure
+    // must never make a supplier look safer than the payment alone.
     let urgency = find_signal(signals, "Urgency language");
     let advance_payment = find_signal(signals, "Advance payment request");
     if let (Some(u), Some(a)) = (urgency, advance_payment) {
         if is_flagged(u) && is_flagged(a) {
+            let severity = if a.value == UNTRACEABLE_PAYMENT {
+                "hard"
+            } else {
+                "compound"
+            };
             factors.push(RiskFactor {
-                severity: "compound".to_string(),
+                severity: severity.to_string(),
                 name: "advance_fee_scam_pattern".to_string(),
                 description: "This listing combines pressure/urgency language with a request for payment before delivery - a classic advance-fee scam pattern.".to_string(),
                 contributing_signals: vec!["Urgency language".to_string(), "Advance payment request".to_string()],
@@ -215,6 +269,35 @@ pub fn derive_risk_factors(signals: &[Signal]) -> Vec<RiskFactor> {
         }
     }
 
+    // A price that doesn't add up (far too low, or otherwise
+    // implausible) AND the full price paid before shipment: the most
+    // common supplier scam - "cheap price, pay first". Only reached when
+    // the payment is not already covered by a stronger rule above
+    // (untraceable method, urgency, or a brand-new company).
+    if let (Some(p), Some(a)) = (find_signal(signals, "Price analysis"), advance_payment) {
+        if is_flagged(p)
+            && is_flagged(a)
+            && !covered_labels.contains(&"Advance payment request")
+            && !covered_labels.contains(&"Price analysis")
+        {
+            factors.push(RiskFactor {
+                severity: "compound".to_string(),
+                name: "implausible_price_with_full_prepayment".to_string(),
+                description: format!(
+                    "{} {} Paying everything upfront at a price that doesn't add up is the most common supplier scam.",
+                    evidence_or(p, "The price does not look right for this product."),
+                    evidence_or(a, "The supplier asks for full payment before shipment."),
+                ),
+                contributing_signals: vec![
+                    "Price analysis".to_string(),
+                    "Advance payment request".to_string(),
+                ],
+            });
+            covered_labels.push("Price analysis");
+            covered_labels.push("Advance payment request");
+        }
+    }
+
     // A licence-only product (botox, fillers, prescription medicine)
     // sold by a company that calls itself the maker of another company's
     // brand: a combined flag. Fakes of these products are dangerous, and
@@ -250,6 +333,28 @@ pub fn derive_risk_factors(signals: &[Signal]) -> Vec<RiskFactor> {
     factors
 }
 
+/// Shown on a B2B scan when Safely could check too little about the
+/// supplier: most checks came back empty because the page shows almost
+/// nothing (no founding year, no details, nothing to verify). A low
+/// score would then only mean "nothing was found", not "this supplier
+/// is fine", so the scan is lifted to Moderate (see analysis.rs) and
+/// this note says why. Uses the same count as the confidence level.
+pub fn not_enough_information_factor(signals: &[Signal]) -> Option<RiskFactor> {
+    let (level, reasoning) = calculate_confidence(signals);
+    if level != "low" {
+        return None;
+    }
+    Some(RiskFactor {
+        severity: "soft".to_string(),
+        name: NOT_ENOUGH_INFORMATION.to_string(),
+        description: format!(
+            "Safely could check very little about this supplier. {} With this little information, a low score does not mean the supplier is safe - check them carefully yourself before paying.",
+            reasoning
+        ),
+        contributing_signals: Vec::new(),
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -267,6 +372,145 @@ mod tests {
 
     fn find<'a>(f: &'a [RiskFactor], name: &str) -> Option<&'a RiskFactor> {
         f.iter().find(|x| x.name == name)
+    }
+
+    #[test]
+    fn implausible_price_with_full_prepayment_is_a_pattern_match() {
+        let s = vec![
+            sig(
+                "Price analysis",
+                "suspiciously low",
+                "caution",
+                "Far below market.",
+            ),
+            sig(
+                "Advance payment request",
+                FULL_PREPAYMENT,
+                "caution",
+                "100% before shipment.",
+            ),
+        ];
+        let f = derive_risk_factors(&s);
+        assert_eq!(f.len(), 1, "one combined factor");
+        let c = find(&f, "implausible_price_with_full_prepayment").unwrap();
+        assert_eq!(c.severity, "compound");
+        assert!(
+            c.description
+                .starts_with("Far below market. 100% before shipment.")
+        );
+    }
+
+    #[test]
+    fn implausible_price_never_weakens_an_untraceable_payment() {
+        let s = vec![
+            sig("Price analysis", "suspiciously low", "caution", ""),
+            sig(
+                "Advance payment request",
+                UNTRACEABLE_PAYMENT,
+                "caution",
+                "",
+            ),
+        ];
+        let f = derive_risk_factors(&s);
+        assert_eq!(find(&f, "unsafe_payment_terms").unwrap().severity, "hard");
+        assert!(find(&f, "implausible_price_with_full_prepayment").is_none());
+        assert_eq!(find(&f, "price_analysis_flagged").unwrap().severity, "soft");
+    }
+
+    #[test]
+    fn normal_price_with_full_prepayment_stays_worth_noting() {
+        let s = vec![
+            sig("Price analysis", "normal", "good", ""),
+            sig("Advance payment request", FULL_PREPAYMENT, "caution", ""),
+        ];
+        let f = derive_risk_factors(&s);
+        assert!(find(&f, "implausible_price_with_full_prepayment").is_none());
+        assert_eq!(
+            find(&f, "advance_payment_request_flagged")
+                .unwrap()
+                .severity,
+            "soft"
+        );
+    }
+
+    #[test]
+    fn little_information_gives_the_not_enough_information_note() {
+        let mostly_empty = vec![
+            sig("Account age", "Not provided", "caution", ""),
+            sig("Seller website check", "No website found", "info", ""),
+            sig("Platform verification", "Not offered", "info", ""),
+            sig("Image authenticity", "Not checked", "info", ""),
+            sig(
+                "Listing completeness",
+                "Not shown on this platform",
+                "info",
+                "",
+            ),
+            sig("Price analysis", "normal", "good", ""),
+        ];
+        let f = not_enough_information_factor(&mostly_empty).expect("note");
+        assert_eq!(f.name, NOT_ENOUGH_INFORMATION);
+        assert_eq!(f.severity, "soft");
+        assert!(f.description.contains("Based on 1 of 6 signals"));
+
+        let full: Vec<Signal> = (0..9)
+            .map(|i| sig("x", &format!("v{i}"), "good", ""))
+            .collect();
+        assert!(not_enough_information_factor(&full).is_none());
+    }
+
+    #[test]
+    fn fake_marketplace_domain_is_serious() {
+        let f = derive_risk_factors(&[sig(
+            "Domain check",
+            "Suspicious",
+            "bad",
+            "This does not match Alibaba's real domain.",
+        )]);
+        assert_eq!(f.len(), 1, "one factor, not also a soft one");
+        let d = find(&f, "fake_marketplace_domain").unwrap();
+        assert_eq!(d.severity, "hard");
+        assert_eq!(d.description, "This does not match Alibaba's real domain.");
+    }
+
+    #[test]
+    fn real_marketplace_domain_is_never_a_risk_factor() {
+        let f = derive_risk_factors(&[sig("Domain check", "Verified", "good", "")]);
+        assert!(f.is_empty());
+    }
+
+    #[test]
+    fn urgency_plus_untraceable_payment_is_serious_not_just_a_pattern() {
+        let s = vec![
+            sig("Urgency language", "Detected", "caution", ""),
+            sig(
+                "Advance payment request",
+                UNTRACEABLE_PAYMENT,
+                "caution",
+                "Western Union only.",
+            ),
+        ];
+        let f = derive_risk_factors(&s);
+        assert_eq!(f.len(), 1, "one combined factor");
+        let p = find(&f, "advance_fee_scam_pattern").unwrap();
+        assert_eq!(
+            p.severity, "hard",
+            "pressure on top of Western Union must not look safer than Western Union alone"
+        );
+    }
+
+    #[test]
+    fn urgency_plus_full_prepayment_stays_a_pattern_match() {
+        let s = vec![
+            sig("Urgency language", "Detected", "caution", ""),
+            sig("Advance payment request", FULL_PREPAYMENT, "caution", ""),
+        ];
+        let f = derive_risk_factors(&s);
+        assert_eq!(f.len(), 1);
+        assert_eq!(
+            find(&f, "advance_fee_scam_pattern").unwrap().severity,
+            "compound"
+        );
     }
 
     #[test]
@@ -394,13 +638,17 @@ mod tests {
     }
 
     #[test]
-    fn urgency_plus_payment_stays_one_compound_factor() {
+    fn urgency_plus_older_detected_payment_stays_one_compound_factor() {
+        // Consumer scans (OLX) write "Detected" for a payment request.
         let s = vec![
             sig("Urgency language", "Detected", "caution", ""),
             sig("Advance payment request", "Detected", "caution", ""),
         ];
         let f = derive_risk_factors(&s);
-        assert!(find(&f, "advance_fee_scam_pattern").is_some());
+        assert_eq!(
+            find(&f, "advance_fee_scam_pattern").unwrap().severity,
+            "compound"
+        );
         assert!(find(&f, "unsafe_payment_terms").is_none());
         assert_eq!(f.len(), 1);
     }
@@ -452,21 +700,41 @@ mod tests {
     }
 
     #[test]
-    fn one_prior_scan_is_never_serious() {
-        let signals = vec![sig(
+    fn one_scam_report_is_worth_noting_not_serious() {
+        let s = vec![sig(
             "Safely history",
-            "1 prior checks",
+            "Reported once",
             "bad",
-            "Average risk score: 67",
+            "1 Safely user has reported this seller as a scam.",
         )];
-        let f = derive_risk_factors(&signals);
+        let f = derive_risk_factors(&s);
         assert!(find(&f, "network_confirmed_high_risk_seller").is_none());
         let soft = find(&f, "safely_history_flagged").expect("still worth noting");
         assert_eq!(soft.severity, "soft");
     }
 
     #[test]
-    fn several_high_prior_scans_are_serious() {
+    fn two_or_more_scam_reports_are_serious() {
+        for value in ["Reported 2 times", "Reported 5 times"] {
+            let s = vec![sig(
+                "Safely history",
+                value,
+                "bad",
+                "Safely users have reported this seller as a scam.",
+            )];
+            let f = derive_risk_factors(&s);
+            let h = find(&f, "network_confirmed_high_risk_seller").expect(value);
+            assert_eq!(h.severity, "hard");
+            assert_eq!(
+                h.description,
+                "Safely users have reported this seller as a scam."
+            );
+            assert_eq!(f.len(), 1, "not also counted as a soft factor");
+        }
+    }
+
+    #[test]
+    fn older_saved_scans_with_several_checks_are_still_serious() {
         let signals = vec![sig(
             "Safely history",
             "4 prior checks. Average risk score: 72",
@@ -483,38 +751,21 @@ mod tests {
     }
 
     #[test]
-    fn reads_the_number_of_earlier_checks_in_every_wording() {
-        let count = |v: &str| prior_check_count(&sig("Safely history", v, "info", ""));
+    fn reads_the_number_in_every_wording() {
+        let count = |v: &str| history_count(&sig("Safely history", v, "info", ""));
+        assert_eq!(count("No scam reports"), 0);
+        assert_eq!(count("Reported once"), 1);
+        assert_eq!(count("Reported 3 times"), 3);
+        assert_eq!(count("Reported 12 times"), 12);
         assert_eq!(count("New to Safely"), 0);
         assert_eq!(count("Checked once before"), 1);
         assert_eq!(count("Checked 2 times before"), 2);
-        assert_eq!(count("Checked 12 times before"), 12);
         assert_eq!(count("3 prior checks"), 3, "old wording still works");
     }
 
     #[test]
-    fn two_high_scans_stay_worth_noting_three_become_serious() {
-        let two = vec![sig("Safely history", "Checked 2 times before", "bad", "")];
-        assert!(
-            find(
-                &derive_risk_factors(&two),
-                "network_confirmed_high_risk_seller"
-            )
-            .is_none()
-        );
-        let three = vec![sig("Safely history", "Checked 3 times before", "bad", "")];
-        assert!(
-            find(
-                &derive_risk_factors(&three),
-                "network_confirmed_high_risk_seller"
-            )
-            .is_some()
-        );
-    }
-
-    #[test]
-    fn new_to_safely_is_never_a_risk_factor() {
-        let s = vec![sig("Safely history", "New to Safely", "info", "")];
+    fn no_scam_reports_is_never_a_risk_factor() {
+        let s = vec![sig("Safely history", "No scam reports", "info", "")];
         assert!(derive_risk_factors(&s).is_empty());
     }
 
@@ -522,7 +773,7 @@ mod tests {
     fn vague_b2b_listing_plus_flagged_images_is_one_compound_factor() {
         let s = vec![
             sig("Listing detail", "Vague", "caution", "v"),
-            sig("Image authenticity", "Unverifiable", "caution", "i"),
+            sig("Image authenticity", "not verified", "info", "i"),
         ];
         let f = derive_risk_factors(&s);
         assert_eq!(f.len(), 1);
@@ -531,6 +782,15 @@ mod tests {
             c.contributing_signals,
             vec!["Listing detail", "Image authenticity"]
         );
+    }
+
+    #[test]
+    fn unconfirmed_photos_alone_are_not_a_risk_factor() {
+        let s = vec![
+            sig("Listing detail", "Specific", "good", ""),
+            sig("Image authenticity", "not verified", "info", "i"),
+        ];
+        assert!(derive_risk_factors(&s).is_empty());
     }
 
     #[test]

@@ -448,13 +448,18 @@ pub fn build_b2b_verification_signal(supplier: &B2bSupplierProfile) -> Signal {
 /// a genuinely new company is not inherently fraudulent, but it's a
 /// real, honest anomaly worth noting, the same logic already applied
 /// to OLX account age.
+///
+/// A company that gives no founding year at all is a small warning:
+/// scam companies often leave it out so buyers can't see how new they
+/// are. It counts only 10 points (see warning_points in analysis.rs),
+/// less than other warnings, since honest suppliers leave it out too.
 pub fn build_b2b_company_age_signal(supplier: &B2bSupplierProfile) -> Signal {
     let Some(year_str) = supplier.year_established.as_deref() else {
         return Signal {
             label: "Account age".to_string(),
-            sub: "No founding year was provided by this company.".to_string(),
+            sub: "This company does not say when it was founded, so you cannot tell how new it is. Ask the supplier for its founding year and business licence.".to_string(),
             value: "Not provided".to_string(),
-            signal_type: "info".to_string(),
+            signal_type: "caution".to_string(),
             category: "company".to_string(),
             check_type: "anomaly".to_string(),
         };
@@ -794,6 +799,12 @@ fn b2b_payment_signal(advance: &Finding, untraceable: &Finding) -> Signal {
 /// is switched off (IMAGE_ANALYSIS_ENABLED in claude.rs), Claude never
 /// sees the photos, so "not verified" says nothing about the seller -
 /// the card then reads "Not checked" and does not count as a caution.
+///
+/// With image checking on, "original" is good. "not verified" means
+/// Claude could not confirm the photos are the supplier's own - most
+/// real suppliers use catalogue photos, so on its own this is only
+/// "info" and adds no points. Together with a vague or duplicate
+/// listing it still makes a combined flag (see risk_factors.rs).
 fn image_authenticity_signal(assessment: &ImageAssessment) -> Signal {
     if !IMAGE_ANALYSIS_ENABLED {
         return Signal {
@@ -812,7 +823,7 @@ fn image_authenticity_signal(assessment: &ImageAssessment) -> Signal {
         signal_type: if assessment.verdict == "original" {
             "good".to_string()
         } else {
-            "caution".to_string()
+            "info".to_string()
         },
         category: "listing".to_string(),
         check_type: "existence".to_string(),
@@ -1035,6 +1046,23 @@ mod b2b_signal_tests {
         }
     }
 
+    #[test]
+    fn unconfirmed_photos_are_info_not_a_warning() {
+        if !IMAGE_ANALYSIS_ENABLED {
+            return;
+        }
+        let s = build_b2b_claude_signals(&analysis(true, true));
+        let i = get(&s, "Image authenticity");
+        assert_eq!(
+            (i.value.as_str(), i.signal_type.as_str()),
+            ("not verified", "info")
+        );
+        let mut a = analysis(true, true);
+        a.image_authenticity.verdict = "original".into();
+        let s = build_b2b_claude_signals(&a);
+        assert_eq!(get(&s, "Image authenticity").signal_type, "good");
+    }
+
     fn supplier(platform: &str, verified: bool, tier: Option<&str>) -> B2bSupplierProfile {
         B2bSupplierProfile {
             company_name: Some("Acme".into()),
@@ -1053,6 +1081,16 @@ mod b2b_signal_tests {
             company_description: None,
             website_url: None,
         }
+    }
+
+    #[test]
+    fn a_hidden_founding_year_is_a_small_warning() {
+        let s = build_b2b_company_age_signal(&supplier("alibaba", true, None));
+        assert_eq!(
+            (s.value.as_str(), s.signal_type.as_str()),
+            ("Not provided", "caution")
+        );
+        assert!(s.sub.contains("does not say when it was founded"));
     }
 
     #[test]

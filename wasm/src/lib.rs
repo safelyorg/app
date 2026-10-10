@@ -48,10 +48,12 @@ pub fn risk_label(level: &str) -> String {
     }
 }
 
+/// The line under the risk label. Low risk never says "safe": no check
+/// can promise that, and the buyer should stay careful.
 #[wasm_bindgen]
 pub fn risk_desc(desc: &str) -> String {
     match desc {
-        "low" => "Safe to proceed".into(),
+        "low" => "No major warnings found".into(),
         "caution" => "Review before proceeding".into(),
         _ => "High risk detected".into(),
     }
