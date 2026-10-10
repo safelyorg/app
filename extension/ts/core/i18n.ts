@@ -201,6 +201,9 @@
       "Compre só do dono da marca ou de um distribuidor autorizado",
     "This product needs a licence or prescription, and fakes of it can be dangerous. Ask the supplier for a letter from the brand owner showing they are an authorised distributor, and check it with the brand owner directly. You may also need your own import licence.":
       "Este produto exige licença ou receita, e versões falsas podem ser perigosas. Peça ao fornecedor uma carta do dono da marca mostrando que ele é distribuidor autorizado e confirme diretamente com o dono da marca. Você também pode precisar da sua própria licença de importação.",
+    "Check the licences before you order": "Confira as licenças antes de comprar",
+    "This product needs a licence to sell or import. Make sure you are allowed to import it into your country, and ask the supplier for its export licence and any end-user certificate the sale needs before you pay.":
+      "Este produto exige licença para ser vendido ou importado. Confirme que você pode importá-lo para o seu país e peça ao fornecedor a licença de exportação e qualquer certificado de usuário final exigido pela venda antes de pagar.",
 
     // ---------- check names (signal labels) ----------
     "Domain check": "Verificação de domínio",

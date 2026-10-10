@@ -520,12 +520,19 @@
         "Don't pay everything before shipment",
         "This supplier asks for the full price before the goods are shipped. Try to pay the balance only against a copy of the Bill of Lading, or use a Letter of Credit, and pay only to a bank account in the company's own name.",
     ];
-    // Shown first when the product needs a licence or prescription (botox,
-    // fillers, prescription medicines). The backend adds a "Regulated
-    // product" card only for these products.
+    // Shown first when the product needs a licence or prescription and the
+    // seller is not its maker (the backend marks it "Licence needed, not
+    // the maker"), e.g. botox sold by a trading company.
     const B2B_REGULATED_PRODUCT_CHECK = [
         "Buy only from the brand owner or an authorised distributor",
         "This product needs a licence or prescription, and fakes of it can be dangerous. Ask the supplier for a letter from the brand owner showing they are an authorised distributor, and check it with the brand owner directly. You may also need your own import licence.",
+    ];
+    // Shown first when the product needs a licence but the seller makes it
+    // itself (the backend marks it "Licence needed"), e.g. a defence
+    // manufacturer selling its own riot-control equipment.
+    const B2B_LICENCE_CHECK = [
+        "Check the licences before you order",
+        "This product needs a licence to sell or import. Make sure you are allowed to import it into your country, and ask the supplier for its export licence and any end-user certificate the sale needs before you pay.",
     ];
     // Shown first when the company offers several classic bait products
     // of fake commodity deals (ICUMSA 45 sugar, EN590 diesel, Urea 46...).
@@ -547,9 +554,14 @@
             : payment.value === "Full prepayment"
                 ? [B2B_FULL_PREPAYMENT_CHECK]
                 : [B2B_RISKY_PAYMENT_CHECK];
-        const regulatedCheck = isB2b && signals.some((s) => s.label === "Regulated product" && s.type === "caution")
-            ? [B2B_REGULATED_PRODUCT_CHECK]
-            : [];
+        const regulated = isB2b
+            ? signals.find((s) => s.label === "Regulated product" && s.type === "caution")
+            : undefined;
+        const regulatedCheck = !regulated
+            ? []
+            : regulated.value === "Licence needed, not the maker"
+                ? [B2B_REGULATED_PRODUCT_CHECK]
+                : [B2B_LICENCE_CHECK];
         const commodityCheck = isB2b &&
             signals.some((s) => s.label === "Product range" && s.value === "Commodity scam pattern")
             ? [B2B_COMMODITY_CHECK]

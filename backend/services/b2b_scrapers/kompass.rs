@@ -7,6 +7,22 @@ fn text_of(el: &ElementRef) -> String {
     el.text().collect::<Vec<_>>().join(" ")
 }
 
+/// Texts Kompass shows in place of a value it hides from free visitors
+/// ("Information available as an option" links to its paid plan), or
+/// that only say nothing was declared. None of them is a real value.
+const HIDDEN_VALUE_TEXTS: &[&str] = &[
+    "information available as an option",
+    "not declared",
+    "website available",
+    "phone number available",
+    "not provided",
+];
+
+fn is_hidden_value(text: &str) -> bool {
+    let lower = text.trim().to_lowercase();
+    HIDDEN_VALUE_TEXTS.iter().any(|h| lower == *h)
+}
+
 fn clean_optional_text(raw: &str) -> Option<String> {
     let trimmed: String = raw.split_whitespace().collect::<Vec<_>>().join(" ");
     if trimmed.is_empty() {
@@ -56,7 +72,7 @@ fn find_table_value(document: &Html, table_selector: &str, label: &str) -> Optio
             };
             let row_label = text_of(&th).trim().to_string();
             if row_label.eq_ignore_ascii_case(label) {
-                return clean_optional_text(&text_of(&td));
+                return clean_optional_text(&text_of(&td)).filter(|v| !is_hidden_value(v));
             }
         }
     }
@@ -124,6 +140,63 @@ fn parse_location(document: &Html) -> Option<String> {
         (Some(l), None) => Some(l),
         (None, None) => None,
     }
+}
+
+/// "Founded in 2005" from the page header - shown to everyone, while the
+/// "Year established" table rows are often hidden behind the paid plan.
+fn parse_founding_year(document: &Html) -> Option<String> {
+    let selector = Selector::parse(".dateFondation").ok()?;
+    let text = text_of(&document.select(&selector).next()?);
+    text.split(|c: char| !c.is_ascii_digit())
+        .find(|n| n.len() == 4)
+        .filter(|n| matches!(n.parse::<i32>(), Ok(1800..=2100)))
+        .map(str::to_string)
+}
+
+/// Start of the address line put in front of the company description,
+/// the same as on ExportHub, b2bmap and TradeWheel.
+const ADDRESS_PREFIX: &str = "Address: ";
+
+/// The full street address from the company page's structured data
+/// (schema.org Organization). The visible header only shows the region
+/// and postcode ("Gyeonggi-do 14558"), but the structured data has the
+/// street too: "80 Jomaru-ro 385beon-gil, Wonmi-gu, Bucheon-si,
+/// Gyeonggi-do 14558, South Korea".
+fn parse_street_address(document: &Html) -> Option<String> {
+    let selector = Selector::parse(r#"script[type="application/ld+json"]"#).ok()?;
+    let country = Selector::parse("span[itemprop=addressCountry]")
+        .ok()
+        .and_then(|s| document.select(&s).next())
+        .map(|el| text_of(&el))
+        .and_then(|t| clean_optional_text(&t));
+    for script in document.select(&selector) {
+        let raw = script.text().collect::<String>();
+        let Ok(json) = serde_json::from_str::<serde_json::Value>(raw.trim()) else {
+            continue;
+        };
+        let Some(address) = json.get("address") else {
+            continue;
+        };
+        let field = |key: &str| {
+            address
+                .get(key)
+                .and_then(|v| v.as_str())
+                .and_then(clean_optional_text)
+        };
+        let Some(street) = field("streetAddress") else {
+            continue;
+        };
+        let region = match (field("addressLocality"), field("postalCode")) {
+            (Some(l), Some(p)) => Some(format!("{l} {p}")),
+            (l, p) => l.or(p),
+        };
+        let parts: Vec<String> = [Some(street), region, country.clone()]
+            .into_iter()
+            .flatten()
+            .collect();
+        return Some(parts.join(", "));
+    }
+    None
 }
 
 /// The real, ungated phone number - the input's id embeds the
@@ -278,7 +351,8 @@ impl B2bScraper for KompassScraper {
                 &document,
                 "table.tableInfoPlus",
                 "Year established",
-            ),
+            )
+            .or_else(|| parse_founding_year(&document)),
             country: parse_location(&document),
             platform_verified_badge,
             employee_count: find_table_value(&document, "table.tableInfoPlus", "No employees"),
@@ -357,7 +431,8 @@ impl B2bScraper for KompassScraper {
         }
         if supplier.year_established.is_none() {
             supplier.year_established =
-                find_table_value(&document, "table.tableInfoPlus", "Year established");
+                find_table_value(&document, "table.tableInfoPlus", "Year established")
+                    .or_else(|| parse_founding_year(&document));
         }
         if supplier.contact_name.is_none() {
             supplier.contact_name = parse_first_executive_name(&document);
@@ -371,6 +446,21 @@ impl B2bScraper for KompassScraper {
         if supplier.badge_honorific.is_none() {
             supplier.badge_honorific =
                 parse_membership_tier(&document).or_else(|| parse_business_type_tags(&document));
+        }
+        // The street address goes first in the description, so the
+        // legitimacy check sees it (only the region is shown elsewhere).
+        if let Some(address) = parse_street_address(&document) {
+            let has_address = supplier
+                .company_description
+                .as_deref()
+                .is_some_and(|d| d.starts_with(ADDRESS_PREFIX));
+            if !has_address {
+                let line = format!("{ADDRESS_PREFIX}{}.", address.trim_end_matches('.'));
+                supplier.company_description = Some(match supplier.company_description.take() {
+                    Some(d) => format!("{line}\n{d}"),
+                    None => line,
+                });
+            }
         }
         if !supplier.platform_verified_badge {
             supplier.platform_verified_badge = Selector::parse("#isKompassYear .text")
@@ -855,5 +945,83 @@ mod tests {
             s.country.as_deref(),
             Some("Shuyang County,Jiangsu Province, China")
         );
+    }
+
+    // Trimmed from the real LOTUS INTERNATIONAL company page (Oct 2026):
+    // employees and year hidden behind the paid plan, the street address
+    // only in the structured data.
+    const LOTUS_COMPANY: &str = r##"<html><head>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"Organization","name":"LOTUS INTERNATIONAL CO.,LTD","address":{"@type":"PostalAddress","streetAddress":"80 Jomaru-ro 385beon-gil, Wonmi-gu, Bucheon-si","addressLocality":"Gyeonggi-do","postalCode":"14558","addressCountry":"KR"},"telephone":"677 8445","foundingDate":"2005"}</script>
+</head><body>
+<h1 itemprop="name" class="titleGeneral">LOTUS INTERNATIONAL CO.,LTD<span class="titleGMini">(Protective and safety work clothing, by use<span class="virgule">,</span>Gyeonggi-do)</span></h1>
+<div class="rowHead"><div id="isKompassYear" class="isKompassYear" title=""><span class="text">Verified company</span></div><span class="tag tagOrange">Manufacturer</span></div>
+<div class="rowHead">
+  <div itemprop="address" itemscope itemtype="http://schema.org/PostalAddress" class="addressCoordinates"><div class="blockAddress"><div class="blockText">
+    <span itemprop="addressLocality">Gyeonggi-do</span>  <span itemprop="postalCode">14558</span><span class="tiret">-</span>
+    <span class="countryText" itemprop="addressCountry">South Korea</span>
+  </div></div></div>
+  <div class="dateFondation">Founded in<feature:configPerCountry countryCode="WW" fieldName="creationYear">
+      2005</feature:configPerCountry></div>
+</div>
+<div id="description" class="company-activities description-text" itemprop="description">Defense Equipment, Ballistic Protection<br> <strong>#Company Introduction</strong><br> LOTUS INTERNATIONAL CO., LTD is a South Korean company.</div>
+<table class="tableInfoPlus">
+  <tr class="trWebSite"><th>Discover more on our Website</th><td class="listWww"><a class=" no-information" href="https://www.kompass.com/login/easybusiness/ ">Website available</a></td></tr>
+  <tr class="trAdhesion"><th>Membership</th><td><a href="https://www.solutions.kompass.com/contactus/booster/" class="infoJuridicBooster">Booster</a></td></tr>
+  <tr><th>Year established</th><a class=" no-information" href="https://www.kompass.com/login/easybusiness/ ">Information available as an option</a></tr>
+  <tr><th>No employees (address)</th><td><a class=" no-information" href="https://www.kompass.com/login/easybusiness/ ">Information available as an option</a></td></tr>
+  <tr><th>No employees</th><td><a class=" no-information" href="https://www.kompass.com/login/easybusiness/ ">Information available as an option</a></td></tr>
+</table>
+</body></html>"##;
+
+    #[test]
+    fn lotus_hidden_values_are_not_counted_as_real_ones() {
+        let s = KompassScraper.parse_supplier(LOTUS_COMPANY, "u");
+        assert_eq!(
+            s.employee_count, None,
+            "'Information available as an option' is Kompass's paid-plan link, not an employee count"
+        );
+        assert_eq!(s.website_url, None, "'Website available' is not a website");
+        assert_eq!(
+            s.year_established.as_deref(),
+            Some("2005"),
+            "from 'Founded in 2005'"
+        );
+        assert_eq!(s.country.as_deref(), Some("Gyeonggi-do, South Korea"));
+    }
+
+    #[test]
+    fn lotus_street_address_goes_first_in_the_description() {
+        let s = KompassScraper
+            .enrich_from_company_profile(B2bSupplierProfile::default(), LOTUS_COMPANY);
+        let d = s.company_description.clone().expect("description");
+        assert!(
+            d.starts_with(
+                "Address: 80 Jomaru-ro 385beon-gil, Wonmi-gu, Bucheon-si, Gyeonggi-do 14558, South Korea.\n"
+            ),
+            "{d}"
+        );
+        assert!(d.contains("South Korean company"));
+        assert_eq!(s.year_established.as_deref(), Some("2005"));
+        assert_eq!(s.employee_count, None);
+
+        // Enriching twice never adds the address twice.
+        let again = KompassScraper.enrich_from_company_profile(s, LOTUS_COMPANY);
+        assert_eq!(
+            again
+                .company_description
+                .unwrap()
+                .matches("Address: ")
+                .count(),
+            1
+        );
+    }
+
+    #[test]
+    fn real_values_still_pass_the_hidden_value_filter() {
+        assert!(is_hidden_value(" Information available as an option "));
+        assert!(is_hidden_value("Not declared"));
+        assert!(!is_hidden_value("250-499 Employees"));
+        assert!(!is_hidden_value("1980"));
     }
 }

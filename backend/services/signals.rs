@@ -1235,6 +1235,23 @@ pub fn build_b2b_transparency_signal(supplier: &B2bSupplierProfile) -> Signal {
         ("Export percentage", supplier.export_percentage.is_some()),
     ];
     let filled_count = fields.iter().filter(|(_, present)| *present).count();
+
+    // Kompass never shows sales or export figures, and shows the
+    // employee count only to its paying members. "0 of 3" there says
+    // nothing about the supplier, so it reads like the listing card.
+    if filled_count == 0
+        && HIDDEN_COMPANY_FIGURES_PLATFORMS.contains(&supplier.source_platform.as_str())
+    {
+        return Signal {
+            label: "Company profile completeness".to_string(),
+            sub: "This platform does not show sales or export figures, and shows the employee count only to its paying members, so this is not counted against the supplier.".to_string(),
+            value: "Not shown on this platform".to_string(),
+            signal_type: "info".to_string(),
+            category: "company".to_string(),
+            check_type: "existence".to_string(),
+        };
+    }
+
     let signal_type = if filled_count >= 2 { "good" } else { "info" };
 
     let checklist = fields
@@ -1255,6 +1272,10 @@ pub fn build_b2b_transparency_signal(supplier: &B2bSupplierProfile) -> Signal {
         check_type: "existence".to_string(),
     }
 }
+
+/// Platforms that never show a company's sales or export figures and
+/// hide the employee count from free visitors.
+pub const HIDDEN_COMPANY_FIGURES_PLATFORMS: [&str; 1] = ["kompass"];
 
 /// Platforms that are supplier directories, not marketplaces: they
 /// never show price, MOQ, Incoterms, packaging or delivery details for
@@ -1762,6 +1783,29 @@ mod b2b_signal_tests {
             assert_eq!(s.signal_type, "info");
             assert_eq!(s.value, "Not shown on this platform");
         }
+    }
+
+    #[test]
+    fn kompass_hidden_company_figures_are_not_counted_against_the_supplier() {
+        let empty = |platform: &str| B2bSupplierProfile {
+            source_platform: platform.to_string(),
+            ..Default::default()
+        };
+        let s = build_b2b_transparency_signal(&empty("kompass"));
+        assert_eq!(
+            (s.value.as_str(), s.signal_type.as_str()),
+            ("Not shown on this platform", "info")
+        );
+        // Other platforms still show 0/3.
+        let s = build_b2b_transparency_signal(&empty("alibaba"));
+        assert_eq!(s.value, "0/3 fields provided");
+        // A Kompass company that does show its employees is counted.
+        let mut k = empty("kompass");
+        k.employee_count = Some("47 Employees".into());
+        assert_eq!(
+            build_b2b_transparency_signal(&k).value,
+            "1/3 fields provided"
+        );
     }
     use crate::services::claude::{ImageAssessment, PriceAssessment};
 
