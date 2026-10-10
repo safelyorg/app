@@ -1,4 +1,7 @@
-use crate::services::b2b_scrapers::{B2bListingProfile, B2bScraper, B2bSupplierProfile};
+use crate::services::b2b_scrapers::{
+    B2bListingProfile, B2bScraper, B2bSupplierProfile, SupplierRecord,
+};
+use chrono::{Datelike, Utc};
 use scraper::{Html, Selector};
 use std::collections::HashMap;
 
@@ -43,6 +46,11 @@ impl B2bScraper for ExporthubScraper {
             .or_else(|| select_text(&document, ".eh-seal-free"));
         let platform_verified_badge = false;
 
+        // The street address in the sidebar ("Meşrutiyet Mah. ... Şişli,
+        // Istanbul, Turkey"). Passed on in the description, so the check
+        // knows a street address is shown.
+        let company_description = sidebar_address(&document).map(|a| address_line(&a));
+
         B2bSupplierProfile {
             company_name,
             logo_url,
@@ -57,7 +65,7 @@ impl B2bScraper for ExporthubScraper {
             contact_name: None,
             contact_phone: None,
             badge_honorific,
-            company_description: None,
+            company_description,
             website_url: None,
         }
     }
@@ -96,6 +104,9 @@ impl B2bScraper for ExporthubScraper {
         };
 
         let image_urls = extract_image_urls(&document);
+        // ExportHub's automatic paragraph names the freight terms ("offer
+        // the following freight options; FOB, CFR").
+        let incoterms = incoterms_in(description.as_deref());
 
         B2bListingProfile {
             title,
@@ -107,10 +118,14 @@ impl B2bScraper for ExporthubScraper {
             payment_type,
             preferred_port: attrs.get("Shipment Port").cloned(),
             reference: None,
-            production_capacity: attrs.get("Production Capacity").cloned(),
+            // "High" and "Standard" are ExportHub's default choices, not
+            // real details, so they don't count as filled in.
+            production_capacity: attrs
+                .get("Production Capacity")
+                .and_then(|v| real_detail(v)),
             delivery_timeframe: attrs.get("Shipment Delivery Time").cloned(),
-            incoterms: None,
-            packaging_details: attrs.get("Packaging").cloned(),
+            incoterms,
+            packaging_details: attrs.get("Packaging").and_then(|v| real_detail(v)),
             listing_url: listing_url.to_string(),
             source_platform: "exporthub".to_string(),
         }
@@ -141,9 +156,13 @@ impl B2bScraper for ExporthubScraper {
     ) -> B2bSupplierProfile {
         let document = Html::parse_document(extended_html);
 
-        // This tab's description is the fuller version - prefer it.
+        // This tab's description is the fuller version - prefer it (the
+        // address line found earlier is kept in front of it).
         if let Some(description) = extract_first_real_paragraph(&document) {
-            supplier.company_description = Some(description);
+            supplier.company_description = Some(keep_address_line(
+                supplier.company_description.as_deref(),
+                description,
+            ));
         }
 
         // Structured fallback table - only fills fields still missing.
@@ -210,17 +229,23 @@ impl B2bScraper for ExporthubScraper {
         }
 
         // The listing page's "Lisboa, Portugal" is kept; the full street
-        // address is only a fallback when no country was found.
+        // address is only a fallback when no country was found. The street
+        // address always goes into the description when the listing page
+        // did not already give it.
+        let address = sidebar_address(&document);
         if supplier.country.is_none() {
-            if let Some(address) = select_text(&document, ".product-del_sidebar__comp-addrs") {
-                let cleaned = collapse_whitespace(
-                    address
-                        .trim_start_matches("Address:")
-                        .trim_start_matches("address:"),
-                );
-                if !cleaned.is_empty() {
-                    supplier.country = Some(cleaned);
-                }
+            supplier.country = address.clone();
+        }
+        if let Some(address) = address {
+            let has_address = supplier
+                .company_description
+                .as_deref()
+                .is_some_and(|d| d.starts_with(ADDRESS_PREFIX));
+            if !has_address {
+                supplier.company_description = Some(match supplier.company_description.take() {
+                    Some(d) => format!("{}\n{}", address_line(&address), d),
+                    None => address_line(&address),
+                });
             }
         }
 
@@ -259,7 +284,10 @@ impl B2bScraper for ExporthubScraper {
         }
 
         if let Some(description) = extract_first_real_paragraph(&document) {
-            supplier.company_description = Some(description);
+            supplier.company_description = Some(keep_address_line(
+                supplier.company_description.as_deref(),
+                description,
+            ));
         }
 
         if let Ok(row_sel) = Selector::parse("p.list-div") {
@@ -298,6 +326,106 @@ impl B2bScraper for ExporthubScraper {
         let url = self.extract_company_profile_url(listing_html)?;
         company_slug(&url)
     }
+
+    /// When the company joined ExportHub ("Member Since: 2024"). With no
+    /// founding year, the Account age card then shows how long it has
+    /// been on ExportHub; with one, a late join is noted (see
+    /// apply_supplier_record).
+    fn enrich_record_from_company_profile(
+        &self,
+        record: Option<SupplierRecord>,
+        profile_html: &str,
+    ) -> Option<SupplierRecord> {
+        let document = Html::parse_document(profile_html);
+        let Some(joined) =
+            select_text(&document, ".rmp-comp--yrs").and_then(|t| member_since_year(&t))
+        else {
+            return record;
+        };
+        let mut record = record.unwrap_or_else(|| SupplierRecord {
+            platform: "ExportHub".to_string(),
+            ..Default::default()
+        });
+        record.joined_platform_year = Some(joined);
+        record.years_on_platform = u32::try_from(Utc::now().year() - joined).ok();
+        Some(record)
+    }
+}
+
+/// Start of the address line put in front of the company description.
+const ADDRESS_PREFIX: &str = "Address: ";
+
+fn address_line(address: &str) -> String {
+    format!("{}{}.", ADDRESS_PREFIX, address.trim_end_matches('.'))
+}
+
+/// The sidebar address, without its "Address:" label and with ExportHub's
+/// stray spaces before commas removed: "Meşrutiyet Mah. Ebe Kızı Sok.
+/// No:4 D:6 Şişli, Istanbul, Istanbul, Turkey".
+fn sidebar_address(document: &Html) -> Option<String> {
+    let raw = select_text(document, ".product-del_sidebar__comp-addrs")?;
+    let without_label = raw
+        .trim()
+        .trim_start_matches("Address:")
+        .trim_start_matches("address:");
+    let cleaned = collapse_whitespace(without_label).replace(" ,", ",");
+    let cleaned = cleaned.trim_matches([',', ' ']).to_string();
+    (!cleaned.is_empty()).then_some(cleaned)
+}
+
+/// A new company description that keeps the address line already found.
+fn keep_address_line(old: Option<&str>, new_description: String) -> String {
+    match old
+        .and_then(|d| d.lines().next())
+        .filter(|l| l.starts_with(ADDRESS_PREFIX))
+    {
+        Some(line) if !new_description.starts_with(ADDRESS_PREFIX) => {
+            format!("{}\n{}", line, new_description)
+        }
+        _ => new_description,
+    }
+}
+
+/// "Member Since: 2024" -> 2024.
+fn member_since_year(text: &str) -> Option<i32> {
+    text.split(':')
+        .nth(1)?
+        .trim()
+        .parse::<i32>()
+        .ok()
+        .filter(|y| (1990..=2100).contains(y))
+}
+
+/// ExportHub's default choices that say nothing about the product.
+fn real_detail(value: &str) -> Option<String> {
+    let v = value.trim();
+    let lower = v.to_lowercase();
+    if v.is_empty()
+        || ["high", "standard", "inquire", "contact", "low", "medium"].contains(&lower.as_str())
+    {
+        None
+    } else {
+        Some(v.to_string())
+    }
+}
+
+const INCOTERMS: &[&str] = &[
+    "EXW", "FCA", "FAS", "FOB", "CFR", "CNF", "CIF", "CPT", "CIP", "DAP", "DPU", "DDP", "DAT",
+    "DDU",
+];
+
+/// The Incoterms named in the text, each once ("FOB, CFR"). Only whole
+/// upper-case words count.
+fn incoterms_in(text: Option<&str>) -> Option<String> {
+    let mut found: Vec<&str> = Vec::new();
+    for word in text?.split(|c: char| !c.is_ascii_alphanumeric()) {
+        if let Some(term) = INCOTERMS.iter().find(|t| **t == word) {
+            if !found.contains(term) {
+                found.push(term);
+            }
+        }
+    }
+    (!found.is_empty()).then(|| found.join(", "))
 }
 
 /// "https://www.exporthub.com/nutridiet-lda-10772764/" -> "nutridiet-lda-10772764".
@@ -680,7 +808,9 @@ mod tests {
         assert_eq!(s.website_url, None);
         assert_eq!(
             s.company_description.as_deref(),
-            Some("Nutridiet LDA is a wholesale supplier and distributors of Chemicals")
+            Some(
+                "Address: Alameda das Comunidades Portuguesas, Lisboa, Portugal.\nNutridiet LDA is a wholesale supplier and distributors of Chemicals"
+            )
         );
     }
 
@@ -705,6 +835,96 @@ mod tests {
         assert_eq!(
             s.country.as_deref(),
             Some("Alameda das Comunidades Portuguesas, Lisboa, Portugal")
+        );
+    }
+
+    /// Trimmed from the real HYM Textile pages (Oct 2026).
+    const HYM_LISTING: &str = r#"<html><body>
+<div class="prod-dtl_atr__box">Production Capacity: High</div>
+<div class="prod-dtl_atr__box">Packaging:&nbsp; Standard</div>
+<div id="detail"><p>To facilitate our consumers, offer the following freight options; FOB, CFR. As an international Manufacturer, we accepts all payments methods like T/T, MoneyGram.</p></div>
+<div class="product-del_sidebar__comp">
+<div class="product-del_sidebar__comp-nm"><a href="https://www.exporthub.com/hym-textile-11125866/"><div class="product-del_sidebar__comp-ttl">HYM Textile</div></a></div>
+<div class="product-del_sidebar__comp-addrs">
+    Meşrutiyet Mah. Ebe Kızı Sok. No:4 D:6 Şişli , Istanbul , Istanbul , Turkey
+</div>
+</div>
+</body></html>"#;
+
+    const HYM_PROFILE: &str = r#"<html><body>
+<span class="rmp-comp--yrs">Member Since: 2024</span>
+<div class="rmp-comp--desp_cont"><p>Modern and eye-catching lines Gabbiacci is a pioneering international men's textile brand.</p></div>
+<div class="product-del_sidebar__comp">
+<div class="product-del_sidebar__comp-ttl">Kristina Chalyshkan</div>
+<div class="product-del_sidebar__comp-addrs">
+    Address:<br />
+        Meşrutiyet Mah. Ebe Kızı Sok. No:4 D:6 Şişli ,
+        Istanbul,
+        Istanbul,
+        Turkey
+</div>
+</div>
+</body></html>"#;
+
+    #[test]
+    fn street_address_reaches_the_description() {
+        let s = ExporthubScraper.parse_supplier(HYM_LISTING, "u");
+        assert_eq!(
+            s.company_description.as_deref(),
+            Some(
+                "Address: Meşrutiyet Mah. Ebe Kızı Sok. No:4 D:6 Şişli, Istanbul, Istanbul, Turkey."
+            )
+        );
+        let s = ExporthubScraper.enrich_from_company_profile(s, HYM_PROFILE);
+        let d = s.company_description.unwrap();
+        assert!(d.starts_with("Address: Meşrutiyet Mah."), "{d}");
+        assert!(
+            d.contains("\nModern and eye-catching lines Gabbiacci"),
+            "{d}"
+        );
+        assert_eq!(d.matches("Address:").count(), 1, "address only once");
+        assert_eq!(s.contact_name.as_deref(), Some("Kristina Chalyshkan"));
+
+        // Company page alone still gives the address.
+        let s = ExporthubScraper
+            .enrich_from_company_profile(B2bSupplierProfile::default(), HYM_PROFILE);
+        assert!(
+            s.company_description
+                .unwrap()
+                .starts_with("Address: Meşrutiyet Mah. Ebe Kızı Sok. No:4 D:6 Şişli, Istanbul")
+        );
+    }
+
+    #[test]
+    fn default_choices_do_not_count_and_incoterms_are_read() {
+        let l = ExporthubScraper.parse_listing(HYM_LISTING, "u");
+        assert_eq!(
+            l.production_capacity, None,
+            "\"High\" is ExportHub's default"
+        );
+        assert_eq!(
+            l.packaging_details, None,
+            "\"Standard\" is ExportHub's default"
+        );
+        assert_eq!(l.incoterms.as_deref(), Some("FOB, CFR"));
+        // Real values still count.
+        let l = ExporthubScraper.parse_listing(LISTING, "u");
+        assert_eq!(l.production_capacity.as_deref(), Some("10000 kg Kilogram"));
+        assert_eq!(l.packaging_details.as_deref(), Some("cartons"));
+        assert_eq!(l.incoterms, None);
+    }
+
+    #[test]
+    fn member_since_is_recorded() {
+        let r = ExporthubScraper
+            .enrich_record_from_company_profile(None, HYM_PROFILE)
+            .expect("record");
+        assert_eq!(r.platform, "ExportHub");
+        assert_eq!(r.joined_platform_year, Some(2024));
+        assert!(
+            ExporthubScraper
+                .enrich_record_from_company_profile(None, PROFILE)
+                .is_none()
         );
     }
 

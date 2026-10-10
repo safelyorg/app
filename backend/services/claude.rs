@@ -35,11 +35,19 @@ pub enum ContentItem {
     Image { source: ImageSource },
 }
 
+/// A photo sent to Claude: either a web link ("url") that Claude
+/// downloads itself, or the photo's own bytes ("base64") when the
+/// website does not let Claude download it.
 #[derive(Serialize)]
 pub struct ImageSource {
     #[serde(rename = "type")]
     pub source_type: String,
-    pub url: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub media_type: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub data: Option<String>,
 }
 
 // 2. Gives you the text(that contains the actual fraud analysis) from the content block
@@ -234,7 +242,9 @@ fn build_content_blocks(prompt: String, image_urls: &[String]) -> Vec<ContentIte
             content_blocks.push(ContentItem::Image {
                 source: ImageSource {
                     source_type: "url".to_string(),
-                    url: url.clone(),
+                    url: Some(url.clone()),
+                    media_type: None,
+                    data: None,
                 },
             });
         }
@@ -243,11 +253,38 @@ fn build_content_blocks(prompt: String, image_urls: &[String]) -> Vec<ContentIte
     content_blocks
 }
 
-pub async fn call_b2c_claude(args: CallClaudeArguments<'_>) -> Result<ClaudeAnalysis, ClaudeError> {
+/// Why a request to Claude failed.
+enum SendError {
+    /// Claude could not load the listing photos from their web address
+    /// (for example, ExportHub's robots.txt does not allow it). The
+    /// photos are then downloaded by Safely and sent as bytes.
+    PhotosBlocked,
+    Failed(ClaudeError),
+}
+
+/// True when Claude's error says it could not load a photo from its
+/// link: "This URL is disallowed by the website's robots.txt file", a
+/// photo that could not be downloaded, or one in a format it can't read.
+fn is_photo_load_error(status: u16, body: &str) -> bool {
+    let lower = body.to_lowercase();
+    status == 400
+        && (lower.contains("robots.txt")
+            || (lower.contains("url")
+                && (lower.contains("image")
+                    || lower.contains("download")
+                    || lower.contains("fetch")))
+            || lower.contains("could not process image"))
+}
+
+/// Sends one request to Claude and returns its answer text, without
+/// code fences. Shared by the consumer (B2C) and supplier (B2B) scans.
+async fn send_to_claude(content: Vec<ContentItem>) -> Result<String, SendError> {
+    let has_photos = content
+        .iter()
+        .any(|c| matches!(c, ContentItem::Image { .. }));
     let client = Client::new();
-    let api_key = var("ANTHROPIC_API_KEY").map_err(|_| ClaudeError::MissingApiKey)?;
-    let prompt = b2c_content(&args);
-    let content_blocks = build_content_blocks(prompt, args.image_urls);
+    let api_key =
+        var("ANTHROPIC_API_KEY").map_err(|_| SendError::Failed(ClaudeError::MissingApiKey))?;
 
     let payload = ClaudeRequest {
         model: String::from("claude-sonnet-4-6"),
@@ -255,7 +292,7 @@ pub async fn call_b2c_claude(args: CallClaudeArguments<'_>) -> Result<ClaudeAnal
         temperature: SCAN_TEMPERATURE,
         messages: vec![Message {
             role: "user".to_string(),
-            content: content_blocks,
+            content,
         }],
     };
 
@@ -266,99 +303,224 @@ pub async fn call_b2c_claude(args: CallClaudeArguments<'_>) -> Result<ClaudeAnal
         .json(&payload)
         .send()
         .await
-        .map_err(|e| ClaudeError::RequestFailed(e.to_string()))?;
+        .map_err(|e| SendError::Failed(ClaudeError::RequestFailed(e.to_string())))?;
 
     let status = response.status();
     let body_text = response
         .text()
         .await
-        .map_err(|e| ClaudeError::RequestFailed(e.to_string()))?;
+        .map_err(|e| SendError::Failed(ClaudeError::RequestFailed(e.to_string())))?;
 
     if !status.is_success() {
+        if has_photos && is_photo_load_error(status.as_u16(), &body_text) {
+            eprintln!(
+                "Safely: Claude could not load the listing photos itself ({})",
+                &body_text[..body_text.len().min(200)]
+            );
+            return Err(SendError::PhotosBlocked);
+        }
         eprintln!(
             "Safely: Claude API real, non-success status {} - body: {}",
             status,
             &body_text[..body_text.len().min(300)]
         );
-        return Err(match status.as_u16() {
+        return Err(SendError::Failed(match status.as_u16() {
             401 | 403 => ClaudeError::Unauthorized,
             429 | 402 => ClaudeError::QuotaExceeded,
             code => ClaudeError::ServiceUnavailable(code),
-        });
+        }));
     }
 
-    let envelope: ClaudeEnvelope =
-        from_str(&body_text).map_err(|e| ClaudeError::ParseFailed(e.to_string()))?;
-
-    let inner_json = answer_text(&envelope)?;
-    let cleaned = inner_json
+    let envelope: ClaudeEnvelope = from_str(&body_text)
+        .map_err(|e| SendError::Failed(ClaudeError::ParseFailed(e.to_string())))?;
+    let inner_json = answer_text(&envelope).map_err(SendError::Failed)?;
+    Ok(inner_json
         .trim()
         .trim_start_matches("```json")
         .trim_start_matches("```")
         .trim_end_matches("```")
-        .trim();
+        .trim()
+        .to_string())
+}
 
-    from_str(cleaned).map_err(|e| ClaudeError::ParseFailed(e.to_string()))
+/// Largest photo sent as its own bytes. Claude accepts up to 5 MB per
+/// photo; base64 makes the data about a third bigger.
+const MAX_PHOTO_BYTES: usize = 3_500_000;
+
+/// The photo's real format from its first bytes (the link's ending is
+/// not reliable - ExportHub serves ".jpeg_.webp" files). Only formats
+/// Claude reads are accepted.
+fn photo_media_type(bytes: &[u8]) -> Option<&'static str> {
+    if bytes.starts_with(&[0xFF, 0xD8, 0xFF]) {
+        Some("image/jpeg")
+    } else if bytes.starts_with(&[0x89, b'P', b'N', b'G']) {
+        Some("image/png")
+    } else if bytes.starts_with(b"GIF8") {
+        Some("image/gif")
+    } else if bytes.len() > 12 && &bytes[0..4] == b"RIFF" && &bytes[8..12] == b"WEBP" {
+        Some("image/webp")
+    } else {
+        None
+    }
+}
+
+/// Standard base64, as Claude expects for a photo's bytes.
+fn base64_encode(bytes: &[u8]) -> String {
+    const TABLE: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);
+    for chunk in bytes.chunks(3) {
+        let b = [
+            chunk[0],
+            *chunk.get(1).unwrap_or(&0),
+            *chunk.get(2).unwrap_or(&0),
+        ];
+        let n = (u32::from(b[0]) << 16) | (u32::from(b[1]) << 8) | u32::from(b[2]);
+        out.push(TABLE[(n >> 18) as usize & 63] as char);
+        out.push(TABLE[(n >> 12) as usize & 63] as char);
+        out.push(if chunk.len() > 1 {
+            TABLE[(n >> 6) as usize & 63] as char
+        } else {
+            '='
+        });
+        out.push(if chunk.len() > 2 {
+            TABLE[n as usize & 63] as char
+        } else {
+            '='
+        });
+    }
+    out
+}
+
+/// Downloads the listing photos on Safely's own server, for websites
+/// that do not let Claude download them. Photos that fail, are too big
+/// or are not a real photo are skipped. Returns (format, base64) pairs.
+async fn download_photos(image_urls: &[String]) -> Vec<(String, String)> {
+    let Ok(client) = Client::builder()
+        .timeout(std::time::Duration::from_secs(15))
+        .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36")
+        .build()
+    else {
+        return Vec::new();
+    };
+    let mut photos = Vec::new();
+    for url in image_urls.iter().take(3) {
+        let Ok(response) = client.get(url).send().await else {
+            continue;
+        };
+        if !response.status().is_success() {
+            continue;
+        }
+        let Ok(bytes) = response.bytes().await else {
+            continue;
+        };
+        if bytes.len() > MAX_PHOTO_BYTES {
+            continue;
+        }
+        if let Some(media_type) = photo_media_type(&bytes) {
+            photos.push((media_type.to_string(), base64_encode(&bytes)));
+        }
+    }
+    photos
+}
+
+/// The prompt followed by the downloaded photos.
+fn content_with_photo_bytes(prompt: String, photos: Vec<(String, String)>) -> Vec<ContentItem> {
+    let mut content = vec![ContentItem::Text { text: prompt }];
+    for (media_type, data) in photos {
+        content.push(ContentItem::Image {
+            source: ImageSource {
+                source_type: "base64".to_string(),
+                url: None,
+                media_type: Some(media_type),
+                data: Some(data),
+            },
+        });
+    }
+    content
+}
+
+/// Photo servers that never let Claude download photos (their
+/// robots.txt blocks it), so Safely downloads the photos itself from
+/// the start instead of trying the link first. Any other site that
+/// blocks Claude is still caught by the automatic fallback below.
+const DOWNLOAD_PHOTOS_FIRST_HOSTS: &[&str] = &["exporthub.com"];
+
+/// True when the photos are on a server listed in
+/// DOWNLOAD_PHOTOS_FIRST_HOSTS ("img.exporthub.com" counts as
+/// "exporthub.com").
+fn photos_need_download(image_urls: &[String]) -> bool {
+    image_urls.iter().any(|url| {
+        let after_scheme = url.split("://").nth(1).unwrap_or(url);
+        let host = after_scheme
+            .split(['/', '?', '#', ':'])
+            .next()
+            .unwrap_or("")
+            .to_lowercase();
+        DOWNLOAD_PHOTOS_FIRST_HOSTS
+            .iter()
+            .any(|h| host == *h || host.ends_with(&format!(".{h}")))
+    })
+}
+
+/// Sends the scan with its photos as web links. If Claude is not
+/// allowed to download them (e.g. ExportHub's robots.txt), Safely
+/// downloads the photos itself and sends their bytes, so the photos
+/// are still checked. Only if that fails too is the scan sent without
+/// photos; `prompt_without_photos` builds the text for that last try.
+async fn send_with_photo_fallback(
+    prompt: String,
+    image_urls: &[String],
+    prompt_without_photos: impl FnOnce() -> String,
+) -> Result<String, ClaudeError> {
+    // Sites known to block Claude skip the first try (it always fails
+    // there): Safely downloads their photos straight away.
+    if !photos_need_download(image_urls) {
+        match send_to_claude(build_content_blocks(prompt.clone(), image_urls)).await {
+            Ok(answer) => return Ok(answer),
+            Err(SendError::Failed(e)) => return Err(e),
+            Err(SendError::PhotosBlocked) => {}
+        }
+    }
+
+    let photos = download_photos(image_urls).await;
+    if !photos.is_empty() {
+        match send_to_claude(content_with_photo_bytes(prompt, photos)).await {
+            Ok(answer) => return Ok(answer),
+            Err(SendError::Failed(e)) => return Err(e),
+            Err(SendError::PhotosBlocked) => {}
+        }
+    }
+
+    eprintln!("Safely: the listing photos could not be loaded - scanning without photos");
+    match send_to_claude(build_content_blocks(prompt_without_photos(), &[])).await {
+        Ok(answer) => Ok(answer),
+        Err(SendError::Failed(e)) => Err(e),
+        // Cannot happen without photos; kept as a plain failure.
+        Err(SendError::PhotosBlocked) => Err(ClaudeError::ServiceUnavailable(400)),
+    }
+}
+
+pub async fn call_b2c_claude(args: CallClaudeArguments<'_>) -> Result<ClaudeAnalysis, ClaudeError> {
+    let prompt = b2c_content(&args);
+    let answer = send_with_photo_fallback(prompt, args.image_urls, || {
+        b2c_content(&CallClaudeArguments {
+            image_urls: &[],
+            ..args
+        })
+    })
+    .await?;
+    from_str(&answer).map_err(|e| ClaudeError::ParseFailed(e.to_string()))
 }
 
 pub async fn call_b2b_claude(
     args: CallB2bClaudeArguments<'_>,
 ) -> Result<B2bClaudeAnalysis, ClaudeError> {
-    let client = Client::new();
-    let api_key = var("ANTHROPIC_API_KEY").map_err(|_| ClaudeError::MissingApiKey)?;
     let prompt = b2b_content(&args);
-    let content_blocks = build_content_blocks(prompt, args.image_urls);
-
-    let payload = ClaudeRequest {
-        model: String::from("claude-sonnet-4-6"),
-        max_tokens: 2048,
-        temperature: SCAN_TEMPERATURE,
-        messages: vec![Message {
-            role: "user".to_string(),
-            content: content_blocks,
-        }],
-    };
-
-    let response = client
-        .post("https://api.anthropic.com/v1/messages")
-        .header("x-api-key", api_key)
-        .header("anthropic-version", "2023-06-01")
-        .json(&payload)
-        .send()
-        .await
-        .map_err(|e| ClaudeError::RequestFailed(e.to_string()))?;
-
-    let status = response.status();
-    let body_text = response
-        .text()
-        .await
-        .map_err(|e| ClaudeError::RequestFailed(e.to_string()))?;
-
-    if !status.is_success() {
-        eprintln!(
-            "Safely: Claude API real, non-success status {} - body: {}",
-            status,
-            &body_text[..body_text.len().min(300)]
-        );
-        return Err(match status.as_u16() {
-            401 | 403 => ClaudeError::Unauthorized,
-            429 | 402 => ClaudeError::QuotaExceeded,
-            code => ClaudeError::ServiceUnavailable(code),
-        });
-    }
-
-    let envelope: ClaudeEnvelope =
-        from_str(&body_text).map_err(|e| ClaudeError::ParseFailed(e.to_string()))?;
-
-    let inner_json = answer_text(&envelope)?;
-    let cleaned = inner_json
-        .trim()
-        .trim_start_matches("```json")
-        .trim_start_matches("```")
-        .trim_end_matches("```")
-        .trim();
-
-    from_str(cleaned).map_err(|e| ClaudeError::ParseFailed(e.to_string()))
+    let answer = send_with_photo_fallback(prompt, args.image_urls, || {
+        b2b_content_photos_blocked(&args)
+    })
+    .await?;
+    from_str(&answer).map_err(|e| ClaudeError::ParseFailed(e.to_string()))
 }
 
 pub fn b2c_content(arg: &CallClaudeArguments) -> String {
@@ -439,7 +601,22 @@ pub fn b2c_content(arg: &CallClaudeArguments) -> String {
 }
 
 pub fn b2b_content(arg: &CallB2bClaudeArguments) -> String {
-    let image_context = if IMAGE_ANALYSIS_ENABLED && !arg.image_urls.is_empty() {
+    b2b_content_with(arg, false)
+}
+
+/// The same prompt for the second try, when the listing has photos but
+/// Claude was not allowed to load them from the website.
+fn b2b_content_photos_blocked(arg: &CallB2bClaudeArguments) -> String {
+    b2b_content_with(arg, true)
+}
+
+fn b2b_content_with(arg: &CallB2bClaudeArguments, photos_blocked: bool) -> String {
+    let image_context = if photos_blocked {
+        format!(
+            "{} product image(s) were found on this listing, but the website does not allow them to be loaded, so you cannot view them - use \"not verified\" as the verdict and say in the reasoning that the photos could not be checked because the website blocks them.",
+            arg.image_urls.len().min(3)
+        )
+    } else if IMAGE_ANALYSIS_ENABLED && !arg.image_urls.is_empty() {
         format!(
             "{} product image(s) from this listing are attached. Use \"original\" only if they look like genuine photos of this supplier's own product; use \"not verified\" if they look like stock, catalogue or reused images, or if you cannot tell.",
             arg.image_urls.len().min(3)
@@ -546,6 +723,14 @@ pub fn b2b_content(arg: &CallB2bClaudeArguments) -> String {
         product is NOT a reason to set business_legitimacy to false. Judge
         a name/product mismatch ONLY under registration_consistency, so
         it is never counted twice.
+        BRANDS: many real companies sell under a brand name that differs
+        from the company name, and describe the brand's own history (e.g.
+        "HYM Textile" describing its "Gabbiacci" brand, "founded in Italy
+        in 1971"). A brand name or brand history that differs from the
+        company is NOT a fabricated or self-contradicting detail and is
+        NOT a reason to set business_legitimacy to false. If the page does
+        not explain how the company and the brand are related, say so
+        under registration_consistency only.
         These are also NOT reasons to set business_legitimacy to false,
         on their own or added together - but DO mention each one that
         applies in the evidence, as a plain fact, so the buyer sees it
@@ -605,6 +790,13 @@ pub fn b2b_content(arg: &CallB2bClaudeArguments) -> String {
         whether the text was written by AI or machine-translated: fluent,
         AI-assisted, translated or imperfect English is normal for honest
         suppliers. Judge only whether real, specific details are present.
+        PLATFORM TEXT: ExportHub writes a paragraph for every product
+        automatically from the supplier's form ("If you want to get the
+        best then ... is a great option to trust", "we accepts all
+        payments methods like ...", "produce up to High Piece every
+        month"). Its odd wording comes from the platform, not from the
+        supplier - never call it a template placeholder or quote it as the
+        supplier's own text. Judge only the details the supplier added.
         If either description gives real, specific details, the text is
         not generic.
 
@@ -654,7 +846,9 @@ pub fn b2b_content(arg: &CallB2bClaudeArguments) -> String {
         (a) such a method is the ONLY way to pay that is offered;
         (b) the supplier pushes buyers toward it (e.g. "Western Union
             only", "discount for Western Union", "pay by crypto");
-        (c) payment goes to a personal account instead of the company's.
+        (c) payment goes to a personal account instead of the company's;
+        (d) most of the listed ways to pay are such methods or cash (e.g.
+            "Cash, Western Union, MoneyGram, Credit Card").
         If such a method is only one option in a list that also offers a
         protected or traceable way to pay - platform order protection such
         as Alibaba Trade Assurance, bank wire (T/T) to the company, L/C,
@@ -989,5 +1183,121 @@ mod b2b_prompt_tests {
         assert!(p.contains("\"found\": true\n          means the GOOD thing was found"));
         let flat = p.split_whitespace().collect::<Vec<_>>().join(" ");
         assert!(flat.contains("\"found\": true means the BAD thing was found"));
+    }
+}
+
+#[cfg(test)]
+mod photo_fallback_tests {
+    use super::*;
+
+    #[test]
+    fn robots_txt_and_photo_download_errors_are_photo_errors() {
+        let robots = r#"{"type":"error","error":{"type":"invalid_request_error","message":"This URL is disallowed by the website's robots.txt file."}}"#;
+        assert!(is_photo_load_error(400, robots));
+        assert!(is_photo_load_error(
+            400,
+            r#"{"error":{"message":"Unable to download the file at the image URL"}}"#
+        ));
+        // Other errors are not retried without photos.
+        assert!(!is_photo_load_error(
+            400,
+            r#"{"error":{"message":"max_tokens is too large"}}"#
+        ));
+        assert!(!is_photo_load_error(429, robots));
+        assert!(!is_photo_load_error(401, "invalid x-api-key"));
+    }
+}
+
+#[cfg(test)]
+mod photo_bytes_tests {
+    use super::*;
+
+    #[test]
+    fn exporthub_photos_are_downloaded_by_safely_first() {
+        let eh = vec![
+            "https://img.exporthub.com/storage/app/images/products/7/5/o_1719417416_75.jpeg_.webp"
+                .to_string(),
+        ];
+        assert!(photos_need_download(&eh));
+        // Other sites keep sending the link first.
+        for url in [
+            "https://s.alicdn.com/@sc04/kf/H1.jpg",
+            "https://b2bmap.com/product-image/202609/x.jpg",
+            "https://cdn.b2brazil.com/storages/company/1/products/x.png.webp",
+            "https://notexporthub.com/x.jpg",
+        ] {
+            assert!(!photos_need_download(&[url.to_string()]), "{url}");
+        }
+        assert!(!photos_need_download(&[]));
+    }
+
+    #[test]
+    fn base64_matches_the_standard() {
+        assert_eq!(base64_encode(b""), "");
+        assert_eq!(base64_encode(b"f"), "Zg==");
+        assert_eq!(base64_encode(b"fo"), "Zm8=");
+        assert_eq!(base64_encode(b"foo"), "Zm9v");
+        assert_eq!(base64_encode(b"foobar"), "Zm9vYmFy");
+        assert_eq!(base64_encode(&[0xFF, 0xD8, 0xFF, 0xE0]), "/9j/4A==");
+    }
+
+    #[test]
+    fn photo_format_comes_from_the_bytes() {
+        assert_eq!(
+            photo_media_type(&[0xFF, 0xD8, 0xFF, 0xE0]),
+            Some("image/jpeg")
+        );
+        assert_eq!(photo_media_type(b"\x89PNG\r\n"), Some("image/png"));
+        assert_eq!(
+            photo_media_type(b"RIFF\x10\x00\x00\x00WEBPVP8 "),
+            Some("image/webp")
+        );
+        assert_eq!(photo_media_type(b"<html>blocked</html>"), None);
+    }
+
+    #[test]
+    fn photo_bytes_are_sent_in_claudes_base64_shape() {
+        let content =
+            content_with_photo_bytes("p".into(), vec![("image/jpeg".into(), "QUJD".into())]);
+        let json = serde_json::to_value(&content).unwrap();
+        assert_eq!(json[1]["type"], "image");
+        assert_eq!(json[1]["source"]["type"], "base64");
+        assert_eq!(json[1]["source"]["media_type"], "image/jpeg");
+        assert_eq!(json[1]["source"]["data"], "QUJD");
+        assert!(json[1]["source"].get("url").is_none());
+        // Photos sent as links keep their old shape.
+        let content = build_content_blocks("p".into(), &["https://x/1.jpg".to_string()]);
+        let json = serde_json::to_value(&content).unwrap();
+        if IMAGE_ANALYSIS_ENABLED {
+            assert_eq!(json[1]["source"]["type"], "url");
+            assert_eq!(json[1]["source"]["url"], "https://x/1.jpg");
+            assert!(json[1]["source"].get("data").is_none());
+        }
+    }
+
+    #[test]
+    fn prompt_explains_brands_platform_text_and_mostly_risky_payment() {
+        let p = b2b_content(&CallB2bClaudeArguments {
+            platform: "exporthub",
+            company_name: "HYM Textile",
+            year_established: "Unknown",
+            platform_verified: false,
+            employee_count: "Unknown",
+            company_description: "",
+            contact_name: "",
+            contact_phone: "",
+            website_url: "",
+            product_title: "Light Blue Suit",
+            product_description: "",
+            image_urls: &[],
+            language: "en",
+            unit_price: "",
+            minimum_order_quantity: "",
+            payment_type: "",
+        });
+        let flat = p.split_whitespace().collect::<Vec<_>>().join(" ");
+        assert!(flat.contains("BRANDS: many real companies sell under a brand name"));
+        assert!(flat.contains("PLATFORM TEXT: ExportHub writes a paragraph"));
+        assert!(flat.contains("(d) most of the listed ways to pay are such methods or cash"));
     }
 }

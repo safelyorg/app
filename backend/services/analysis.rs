@@ -30,7 +30,7 @@ use crate::{
             build_b2b_company_age_signal, build_b2b_listing_completeness_signal,
             build_b2b_transparency_signal, build_b2b_verification_signal, build_domain_signal,
             build_seller_verification_signals, build_signals, build_store_page_signal,
-            build_whois_signal,
+            build_whois_signal, soften_no_presence,
         },
         whois::check_domain_whois,
     },
@@ -888,11 +888,18 @@ pub async fn build_b2b_analysis_path(
     };
     // The listing showed no website, but the web search above may have
     // found the company's own site ("goldensteelmill.com").
-    let found_links: Vec<&str> = social_candidates
+    let found_links: Vec<(&str, &str)> = social_candidates
         .iter()
-        .flat_map(|r| r.candidates.iter().map(|c| c.url.as_str()))
+        .flat_map(|r| {
+            r.candidates
+                .iter()
+                .map(|c| (c.url.as_str(), c.title.as_str()))
+        })
         .collect();
     apply_found_website(&mut signals, supplier.company_name.as_deref(), &found_links);
+    // No social pages is normal for a supplier the platform already
+    // proves is real (orders, reviews, a company check).
+    soften_no_presence(&mut signals);
 
     let warning_score: i16 =
         signals.iter().map(warning_points).sum::<i16>() + info_points(&signals);

@@ -997,16 +997,75 @@ fn site_matches_company(site: &str, company_name: &str) -> bool {
     })
 }
 
+/// Words of spam pages (casino, betting, adult, pills) in several
+/// languages. A company's real site never hosts these; an old or
+/// abandoned company address that now shows them belongs to someone
+/// else.
+const SPAM_WORDS: &[&str] = &[
+    "casino",
+    "kazino",
+    "καζίνο",
+    "καζινο",
+    "kasino",
+    "cassino",
+    "казино",
+    "betting",
+    "bet365",
+    "slot",
+    "slots",
+    "poker",
+    "jackpot",
+    "porn",
+    "xxx",
+    "escort",
+    "viagra",
+    "cialis",
+    "payday",
+];
+
+/// "%CF%86%CF%81" -> "φρ": the readable form of a web address, so the
+/// words in it can be checked.
+fn decode_percent(text: &str) -> String {
+    fn hex(b: u8) -> Option<u8> {
+        (b as char).to_digit(16).map(|d| d as u8)
+    }
+    let bytes = text.as_bytes();
+    let mut out: Vec<u8> = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' && i + 2 < bytes.len() {
+            if let (Some(h), Some(l)) = (hex(bytes[i + 1]), hex(bytes[i + 2])) {
+                out.push(h * 16 + l);
+                i += 3;
+                continue;
+            }
+        }
+        out.push(bytes[i]);
+        i += 1;
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
+/// True when a search result (its title or its address) is a spam page.
+fn is_spam_result(url: &str, title: &str) -> bool {
+    let text = format!("{} {}", decode_percent(url), title).to_lowercase();
+    text.split(|c: char| !c.is_alphanumeric())
+        .any(|word| SPAM_WORDS.contains(&word))
+}
+
 /// When the listing showed no website but the web search found a site
 /// whose address is the company's own name (e.g. "goldensteelmill.com"
 /// for Golden Steel Mills), the website card shows it as a possible
 /// website. Information only - it came from a search, not from the
 /// supplier - so it never changes the score. A website the listing
-/// already showed is never replaced.
+/// already showed is never replaced. A site that shows spam pages
+/// anywhere (e.g. a Greek casino page on hymtextile.com) is an old or
+/// taken-over address, not the company's site, and is never shown.
+/// `found_links` are the search results as (address, title).
 pub fn apply_found_website(
     signals: &mut [Signal],
     company_name: Option<&str>,
-    found_links: &[&str],
+    found_links: &[(&str, &str)],
 ) {
     let Some(name) = company_name.filter(|n| !n.trim().is_empty()) else {
         return;
@@ -1017,20 +1076,49 @@ pub fn apply_found_website(
     else {
         return;
     };
-    let Some(link) = found_links
+    let spam_sites: Vec<String> = found_links
         .iter()
-        .find(|link| site_name(link).is_some_and(|site| site_matches_company(&site, name)))
+        .filter(|(url, title)| is_spam_result(url, title))
+        .filter_map(|(url, _)| site_root(url))
+        .collect();
+    let Some(root) = found_links
+        .iter()
+        .filter(|(url, _)| site_name(url).is_some_and(|site| site_matches_company(&site, name)))
+        .filter_map(|(url, _)| site_root(url))
+        .find(|root| !spam_sites.contains(root))
     else {
-        return;
-    };
-    let Some(root) = site_root(link) else {
         return;
     };
     card.value = POSSIBLE_WEBSITE.to_string();
     card.signal_type = "info".to_string();
     card.sub = format!(
-        "The listing shows no website, but a web search found {root}, whose address matches this company's name (found at {link}). It was not given by the supplier, so check that it really belongs to them before trusting it."
+        "The listing shows no website, but a web search found {root}, whose address matches this company's name. It was not given by the supplier, so check that it really belongs to them before trusting it."
     );
+}
+
+/// When the platform itself shows the supplier is real - a good
+/// "Seller track record" (orders and reviews on the platform) or a
+/// company check by the platform ("Checked by Alibaba", "Verified") -
+/// finding no social media pages is normal for a small factory and only
+/// information, not a warning. Without that proof it stays a warning.
+pub fn soften_no_presence(signals: &mut [Signal]) {
+    let proven = signals.iter().any(|s| {
+        s.signal_type == "good"
+            && (s.label == "Seller track record"
+                || (s.label == "Platform verification"
+                    && (s.value == "Verified" || s.value.starts_with("Checked by"))))
+    });
+    if !proven {
+        return;
+    }
+    if let Some(card) = signals.iter_mut().find(|s| {
+        s.label == "Social presence check"
+            && s.value == "No presence found"
+            && s.signal_type == "caution"
+    }) {
+        card.signal_type = "info".to_string();
+        card.sub = "This company was not found on Facebook, LinkedIn, Instagram, TikTok, Reddit, Trustpilot or review sites. Many small factories have no social media pages, and the platform's own record above already shows this supplier is active, so this is not counted as a warning.".to_string();
+    }
 }
 
 /// Below this average rating (with enough reviews to mean something),
@@ -2231,20 +2319,29 @@ mod b2b_signal_tests {
             &mut cards,
             Some("Golden Steel Mills"),
             &[
-                "https://www.facebook.com/goldensteelmillsofficial/",
-                "https://www.exportersindia.com/golden-steel-mills/",
-                "https://goldensteelmill.com/about-us/",
+                (
+                    "https://www.facebook.com/goldensteelmillsofficial/",
+                    "Golden Steel Mills",
+                ),
+                (
+                    "https://www.exportersindia.com/golden-steel-mills/",
+                    "Golden Steel Mills",
+                ),
+                ("https://goldensteelmill.com/about-us/", "About Us"),
             ],
         );
         assert_eq!(
             (cards[0].value.as_str(), cards[0].signal_type.as_str()),
             (POSSIBLE_WEBSITE, "info")
         );
-        assert!(cards[0].sub.contains("found goldensteelmill.com"));
         assert!(
             cards[0]
                 .sub
-                .contains("https://goldensteelmill.com/about-us/")
+                .contains("found goldensteelmill.com, whose address")
+        );
+        assert!(
+            !cards[0].sub.contains("about-us"),
+            "only the site, not the long link"
         );
     }
 
@@ -2257,7 +2354,7 @@ mod b2b_signal_tests {
             "https://www.exportersindia.com/golden-steel-mills/", // name only in the path
         ] {
             let mut cards = no_website_card();
-            apply_found_website(&mut cards, Some("Golden Steel Mills"), &[link]);
+            apply_found_website(&mut cards, Some("Golden Steel Mills"), &[(link, "x")]);
             assert_eq!(cards[0].value, "No website found", "{link}");
         }
     }
@@ -2268,10 +2365,40 @@ mod b2b_signal_tests {
         apply_found_website(
             &mut cards,
             Some("Loyal Vina Co., Ltd"),
-            &["http://www.loyalvina.com.vn/en/"],
+            &[("http://www.loyalvina.com.vn/en/", "Loyal Vina")],
         );
         assert_eq!(cards[0].value, POSSIBLE_WEBSITE);
         assert!(cards[0].sub.contains("found loyalvina.com.vn"));
+    }
+
+    #[test]
+    fn a_site_showing_spam_pages_is_not_the_companys_website() {
+        // The real HYM Textile result: a Greek casino page on hymtextile.com.
+        let casino = "https://www.hymtextile.com/2026/10/01/%CF%86%CF%81%CF%8D%CE%BC%CE%B6%CE%B9-%CE%BA%CE%B1%CE%B6%CE%AF%CE%BD%CE%BF-%CE%B5%CE%BB%CE%BB%CE%AC%CE%B4%CE%B1/";
+        let mut cards = no_website_card();
+        apply_found_website(
+            &mut cards,
+            Some("HYM Textile"),
+            &[(casino, "Φρύμζι Καζίνο Ελλάδα η Απόλυτη Εμπειρία Νίκης")],
+        );
+        assert_eq!(cards[0].value, "No website found");
+        // An innocent-looking page on the same site is not used either.
+        let mut cards = no_website_card();
+        apply_found_website(
+            &mut cards,
+            Some("HYM Textile"),
+            &[("https://hymtextile.com/about/", "About"), (casino, "")],
+        );
+        assert_eq!(cards[0].value, "No website found");
+        assert!(decode_percent("%CE%BA%CE%B1%CE%B6%CE%AF%CE%BD%CE%BF").contains("καζίνο"));
+        // Without spam, the same site would be shown.
+        let mut cards = no_website_card();
+        apply_found_website(
+            &mut cards,
+            Some("HYM Textile"),
+            &[("https://hymtextile.com/about/", "About HYM Textile")],
+        );
+        assert_eq!(cards[0].value, POSSIBLE_WEBSITE);
     }
 
     #[test]
@@ -2281,12 +2408,64 @@ mod b2b_signal_tests {
         apply_found_website(
             &mut cards,
             Some("Golden Steel Mills"),
-            &["https://goldensteelmill.com/"],
+            &[("https://goldensteelmill.com/", "Home")],
         );
         assert_eq!(cards[0].value, "Website found");
         let mut cards = no_website_card();
-        apply_found_website(&mut cards, None, &["https://goldensteelmill.com/"]);
+        apply_found_website(
+            &mut cards,
+            None,
+            &[("https://goldensteelmill.com/", "Home")],
+        );
         assert_eq!(cards[0].value, "No website found");
+    }
+
+    fn no_presence() -> Signal {
+        Signal {
+            label: "Social presence check".into(),
+            sub: "not found".into(),
+            value: "No presence found".into(),
+            signal_type: "caution".into(),
+            category: String::new(),
+            check_type: String::new(),
+        }
+    }
+
+    #[test]
+    fn no_social_pages_is_info_when_the_platform_proves_the_supplier() {
+        let mut cards = alibaba_cards();
+        apply_supplier_record(&mut cards, Some(&yingmo_record()));
+        cards.push(no_presence());
+        soften_no_presence(&mut cards);
+        let p = get(&cards, "Social presence check");
+        assert_eq!(p.signal_type, "info");
+        assert!(p.sub.contains("not counted as a warning"));
+
+        // A platform-verified company (e.g. B2Brazil's badge) too.
+        let mut cards = vec![
+            build_b2b_verification_signal(&supplier("b2brazil", true, None)),
+            no_presence(),
+        ];
+        soften_no_presence(&mut cards);
+        assert_eq!(get(&cards, "Social presence check").signal_type, "info");
+    }
+
+    #[test]
+    fn no_social_pages_stays_a_warning_without_platform_proof() {
+        // Unverified, no track record.
+        let mut cards = vec![
+            build_b2b_verification_signal(&supplier("alibaba", false, None)),
+            no_presence(),
+        ];
+        soften_no_presence(&mut cards);
+        assert_eq!(get(&cards, "Social presence check").signal_type, "caution");
+        // A paid membership is not proof.
+        let mut cards = vec![
+            build_b2b_verification_signal(&supplier("tradewheel", false, Some("Gold"))),
+            no_presence(),
+        ];
+        soften_no_presence(&mut cards);
+        assert_eq!(get(&cards, "Social presence check").signal_type, "caution");
     }
 
     #[test]
