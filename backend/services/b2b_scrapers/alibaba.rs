@@ -493,6 +493,7 @@ impl B2bScraper for AlibabaScraper {
             review_count,
             on_time_rate: json_str(seller, "supplierOnTimeDeliveryRate"),
             reorder_rate: mini_card.and_then(|c| json_str(c, "reorderRateValue")),
+            ..Default::default()
         };
         let has_anything = record.checked_by_platform
             || record.member_label.is_some()

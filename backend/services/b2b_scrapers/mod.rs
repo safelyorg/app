@@ -50,11 +50,13 @@ pub struct B2bListingProfile {
     pub source_platform: String,
 }
 
-/// What the platform itself shows about a supplier's history on it -
-/// numbers the platform keeps, not text the supplier writes. Only
-/// Alibaba fills this in for now; every other platform returns None
-/// (see B2bScraper::supplier_record), so nothing changes for them.
-/// Every field is optional: a missing number is simply not shown.
+/// What the platform shows about a supplier beyond the normal profile:
+/// numbers the platform keeps (Alibaba: orders, rating, checks) and
+/// what the company lists about itself (B2Brazil: other products,
+/// business types, certificates, the year it joined). Only Alibaba and
+/// B2Brazil fill this in; every other platform returns None (see
+/// B2bScraper::supplier_record), so nothing changes for them.
+/// Every field is optional: a missing value is simply not shown.
 #[derive(Debug, Default, Clone)]
 pub struct SupplierRecord {
     /// The platform's name as buyers know it, e.g. "Alibaba".
@@ -80,6 +82,18 @@ pub struct SupplierRecord {
     pub on_time_rate: Option<String>,
     /// Share of buyers who order again, e.g. "21%".
     pub reorder_rate: Option<String>,
+    /// The year the supplier joined the platform (B2Brazil: "Since
+    /// 2024"). Not the year the company was founded.
+    pub joined_platform_year: Option<i32>,
+    /// Products the company itself lists on the platform: its other
+    /// products and its keywords. Used to spot products that are common
+    /// bait in fake commodity deals.
+    pub products_offered: Vec<String>,
+    /// The business types the company picked, e.g. "Importer / Trading
+    /// Company".
+    pub business_types: Vec<String>,
+    /// Links to the certificate images the company shows.
+    pub certificate_images: Vec<String>,
 }
 
 pub trait B2bScraper: Send + Sync {
@@ -122,6 +136,15 @@ pub trait B2bScraper: Send + Sync {
     /// that don't implement it keep working exactly as before.
     fn supplier_record(&self, _listing_html: &str) -> Option<SupplierRecord> {
         None
+    }
+    /// Adds what the company's own page shows (certificates, products)
+    /// to the record from supplier_record. Default: unchanged.
+    fn enrich_record_from_company_profile(
+        &self,
+        record: Option<SupplierRecord>,
+        _profile_html: &str,
+    ) -> Option<SupplierRecord> {
+        record
     }
 }
 
@@ -345,7 +368,7 @@ pub async fn fetch_b2b_page(platform: &str, page_url: &str) -> Option<B2bPageRes
     let listing = scraper.parse_listing(&html, page_url);
     let company_key = scraper.company_key(&html);
     let company_url = scraper.extract_company_profile_url(&html);
-    let record = scraper.supplier_record(&html);
+    let mut record = scraper.supplier_record(&html);
 
     if supplier.company_name.is_none() && listing.title.is_none() {
         eprintln!(
@@ -357,9 +380,15 @@ pub async fn fetch_b2b_page(platform: &str, page_url: &str) -> Option<B2bPageRes
         return None;
     }
 
-    let company_page_missing =
-        !enrich_from_profile_pages(scraper.as_ref(), platform, page_url, &html, &mut supplier)
-            .await;
+    let company_page_missing = !enrich_from_profile_pages(
+        scraper.as_ref(),
+        platform,
+        page_url,
+        &html,
+        &mut supplier,
+        &mut record,
+    )
+    .await;
 
     Some(B2bPageResult {
         supplier,
@@ -423,8 +452,8 @@ async fn fetch_company_page(
 
 /// Fetches the company's own profile pages (through ScraperAPI) and adds
 /// what they show - founding year, employees, description - to the
-/// supplier. Optional: if a fetch fails, the supplier keeps what the
-/// listing page already gave.
+/// supplier, and certificates and products to the record. Optional: if
+/// a fetch fails, both keep what the listing page already gave.
 /// Returns true when every company page that exists was loaded (or the
 /// platform has none), false when one of them could not be loaded.
 async fn enrich_from_profile_pages(
@@ -433,6 +462,7 @@ async fn enrich_from_profile_pages(
     listing_url: &str,
     listing_html: &str,
     supplier: &mut B2bSupplierProfile,
+    record: &mut Option<SupplierRecord>,
 ) -> bool {
     let mut all_loaded = true;
     let client = build_scraper_client();
@@ -445,6 +475,7 @@ async fn enrich_from_profile_pages(
                 take_and_replace(supplier, |s| {
                     scraper.enrich_from_company_profile(s, &profile_html)
                 });
+                *record = scraper.enrich_record_from_company_profile(record.take(), &profile_html);
             }
             CompanyPage::Blocked => {
                 all_loaded = false;
@@ -556,10 +587,17 @@ pub async fn b2b_page_from_browser(
     }
     let company_key = scraper.company_key(html);
     let company_url = scraper.extract_company_profile_url(html);
-    let record = scraper.supplier_record(html);
+    let mut record = scraper.supplier_record(html);
 
-    let company_page_missing =
-        !enrich_from_profile_pages(scraper.as_ref(), platform, page_url, html, &mut supplier).await;
+    let company_page_missing = !enrich_from_profile_pages(
+        scraper.as_ref(),
+        platform,
+        page_url,
+        html,
+        &mut supplier,
+        &mut record,
+    )
+    .await;
 
     eprintln!(
         "Safely: ScraperAPI could not get the {} listing - read it from the browser page instead ({} bytes)",

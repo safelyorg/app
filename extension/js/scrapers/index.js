@@ -145,6 +145,26 @@
         }
         return null;
     }
+    // The last part of a B2Brazil hotsite address that is a list page,
+    // not a product: /hotsite/{company}/products (and the Portuguese and
+    // Spanish versions of the site).
+    const B2BRAZIL_LIST_PAGES = ["products", "produtos", "productos", "services", "servicos", "servicios"];
+    /// A B2Brazil product listing is /hotsite/{company}/{product}, e.g.
+    /// /hotsite/daakiiya/bethel-nut. The company page (/hotsite/daakiiya),
+    /// its product list (/hotsite/daakiiya/products), search, plans, blog
+    /// and every other page are not listings, so they are not scanned.
+    function isB2brazilListingUrl(url) {
+        let parts;
+        try {
+            parts = new URL(url).pathname.split("/").filter(Boolean);
+        }
+        catch {
+            return false;
+        }
+        return (parts.length === 3 &&
+            parts[0] === "hotsite" &&
+            !B2BRAZIL_LIST_PAGES.includes(parts[2].toLowerCase()));
+    }
     const platformRegistry = [
         {
             name: "olx",
@@ -156,7 +176,7 @@
             name: "b2brazil",
             matchesHostname: (hostname) => hostname.includes("b2brazil.com"),
             requiresClientSideScraping: false,
-            isListingUrl: (url) => url.includes("/hotsite/"),
+            isListingUrl: isB2brazilListingUrl,
         },
         {
             name: "alibaba",
@@ -236,6 +256,7 @@
     window.__safelyScrapers.editDistance = editDistance;
     window.__safelyScrapers.highlightDiff = highlightDiff;
     window.__safelyScrapers.isGenuineDomain = isGenuineDomain;
+    window.__safelyScrapers.isB2brazilListingUrl = isB2brazilListingUrl;
     /// Finds the real company profile link on a TradeWheel listing
     /// page, then fetches that page in the background, using the
     /// visiting user's own, real browser session (their cookies are

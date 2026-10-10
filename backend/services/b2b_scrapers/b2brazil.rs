@@ -1,5 +1,8 @@
-use crate::services::b2b_scrapers::{B2bListingProfile, B2bScraper, B2bSupplierProfile};
-use scraper::{Html, Selector};
+use crate::services::b2b_scrapers::{
+    B2bListingProfile, B2bScraper, B2bSupplierProfile, SupplierRecord,
+};
+use chrono::{Datelike, Utc};
+use scraper::{ElementRef, Html, Selector};
 
 pub struct B2brazilScraper;
 
@@ -202,6 +205,139 @@ impl B2bScraper for B2brazilScraper {
     fn company_key(&self, listing_html: &str) -> Option<String> {
         let url = self.extract_company_profile_url(listing_html)?;
         hotsite_slug(&url)
+    }
+
+    /// What the company lists about itself on the product page: the
+    /// year it joined B2Brazil ("Since 2024"), its keywords, business
+    /// types and its other products. None when the page shows none.
+    fn supplier_record(&self, listing_html: &str) -> Option<SupplierRecord> {
+        let document = Html::parse_document(listing_html);
+        let slug = self.company_key(listing_html);
+        let mut record = new_record();
+        add_company_lists(&mut record, &document, slug.as_deref());
+        has_company_lists(&record).then_some(record)
+    }
+
+    /// The company page also shows the certificates and the company's
+    /// products, so they are added to what the product page gave.
+    fn enrich_record_from_company_profile(
+        &self,
+        record: Option<SupplierRecord>,
+        profile_html: &str,
+    ) -> Option<SupplierRecord> {
+        let document = Html::parse_document(profile_html);
+        let slug = self.company_key(profile_html);
+        let mut record = record.unwrap_or_else(new_record);
+        add_company_lists(&mut record, &document, slug.as_deref());
+        if let Ok(sel) = Selector::parse(".section-content-certificates-item img") {
+            for img in document.select(&sel) {
+                let value = img.value();
+                let src = value
+                    .attr("data-src")
+                    .or_else(|| value.attr("src"))
+                    .filter(|src| !src.contains("loading-"));
+                if let Some(src) = src {
+                    push_unique(&mut record.certificate_images, src.trim());
+                }
+            }
+        }
+        has_company_lists(&record).then_some(record)
+    }
+}
+
+fn new_record() -> SupplierRecord {
+    SupplierRecord {
+        platform: "B2Brazil".to_string(),
+        ..Default::default()
+    }
+}
+
+fn has_company_lists(record: &SupplierRecord) -> bool {
+    record.joined_platform_year.is_some()
+        || !record.products_offered.is_empty()
+        || !record.business_types.is_empty()
+        || !record.certificate_images.is_empty()
+}
+
+/// Reads the lists the product page and the company page both show:
+/// "Since 2024" (the year the company joined B2Brazil), the business
+/// types, the keywords and the company's own products. Only products
+/// linking to this company's hotsite are taken - other companies'
+/// products are never mixed in.
+fn add_company_lists(record: &mut SupplierRecord, document: &Html, slug: Option<&str>) {
+    if record.joined_platform_year.is_none() {
+        record.joined_platform_year = joined_year(document);
+        record.years_on_platform = record
+            .joined_platform_year
+            .and_then(|y| u32::try_from(Utc::now().year() - y).ok());
+    }
+    for kind in list_after_heading(document, "Business type") {
+        push_unique(&mut record.business_types, &kind);
+    }
+    for keyword in list_after_heading(document, "Keywords") {
+        push_unique(&mut record.products_offered, &keyword);
+    }
+    let Some(slug) = slug else {
+        return;
+    };
+    let own_link = format!("/hotsite/{}/", slug);
+    if let (Ok(link_sel), Ok(name_sel)) = (
+        Selector::parse("a.section-products-content-item"),
+        Selector::parse("h3"),
+    ) {
+        for link in document.select(&link_sel) {
+            let href = link.value().attr("href").unwrap_or("");
+            if !href.contains(&own_link) {
+                continue;
+            }
+            if let Some(name) = link.select(&name_sel).next() {
+                let name = name.text().collect::<String>();
+                push_unique(&mut record.products_offered, name.trim());
+            }
+        }
+    }
+}
+
+/// "Since 2024" in the page header -> 2024.
+fn joined_year(document: &Html) -> Option<i32> {
+    let sel = Selector::parse(".actions-item h4").ok()?;
+    document.select(&sel).find_map(|el| {
+        let text = el.text().collect::<String>();
+        let year = text.trim().strip_prefix("Since ")?.trim();
+        (year.len() == 4)
+            .then(|| year.parse::<i32>().ok())
+            .flatten()
+    })
+}
+
+/// The items of the list that follows a heading, e.g. the keywords
+/// under <h5>Keywords</h5>.
+fn list_after_heading(document: &Html, heading: &str) -> Vec<String> {
+    let (Ok(h5), Ok(li)) = (Selector::parse("h5"), Selector::parse("li")) else {
+        return Vec::new();
+    };
+    let Some(list) = document
+        .select(&h5)
+        .find(|el| {
+            el.text()
+                .collect::<String>()
+                .trim()
+                .eq_ignore_ascii_case(heading)
+        })
+        .and_then(|el| el.next_siblings().find_map(ElementRef::wrap))
+    else {
+        return Vec::new();
+    };
+    list.select(&li)
+        .map(|item| item.text().collect::<String>().trim().to_string())
+        .filter(|text| !text.is_empty())
+        .collect()
+}
+
+fn push_unique(list: &mut Vec<String>, value: &str) {
+    let value = value.trim();
+    if !value.is_empty() && !list.iter().any(|v| v.eq_ignore_ascii_case(value)) {
+        list.push(value.to_string());
     }
 }
 
@@ -548,6 +684,114 @@ mod tests {
             Some("yanbianstatexurong2")
         );
         assert_eq!(hotsite_slug("https://b2brazil.com/plans"), None);
+    }
+
+    /// Trimmed from the real DAAKIIYA product and company pages.
+    const DAAKIIYA_PRODUCT_PAGE: &str = r#"<html><head>
+        <link rel="canonical" href="https://b2brazil.com/hotsite/daakiiya/bethel-nut"></head><body>
+        <div class="actions-item"><h4>Since 2024</h4></div>
+        <div class="actions-item"><h4>Brazil</h4></div>
+        <nav><a href="/hotsite/daakiiya" class="nav-home">Company Information</a></nav>
+        <ul class="section-content-more-info-keywords"><li>betel nut</li><li>chewable nut</li></ul>
+        <div class="uk-width-1-1 uk-margin-remove-top">
+            <h5>Business type</h5>
+            <ul class="section-content-more-info-keywords">
+                <li>Importer / Trading Company</li>
+                <li>Buying Office</li>
+                <li>Representative / Agent</li>
+            </ul>
+        </div>
+        <div class="uk-width-1-1 uk-margin-remove-top">
+            <h5>Keywords</h5>
+            <ul class="section-content-more-info-keywords "><li>SUGAR</li><li>CHICKEN PAWS</li></ul>
+        </div>
+        <ul>
+            <li class="box-product-item"><a href="/hotsite/daakiiya/icumsa-45-sugar" class="section-products-content-item">
+                <h3 class="section-products-content-title">ICUMSA 45 Sugar</h3></a></li>
+            <li class="box-product-item"><a href="/hotsite/daakiiya/urea-46-fertilizer" class="section-products-content-item">
+                <h3 class="section-products-content-title">Urea 46 Fertilizer</h3></a></li>
+            <li class="box-product-item"><a href="/hotsite/othercompany/olive-oil" class="section-products-content-item">
+                <h3 class="section-products-content-title">Olive Oil</h3></a></li>
+        </ul>
+    </body></html>"#;
+
+    const DAAKIIYA_COMPANY_PAGE: &str = r#"<html><head>
+        <link rel="canonical" href="https://b2brazil.com/hotsite/daakiiya"></head><body>
+        <div class="actions-item"><h4>Since 2024</h4></div>
+        <a href="/hotsite/daakiiya/cod-fish" class="section-products-content-item">
+            <div class="section-products-content-item-img"><img src="x.webp"></div>
+            <h3>Cod Fish</h3></a>
+        <div class="section-content-certificates-item">
+            <div class="section-content-certificates-img">
+                <img class="lazyload" data-src="https://cdn.b2brazil.com/certs/395_sgssystemcertiso90012000-13bb15.jpg.webp" src="//cdn.b2brazil.com/assets/images/loading-aH4uwG80c9b336.svg">
+            </div>
+        </div>
+        <div class="section-content-certificates-item">
+            <div class="section-content-certificates-img">
+                <img class="lazyload" data-src="https://cdn.b2brazil.com/certs/png-transparent-halal-logo-e3ed98.png.webp" src="//cdn.b2brazil.com/assets/images/loading-aH4uwG80c9b336.svg">
+            </div>
+        </div>
+    </body></html>"#;
+
+    #[test]
+    fn record_reads_the_company_lists_from_the_product_page() {
+        let r = B2brazilScraper
+            .supplier_record(DAAKIIYA_PRODUCT_PAGE)
+            .expect("record");
+        assert_eq!(r.platform, "B2Brazil");
+        assert_eq!(r.joined_platform_year, Some(2024));
+        assert!(r.years_on_platform.is_some());
+        assert_eq!(
+            r.business_types,
+            vec![
+                "Importer / Trading Company",
+                "Buying Office",
+                "Representative / Agent"
+            ]
+        );
+        // Keywords and this company's own products; never the product
+        // description keywords ("betel nut") or another company's product.
+        assert_eq!(
+            r.products_offered,
+            vec![
+                "SUGAR",
+                "CHICKEN PAWS",
+                "ICUMSA 45 Sugar",
+                "Urea 46 Fertilizer"
+            ]
+        );
+        assert!(r.certificate_images.is_empty());
+        assert!(!r.checked_by_platform);
+        assert!(r.member_label.is_none());
+    }
+
+    #[test]
+    fn company_page_adds_certificates_and_products() {
+        let r = B2brazilScraper.supplier_record(DAAKIIYA_PRODUCT_PAGE);
+        let r = B2brazilScraper
+            .enrich_record_from_company_profile(r, DAAKIIYA_COMPANY_PAGE)
+            .expect("record");
+        assert!(r.products_offered.contains(&"Cod Fish".to_string()));
+        assert_eq!(
+            r.certificate_images,
+            vec![
+                "https://cdn.b2brazil.com/certs/395_sgssystemcertiso90012000-13bb15.jpg.webp",
+                "https://cdn.b2brazil.com/certs/png-transparent-halal-logo-e3ed98.png.webp"
+            ]
+        );
+        // The company page alone (product page record missing) still works.
+        let alone = B2brazilScraper
+            .enrich_record_from_company_profile(None, DAAKIIYA_COMPANY_PAGE)
+            .expect("record");
+        assert_eq!(alone.certificate_images.len(), 2);
+        assert_eq!(alone.joined_platform_year, Some(2024));
+    }
+
+    #[test]
+    fn a_page_without_company_lists_has_no_record() {
+        let plain = r#"<div id="header-info-company"><h1>Plain Co</h1></div>"#;
+        assert!(B2brazilScraper.supplier_record(plain).is_none());
+        assert!(B2brazilScraper.supplier_record("").is_none());
     }
 
     #[test]

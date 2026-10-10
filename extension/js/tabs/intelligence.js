@@ -527,6 +527,13 @@
         "Buy only from the brand owner or an authorised distributor",
         "This product needs a licence or prescription, and fakes of it can be dangerous. Ask the supplier for a letter from the brand owner showing they are an authorised distributor, and check it with the brand owner directly. You may also need your own import licence.",
     ];
+    // Shown first when the company offers several classic bait products
+    // of fake commodity deals (ICUMSA 45 sugar, EN590 diesel, Urea 46...).
+    // The backend marks it "Commodity scam pattern".
+    const B2B_COMMODITY_CHECK = [
+        "Don't pay fees before an inspection",
+        "Fake commodity sellers ask for fees, a deposit or document costs before anything ships. Pay nothing until the goods are inspected by a company you choose (such as SGS), and pay only by Letter of Credit.",
+    ];
     function buildRecommendedChecks(signals) {
         const isB2b = isB2bScan(signals);
         const payment = isB2b
@@ -543,7 +550,13 @@
         const regulatedCheck = isB2b && signals.some((s) => s.label === "Regulated product" && s.type === "caution")
             ? [B2B_REGULATED_PRODUCT_CHECK]
             : [];
-        const checks = isB2b ? regulatedCheck.concat(paymentCheck, B2B_CHECKS) : B2C_CHECKS;
+        const commodityCheck = isB2b &&
+            signals.some((s) => s.label === "Product range" && s.value === "Commodity scam pattern")
+            ? [B2B_COMMODITY_CHECK]
+            : [];
+        const checks = isB2b
+            ? commodityCheck.concat(regulatedCheck, paymentCheck, B2B_CHECKS)
+            : B2C_CHECKS;
         const cards = checks
             .map(([title, body]) => '<div class="safely-check-card"><div class="safely-check-title">' +
             window.escapeHtml(tr(title)) +

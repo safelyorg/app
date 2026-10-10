@@ -589,8 +589,311 @@ pub fn apply_supplier_record(signals: &mut Vec<Signal>, record: Option<&Supplier
         }
     }
 
+    // The company says it is much older than its account here (B2Brazil:
+    // "Established 2015" but "Since 2024"). Not a warning - many real
+    // companies join late - but the buyer should know the platform has
+    // no record of the years before.
+    if let (Some(joined), Some(on_platform)) = (r.joined_platform_year, r.years_on_platform) {
+        if let Some(s) = signals.iter_mut().find(|s| s.label == "Account age") {
+            let company_years = s
+                .value
+                .strip_prefix("About ")
+                .and_then(|v| v.split_whitespace().next())
+                .and_then(|n| n.parse::<u32>().ok());
+            if company_years.is_some_and(|y| y >= on_platform + 3) {
+                s.sub = format!(
+                    "{} It joined {p} only in {joined}, so {p} has no record of the years before that.",
+                    s.sub.trim(),
+                    p = platform,
+                    joined = joined
+                );
+            }
+        }
+    }
+
     if let Some(track) = track_record_signal(r) {
         signals.push(track);
+    }
+}
+
+/// "Product range" card values. The card is only added when the
+/// company offers a product that is common bait in fake commodity
+/// deals, so ordinary listings do not get it.
+/// - "Commodity scam pattern" (caution): two or more different bait
+///   products, or one bait product from a company that says it sells
+///   "all kinds of products". risk_factors.rs makes this Serious.
+/// - "Often used in scams" (info): one bait product only. Real sellers
+///   of it exist, so it only adds a note.
+pub const COMMODITY_SCAM_PATTERN: &str = "Commodity scam pattern";
+pub const SCAM_BAIT_PRODUCT: &str = "Often used in scams";
+
+/// Products that are the classic bait in fake commodity deals (the
+/// buyer pays fees, a deposit or "documents" and nothing ships), as
+/// (text to find, name to show). Lower case.
+const BAIT_PRODUCTS: &[(&str, &str)] = &[
+    ("icumsa", "ICUMSA 45 sugar"),
+    ("urea 46", "Urea 46 fertilizer"),
+    ("urea46", "Urea 46 fertilizer"),
+    ("urea n46", "Urea 46 fertilizer"),
+    ("en590", "EN590 diesel"),
+    ("en 590", "EN590 diesel"),
+    ("d2 diesel", "D2 diesel"),
+    ("d2 gas oil", "D2 diesel"),
+    ("d6 fuel", "D6 fuel oil"),
+    ("d6 virgin", "D6 fuel oil"),
+    ("jp54", "JP54 jet fuel"),
+    ("jp 54", "JP54 jet fuel"),
+    ("jp-54", "JP54 jet fuel"),
+    ("jet a1", "Jet A-1 fuel"),
+    ("jet a-1", "Jet A-1 fuel"),
+    ("mazut", "mazut fuel oil"),
+    ("chicken paws", "chicken paws"),
+    ("chicken feet", "chicken paws"),
+    ("copper cathode", "copper cathodes"),
+    ("gold dust", "gold"),
+    ("gold bar", "gold"),
+    ("gold nugget", "gold"),
+];
+
+/// How a front company describes itself: it sells anything at all.
+const CATCH_ALL_PHRASES: &[&str] = &[
+    "all kinds of products",
+    "all kinds of commodities",
+    "all kinds of goods",
+    "all types of products",
+    "all types of commodities",
+    "you name it",
+    "any product you need",
+];
+
+/// Words in a certificate image's link that show it is a picture
+/// downloaded from a free image or clipart site, not a scan of a real
+/// certificate. Lower case.
+const COPIED_IMAGE_MARKERS: &[&str] = &[
+    "png-transparent",
+    "pngtree",
+    "pngwing",
+    "pngegg",
+    "pngitem",
+    "kisspng",
+    "freepik",
+    "clipart",
+    "clip-art",
+    "shutterstock",
+    "istockphoto",
+    "dreamstime",
+    "depositphotos",
+    "123rf",
+    "vecteezy",
+    "stock-photo",
+    "stock-vector",
+];
+
+/// ISO versions that were replaced long ago, so a certificate for them
+/// can no longer be valid, as (text in the link, name to show).
+const OUTDATED_ISO: &[(&str, &str)] = &[
+    ("90012000", "ISO 9001:2000"),
+    ("9001-2000", "ISO 9001:2000"),
+    ("9001_2000", "ISO 9001:2000"),
+    ("9001:2000", "ISO 9001:2000"),
+    ("90012008", "ISO 9001:2008"),
+    ("9001-2008", "ISO 9001:2008"),
+    ("9001_2008", "ISO 9001:2008"),
+    ("9001:2008", "ISO 9001:2008"),
+    ("140012004", "ISO 14001:2004"),
+    ("14001-2004", "ISO 14001:2004"),
+    ("14001_2004", "ISO 14001:2004"),
+    ("14001:2004", "ISO 14001:2004"),
+];
+
+pub const CERTIFICATES_COPIED: &str = "Look copied";
+pub const CERTIFICATES_OUTDATED: &str = "Out of date";
+
+/// Adds the cards that come from what the company lists about itself
+/// (see SupplierRecord): "Product range" when it offers scam-bait
+/// products, "Certificates" when its certificate images look copied or
+/// name an ISO version that no longer exists. Nothing is added when
+/// there is nothing to warn about.
+pub fn apply_supplier_claims(
+    signals: &mut Vec<Signal>,
+    record: Option<&SupplierRecord>,
+    supplier: &B2bSupplierProfile,
+    listing: &B2bListingProfile,
+) {
+    if let Some(card) = product_range_signal(record, supplier, listing) {
+        signals.push(card);
+    }
+    if let Some(card) = record.and_then(certificates_signal) {
+        signals.push(card);
+    }
+}
+
+fn product_range_signal(
+    record: Option<&SupplierRecord>,
+    supplier: &B2bSupplierProfile,
+    listing: &B2bListingProfile,
+) -> Option<Signal> {
+    let mut texts: Vec<&str> = Vec::new();
+    if let Some(r) = record {
+        texts.extend(r.products_offered.iter().map(String::as_str));
+    }
+    texts.extend(listing.title.as_deref());
+    texts.extend(listing.description.as_deref());
+    texts.extend(supplier.company_description.as_deref());
+    let all = texts.join("\n").to_lowercase();
+
+    let mut bait: Vec<&str> = Vec::new();
+    for (needle, name) in BAIT_PRODUCTS {
+        if all.contains(needle) && !bait.contains(name) {
+            bait.push(name);
+        }
+    }
+    if bait.is_empty() {
+        return None;
+    }
+    let catch_all = CATCH_ALL_PHRASES.iter().any(|p| all.contains(p));
+    let name = supplier.company_name.as_deref().unwrap_or("This company");
+    let items = join_names(&bait);
+    let small = small_company_note(supplier);
+
+    let (value, signal_type, sub) = if bait.len() >= 2 || catch_all {
+        let sells_all = if catch_all {
+            " and says it sells all kinds of products"
+        } else {
+            ""
+        };
+        (
+            COMMODITY_SCAM_PATTERN,
+            "caution",
+            format!(
+                "{name} offers {items}{sells_all}. These are some of the most common products in fake commodity deals: the buyer is asked to pay fees, a deposit or for documents first, and the goods never ship.{small} Never pay anything before the goods are inspected by a company you choose (such as SGS), and pay only by Letter of Credit."
+            ),
+        )
+    } else {
+        (
+            SCAM_BAIT_PRODUCT,
+            "info",
+            format!(
+                "{name} offers {items}. This product is often used in fake commodity deals, although real sellers exist.{small} Do not pay any fees or deposits before the goods are inspected by a company you choose (such as SGS)."
+            ),
+        )
+    };
+    Some(Signal {
+        label: "Product range".to_string(),
+        sub,
+        value: value.to_string(),
+        signal_type: signal_type.to_string(),
+        category: "listing".to_string(),
+        check_type: "pattern".to_string(),
+    })
+}
+
+/// " The company also says it has 0-10 employees and yearly sales of
+/// US$ 0 - 100K, which is very small for trading goods like these." -
+/// or "" when the company does not look small.
+fn small_company_note(supplier: &B2bSupplierProfile) -> String {
+    let squash = |v: &str| v.to_lowercase().replace(' ', "");
+    let small_staff = supplier
+        .employee_count
+        .as_deref()
+        .filter(|e| ["0-10", "1-10", "0-5", "1-5"].contains(&squash(e).as_str()));
+    let small_sales = supplier.sales_revenue.as_deref().filter(|v| {
+        let v = squash(v);
+        v.starts_with("0-") || v.starts_with("below") || v.starts_with("lessthan")
+    });
+    match (small_staff, small_sales) {
+        (Some(e), Some(v)) => format!(
+            " The company also says it has {} employees and yearly sales of US$ {}, which is very small for trading goods like these.",
+            e, v
+        ),
+        (Some(e), None) => format!(
+            " The company also says it has only {} employees, which is very small for trading goods like these.",
+            e
+        ),
+        (None, Some(v)) => format!(
+            " The company also says its yearly sales are US$ {}, which is very small for trading goods like these.",
+            v
+        ),
+        (None, None) => String::new(),
+    }
+}
+
+fn certificates_signal(record: &SupplierRecord) -> Option<Signal> {
+    let total = record.certificate_images.len();
+    let mut copied: Vec<String> = Vec::new();
+    let mut outdated: Vec<&str> = Vec::new();
+    for link in &record.certificate_images {
+        let file = link.rsplit('/').next().unwrap_or(link).to_string();
+        let lower = file.to_lowercase();
+        if COPIED_IMAGE_MARKERS.iter().any(|m| lower.contains(m)) {
+            copied.push(file.chars().take(60).collect());
+        }
+        for (needle, name) in OUTDATED_ISO {
+            if lower.contains(needle) && !outdated.contains(name) {
+                outdated.push(name);
+            }
+        }
+    }
+    if copied.is_empty() && outdated.is_empty() {
+        return None;
+    }
+    let mut parts: Vec<String> = Vec::new();
+    if !copied.is_empty() {
+        parts.push(format!(
+            "{} of {} certificate {} {} named like a picture downloaded from a free image website (\"{}\"), not a scan of a real certificate.",
+            copied.len(),
+            total,
+            if total == 1 { "image" } else { "images" },
+            if copied.len() == 1 { "is" } else { "are" },
+            copied[0]
+        ));
+    }
+    if !outdated.is_empty() {
+        parts.push(format!(
+            "A certificate names {}, a version that was replaced years ago, so a certificate for it can no longer be valid.",
+            join_names(&outdated)
+        ));
+    }
+    parts.push(
+        "Ask for each certificate's number and check it directly with the body that issued it."
+            .to_string(),
+    );
+    Some(Signal {
+        label: "Certificates".to_string(),
+        sub: parts.join(" "),
+        value: if copied.is_empty() {
+            CERTIFICATES_OUTDATED
+        } else {
+            CERTIFICATES_COPIED
+        }
+        .to_string(),
+        signal_type: "caution".to_string(),
+        category: "company".to_string(),
+        check_type: "consistency".to_string(),
+    })
+}
+
+/// Value of the price card when the listing shows no price at all.
+pub const PRICE_NOT_LISTED: &str = "Not listed";
+
+/// When a listing shows no price, the price card cannot be "Normal" -
+/// there was nothing to compare. It then reads "Not listed" (info).
+/// Directory platforms that never show prices are left alone, and a
+/// price Claude flagged stays flagged.
+pub fn apply_missing_price_note(signals: &mut [Signal], listing: &B2bListingProfile) {
+    if NO_ORDER_DETAILS_PLATFORMS.contains(&listing.source_platform.as_str())
+        || listing.unit_price.is_some()
+        || listing.fob_price.is_some()
+    {
+        return;
+    }
+    if let Some(card) = signals
+        .iter_mut()
+        .find(|s| s.label == "Price analysis" && s.value.eq_ignore_ascii_case("normal"))
+    {
+        card.value = PRICE_NOT_LISTED.to_string();
+        card.signal_type = "info".to_string();
+        card.sub = "No price is shown on this listing, so it could not be compared with the market. That is common in B2B trade - ask the supplier for a written quote before ordering.".to_string();
     }
 }
 
@@ -1142,6 +1445,7 @@ fn table_rank(label: &str) -> u8 {
         "Duplicate listing" | "Listing detail" => 5,
         // Shown right after Listing detail (same rank, added after it).
         "Regulated product" => 5,
+        "Product range" => 5,
         "Image authenticity" => 6,
         "Overall legitimacy check" => 7,
         "Safely history" => 8,
@@ -1151,6 +1455,8 @@ fn table_rank(label: &str) -> u8 {
         "Store page check" => 12,
         "Seller track record" => 13,
         "Registration consistency" => 14,
+        // Shown right after Registration consistency.
+        "Certificates" => 14,
         "Company profile completeness" => 15,
         "Listing completeness" => 16,
 
@@ -1466,6 +1772,7 @@ mod b2b_signal_tests {
             review_count: Some(466),
             on_time_rate: Some("100.0%".into()),
             reorder_rate: Some("21%".into()),
+            ..Default::default()
         }
     }
 
@@ -1598,6 +1905,144 @@ mod b2b_signal_tests {
 
         r.orders_6_months = None;
         assert!(track_record_signal(&r).is_none());
+    }
+
+    fn daakiiya() -> (SupplierRecord, B2bSupplierProfile, B2bListingProfile) {
+        let record = SupplierRecord {
+            platform: "B2Brazil".into(),
+            joined_platform_year: Some(2024),
+            years_on_platform: Some(2),
+            products_offered: vec![
+                "SUGAR".into(),
+                "CHICKEN PAWS".into(),
+                "ICUMSA 45 Sugar".into(),
+                "Urea 46 Fertilizer".into(),
+            ],
+            certificate_images: vec![
+                "https://cdn.b2brazil.com/certs/thumb_sem_titulo54-52c3a5.png.webp".into(),
+                "https://cdn.b2brazil.com/certs/395_sgssystemcertiso90012000-13bb15.jpg.webp"
+                    .into(),
+                "https://cdn.b2brazil.com/certs/png-transparent-halal-tourism-logo-e3ed98.png.webp"
+                    .into(),
+            ],
+            ..Default::default()
+        };
+        let mut s = supplier("b2brazil", true, None);
+        s.company_name = Some("DAAKIIYA".into());
+        s.employee_count = Some("0-10".into());
+        s.sales_revenue = Some("0 - 100K".into());
+        s.company_description = Some(
+            "Welcome to DAAKIIYA, your one-stop Commodity store for all kinds of products.".into(),
+        );
+        let mut l = empty_listing("b2brazil");
+        l.title = Some("Bethel Nut".into());
+        (record, s, l)
+    }
+
+    #[test]
+    fn bait_products_from_a_small_sell_everything_company_are_a_scam_pattern() {
+        let (r, s, l) = daakiiya();
+        let mut cards = Vec::new();
+        apply_supplier_claims(&mut cards, Some(&r), &s, &l);
+        let p = get(&cards, "Product range");
+        assert_eq!(
+            (p.value.as_str(), p.signal_type.as_str()),
+            (COMMODITY_SCAM_PATTERN, "caution")
+        );
+        assert!(p.sub.starts_with(
+            "DAAKIIYA offers ICUMSA 45 sugar, Urea 46 fertilizer and chicken paws and says it sells all kinds of products."
+        ));
+        assert!(
+            p.sub
+                .contains("0-10 employees and yearly sales of US$ 0 - 100K")
+        );
+        let c = get(&cards, "Certificates");
+        assert_eq!(
+            (c.value.as_str(), c.signal_type.as_str()),
+            (CERTIFICATES_COPIED, "caution")
+        );
+        assert!(
+            c.sub
+                .starts_with("1 of 3 certificate images is named like a picture")
+        );
+        assert!(c.sub.contains("ISO 9001:2000"));
+    }
+
+    #[test]
+    fn one_bait_product_alone_is_only_info() {
+        let (_, mut s, mut l) = daakiiya();
+        s.company_description = None;
+        s.employee_count = None;
+        s.sales_revenue = None;
+        l.title = Some("Urea 46% Granular".into());
+        let mut cards = Vec::new();
+        apply_supplier_claims(&mut cards, None, &s, &l);
+        let p = get(&cards, "Product range");
+        assert_eq!(
+            (p.value.as_str(), p.signal_type.as_str()),
+            (SCAM_BAIT_PRODUCT, "info")
+        );
+        assert!(cards.iter().all(|c| c.label != "Certificates"));
+    }
+
+    #[test]
+    fn ordinary_products_and_certificates_add_no_cards() {
+        let (mut r, mut s, mut l) = daakiiya();
+        r.products_offered = vec!["Reading glasses".into(), "Sunglasses".into()];
+        r.certificate_images = vec!["https://cdn.example.com/certs/ce-certificate-2023.jpg".into()];
+        s.company_description = Some("We make optical frames.".into());
+        l.title = Some("TR90 reading glasses".into());
+        let mut cards = Vec::new();
+        apply_supplier_claims(&mut cards, Some(&r), &s, &l);
+        assert!(cards.is_empty());
+        apply_supplier_claims(&mut cards, None, &s, &l);
+        assert!(cards.is_empty());
+    }
+
+    #[test]
+    fn a_late_join_is_noted_on_the_account_age_card() {
+        let (r, mut s, _) = daakiiya();
+        s.year_established = Some((Utc::now().year() - 11).to_string());
+        let mut cards = vec![build_b2b_company_age_signal(&s)];
+        apply_supplier_record(&mut cards, Some(&r));
+        let a = get(&cards, "Account age");
+        assert_eq!(a.signal_type, "good", "not a warning");
+        assert!(a.sub.ends_with(
+            "It joined B2Brazil only in 2024, so B2Brazil has no record of the years before that."
+        ));
+        // A company that joined soon after it was founded gets no note.
+        s.year_established = Some((Utc::now().year() - 3).to_string());
+        let mut cards = vec![build_b2b_company_age_signal(&s)];
+        apply_supplier_record(&mut cards, Some(&r));
+        assert!(!get(&cards, "Account age").sub.contains("joined"));
+    }
+
+    #[test]
+    fn no_price_on_the_listing_reads_not_listed() {
+        let price = || {
+            vec![Signal {
+                label: "Price analysis".into(),
+                sub: "Pricing on request is standard.".into(),
+                value: "normal".into(),
+                signal_type: "good".into(),
+                category: String::new(),
+                check_type: String::new(),
+            }]
+        };
+        let mut cards = price();
+        apply_missing_price_note(&mut cards, &empty_listing("b2brazil"));
+        assert_eq!(
+            (cards[0].value.as_str(), cards[0].signal_type.as_str()),
+            (PRICE_NOT_LISTED, "info")
+        );
+        let mut priced = empty_listing("b2brazil");
+        priced.unit_price = Some("US$ 5".into());
+        let mut cards = price();
+        apply_missing_price_note(&mut cards, &priced);
+        assert_eq!(cards[0].value, "normal");
+        let mut cards = price();
+        apply_missing_price_note(&mut cards, &empty_listing("kompass"));
+        assert_eq!(cards[0].value, "normal", "directories never show prices");
     }
 
     #[test]

@@ -157,3 +157,53 @@ describe("isListingPage", () => {
     expect(scrapers.isListingPage()).toBe(false);
   });
 });
+
+describe("B2Brazil pages", () => {
+  function onPage(href: string): void {
+    Object.defineProperty(window, "location", {
+      value: { href, hostname: new URL(href).hostname },
+      writable: true,
+    });
+  }
+
+  it("scans a product listing", () => {
+    onPage("https://b2brazil.com/hotsite/daakiiya/bethel-nut");
+    expect(scrapers.isListingPage()).toBe(true);
+    onPage("https://b2brazil.com.br/hotsite/daakiiya/noz-de-betel?ref=x#top");
+    expect(scrapers.isListingPage()).toBe(true);
+    onPage("https://b2brazil.com/hotsite/daakiiya/bethel-nut/");
+    expect(scrapers.isListingPage()).toBe(true);
+  });
+
+  it("does not scan the company page or its product list", () => {
+    for (const href of [
+      "https://b2brazil.com/hotsite/daakiiya",
+      "https://b2brazil.com/hotsite/daakiiya/",
+      "https://b2brazil.com/hotsite/daakiiya/products",
+      "https://b2brazil.com.br/hotsite/daakiiya/produtos",
+      "https://es.b2brazil.com/hotsite/daakiiya/productos",
+    ]) {
+      onPage(href);
+      expect(scrapers.isListingPage(), href).toBe(false);
+    }
+  });
+
+  it("does not scan search, plans, blog or the home page", () => {
+    for (const href of [
+      "https://b2brazil.com/",
+      "https://b2brazil.com/search/products?s=sugar",
+      "https://b2brazil.com/plans",
+      "https://b2brazil.com/blog",
+      "https://b2brazil.com/leadscentral",
+    ]) {
+      onPage(href);
+      expect(scrapers.isListingPage(), href).toBe(false);
+    }
+  });
+
+  it("shows the normal message on a page it does not scan", () => {
+    onPage("https://b2brazil.com/hotsite/daakiiya");
+    expect(scrapers.detectPlatform()).toBe("b2brazil");
+    expect(scrapers.getUnsupportedMessage()).toBeNull();
+  });
+});

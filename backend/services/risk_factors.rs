@@ -1,6 +1,8 @@
 use crate::models::{analysis::Signal, risk_factors::RiskFactor};
 use crate::services::confidence::calculate_confidence;
-use crate::services::signals::{FULL_PREPAYMENT, REGULATED_NOT_MAKER, UNTRACEABLE_PAYMENT};
+use crate::services::signals::{
+    COMMODITY_SCAM_PATTERN, FULL_PREPAYMENT, REGULATED_NOT_MAKER, UNTRACEABLE_PAYMENT,
+};
 
 /// The risk factor shown when Safely could check too little about a
 /// supplier to trust a low score (see not_enough_information_factor).
@@ -181,10 +183,18 @@ pub fn derive_risk_factors(signals: &[Signal]) -> Vec<RiskFactor> {
         // saved results, where "not verified" was a caution, working.
         let photos_unconfirmed = i.value.eq_ignore_ascii_case("not verified") || is_flagged(i);
         if is_flagged(d) && photos_unconfirmed {
+            // B2B "Listing detail" only means the description is vague -
+            // no copy of the listing was searched for, so the text must
+            // not say "duplicate".
+            let description = if d.label == "Listing detail" {
+                "The listing is vague and its photos can't be confirmed as the supplier's own, so the product may not really exist or may not be what is shown."
+            } else {
+                "A templated, duplicate-style listing combined with unverifiable images suggests the product itself may not genuinely exist or be authentic."
+            };
             factors.push(RiskFactor {
                 severity: "compound".to_string(),
                 name: "likely_counterfeit_or_nonexistent_product".to_string(),
-                description: "A templated, duplicate-style listing combined with unverifiable images suggests the product itself may not genuinely exist or be authentic.".to_string(),
+                description: description.to_string(),
                 contributing_signals: vec![d.label.clone(), "Image authenticity".to_string()],
             });
             covered_labels.push(d.label.as_str());
@@ -315,6 +325,26 @@ pub fn derive_risk_factors(signals: &[Signal]) -> Vec<RiskFactor> {
                 contributing_signals: vec!["Regulated product".to_string()],
             });
             covered_labels.push("Regulated product");
+        }
+    }
+
+    // Classic bait products of fake commodity deals (ICUMSA 45 sugar,
+    // EN590 diesel, Urea 46...) offered together, or by a company that
+    // says it sells everything: the buyer pays fees or a deposit and
+    // nothing ships. Serious on its own. One bait product alone is only
+    // an "info" card and never reaches here.
+    if let Some(p) = find_signal(signals, "Product range") {
+        if is_flagged(p) && p.value == COMMODITY_SCAM_PATTERN {
+            factors.push(RiskFactor {
+                severity: "hard".to_string(),
+                name: "commodity_scam_pattern".to_string(),
+                description: evidence_or(
+                    p,
+                    "This company offers products that are common bait in fake commodity deals.",
+                ),
+                contributing_signals: vec!["Product range".to_string()],
+            });
+            covered_labels.push("Product range");
         }
     }
 
@@ -782,6 +812,40 @@ mod tests {
             c.contributing_signals,
             vec!["Listing detail", "Image authenticity"]
         );
+    }
+
+    #[test]
+    fn vague_listing_text_never_says_duplicate() {
+        let b2b = derive_risk_factors(&[
+            sig("Listing detail", "Vague", "caution", "v"),
+            sig("Image authenticity", "not verified", "info", "i"),
+        ]);
+        let c = find(&b2b, "likely_counterfeit_or_nonexistent_product").unwrap();
+        assert!(c.description.starts_with("The listing is vague"));
+        assert!(!c.description.contains("duplicate"));
+        let b2c = derive_risk_factors(&[
+            sig("Duplicate listing", "Detected", "caution", "d"),
+            sig("Image authenticity", "not verified", "info", "i"),
+        ]);
+        let c = find(&b2c, "likely_counterfeit_or_nonexistent_product").unwrap();
+        assert!(c.description.contains("duplicate-style"));
+    }
+
+    #[test]
+    fn commodity_scam_pattern_is_serious() {
+        let f = derive_risk_factors(&[sig(
+            "Product range",
+            COMMODITY_SCAM_PATTERN,
+            "caution",
+            "Offers ICUMSA 45 sugar and Urea 46.",
+        )]);
+        assert_eq!(f.len(), 1, "not also a soft factor");
+        let c = find(&f, "commodity_scam_pattern").unwrap();
+        assert_eq!(c.severity, "hard");
+        assert_eq!(c.description, "Offers ICUMSA 45 sugar and Urea 46.");
+        // One bait product alone is info and never a risk factor.
+        let f = derive_risk_factors(&[sig("Product range", "Often used in scams", "info", "")]);
+        assert!(f.is_empty());
     }
 
     #[test]

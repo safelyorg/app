@@ -25,11 +25,11 @@ use crate::{
         risk_factors::{derive_risk_factors, not_enough_information_factor},
         sellers::{create_seller, find_seller},
         signals::{
-            apply_risky_payment_note, apply_supplier_record, build_b2b_claude_signals,
-            build_b2b_company_age_signal, build_b2b_listing_completeness_signal,
-            build_b2b_transparency_signal, build_b2b_verification_signal, build_domain_signal,
-            build_seller_verification_signals, build_signals, build_store_page_signal,
-            build_whois_signal,
+            apply_missing_price_note, apply_risky_payment_note, apply_supplier_claims,
+            apply_supplier_record, build_b2b_claude_signals, build_b2b_company_age_signal,
+            build_b2b_listing_completeness_signal, build_b2b_transparency_signal,
+            build_b2b_verification_signal, build_domain_signal, build_seller_verification_signals,
+            build_signals, build_store_page_signal, build_whois_signal,
         },
         whois::check_domain_whois,
     },
@@ -842,12 +842,17 @@ pub async fn build_b2b_analysis_path(
     // Always warn about Western Union / MoneyGram / crypto / gift cards
     // in the listing's payment methods, even when Claude did not flag them.
     apply_risky_payment_note(&mut signals, listing.payment_type.as_deref());
+    // No price on the listing: the price card reads "Not listed", not "Normal".
+    apply_missing_price_note(&mut signals, &listing);
     signals.push(build_b2b_verification_signal(&supplier));
     signals.push(build_b2b_company_age_signal(&supplier));
     // The platform's own record (Alibaba: on-site check, paid
     // membership, years on Alibaba, orders, rating). Corrects the two
     // cards above and adds "Seller track record". None elsewhere.
     apply_supplier_record(&mut signals, record.as_ref());
+    // What the company lists about itself: scam-bait products ("Product
+    // range") and copied or outdated certificates ("Certificates").
+    apply_supplier_claims(&mut signals, record.as_ref(), &supplier, &listing);
     signals.push(build_b2b_transparency_signal(&supplier));
     signals.push(build_b2b_listing_completeness_signal(&listing));
     // Social presence search runs on Serper, which costs credits. It is
