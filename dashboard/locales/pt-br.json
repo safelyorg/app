@@ -225,6 +225,7 @@
   "dash.value.full_prepayment": "Pagamento total antecipado",
   "dash.value.website_found": "Site encontrado",
   "dash.value.no_website_found": "Nenhum site encontrado",
+  "dash.value.possible_website_found": "Possível site encontrado",
   "dash.value.no_store_page_found": "Nenhuma página de loja encontrada",
   "dash.value.couldnt_be_loaded": "Não carregou",
   "dash.value.new_to_safely": "Novo no Safely",

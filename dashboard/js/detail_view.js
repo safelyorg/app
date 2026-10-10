@@ -90,6 +90,7 @@ const SIGNAL_VALUE_TRANSLATIONS = {
     "Full prepayment": "dash.value.full_prepayment",
     "Website found": "dash.value.website_found",
     "No website found": "dash.value.no_website_found",
+    "Possible website found": "dash.value.possible_website_found",
     "No store page found": "dash.value.no_store_page_found",
     "Couldn't be loaded": "dash.value.couldnt_be_loaded",
     "New to Safely": "dash.value.new_to_safely",

@@ -211,6 +211,7 @@
         "Not checked": "Não verificado",
         "Website found": "Site encontrado",
         "No website found": "Nenhum site encontrado",
+        "Possible website found": "Possível site encontrado",
         "No store page found": "Nenhuma página de loja encontrada",
         "Couldn't be loaded": "Não carregou",
         "Candidates found": "Candidatos encontrados",

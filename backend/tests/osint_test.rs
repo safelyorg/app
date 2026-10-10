@@ -1,6 +1,6 @@
 use backend::services::osint::{
     PlatformCheckResult, SCAM_MENTIONS_FOUND, SocialCandidateLink, build_location_fallback_queries,
-    build_osint_query_matrix, social_presence_signal,
+    build_osint_query_matrix, social_presence_signal, text_mentions_scam,
 };
 use std::collections::HashSet;
 
@@ -50,21 +50,63 @@ fn build_osint_query_matrix_dedupes_a_two_word_company_name_into_one_real_varian
     );
 }
 
-#[test]
-fn build_osint_query_matrix_produces_two_real_variants_for_a_three_word_company_name() {
-    let queries = build_osint_query_matrix(Some("Deva Industrial Supply"), None, None);
-    let review_variants: Vec<_> = queries
-        .iter()
+fn review_variants(name: &str) -> Vec<String> {
+    build_osint_query_matrix(Some(name), None, None)
+        .into_iter()
         .filter(|(platform, _, _)| platform == "Reviews")
-        .map(|(_, _, variant)| variant.clone())
-        .collect();
+        .map(|(_, _, variant)| variant)
+        .collect()
+}
+
+#[test]
+fn build_osint_query_matrix_drops_only_the_legal_ending() {
     assert_eq!(
-        review_variants.len(),
-        2,
-        "expected both the first-two-words variant and the full-name variant"
+        review_variants("Loyal Vina Co., Ltd"),
+        vec!["Loyal Vina", "Loyal Vina Co., Ltd"]
     );
-    assert!(review_variants.contains(&"Deva Industrial".to_string()));
-    assert!(review_variants.contains(&"Deva Industrial Supply".to_string()));
+    assert_eq!(
+        review_variants("Shenzhen Lighting Co., Ltd."),
+        vec!["Shenzhen Lighting", "Shenzhen Lighting Co., Ltd."]
+    );
+}
+
+#[test]
+fn build_osint_query_matrix_never_cuts_a_name_down_to_common_words() {
+    // "Golden Steel" matched furniture shops, steel traders and video
+    // games - only the full name is searched.
+    assert_eq!(
+        review_variants("Golden Steel Mills"),
+        vec!["Golden Steel Mills"]
+    );
+    assert_eq!(
+        review_variants("Deva Industrial Supply"),
+        vec!["Deva Industrial Supply"]
+    );
+    // "Deva Inc" without "Inc" would be one common word.
+    assert_eq!(review_variants("Deva Inc"), vec!["Deva Inc"]);
+}
+
+#[test]
+fn only_results_that_really_mention_a_scam_count() {
+    assert!(text_mentions_scam(
+        "Golden Steel Mills scam - they never delivered the machine"
+    ));
+    assert!(text_mentions_scam(
+        "Golden Steel Mills: golpe, não entregou"
+    ));
+    assert!(text_mentions_scam("Beware of Golden Steel Mills"));
+    // Pages that only match the name.
+    assert!(!text_mentions_scam(
+        "Golden Steel Mills A Name of Quality - block making machines"
+    ));
+    assert!(!text_mentions_scam(
+        "Back To The Days When Shopping Was All About Trust"
+    ));
+    // Weak words alone, and words that only contain a scam word.
+    assert!(!text_mentions_scam(
+        "Processo de fabricação, cuidado com a qualidade"
+    ));
+    assert!(!text_mentions_scam("Escambo e trocas"));
 }
 
 #[test]

@@ -897,6 +897,142 @@ pub fn apply_missing_price_note(signals: &mut [Signal], listing: &B2bListingProf
     }
 }
 
+/// Value of the website card when the company's own website was not on
+/// the listing but turned up in the web search (social presence check).
+pub const POSSIBLE_WEBSITE: &str = "Possible website found";
+
+/// Endings of a company name that never appear in its web address
+/// ("Co., Ltd", "Inc"...), lower case.
+const NAME_ENDINGS: &[&str] = &[
+    "co",
+    "company",
+    "ltd",
+    "limited",
+    "inc",
+    "incorporated",
+    "llc",
+    "corp",
+    "corporation",
+    "gmbh",
+    "ag",
+    "kg",
+    "pvt",
+    "private",
+    "plc",
+    "sa",
+    "sas",
+    "srl",
+    "spa",
+    "bv",
+    "nv",
+    "ltda",
+    "eireli",
+    "me",
+    "epp",
+    "sdn",
+    "bhd",
+    "pte",
+    "jsc",
+    "the",
+    "and",
+    "of",
+];
+
+/// The main part of a web address: "https://www.goldensteelmill.com/about-us"
+/// -> "goldensteelmill"; "shop.example.com.pk" -> "example". Sub-sites
+/// of other sites ("goldensteel.tradeindia.com" -> "tradeindia") never
+/// count as the company's own.
+fn site_name(url: &str) -> Option<String> {
+    let after_scheme = url.split("://").nth(1).unwrap_or(url);
+    let host = after_scheme
+        .split(['/', '?', '#', ':'])
+        .next()?
+        .trim()
+        .to_lowercase();
+    let parts: Vec<&str> = host.split('.').filter(|p| !p.is_empty()).collect();
+    if parts.len() < 2 {
+        return None;
+    }
+    let last = parts[parts.len() - 1];
+    let second = parts[parts.len() - 2];
+    // "example.com.pk", "example.co.uk": the name is one step further left.
+    let two_part_ending =
+        last.len() == 2 && ["com", "co", "net", "org", "gov", "edu", "ac"].contains(&second);
+    let name = if two_part_ending {
+        parts.get(parts.len().checked_sub(3)?)?
+    } else {
+        &second
+    };
+    Some(name.to_string())
+}
+
+/// "goldensteelmill.com" for "https://www.goldensteelmill.com/about-us".
+fn site_root(url: &str) -> Option<String> {
+    let after_scheme = url.split("://").nth(1).unwrap_or(url);
+    let host = after_scheme
+        .split(['/', '?', '#'])
+        .next()?
+        .trim()
+        .to_lowercase();
+    let host = host.strip_prefix("www.").unwrap_or(&host).to_string();
+    (!host.is_empty()).then_some(host)
+}
+
+/// True when every word of the company name is in the site's name:
+/// "Golden Steel Mills" matches "goldensteelmill" ("mills" may lose its
+/// "s"), but not "goldensteel" - that could be a different company.
+fn site_matches_company(site: &str, company_name: &str) -> bool {
+    let words: Vec<String> = company_name
+        .to_lowercase()
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|w| !w.is_empty() && !NAME_ENDINGS.contains(w))
+        .map(str::to_string)
+        .collect();
+    if words.is_empty() || words.concat().len() < 4 {
+        return false;
+    }
+    words.iter().all(|w| {
+        site.contains(w.as_str())
+            || (w.len() > 4 && w.ends_with('s') && site.contains(&w[..w.len() - 1]))
+    })
+}
+
+/// When the listing showed no website but the web search found a site
+/// whose address is the company's own name (e.g. "goldensteelmill.com"
+/// for Golden Steel Mills), the website card shows it as a possible
+/// website. Information only - it came from a search, not from the
+/// supplier - so it never changes the score. A website the listing
+/// already showed is never replaced.
+pub fn apply_found_website(
+    signals: &mut [Signal],
+    company_name: Option<&str>,
+    found_links: &[&str],
+) {
+    let Some(name) = company_name.filter(|n| !n.trim().is_empty()) else {
+        return;
+    };
+    let Some(card) = signals
+        .iter_mut()
+        .find(|s| s.label == "Seller website check" && s.value == "No website found")
+    else {
+        return;
+    };
+    let Some(link) = found_links
+        .iter()
+        .find(|link| site_name(link).is_some_and(|site| site_matches_company(&site, name)))
+    else {
+        return;
+    };
+    let Some(root) = site_root(link) else {
+        return;
+    };
+    card.value = POSSIBLE_WEBSITE.to_string();
+    card.signal_type = "info".to_string();
+    card.sub = format!(
+        "The listing shows no website, but a web search found {root}, whose address matches this company's name (found at {link}). It was not given by the supplier, so check that it really belongs to them before trusting it."
+    );
+}
+
 /// Below this average rating (with enough reviews to mean something),
 /// the track record is a warning.
 const LOW_RATING: f64 = 3.5;
@@ -1043,6 +1179,9 @@ pub const NO_ORDER_DETAILS_PLATFORMS: [&str; 2] = ["thomasnet", "kompass"];
 /// informed." Incomplete listings are common in B2B and not
 /// inherently suspicious, so this stays a mild pattern check, not a
 /// harsh red flag.
+/// How many of the 9 listing details make the listing card "good".
+const LISTING_FIELDS_FOR_GOOD: usize = 5;
+
 pub fn build_b2b_listing_completeness_signal(listing: &B2bListingProfile) -> Signal {
     let fields: [(&str, &Option<String>); 9] = [
         ("Unit price", &listing.unit_price),
@@ -1073,7 +1212,16 @@ pub fn build_b2b_listing_completeness_signal(listing: &B2bListingProfile) -> Sig
         };
     }
 
-    let signal_type = if filled_count == 0 { "caution" } else { "info" };
+    // Nothing filled in is a warning; most of it filled in (5 of 9 or
+    // more) is good, the same idea as the company profile card (2 of 3);
+    // anything in between is information only.
+    let signal_type = if filled_count == 0 {
+        "caution"
+    } else if filled_count >= LISTING_FIELDS_FOR_GOOD {
+        "good"
+    } else {
+        "info"
+    };
 
     // Real, delimited checklist the frontend parses to build the
     // dropdown - "Field Name|true" or "Field Name|false" per line,
@@ -1497,6 +1645,26 @@ mod b2b_signal_tests {
         let s = build_b2b_listing_completeness_signal(&empty_listing("alibaba"));
         assert_eq!(s.signal_type, "caution");
         assert_eq!(s.value, "0/9 fields provided");
+    }
+
+    #[test]
+    fn mostly_filled_listing_is_good_and_a_few_fields_are_info() {
+        let mut l = empty_listing("b2bmap");
+        l.unit_price = Some("USD 62500".into());
+        l.minimum_order_quantity = Some("1 Sets".into());
+        l.payment_type = Some("L/C, T/T".into());
+        l.packaging_details = Some("Export packing".into());
+        let s = build_b2b_listing_completeness_signal(&l);
+        assert_eq!(
+            (s.value.as_str(), s.signal_type.as_str()),
+            ("4/9 fields provided", "info")
+        );
+        l.incoterms = Some("FOB, CIF".into());
+        let s = build_b2b_listing_completeness_signal(&l);
+        assert_eq!(
+            (s.value.as_str(), s.signal_type.as_str()),
+            ("5/9 fields provided", "good")
+        );
     }
 
     #[test]
@@ -2043,6 +2211,82 @@ mod b2b_signal_tests {
         let mut cards = price();
         apply_missing_price_note(&mut cards, &empty_listing("kompass"));
         assert_eq!(cards[0].value, "normal", "directories never show prices");
+    }
+
+    fn no_website_card() -> Vec<Signal> {
+        vec![Signal {
+            label: "Seller website check".into(),
+            sub: "No website was found for this supplier on this platform.".into(),
+            value: "No website found".into(),
+            signal_type: "info".into(),
+            category: "website".into(),
+            check_type: "existence".into(),
+        }]
+    }
+
+    #[test]
+    fn a_found_site_with_the_company_name_is_a_possible_website() {
+        let mut cards = no_website_card();
+        apply_found_website(
+            &mut cards,
+            Some("Golden Steel Mills"),
+            &[
+                "https://www.facebook.com/goldensteelmillsofficial/",
+                "https://www.exportersindia.com/golden-steel-mills/",
+                "https://goldensteelmill.com/about-us/",
+            ],
+        );
+        assert_eq!(
+            (cards[0].value.as_str(), cards[0].signal_type.as_str()),
+            (POSSIBLE_WEBSITE, "info")
+        );
+        assert!(cards[0].sub.contains("found goldensteelmill.com"));
+        assert!(
+            cards[0]
+                .sub
+                .contains("https://goldensteelmill.com/about-us/")
+        );
+    }
+
+    #[test]
+    fn a_site_missing_part_of_the_name_or_on_another_site_is_ignored() {
+        for link in [
+            "https://goldensteel.com/",                           // "mill" missing
+            "https://goldensteelmills.tradeindia.com/",           // a page on another site
+            "https://www.facebook.com/goldensteelmills/",         // a social network
+            "https://www.exportersindia.com/golden-steel-mills/", // name only in the path
+        ] {
+            let mut cards = no_website_card();
+            apply_found_website(&mut cards, Some("Golden Steel Mills"), &[link]);
+            assert_eq!(cards[0].value, "No website found", "{link}");
+        }
+    }
+
+    #[test]
+    fn legal_endings_and_country_domains_are_handled() {
+        let mut cards = no_website_card();
+        apply_found_website(
+            &mut cards,
+            Some("Loyal Vina Co., Ltd"),
+            &["http://www.loyalvina.com.vn/en/"],
+        );
+        assert_eq!(cards[0].value, POSSIBLE_WEBSITE);
+        assert!(cards[0].sub.contains("found loyalvina.com.vn"));
+    }
+
+    #[test]
+    fn a_website_from_the_listing_is_never_replaced() {
+        let mut cards = no_website_card();
+        cards[0].value = "Website found".into();
+        apply_found_website(
+            &mut cards,
+            Some("Golden Steel Mills"),
+            &["https://goldensteelmill.com/"],
+        );
+        assert_eq!(cards[0].value, "Website found");
+        let mut cards = no_website_card();
+        apply_found_website(&mut cards, None, &["https://goldensteelmill.com/"]);
+        assert_eq!(cards[0].value, "No website found");
     }
 
     #[test]

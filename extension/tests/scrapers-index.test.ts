@@ -207,3 +207,28 @@ describe("B2Brazil pages", () => {
     expect(scrapers.getUnsupportedMessage()).toBeNull();
   });
 });
+
+describe("extractB2bmapPhone", () => {
+  const box = (phone: string): string =>
+    '<span class="d-flex mb-3 align-items-center"><span class="box-30"></span>' +
+    '<span class="text-muted">' + phone + "</span></span>";
+
+  it("reads a full number", () => {
+    document.body.innerHTML = box("+84878369911");
+    expect(scrapers.extractB2bmapPhone()).toBe("+84878369911");
+  });
+
+  it("uses the full copy of a masked number", () => {
+    document.body.innerHTML =
+      box('<span class="cursor">+9203009xxxxx</span>') + box("+9203009436019");
+    expect(scrapers.extractB2bmapPhone()).toBe("+9203009436019");
+  });
+
+  it("never takes a different number", () => {
+    document.body.innerHTML =
+      box('<span class="cursor">+9203009xxxxx</span>') + box("+441234567890");
+    expect(scrapers.extractB2bmapPhone()).toBeNull();
+    document.body.innerHTML = box("+9203009xxxxx");
+    expect(scrapers.extractB2bmapPhone()).toBeNull();
+  });
+});

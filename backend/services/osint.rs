@@ -70,6 +70,56 @@ const SCAM_WORD_SEARCH_GROUPS: &[&str] = &[
     "polícia OR ripoff OR beware OR avoid OR scammed",
 ];
 
+/// Words that show a search result really talks about a scam or a
+/// complaint. A scam-word search only counts as a scam mention when the
+/// result's own title or text contains one of these - Google often
+/// returns pages that match only the company name. Weak words from the
+/// searches ("processo", "avoid", "cuidado", "sumiu", "polícia") are
+/// left out here: they appear in ordinary pages far too often.
+const SCAM_PROOF_WORDS: &[&str] = &[
+    "scam",
+    "scammed",
+    "scammer",
+    "scammers",
+    "fraud",
+    "fraude",
+    "fraudulent",
+    "golpe",
+    "golpista",
+    "golpistas",
+    "estelionato",
+    "estelionatário",
+    "picareta",
+    "enganou",
+    "ripoff",
+    "rip-off",
+    "beware",
+    "reclamação",
+    "reclamações",
+];
+
+/// Phrases (several words) with the same meaning.
+const SCAM_PROOF_PHRASES: &[&str] = &[
+    "não entregou",
+    "nao entregou",
+    "não recomendo",
+    "nao recomendo",
+    "rip off",
+];
+
+/// True when the text (a result's title and snippet) really mentions a
+/// scam or a complaint, as a whole word - "scammed" counts, "Escambo"
+/// does not.
+pub fn text_mentions_scam(text: &str) -> bool {
+    let lower = text.to_lowercase();
+    if SCAM_PROOF_PHRASES.iter().any(|p| lower.contains(p)) {
+        return true;
+    }
+    lower
+        .split(|c: char| !(c.is_alphanumeric() || c == '-'))
+        .any(|word| SCAM_PROOF_WORDS.contains(&word))
+}
+
 /// True when this query is one of the scam-word searches.
 fn is_scam_word_query(query: &str) -> bool {
     SCAM_WORD_SEARCH_GROUPS
@@ -208,17 +258,83 @@ fn is_own_platform_domain(url: &str) -> bool {
         .any(|domain| url.contains(domain))
 }
 
-/// Real, shared name-variant builder - first-two-words and full-name,
-/// deduplicated - used by both the primary and the location-fallback
-/// query builders below, so the two tiers always search the exact
-/// same set of name variants.
-fn build_name_variants(company_name: &str) -> Vec<String> {
-    let words: Vec<&str> = company_name.split_whitespace().collect();
-    let mut variants: Vec<String> = Vec::new();
-    if words.len() >= 2 {
-        variants.push(format!("{} {}", words[0], words[1]));
+/// Legal endings of a company name ("Co., Ltd", "Inc", "GmbH",
+/// "Ltda"...), lower case, without dots or commas.
+const LEGAL_SUFFIXES: &[&str] = &[
+    "co",
+    "company",
+    "ltd",
+    "limited",
+    "inc",
+    "incorporated",
+    "llc",
+    "corp",
+    "corporation",
+    "gmbh",
+    "ag",
+    "kg",
+    "pvt",
+    "private",
+    "plc",
+    "sa",
+    "sas",
+    "srl",
+    "spa",
+    "bv",
+    "nv",
+    "ltda",
+    "eireli",
+    "me",
+    "epp",
+    "sdn",
+    "bhd",
+    "pte",
+    "jsc",
+    "oy",
+    "ab",
+    "as",
+];
+
+/// The company name without its legal ending: "Loyal Vina Co., Ltd" ->
+/// "Loyal Vina". None when there is no legal ending, or when only one
+/// word would be left ("Deva Inc" -> "Deva" is far too common).
+fn name_without_legal_suffix(company_name: &str) -> Option<String> {
+    let mut words: Vec<&str> = company_name.split_whitespace().collect();
+    let original_len = words.len();
+    while let Some(last) = words.last() {
+        let bare: String = last
+            .chars()
+            .filter(|c| c.is_alphanumeric())
+            .collect::<String>()
+            .to_lowercase();
+        if bare.is_empty() || LEGAL_SUFFIXES.contains(&bare.as_str()) {
+            words.pop();
+        } else {
+            break;
+        }
     }
-    variants.push(company_name.to_string());
+    if words.len() == original_len || words.len() < 2 {
+        return None;
+    }
+    let short = words.join(" ");
+    let short = short.trim_end_matches([',', '.', '-']).trim().to_string();
+    Some(short)
+}
+
+/// The names searched for: the full company name, and the same name
+/// without its legal ending when it has one ("Loyal Vina Co., Ltd" ->
+/// also "Loyal Vina"). Never a cut-down name like "Golden Steel" for
+/// "Golden Steel Mills": that matched furniture shops, steel traders
+/// and video games all over the world. Used by both the primary and
+/// the location-fallback query builders below, so the two tiers always
+/// search the exact same set of name variants.
+fn build_name_variants(company_name: &str) -> Vec<String> {
+    let full = company_name.trim().to_string();
+    let mut variants: Vec<String> = Vec::new();
+    if let Some(short) = name_without_legal_suffix(&full) {
+        variants.push(short);
+    }
+    variants.push(full);
     variants.dedup();
     variants
 }
@@ -392,6 +508,11 @@ async fn run_query_batch(
                         .to_lowercase();
                     let variant_lower = variant.to_lowercase();
                     if !haystack.contains(&variant_lower) {
+                        continue;
+                    }
+                    // A scam-word search only counts when the result
+                    // itself talks about a scam or a complaint.
+                    if scam_mention && !text_mentions_scam(&haystack) {
                         continue;
                     }
                     real_candidates.push(SocialCandidateLink {

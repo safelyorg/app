@@ -1,4 +1,5 @@
-use super::{B2bListingProfile, B2bScraper, B2bSupplierProfile};
+use super::{B2bListingProfile, B2bScraper, B2bSupplierProfile, SupplierRecord};
+use chrono::{Datelike, Utc};
 use scraper::{ElementRef, Html, Selector};
 
 pub struct B2bmapScraper;
@@ -151,6 +152,116 @@ fn company_slug(url: &str) -> Option<String> {
     }
 }
 
+/// The phone shown in the product page's sidebar. b2bmap masks the
+/// desktop copy for visitors without a paid account ("+9203009xxxxx")
+/// but often shows the full number in the page's mobile copy of the
+/// same box. The full number is used only when it starts with the
+/// same visible digits as the masked one, so a different number on
+/// the page is never taken by mistake.
+fn sidebar_phone(document: &Html) -> Option<String> {
+    let desktop = Selector::parse(
+        ".col-lg-4.col-xl-3.d-lg-down-none span.d-flex.mb-3.align-items-center span.text-muted",
+    )
+    .ok()
+    .and_then(|s| document.select(&s).next())
+    .and_then(|el| clean_optional_text(&text_of(&el)))?;
+    if !looks_masked(&desktop) {
+        return Some(desktop);
+    }
+    let visible: String = desktop
+        .chars()
+        .take_while(|c| !matches!(c, 'x' | 'X' | '*'))
+        .collect();
+    let visible = visible.trim();
+    if visible.chars().filter(|c| c.is_ascii_digit()).count() < 4 {
+        return None;
+    }
+    let all = Selector::parse("span.d-flex.mb-3.align-items-center span.text-muted").ok()?;
+    document
+        .select(&all)
+        .filter_map(|el| clean_optional_text(&text_of(&el)))
+        .find(|p| !looks_masked(p) && p.starts_with(visible) && p.len() > visible.len())
+}
+
+/// Delivery terms b2bmap suppliers write in free text ("international
+/// sea freight (FOB / CIF)").
+const INCOTERMS: &[&str] = &[
+    "EXW", "FCA", "FAS", "FOB", "CFR", "CNF", "CIF", "CPT", "CIP", "DAP", "DPU", "DDP", "DAT",
+    "DDU",
+];
+
+/// The Incoterms named in the given texts, each once, in page order
+/// ("FOB, CIF"). Only whole upper-case words count, so "fob" inside a
+/// longer word never matches.
+fn incoterms_in(texts: &[Option<&str>]) -> Option<String> {
+    let mut found: Vec<&str> = Vec::new();
+    for text in texts.iter().flatten() {
+        for word in text.split(|c: char| !c.is_ascii_alphanumeric()) {
+            if let Some(term) = INCOTERMS.iter().find(|t| **t == word) {
+                if !found.contains(term) {
+                    found.push(term);
+                }
+            }
+        }
+    }
+    (!found.is_empty()).then(|| found.join(", "))
+}
+
+/// "Production Capacity: 8,000 to 11,000 Blocks per shift" from the
+/// product text's bullet points or its specification table.
+fn production_capacity(document: &Html) -> Option<String> {
+    let label = "production capacity";
+    if let Ok(sel) = Selector::parse(".product-details-content li, .product-details-content p") {
+        for el in document.select(&sel) {
+            let text = text_of(&el);
+            if text.to_lowercase().starts_with(label) {
+                let value = text[label.len()..].trim_start_matches([':', ' ']).trim();
+                if !value.is_empty() {
+                    return Some(value.to_string());
+                }
+            }
+        }
+    }
+    table_pairs(document, "table.specification-table")
+        .into_iter()
+        .find(|(l, _)| l.trim().eq_ignore_ascii_case(label))
+        .map(|(_, v)| v)
+}
+
+/// The city and region from the company page's structured data
+/// ("Lahore", "Punjab", "54000"), which the visible "Register Address"
+/// row often leaves out.
+fn structured_address_parts(document: &Html) -> Vec<String> {
+    let Ok(sel) = Selector::parse(r#"script[type="application/ld+json"]"#) else {
+        return Vec::new();
+    };
+    for script in document.select(&sel) {
+        let raw = script.text().collect::<String>();
+        let Ok(json) = serde_json::from_str::<serde_json::Value>(&raw) else {
+            continue;
+        };
+        let Some(address) = json.get("address") else {
+            continue;
+        };
+        return ["addressLocality", "addressRegion", "postalCode"]
+            .iter()
+            .filter_map(|k| address.get(*k).and_then(|v| v.as_str()))
+            .map(collapse_whitespace)
+            .filter(|v| !v.is_empty())
+            .collect();
+    }
+    Vec::new()
+}
+
+/// "24 Sep 2026" -> 2026.
+fn year_from_date(text: &str) -> Option<i32> {
+    text.split_whitespace()
+        .last()?
+        .parse::<i32>()
+        .ok()
+        .filter(|y| (1990..=2100).contains(y))
+}
+
 /// "Mr. Minh Trung  (Sale Manager)" -> ("Mr. Minh Trung", Some("Sale Manager")).
 fn split_name_and_role(raw: &str) -> (String, Option<String>) {
     let cleaned = collapse_whitespace(raw);
@@ -221,15 +332,9 @@ impl B2bScraper for B2bmapScraper {
             .and_then(|t| t.split(':').nth(1).map(|s| s.trim().to_string()))
             .filter(|t| !t.is_empty());
 
-        // The phone in the product page's sidebar is shown in full
-        // (the company page masks it, e.g. "+848783xxxxx").
-        let contact_phone = Selector::parse(
-            ".col-lg-4.col-xl-3.d-lg-down-none span.d-flex.mb-3.align-items-center span.text-muted",
-        )
-        .ok()
-        .and_then(|s| document.select(&s).next())
-        .and_then(|el| clean_optional_text(&text_of(&el)))
-        .filter(|p| !looks_masked(p));
+        // The phone in the product page's sidebar (see sidebar_phone for
+        // how a masked number is handled).
+        let contact_phone = sidebar_phone(&document);
 
         // Business type ("Supplier, Exporter") is what the company is,
         // not a badge - it is passed on in the description instead.
@@ -380,7 +485,17 @@ impl B2bScraper for B2bmapScraper {
             parts.push(format!("Member of b2bmap since: {}.", v));
         }
         if let Some(v) = find_overview_field(&document, "Register Address") {
-            parts.push(format!("Registered address: {}.", v));
+            // Add the city, region and postcode when the address row
+            // leaves them out ("...main multan road" -> "..., Lahore,
+            // Punjab, 54000").
+            let lower = v.to_lowercase();
+            let mut address = vec![v.clone()];
+            address.extend(
+                structured_address_parts(&document)
+                    .into_iter()
+                    .filter(|p| !lower.contains(&p.to_lowercase())),
+            );
+            parts.push(format!("Registered address: {}.", address.join(", ")));
         }
         if let Some(a) = about {
             parts.push(a);
@@ -390,6 +505,29 @@ impl B2bScraper for B2bmapScraper {
         }
 
         supplier
+    }
+
+    /// When the company joined b2bmap ("Member Since: 24 Sep 2026"). A
+    /// company that says it is decades old but joined only recently gets
+    /// a note on its Account age card (see apply_supplier_record).
+    fn enrich_record_from_company_profile(
+        &self,
+        record: Option<SupplierRecord>,
+        profile_html: &str,
+    ) -> Option<SupplierRecord> {
+        let document = Html::parse_document(profile_html);
+        let Some(joined) =
+            find_table_value(&document, "table", "Member Since").and_then(|v| year_from_date(&v))
+        else {
+            return record;
+        };
+        let mut record = record.unwrap_or_else(|| SupplierRecord {
+            platform: "b2bmap".to_string(),
+            ..Default::default()
+        });
+        record.joined_platform_year = Some(joined);
+        record.years_on_platform = u32::try_from(Utc::now().year() - joined).ok();
+        Some(record)
     }
 
     fn parse_listing(&self, html: &str, listing_url: &str) -> B2bListingProfile {
@@ -416,6 +554,8 @@ impl B2bScraper for B2bmapScraper {
             non_placeholder(find_table_value(&document, details, "Delivery Info"));
 
         let description = extract_description(&document, raw_price.as_deref());
+        // "FOB / CIF" written in the delivery text or the description.
+        let incoterms = incoterms_in(&[delivery_timeframe.as_deref(), description.as_deref()]);
 
         B2bListingProfile {
             title,
@@ -427,9 +567,9 @@ impl B2bScraper for B2bmapScraper {
             payment_type,
             preferred_port: None,
             reference,
-            production_capacity: None,
+            production_capacity: production_capacity(&document),
             delivery_timeframe,
-            incoterms: None,
+            incoterms,
             packaging_details,
             listing_url: listing_url.to_string(),
             source_platform: "b2bmap".to_string(),
@@ -801,6 +941,108 @@ mod tests {
         assert!(d.contains("Specification: Model Number: LV-DRAGON-001; Grade: Export Grade"));
         assert!(d.contains("Usage: Fresh fruit consumption"));
         assert!(d.contains("Price: Negotiable"));
+    }
+
+    /// Trimmed from the real Golden Steel Mills product page: the
+    /// desktop sidebar masks the phone, the mobile copy shows it.
+    const GOLDEN_LISTING: &str = r##"<html><body>
+<div class="col-lg-4 col-xl-3 d-lg-down-none">
+  <h4 class="text-18 text-lg-22"><a href="https://b2bmap.com/golden-steel-mills" class="d-block text-strong">Golden Steel Mills</a></h4>
+  <span class="d-flex mb-3 align-items-center">
+    <span class="box-30 border rounded-circle bg-light-white mr-2"><i class="fa fa-phone mr-2 text-13"></i></span>
+    <span class="text-muted">
+      <span data-toggle="modal" data-target="#popupLoginFormModal" class="cursor">+9203009xxxxx</span>
+    </span>
+  </span>
+  <div class="table-responsive mt-4"><table class="table table-sm table-bordered text-14"><tbody>
+    <tr><td class="text-theme text-nowrap">Payment Terms:</td><td class="text-strong">L/C, T/T</td></tr>
+    <tr><td class="text-theme text-nowrap">Delivery Info:</td><td class="text-strong">Dispatched within 30 to 45 days after order confirmation. Available for nationwide delivery in Pakistan and international sea freight (FOB / CIF).</td></tr>
+  </tbody></table></div>
+</div>
+<div class="mb-2 product-details-content"><p>The GSM-50 is a stationary hydraulic plant.</p><ul><li>Production Capacity: 50 Paver Tiles / 8,000 to 11,000 Blocks per shift<br><br></li><li>Hydraulic Pressure: 21 - 25 MPa</li></ul></div>
+<div class="d-lg-none mb-3">
+  <h4 class="text-18 text-lg-22"><a href="https://b2bmap.com/golden-steel-mills" class="d-block text-strong">Golden Steel Mills</a></h4>
+  <span class="d-flex mb-3 align-items-center">
+    <span class="box-30 border rounded-circle bg-light-white mr-2"><i class="fa fa-phone mr-2 text-13"></i></span>
+    <span class="text-muted">+9203009436019</span>
+  </span>
+</div>
+</body></html>"##;
+
+    const GOLDEN_PROFILE: &str = r##"<html><body>
+<table class="table table-sm table-borderless w-auto mb-0"><tbody>
+  <tr><td >Founded in</td><td class="px-2 ">:</td><td >1989</td></tr>
+</tbody></table>
+<table class="table table-sm table-borderless w-auto mb-0"><tbody>
+  <tr><td >Member Since</td><td class="px-2 text-muted">:</td><td >24 Sep 2026</td></tr>
+  <tr><td >Membership Type</td><td class="px-2 text-muted">:</td><td > Free Member </td></tr>
+</tbody></table>
+<div class="d-md-table d-company-info-table w-100">
+  <div class="d-flex d-md-table-row">
+    <div class="d-md-table-cell"><span class="d-md-down-none text-nowrap">Register Address:</span></div>
+    <div class="d-md-table-cell">15 Km Near Ring road interchange main multan road</div>
+  </div>
+</div>
+<script type="application/ld+json">
+  { "@context": "https://schema.org/", "@type": "LocalBusiness", "name": "Golden Steel Mills",
+    "address": { "@type": "PostalAddress", "streetAddress": "15 Km Near Ring road interchange main multan road",
+      "addressLocality": "Lahore", "addressRegion": "Punjab", "postalCode": "54000", "addressCountry": "Pakistan" } }
+</script>
+</body></html>"##;
+
+    #[test]
+    fn masked_sidebar_phone_uses_the_matching_full_number() {
+        let s = B2bmapScraper.parse_supplier(GOLDEN_LISTING, "u");
+        assert_eq!(s.contact_phone.as_deref(), Some("+9203009436019"));
+
+        // A full number that does not match the visible digits is never used.
+        let other = GOLDEN_LISTING.replace("+9203009436019", "+441234567890");
+        assert_eq!(
+            B2bmapScraper.parse_supplier(&other, "u").contact_phone,
+            None
+        );
+
+        // Masked everywhere: no phone.
+        let masked = GOLDEN_LISTING.replace("+9203009436019", "+9203009xxxxx");
+        assert_eq!(
+            B2bmapScraper.parse_supplier(&masked, "u").contact_phone,
+            None
+        );
+    }
+
+    #[test]
+    fn incoterms_and_capacity_are_read_from_the_text() {
+        let l = B2bmapScraper.parse_listing(GOLDEN_LISTING, "u");
+        assert_eq!(l.incoterms.as_deref(), Some("FOB, CIF"));
+        assert_eq!(
+            l.production_capacity.as_deref(),
+            Some("50 Paver Tiles / 8,000 to 11,000 Blocks per shift")
+        );
+        // The Loyal Vina page names no Incoterms and no capacity.
+        let l = B2bmapScraper.parse_listing(LISTING, "u");
+        assert_eq!(l.incoterms, None);
+        assert_eq!(l.production_capacity, None);
+        assert_eq!(incoterms_in(&[Some("Comfortable fobbing")]), None);
+    }
+
+    #[test]
+    fn address_gets_the_city_and_join_year_is_recorded() {
+        let s = B2bmapScraper
+            .enrich_from_company_profile(B2bSupplierProfile::default(), GOLDEN_PROFILE);
+        assert!(s.company_description.unwrap().contains(
+            "Registered address: 15 Km Near Ring road interchange main multan road, Lahore, Punjab, 54000."
+        ));
+        let r = B2bmapScraper
+            .enrich_record_from_company_profile(None, GOLDEN_PROFILE)
+            .expect("record");
+        assert_eq!(r.platform, "b2bmap");
+        assert_eq!(r.joined_platform_year, Some(2026));
+        assert!(r.years_on_platform.is_some());
+        assert!(
+            B2bmapScraper
+                .enrich_record_from_company_profile(None, "<html></html>")
+                .is_none()
+        );
     }
 
     #[test]

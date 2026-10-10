@@ -4461,18 +4461,20 @@ fn build_osint_query_matrix_skips_the_single_word_variant() {
 }
 
 #[test]
-fn build_osint_query_matrix_builds_two_word_and_full_name_variants() {
+fn build_osint_query_matrix_searches_the_full_name_and_drops_only_a_legal_ending() {
+    // A name is never cut down to its first two words ("SILTI MODA"):
+    // a shorter name matches unrelated companies.
     let queries = build_osint_query_matrix(Some("SILTI MODA PRAIA"), None, None);
-    let has_two_word = queries.iter().any(|(_, _, v)| v == "SILTI MODA");
-    let has_full_name = queries.iter().any(|(_, _, v)| v == "SILTI MODA PRAIA");
     assert!(
-        has_two_word,
-        "expected the real, 2-word variant to be present"
+        queries.iter().all(|(_, _, v)| v == "SILTI MODA PRAIA"),
+        "expected only the full name to be searched"
     );
-    assert!(
-        has_full_name,
-        "expected the real, full-name variant to be present"
-    );
+    assert!(!queries.is_empty());
+
+    // Only a legal ending ("Ltda") is dropped, as a second variant.
+    let queries = build_osint_query_matrix(Some("Silti Moda Praia Ltda"), None, None);
+    assert!(queries.iter().any(|(_, _, v)| v == "Silti Moda Praia"));
+    assert!(queries.iter().any(|(_, _, v)| v == "Silti Moda Praia Ltda"));
 }
 
 #[test]

@@ -25,11 +25,12 @@ use crate::{
         risk_factors::{derive_risk_factors, not_enough_information_factor},
         sellers::{create_seller, find_seller},
         signals::{
-            apply_missing_price_note, apply_risky_payment_note, apply_supplier_claims,
-            apply_supplier_record, build_b2b_claude_signals, build_b2b_company_age_signal,
-            build_b2b_listing_completeness_signal, build_b2b_transparency_signal,
-            build_b2b_verification_signal, build_domain_signal, build_seller_verification_signals,
-            build_signals, build_store_page_signal, build_whois_signal,
+            apply_found_website, apply_missing_price_note, apply_risky_payment_note,
+            apply_supplier_claims, apply_supplier_record, build_b2b_claude_signals,
+            build_b2b_company_age_signal, build_b2b_listing_completeness_signal,
+            build_b2b_transparency_signal, build_b2b_verification_signal, build_domain_signal,
+            build_seller_verification_signals, build_signals, build_store_page_signal,
+            build_whois_signal,
         },
         whois::check_domain_whois,
     },
@@ -750,11 +751,22 @@ fn price_for_claude(listing: &B2bListingProfile) -> String {
         .as_deref()
         .map(str::trim)
         .filter(|s| !s.is_empty());
-    match (unit, fob) {
+    let price = match (unit, fob) {
         (Some(u), Some(f)) if u != f => format!("{u} (FOB price: {f})"),
         (Some(u), _) => u.to_string(),
         (None, Some(f)) => format!("FOB price: {f}"),
         (None, None) => String::new(),
+    };
+    // The delivery terms belong with the price, so Claude never says
+    // "Incoterms are not stated" when the listing gives them.
+    match listing
+        .incoterms
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
+        Some(terms) if !price.is_empty() => format!("{price} (Incoterms: {terms})"),
+        _ => price,
     }
 }
 
@@ -874,6 +886,13 @@ pub async fn build_b2b_analysis_path(
     } else {
         Vec::new()
     };
+    // The listing showed no website, but the web search above may have
+    // found the company's own site ("goldensteelmill.com").
+    let found_links: Vec<&str> = social_candidates
+        .iter()
+        .flat_map(|r| r.candidates.iter().map(|c| c.url.as_str()))
+        .collect();
+    apply_found_website(&mut signals, supplier.company_name.as_deref(), &found_links);
 
     let warning_score: i16 =
         signals.iter().map(warning_points).sum::<i16>() + info_points(&signals);

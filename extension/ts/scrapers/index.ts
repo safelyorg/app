@@ -349,13 +349,27 @@ type DomainCheckResult = LegitimateDomainResult | SuspiciousDomainResult | null;
 
   (window as any).__safelyScrapers.fetchTradewheelWebsite = fetchTradewheelWebsite;
 
+  /// The supplier's phone from a b2bmap product page. b2bmap masks the
+  /// first (desktop) copy for visitors without a paid account
+  /// ("+9203009xxxxx") but often shows the full number in the page's
+  /// mobile copy of the same box. The full number is used only when it
+  /// starts with the same visible digits, so a different number on the
+  /// page is never taken.
   function extractB2bmapPhone(): string | null {
-    const el = document.querySelector<HTMLElement>(
-      "span.d-flex.mb-3.align-items-center span.text-muted",
+    const isMasked = (t: string): boolean => /[x*]/i.test(t);
+    const texts = Array.from(
+      document.querySelectorAll<HTMLElement>("span.d-flex.mb-3.align-items-center span.text-muted"),
+    )
+      .map((el) => (el.textContent || "").replace(/\s+/g, " ").trim())
+      .filter(Boolean);
+    const first = texts[0];
+    if (!first) return null;
+    if (!isMasked(first)) return first;
+    const visible = first.split(/[x*]/i)[0].trim();
+    if ((visible.match(/\d/g) || []).length < 4) return null;
+    return (
+      texts.find((t) => !isMasked(t) && t.startsWith(visible) && t.length > visible.length) || null
     );
-    const text = el?.textContent?.trim() || "";
-    if (!text || text.toLowerCase().includes("x")) return null;
-    return text;
   }
 
   (window as any).__safelyScrapers.extractB2bmapPhone = extractB2bmapPhone;
