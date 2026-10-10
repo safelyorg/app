@@ -107,17 +107,68 @@ const SCAM_PROOF_PHRASES: &[&str] = &[
     "rip off",
 ];
 
-/// True when the text (a result's title and snippet) really mentions a
-/// scam or a complaint, as a whole word - "scammed" counts, "Escambo"
-/// does not.
-pub fn text_mentions_scam(text: &str) -> bool {
-    let lower = text.to_lowercase();
-    if SCAM_PROOF_PHRASES.iter().any(|p| lower.contains(p)) {
-        return true;
-    }
-    lower
+/// How many words may sit between the company's name and a scam word
+/// for the result to count as talking about this company. A real
+/// complaint puts them together ("X scam", "beware of X", "caí no golpe
+/// da X"); a post that only has both somewhere in a long text (a sports
+/// post where "golpe" means a hit) does not count.
+const SCAM_WORD_MAX_GAP: usize = 6;
+
+/// Lower-case words of a text, punctuation removed.
+fn words_of(text: &str) -> Vec<String> {
+    text.to_lowercase()
         .split(|c: char| !(c.is_alphanumeric() || c == '-'))
-        .any(|word| SCAM_PROOF_WORDS.contains(&word))
+        .filter(|w| !w.is_empty())
+        .map(str::to_string)
+        .collect()
+}
+
+/// Start positions of `needle` (a run of words) inside `words`.
+fn word_run_positions(words: &[String], needle: &[String]) -> Vec<usize> {
+    if needle.is_empty() || needle.len() > words.len() {
+        return Vec::new();
+    }
+    (0..=words.len() - needle.len())
+        .filter(|&i| words[i..i + needle.len()] == *needle)
+        .collect()
+}
+
+/// True when the text mentions a scam or a complaint close to the
+/// company's name (at most SCAM_WORD_MAX_GAP words away, before or
+/// after it).
+pub fn scam_word_near_name(text: &str, name: &str) -> bool {
+    let words = words_of(text);
+    let name_words = words_of(name);
+    let name_starts = word_run_positions(&words, &name_words);
+    if name_starts.is_empty() {
+        return false;
+    }
+    // Every (start, end) word range holding a scam word or phrase.
+    let mut scam_spans: Vec<(usize, usize)> = words
+        .iter()
+        .enumerate()
+        .filter(|(_, w)| SCAM_PROOF_WORDS.contains(&w.as_str()))
+        .map(|(i, _)| (i, i))
+        .collect();
+    for phrase in SCAM_PROOF_PHRASES {
+        let phrase_words = words_of(phrase);
+        for start in word_run_positions(&words, &phrase_words) {
+            scam_spans.push((start, start + phrase_words.len() - 1));
+        }
+    }
+    name_starts.iter().any(|&name_start| {
+        let name_end = name_start + name_words.len() - 1;
+        scam_spans.iter().any(|&(start, end)| {
+            let gap = if start > name_end {
+                start - name_end - 1
+            } else if name_start > end {
+                name_start - end - 1
+            } else {
+                0
+            };
+            gap <= SCAM_WORD_MAX_GAP
+        })
+    })
 }
 
 /// True when this query is one of the scam-word searches.
@@ -511,9 +562,16 @@ async fn run_query_batch(
                         continue;
                     }
                     // A scam-word search only counts when the result
-                    // itself talks about a scam or a complaint.
-                    if scam_mention && !text_mentions_scam(&haystack) {
-                        continue;
+                    // itself talks about a scam or a complaint, close to
+                    // the company's name.
+                    if scam_mention {
+                        if !scam_word_near_name(&haystack, &variant) {
+                            continue;
+                        }
+                        eprintln!(
+                            "Safely: scam mention for \"{}\": {} | {}",
+                            variant, r.link, haystack
+                        );
                     }
                     real_candidates.push(SocialCandidateLink {
                         platform: platform_label.clone(),

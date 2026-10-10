@@ -26,6 +26,13 @@ impl B2bScraper for TradewheelScraper {
         // verification card), but it is never counted as verification.
         let badge_honorific = membership_tier(&document);
 
+        // The listing's company box shows the street address. It is put
+        // in the description as an "Address: ..." line, the same way as
+        // ExportHub and b2bmap, so the legitimacy check can see it.
+        let company_description = select_text(&document, ".comp-info p.address")
+            .and_then(|a| street_address(&a))
+            .map(|a| address_line(&a));
+
         B2bSupplierProfile {
             company_name,
             logo_url: None,
@@ -40,7 +47,7 @@ impl B2bScraper for TradewheelScraper {
             contact_name: None,
             contact_phone: None,
             badge_honorific,
-            company_description: None,
+            company_description,
             website_url: None,
         }
     }
@@ -84,10 +91,10 @@ impl B2bScraper for TradewheelScraper {
                 .cloned()
                 .or(headline_price)
                 .or_else(|| get(&["Price", "Unit Price"]))
-                .filter(|p| has_number(p)),
+                .filter(|p| is_real_price(p)),
             fob_price: headline_fob
                 .or_else(|| get(&["FOB Price"]))
-                .filter(|p| has_number(p)),
+                .filter(|p| is_real_price(p)),
             // The product table says "MOQ". The tier table's "Quantity"
             // is a price bracket, not the minimum order, so it is only a
             // last resort.
@@ -154,6 +161,16 @@ impl B2bScraper for TradewheelScraper {
             &mut supplier.country,
             get("Country/Region").or_else(|| get("Country")),
         );
+        // "sialkot, punjab" + "Pakistan" -> "Sialkot, Punjab, Pakistan".
+        if let Some(city_state) = get("City / State").and_then(|c| clean_city_state(&c)) {
+            supplier.country = Some(match supplier.country.take() {
+                Some(country) if !country.to_lowercase().contains(&city_state.to_lowercase()) => {
+                    format!("{}, {}", city_state, country)
+                }
+                Some(country) => country,
+                None => city_state,
+            });
+        }
 
         // The Website row shows a "Show" button that only works for
         // logged-in members - only a real address is accepted. (The
@@ -171,22 +188,40 @@ impl B2bScraper for TradewheelScraper {
         // TradeWheel's company page has no "about" text, but it does
         // list what the company sells and what kind of business it is -
         // what Claude needs to check the name against the products.
-        if supplier.company_description.is_none() {
-            let mut parts = Vec::new();
-            if let Some(v) = get("Business Type") {
-                parts.push(format!("Business type: {}.", v));
-            }
-            if let Some(v) = get("Main Products") {
-                parts.push(format!("Main products: {}.", v));
-            }
-            if let Some(v) =
-                select_text(&document, ".contact_p_txt2").and_then(|r| non_placeholder(&r))
-            {
-                parts.push(format!("Contact person's role: {}.", v));
-            }
-            if !parts.is_empty() {
-                supplier.company_description = Some(parts.join(" "));
-            }
+        // The street address comes first: the company page's Address row,
+        // or else the one already read from the listing.
+        let address = get("Address")
+            .and_then(|a| street_address(&a))
+            .map(|a| address_line(&a))
+            .or_else(|| {
+                supplier
+                    .company_description
+                    .as_deref()
+                    .and_then(|d| d.lines().next())
+                    .filter(|l| l.starts_with(ADDRESS_PREFIX))
+                    .map(str::to_string)
+            });
+        let mut parts = Vec::new();
+        if let Some(v) = get("Business Type") {
+            parts.push(format!("Business type: {}.", v));
+        }
+        if let Some(v) = get("Main Products") {
+            parts.push(format!("Main products: {}.", v));
+        }
+        if let Some(v) = select_text(&document, ".contact_p_txt2").and_then(|r| non_placeholder(&r))
+        {
+            parts.push(format!("Contact person's role: {}.", v));
+        }
+        if let Some(v) = get("Nearest Port") {
+            parts.push(format!("Nearest port: {}.", v));
+        }
+        let facts = (!parts.is_empty()).then(|| parts.join(" "));
+        let description = match (address, facts) {
+            (Some(a), Some(f)) => Some(format!("{}\n{}", a, f)),
+            (a, f) => a.or(f),
+        };
+        if description.is_some() {
+            supplier.company_description = description;
         }
 
         // TradeWheel never shows a phone number on the page. If the page
@@ -506,6 +541,87 @@ fn has_number(text: &str) -> bool {
     text.chars().any(|c| c.is_ascii_digit())
 }
 
+/// A price that can be compared with the market: it has a number, and
+/// not every number in it is a filler the seller typed to get past the
+/// form ("123 - 123 USD / 123", "0", "1234").
+fn is_real_price(text: &str) -> bool {
+    has_number(text) && !is_placeholder_price(text)
+}
+
+/// True when every number in the text is 0 or a run like 123 / 1234.
+fn is_placeholder_price(text: &str) -> bool {
+    let numbers: Vec<&str> = text
+        .split(|c: char| !c.is_ascii_digit())
+        .filter(|n| !n.is_empty())
+        .collect();
+    !numbers.is_empty() && numbers.iter().all(|n| is_filler_number(n))
+}
+
+/// "0", "00", "123", "1234", "12345"... - numbers people type when a
+/// form will not accept an empty price.
+fn is_filler_number(n: &str) -> bool {
+    if n.chars().all(|c| c == '0') {
+        return true;
+    }
+    n.len() >= 3 && "123456789".starts_with(n)
+}
+
+/// Start of the address line put in front of the company description.
+const ADDRESS_PREFIX: &str = "Address: ";
+
+fn address_line(address: &str) -> String {
+    format!("{}{}.", ADDRESS_PREFIX, address.trim_end_matches('.'))
+}
+
+/// The street address without a label the seller typed into it:
+/// "ZA Athletic Apparel Factory Address: Bashir Member Street, Sialkot"
+/// -> "Bashir Member Street, Sialkot".
+fn street_address(raw: &str) -> Option<String> {
+    let text = collapse_whitespace(raw);
+    let lower = text.to_lowercase();
+    let start = lower
+        .rfind("address:")
+        .map(|i| i + "address:".len())
+        .unwrap_or(0);
+    let cleaned = text[start..]
+        .trim()
+        .trim_matches([',', ' '])
+        .trim_end_matches('.')
+        .to_string();
+    non_placeholder(&cleaned)
+}
+
+/// "sialkot, punjab" -> "Sialkot, Punjab". Empty parts (" , ") are
+/// dropped; text the seller already capitalised is kept as written.
+fn clean_city_state(raw: &str) -> Option<String> {
+    let parts: Vec<String> = raw
+        .split(',')
+        .map(str::trim)
+        .filter(|p| non_placeholder(p).is_some())
+        .map(|p| {
+            if p.chars().any(|c| c.is_uppercase()) {
+                p.to_string()
+            } else {
+                capitalise_words(p)
+            }
+        })
+        .collect();
+    (!parts.is_empty()).then(|| parts.join(", "))
+}
+
+fn capitalise_words(text: &str) -> String {
+    text.split(' ')
+        .map(|w| {
+            let mut chars = w.chars();
+            match chars.next() {
+                Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
+                None => String::new(),
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
 fn fill(slot: &mut Option<String>, value: Option<String>) {
     if slot.is_none() {
         *slot = value;
@@ -569,15 +685,25 @@ fn fix_escaped_symbols(s: &str) -> String {
         .replace("u00b1", "±")
 }
 
+/// Cell values that only say the company did not share the fact.
+const PLACEHOLDER_VALUES: &[&str] = &[
+    "not provided",
+    "n/a",
+    "na",
+    "-",
+    "show",
+    "available on request",
+    "on request",
+    "upon request",
+    "available upon request",
+    "confidential",
+    "not available",
+];
+
 fn non_placeholder(value: &str) -> Option<String> {
     let trimmed = value.trim();
     let lower = trimmed.to_lowercase();
-    if trimmed.is_empty()
-        || lower == "not provided"
-        || lower == "n/a"
-        || lower == "-"
-        || lower == "show"
-    {
+    if trimmed.is_empty() || PLACEHOLDER_VALUES.contains(&lower.as_str()) {
         None
     } else {
         Some(trimmed.to_string())
@@ -783,7 +909,7 @@ mod tests {
         assert_eq!(
             s.company_description.as_deref(),
             Some(
-                "Business type: Supplier. Main products: Ethiopian wello polished opal gemstones. Contact person's role: Sales and operation Mamager."
+                "Address: Bole Africa Avenue - Addis Ababa - Ethiopia, Ethiopia.\nBusiness type: Supplier. Main products: Ethiopian wello polished opal gemstones. Contact person's role: Sales and operation Mamager."
             )
         );
         assert_eq!(
@@ -899,13 +1025,16 @@ mod tests {
         assert_eq!(s.logo_url, None);
         assert_eq!(s.website_url, None);
         assert_eq!(s.country.as_deref(), Some("China"));
-        // "-" business type and the empty role are left out.
+        // "-" business type and the empty role are left out. The company
+        // page has no Address row, so the listing's address is kept.
         assert_eq!(
             s.company_description.as_deref(),
             Some(
-                "Main products: Refractory Brick, Insulating Brick, Ceramic Fiber Product, Refractory Castable."
+                "Address: Room 1704, Hongcheng Financial Center, Zibo, Shandong, China.\nMain products: Refractory Brick, Insulating Brick, Ceramic Fiber Product, Refractory Castable."
             )
         );
+        // " , " City / State is empty: the country stays as it was.
+        assert_eq!(s.country.as_deref(), Some("China"));
     }
 
     fn full_supplier() -> B2bSupplierProfile {
@@ -1048,5 +1177,139 @@ mod tests {
                 .as_deref(),
             Some("https://www.tradewheel.com/co/abc-trading/")
         );
+    }
+
+    // Trimmed from the real Zainul Abedin Athletic Apparel pages (Oct 2026):
+    // a "123" placeholder price, the street address and "AVAILABLE ON
+    // REQUEST" revenue.
+    const ZAINUL_LISTING: &str = r##"<html><body>
+<h1 class="pd-heading">polo shirt</h1>
+<div class="po-box">
+  <div class="price-tag pd-price"> <span style='color:#3e3e3e;margin-right:10px;'>FOB Price</span>  123 - 123 USD / 123 </div>
+</div>
+<div class="po-box">
+  <table class='table'>
+    <tr><td>Quantity</td><td>50 - 5000-10000</td></tr>
+    <tr><td>Price</td><td>123</td></tr>
+  </table>
+</div>
+<div class="pd-attr-box"><table class="table attr_table">
+  <tr><td class='c1'>MOQ</td><td class='c2'>50 5000 to 10000</td></tr>
+  <tr><td class='c1'>Port</td><td class='c2'>karachi</td></tr>
+</table></div>
+<div class="comp-info">
+  <a href="https://www.tradewheel.com/co/zainul-abedin-athletic-apparel/" title="Zainul Abedin Athletic Apparel"><h2>Zainul Abedin Athletic Apparel</h2></a>
+  <img src="https://img2.tradewheel.com/template1/images/icons/gold-txt1.png.webp" >
+  <p class="address">ZA Athletic Apparel Factory Address: Bashir Member Street, Hunter Pura, Christian Town (Near Qari Shakir Mosque), Sialkot – 51310, Punjab, Pakistan.</p>
+  <div class="bo-flag"> Pakistan <i class="country-flag pk" ></i></div>
+</div>
+</body></html>"##;
+
+    const ZAINUL_PROFILE: &str = r##"<html><body>
+<table class="table table-responsive">
+  <tr><td class='td1'>Business Type </td><td> Manufacturer</td></tr>
+  <tr><td class='td1'>Main Products </td><td> Apparel clothing </td></tr>
+  <tr><td class='td1'>Established Year </td><td> 2024</td></tr>
+  <tr><td class='td1'>City / State </td><td> sialkot, punjab</td></tr>
+  <tr><td class='td1'>Country/Region </td><td> Pakistan</td></tr>
+  <tr><td class='td1'>Address </td><td> ZA Athletic Apparel Factory Address: Bashir Member Street, Hunter Pura, Christian Town (Near Qari Shakir Mosque), Sialkot – 51310, Punjab, Pakistan.</td></tr>
+  <tr><td class='td1'>Total Employees </td><td> 25-50</td></tr>
+</table>
+<table class="table table-responsive">
+  <tr><td class='td1' style="border-top:0;">Total Revenue </td><td style="border-top:0;"> AVAILABLE ON REQUEST </td></tr>
+  <tr><td class='td1'>Export Percentage </td><td> 80-90% </td></tr>
+  <tr><td class='td1'>Nearest Port </td><td> KARACHI PAKISTAN </td></tr>
+</table>
+<table class="table table-responsive">
+  <tr><td></td><td>
+    <span class="contact_p_txt1">Altaf Hussein</span><br>
+    <span class="contact_p_txt2">CEO</span>
+  </td></tr>
+</table>
+</body></html>"##;
+
+    #[test]
+    fn zainul_placeholder_price_is_not_a_price() {
+        let l = TradewheelScraper.parse_listing(ZAINUL_LISTING, "u");
+        assert_eq!(l.unit_price, None, "\"123\" is a filler, not a price");
+        assert_eq!(l.fob_price, None, "\"123 - 123 USD / 123\" is a filler");
+        assert_eq!(
+            l.minimum_order_quantity.as_deref(),
+            Some("50 5000 to 10000")
+        );
+    }
+
+    #[test]
+    fn filler_prices_are_told_apart_from_real_ones() {
+        for filler in [
+            "123",
+            "123 - 123 USD / 123",
+            "0",
+            "USD 0.00",
+            "1234 USD",
+            "12345",
+        ] {
+            assert!(!is_real_price(filler), "{filler}");
+        }
+        for real in [
+            "60 - 80 USD / Carat",
+            "USD 12",
+            "1 USD",
+            "100",
+            "123.50 USD",
+            "1,230 USD",
+        ] {
+            assert!(is_real_price(real), "{real}");
+        }
+    }
+
+    #[test]
+    fn zainul_supplier_has_location_address_and_no_fake_revenue() {
+        let s = TradewheelScraper.enrich_from_company_profile(
+            TradewheelScraper.parse_supplier(ZAINUL_LISTING, "u"),
+            ZAINUL_PROFILE,
+        );
+        assert_eq!(s.country.as_deref(), Some("Sialkot, Punjab, Pakistan"));
+        assert_eq!(
+            s.sales_revenue, None,
+            "AVAILABLE ON REQUEST is not a revenue"
+        );
+        assert_eq!(s.export_percentage.as_deref(), Some("80-90%"));
+        assert_eq!(s.employee_count.as_deref(), Some("25-50"));
+        assert_eq!(s.year_established.as_deref(), Some("2024"));
+        assert_eq!(s.contact_name.as_deref(), Some("Altaf Hussein"));
+        assert_eq!(s.badge_honorific.as_deref(), Some("Gold"));
+        assert_eq!(
+            s.company_description.as_deref(),
+            Some(
+                "Address: Bashir Member Street, Hunter Pura, Christian Town (Near Qari Shakir Mosque), Sialkot – 51310, Punjab, Pakistan.\nBusiness type: Manufacturer. Main products: Apparel clothing. Contact person's role: CEO. Nearest port: KARACHI PAKISTAN."
+            )
+        );
+    }
+
+    #[test]
+    fn listing_address_is_kept_without_a_company_page() {
+        let s = TradewheelScraper.parse_supplier(ZAINUL_LISTING, "u");
+        assert!(
+            s.company_description
+                .as_deref()
+                .unwrap()
+                .starts_with("Address: Bashir Member Street,")
+        );
+        assert_eq!(s.country.as_deref(), Some("Pakistan"));
+    }
+
+    #[test]
+    fn city_state_is_cleaned() {
+        assert_eq!(clean_city_state(" , "), None);
+        assert_eq!(
+            clean_city_state("sialkot, punjab").as_deref(),
+            Some("Sialkot, Punjab")
+        );
+        assert_eq!(
+            clean_city_state("Zibo, Shandong").as_deref(),
+            Some("Zibo, Shandong")
+        );
+        assert_eq!(clean_city_state("new york, ").as_deref(), Some("New York"));
     }
 }

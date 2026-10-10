@@ -1,6 +1,6 @@
 use backend::services::osint::{
     PlatformCheckResult, SCAM_MENTIONS_FOUND, SocialCandidateLink, build_location_fallback_queries,
-    build_osint_query_matrix, social_presence_signal, text_mentions_scam,
+    build_osint_query_matrix, scam_word_near_name, social_presence_signal,
 };
 use std::collections::HashSet;
 
@@ -87,26 +87,68 @@ fn build_osint_query_matrix_never_cuts_a_name_down_to_common_words() {
 }
 
 #[test]
+fn a_scam_word_only_counts_next_to_the_company_name() {
+    let name = "Zainul Abedin Athletic Apparel";
+    assert!(scam_word_near_name(
+        "Zainul Abedin Athletic Apparel scam - never shipped",
+        name
+    ));
+    assert!(scam_word_near_name(
+        "Beware of Zainul Abedin Athletic Apparel!",
+        name
+    ));
+    assert!(scam_word_near_name(
+        "Caí no golpe da empresa Zainul Abedin Athletic Apparel",
+        name
+    ));
+    assert!(scam_word_near_name(
+        "Zainul Abedin Athletic Apparel não entregou o pedido",
+        name
+    ));
+    // Both words are there, but far apart (a sports post where "golpe"
+    // means a hit).
+    assert!(!scam_word_near_name(
+        "Zainul Abedin Athletic Apparel. ¡OFICIAL EN LOS DODGERS! Los Angeles firmó a su nuevo jugador y en su primer partido dio un golpe",
+        name
+    ));
+    // No company name at all.
+    assert!(!scam_word_near_name("Dodgers fraude en la liga", name));
+    // A name that is only part of another word run still matches by words.
+    assert!(!scam_word_near_name("Zainul scam", name));
+}
+
+#[test]
 fn only_results_that_really_mention_a_scam_count() {
-    assert!(text_mentions_scam(
-        "Golden Steel Mills scam - they never delivered the machine"
+    assert!(scam_word_near_name(
+        "Golden Steel Mills scam - they never delivered the machine",
+        "Golden Steel Mills"
     ));
-    assert!(text_mentions_scam(
-        "Golden Steel Mills: golpe, não entregou"
+    assert!(scam_word_near_name(
+        "Golden Steel Mills: golpe, não entregou",
+        "Golden Steel Mills"
     ));
-    assert!(text_mentions_scam("Beware of Golden Steel Mills"));
+    assert!(scam_word_near_name(
+        "Beware of Golden Steel Mills",
+        "Golden Steel Mills"
+    ));
     // Pages that only match the name.
-    assert!(!text_mentions_scam(
-        "Golden Steel Mills A Name of Quality - block making machines"
+    assert!(!scam_word_near_name(
+        "Golden Steel Mills A Name of Quality - block making machines",
+        "Golden Steel Mills"
     ));
-    assert!(!text_mentions_scam(
-        "Back To The Days When Shopping Was All About Trust"
+    assert!(!scam_word_near_name(
+        "Back To The Days When Shopping Was All About Trust",
+        "Golden Steel Mills"
     ));
     // Weak words alone, and words that only contain a scam word.
-    assert!(!text_mentions_scam(
-        "Processo de fabricação, cuidado com a qualidade"
+    assert!(!scam_word_near_name(
+        "Processo de fabricação, cuidado com a qualidade",
+        "Golden Steel Mills"
     ));
-    assert!(!text_mentions_scam("Escambo e trocas"));
+    assert!(!scam_word_near_name(
+        "Escambo e trocas",
+        "Golden Steel Mills"
+    ));
 }
 
 #[test]
