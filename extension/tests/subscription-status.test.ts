@@ -52,16 +52,16 @@ describe("formatResetDate", () => {
 });
 
 describe("scanLimitMessage - the screen shown when scans are used up", () => {
-  it("Free: says 10 free scans and the user's own reset date", () => {
-    const message = scanLimitMessage("free_scan_limit_reached", 10, "2026-11-14");
-    expect(message).toContain("10 free scans");
+  it("Free: says 5 free scans and the user's own reset date", () => {
+    const message = scanLimitMessage("free_scan_limit_reached", 5, "2026-11-14");
+    expect(message).toContain("5 free scans");
     expect(message).toContain("November 14");
     expect(message).toContain("Upgrade to Team or Enterprise");
   });
 
-  it("Free: falls back to 10 when the limit is missing", () => {
+  it("Free: falls back to 5 when the limit is missing", () => {
     expect(scanLimitMessage("free_scan_limit_reached", null, "2026-11-14")).toContain(
-      "10 free scans",
+      "5 free scans",
     );
   });
 

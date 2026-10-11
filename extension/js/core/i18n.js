@@ -34,7 +34,7 @@
     const PT = {
         // ---------- panel ----------
         "Safely doesn't check this page — open a listing on a supported marketplace to scan it.": "O Safely não verifica esta página — abra um anúncio em um marketplace compatível para analisá-lo.",
-        "Sign in free to analyze this listing. You get 10 free scans every month — no credit card needed.": "Entre grátis para analisar este anúncio. Você tem 10 verificações grátis por mês — sem cartão de crédito.",
+        "Sign in free to analyze this listing. You get 5 free scans every month — no credit card needed.": "Entre grátis para analisar este anúncio. Você tem 5 verificações grátis por mês — sem cartão de crédito.",
         "Sign in free": "Entrar grátis",
         Reload: "Recarregar",
         "You've used all your scans for this month.": "Você usou todas as suas verificações deste mês.",

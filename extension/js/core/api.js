@@ -127,7 +127,7 @@ function formatPlatformName(platform) {
             }
         },
         // The person's plan and scans used this month, for the small
-        // "63/10" line. Never blocks a scan - the server decides that.
+        // "63/5" line. Never blocks a scan - the server decides that.
         // Returns null if it can't be read.
         getScanUsage: async function () {
             try {

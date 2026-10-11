@@ -30,7 +30,7 @@ function formatResetDate(isoDate) {
     return months[parts[1] - 1] + " " + parts[2];
 }
 // The small line under the panel title: scans used / limit, e.g.
-// "1/10", "2/750" or "1/Unlimited". Empty string if unknown.
+// "1/5", "2/750" or "1/Unlimited". Empty string if unknown.
 function formatUsageLine(usage) {
     if (!usage || !usage.plan)
         return "";
@@ -39,7 +39,7 @@ function formatUsageLine(usage) {
 // The message shown when a scan is refused because the limit is used up.
 function scanLimitMessage(reason, limit, resetsOn) {
     if (reason === "free_scan_limit_reached") {
-        return subscriptionT("You've used your {limit} free scans for this month. Upgrade to Team or Enterprise to keep scanning now, or your free scans come back on {date}.", { limit: (limit || 10), date: formatResetDate(resetsOn) });
+        return subscriptionT("You've used your {limit} free scans for this month. Upgrade to Team or Enterprise to keep scanning now, or your free scans come back on {date}.", { limit: (limit || 5), date: formatResetDate(resetsOn) });
     }
     return limit
         ? subscriptionT("You've used all {limit} scans included in your plan this month.", { limit })

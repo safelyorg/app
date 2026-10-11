@@ -24,7 +24,7 @@ interface PendingTabRegistration {
   const UNSUPPORTED_TEXT =
     "Safely doesn't check this page — open a listing on a supported marketplace to scan it.";
   const SIGNIN_TEXT =
-    "Sign in free to analyze this listing. You get 10 free scans every month — no credit card needed.";
+    "Sign in free to analyze this listing. You get 5 free scans every month — no credit card needed.";
 
   let panelVisible = false;
   let toolbarExpanded = false;
@@ -370,7 +370,7 @@ interface PendingTabRegistration {
       chrome.storage.local.get("safely_session_token", async (result) => {
         if (!isStillCurrentPage()) return;
         if (result.safely_session_token) {
-          // Everyone signed in can scan: Free gets 10 scans a month,
+          // Everyone signed in can scan: Free gets 5 scans a month,
           // paid plans get more. The server checks the limit on each
           // scan and replies with free_scan_limit_reached /
           // scan_limit_reached when it's used up.
@@ -542,7 +542,7 @@ interface PendingTabRegistration {
     if (loadingOverlay) loadingOverlay.classList.remove("safely-visible");
     if (tabsArea) tabsArea.classList.remove("safely-loading-blur");
 
-    // Refresh the "63/10" scans-used line after every scan attempt.
+    // Refresh the "63/5" scans-used line after every scan attempt.
     // It never blocks anything.
     refreshUsageLine();
 

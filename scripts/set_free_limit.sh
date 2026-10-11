@@ -4,8 +4,8 @@
 # dashboard, website, /try page and the tests.
 #
 # Usage (from anywhere):
-#   sed -i 's/\r$//' set_free_limit.sh
-#   bash set_free_limit.sh 30        <- the new number of free scans
+#   sed -i 's/\r$//' scripts/set_free_limit.sh
+#   bash scripts/set_free_limit.sh 30        <- the new number of free scans
 #
 # It reads the CURRENT number from the backend by itself, so you only
 # type the new one. Safe to run again later with another number.
