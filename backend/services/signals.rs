@@ -897,6 +897,27 @@ pub fn apply_missing_price_note(signals: &mut [Signal], listing: &B2bListingProf
     }
 }
 
+/// Value of the photo card when the listing has no product photos.
+pub const PHOTOS_NOT_PROVIDED: &str = "Not provided";
+
+/// The listing has no product photos at all: Claude answers "not
+/// verified", which reads (and counts, together with a vague listing)
+/// as if photos were checked and could not be trusted. There was
+/// nothing to check, so the card says "Not provided" instead.
+pub fn apply_no_photos_note(signals: &mut [Signal], listing: &B2bListingProfile) {
+    if !listing.image_urls.is_empty() {
+        return;
+    }
+    if let Some(card) = signals
+        .iter_mut()
+        .find(|s| s.label == "Image authenticity" && s.value.eq_ignore_ascii_case("not verified"))
+    {
+        card.value = PHOTOS_NOT_PROVIDED.to_string();
+        card.signal_type = "info".to_string();
+        card.sub = "This listing has no product photos, so there was nothing to check. Ask the supplier for real photos or a video of the product.".to_string();
+    }
+}
+
 /// Value of the website card when the company's own website was not on
 /// the listing but turned up in the web search (social presence check).
 pub const POSSIBLE_WEBSITE: &str = "Possible website found";
@@ -1783,6 +1804,29 @@ mod b2b_signal_tests {
             assert_eq!(s.signal_type, "info");
             assert_eq!(s.value, "Not shown on this platform");
         }
+    }
+
+    #[test]
+    fn no_photos_means_not_provided_not_not_verified() {
+        let card = || Signal {
+            label: "Image authenticity".into(),
+            sub: "No product images were provided.".into(),
+            value: "not verified".into(),
+            signal_type: "info".into(),
+            category: "listing".into(),
+            check_type: "pattern".into(),
+        };
+        let mut l = empty_listing("thomasnet");
+        let mut signals = vec![card()];
+        apply_no_photos_note(&mut signals, &l);
+        assert_eq!(signals[0].value, PHOTOS_NOT_PROVIDED);
+        assert_eq!(signals[0].signal_type, "info");
+
+        // With photos, Claude's verdict stays.
+        l.image_urls = vec!["https://x/1.jpg".into()];
+        let mut signals = vec![card()];
+        apply_no_photos_note(&mut signals, &l);
+        assert_eq!(signals[0].value, "not verified");
     }
 
     #[test]

@@ -519,9 +519,11 @@ async fn enrich_from_profile_pages(
                 CompanyPage::Failed => all_loaded = false,
             }
         }
-    } else {
+    } else if !LISTING_IS_THE_COMPANY_PAGE.contains(&platform) {
         // Not counted as a failure: some platforms and listings have no
-        // company page at all. Logged so the reason is visible.
+        // company page at all. Logged so the reason is visible - except
+        // on platforms where the scanned page already is the company
+        // page, where it would print on every scan.
         eprintln!(
             "Safely: no company page link found on {} - company details come from the listing page only",
             listing_url
@@ -529,6 +531,10 @@ async fn enrich_from_profile_pages(
     }
     all_loaded
 }
+
+/// Platforms whose scanned page is the company's own profile page
+/// (ThomasNet), so there is never a separate company page to fetch.
+const LISTING_IS_THE_COMPANY_PAGE: &[&str] = &["thomasnet"];
 
 fn take_and_replace(
     supplier: &mut B2bSupplierProfile,

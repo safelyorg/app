@@ -37,6 +37,81 @@ fn json_location(company: &Value) -> Option<String> {
     }
 }
 
+/// "12500 Elmwood Ave., Cleveland, OH 44111, USA" from the company's
+/// address record. The visible page shows only "Cleveland, OH 44111".
+/// None when there is no street line.
+fn json_street_address(company: &Value) -> Option<String> {
+    let address = company.get("address")?;
+    let street: Vec<String> = ["address1", "address2", "address3"]
+        .iter()
+        .filter_map(|k| json_text(address, k))
+        .collect();
+    if street.is_empty() {
+        return None;
+    }
+    let state_zip = match (json_text(address, "state"), json_text(address, "zip")) {
+        (Some(s), Some(z)) => Some(format!("{s} {z}")),
+        (s, z) => s.or(z),
+    };
+    let parts: Vec<String> = street
+        .into_iter()
+        .chain(json_text(address, "city"))
+        .chain(state_zip)
+        .chain(json_text(address, "country"))
+        .collect();
+    Some(parts.join(", "))
+}
+
+/// Short notes on what the company put on its ThomasNet profile that a
+/// buyer can check: certificates it uploaded and factory videos, e.g.
+/// "Certificates on ThomasNet: ISO 9001:2015 Certificate of Registration
+/// (Perry Johnson Registrars, Inc.)." and "Videos on ThomasNet: Springco
+/// Metal Coatings Cleveland OH Factory Tour."
+fn json_profile_extras(company: &Value) -> Vec<String> {
+    let mut notes = Vec::new();
+
+    let certificates: Vec<String> = company
+        .get("additionalInformation")
+        .and_then(|a| a.as_array())
+        .map(|items| {
+            items
+                .iter()
+                .filter(|i| i.get("type").and_then(|t| t.as_str()) == Some("DOCUMENT"))
+                .filter_map(|i| json_text(i, "title"))
+                .filter(|t| {
+                    let lower = t.to_lowercase();
+                    lower.contains("certif") || lower.contains("iso ")
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    if !certificates.is_empty() {
+        notes.push(format!(
+            "Certificates on ThomasNet: {}.",
+            certificates.join("; ")
+        ));
+    }
+
+    let videos: Vec<String> = company
+        .get("videos")
+        .and_then(|v| v.as_array())
+        .map(|items| items.iter().filter_map(|v| json_text(v, "title")).collect())
+        .unwrap_or_default();
+    if !videos.is_empty() {
+        notes.push(format!("Videos on ThomasNet: {}.", videos.join("; ")));
+    }
+
+    notes
+}
+
+/// Most categories listed in a listing description built from the
+/// company's categories (some companies list dozens).
+const MAX_CATEGORIES: usize = 10;
+
+/// Start of the address line put in front of the company description,
+/// the same as on the other B2B platforms.
+const ADDRESS_PREFIX: &str = "Address: ";
+
 /// The company part of a ThomasNet profile link, e.g.
 /// ".../company/t-k-machine-30682072/profile?heading=1" ->
 /// "t-k-machine-30682072". The same for every category page of that
@@ -268,6 +343,25 @@ impl B2bScraper for ThomasnetScraper {
         // visible "Livermore, CA 94551", which never names the country.
         let location = company.as_ref().and_then(json_location).or(location);
 
+        // The street address goes first in the description and the
+        // certificates / factory videos last, so the legitimacy check
+        // sees them (the visible page shows only city and zip).
+        let address_line = company
+            .as_ref()
+            .and_then(json_street_address)
+            .map(|a| format!("{ADDRESS_PREFIX}{}.", a.trim_end_matches('.')));
+        let extras = company
+            .as_ref()
+            .map(json_profile_extras)
+            .unwrap_or_default();
+        let company_description = {
+            let mut parts: Vec<String> = Vec::new();
+            parts.extend(address_line);
+            parts.extend(company_description);
+            parts.extend(extras);
+            (!parts.is_empty()).then(|| parts.join("\n"))
+        };
+
         B2bSupplierProfile {
             company_name,
             logo_url,
@@ -320,6 +414,35 @@ impl B2bScraper for ThomasnetScraper {
         let heading = company.as_ref().and_then(|c| c.get("heading"));
         let title = title.or_else(|| heading.and_then(|h| json_text(h, "name")));
         let description = description.or_else(|| heading.and_then(|h| json_text(h, "description")));
+        // A profile opened without a category (no "?heading=" in the
+        // link) has no Details tab and no heading. The company's own
+        // categories and ThomasNet's summary of its products and
+        // services are used instead, so the listing is not empty.
+        let categories: Vec<String> = company
+            .as_ref()
+            .and_then(|c| c.get("otherHeadings"))
+            .and_then(|h| h.as_array())
+            .map(|items| items.iter().filter_map(|h| json_text(h, "name")).collect())
+            .unwrap_or_default();
+        let title = title.or_else(|| categories.first().cloned());
+        let description = description.or_else(|| {
+            let summary = company.as_ref().and_then(|c| json_text(c, "description"));
+            let listed = (!categories.is_empty()).then(|| {
+                format!(
+                    "Categories on ThomasNet: {}.",
+                    categories
+                        .iter()
+                        .take(MAX_CATEGORIES)
+                        .cloned()
+                        .collect::<Vec<_>>()
+                        .join("; ")
+                )
+            });
+            match (summary, listed) {
+                (Some(s), Some(l)) => Some(format!("{s}\n{l}")),
+                (s, l) => s.or(l),
+            }
+        });
         let image_urls: Vec<String> = company
             .as_ref()
             .and_then(|c| c.get("additionalInformation"))
@@ -664,5 +787,80 @@ mod tests {
         </body></html>"#;
         let s = ThomasnetScraper.parse_supplier(html, "u");
         assert_eq!(s.contact_name.as_deref(), Some("Steve Savignac"));
+    }
+
+    // Trimmed from the real Springco Metal Coatings profile page
+    // (Oct 2026): street address, an uploaded ISO certificate and a
+    // factory tour video, all only in the page's data record.
+    const SPRINGCO_PAGE: &str = r#"<html><head><link rel="canonical" href="https://www.thomasnet.com/company/springco-metal-coatings-31484/profile"/></head><body>
+    <h1>Springco Metal Coatings</h1>
+    <div><h3>Company Description by Springco Metal Coatings</h3><p>For over a quarter century, Springco has emerged as a leading metal coating job shop.</p></div>
+    <div data-sentry-component="SupplierLocations"><a>Cleveland, OH 44111</a></div>
+    <script id="__NEXT_DATA__" type="application/json">{"props":{"pageProps":{"data":{"name":"Springco Metal Coatings","yearFounded":"1977","additionalInformation":[{"title":"ISO 9001:2015 Certificate of Registration","image":"https://cdn.thomasnet.com/ccp/00031484/thumbs/410770.png","url":"https://cdn.thomasnet.com/ccp/00031484/410770.pdf","type":"DOCUMENT"}],"videos":[{"id":"IZ4bYiJN","title":"Springco Metal Coatings Cleveland OH Factory Tour"}],"address":{"address1":"12500 Elmwood Ave.","address2":null,"address3":null,"city":"Cleveland","state":"OH","zip":"44111","country":"USA"}}}}}</script>
+    </body></html>"#;
+
+    #[test]
+    fn springco_description_has_address_certificate_and_video() {
+        let s = ThomasnetScraper.parse_supplier(SPRINGCO_PAGE, "u");
+        assert_eq!(
+            s.company_description.as_deref(),
+            Some(
+                "Address: 12500 Elmwood Ave., Cleveland, OH 44111, USA.\nFor over a quarter century, Springco has emerged as a leading metal coating job shop.\nCertificates on ThomasNet: ISO 9001:2015 Certificate of Registration.\nVideos on ThomasNet: Springco Metal Coatings Cleveland OH Factory Tour."
+            )
+        );
+        assert_eq!(s.country.as_deref(), Some("Cleveland, OH, USA"));
+        // A certificate PDF is not a product photo.
+        assert!(
+            ThomasnetScraper
+                .parse_listing(SPRINGCO_PAGE, "u")
+                .image_urls
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn no_street_line_means_no_address_line() {
+        // T & K Machine's record has city and zip but no street.
+        let s = ThomasnetScraper.parse_supplier(TK_PAGE, "u");
+        assert_eq!(
+            s.company_description.as_deref(),
+            Some("T&K Machine is a precision machine shop.")
+        );
+    }
+
+    #[test]
+    fn profile_without_a_category_still_has_a_title_and_description() {
+        // The Springco profile opened without "?heading=": no Details tab
+        // and no heading in the page data.
+        let html = r#"<html><body><h1>Springco Metal Coatings</h1>
+        <script id="__NEXT_DATA__" type="application/json">{"props":{"pageProps":{"data":{"name":"Springco Metal Coatings","heading":null,"description":"Metal coating and plating services, including electrocoating, powder coating, zinc plating, and phosphating capabilities.","otherHeadings":[{"headingId":"15630205","name":"Coatings"},{"headingId":"15701089","name":"Coatings: Automotive"}]}}}}</script>
+        </body></html>"#;
+        let l = ThomasnetScraper.parse_listing(html, "u");
+        assert_eq!(l.title.as_deref(), Some("Coatings"));
+        assert_eq!(
+            l.description.as_deref(),
+            Some(
+                "Metal coating and plating services, including electrocoating, powder coating, zinc plating, and phosphating capabilities.\nCategories on ThomasNet: Coatings; Coatings: Automotive."
+            )
+        );
+    }
+
+    #[test]
+    fn the_category_details_tab_still_wins() {
+        let l = ThomasnetScraper.parse_listing(SPRINGCO_PAGE, "u");
+        assert_eq!(l.title, None, "trimmed page has no tab and no heading");
+        let html = r#"<html><body>
+        <div id="businessDescDetailsTab">Coatings Details</div>
+        <div aria-labelledby="businessDescDetailsTab"><p>Coating services for agricultural, automotive, military, and transportation industries.</p></div>
+        <script id="__NEXT_DATA__" type="application/json">{"props":{"pageProps":{"data":{"description":"Company summary.","otherHeadings":[{"name":"Plating"}]}}}}</script>
+        </body></html>"#;
+        let l = ThomasnetScraper.parse_listing(html, "u");
+        assert_eq!(l.title.as_deref(), Some("Coatings"));
+        assert!(
+            l.description
+                .as_deref()
+                .unwrap()
+                .starts_with("Coating services")
+        );
     }
 }
