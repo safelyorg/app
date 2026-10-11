@@ -460,37 +460,51 @@
                 if (window.__safelyData.seller.networkSummary) {
                     window.__safelyData.seller.networkSummary = window.__safelyData.seller.networkSummary.replace(/\d+/, String(newCount));
                 }
+                // Redrawing the seller section makes new "I'm proceeding" /
+                // "I'm backing out" buttons, so their clicks are connected again.
                 const sellerContentEl = document.getElementById("safely-risk-seller-content");
-                if (sellerContentEl)
+                if (sellerContentEl) {
                     sellerContentEl.innerHTML = buildSellerSection();
+                    attachOutcomeListeners(sellerContentEl);
+                }
             });
         }
-        const proceedBtn = root.querySelector("#safely-outcome-proceed");
-        const abortBtn = root.querySelector("#safely-outcome-abort");
-        const outcomeConfirmed = root.querySelector("#safely-outcome-confirmed");
+        attachOutcomeListeners(root);
+    }
+    // The "I'm proceeding" / "I'm backing out" buttons under the seller
+    // card. A failed save now says so, instead of the click doing nothing.
+    function attachOutcomeListeners(container) {
+        const proceedBtn = container.querySelector("#safely-outcome-proceed");
+        const abortBtn = container.querySelector("#safely-outcome-abort");
+        const outcomeConfirmed = container.querySelector("#safely-outcome-confirmed");
         async function handleOutcomeClick(action) {
             const pageData = window.__safelyData;
-            if (!pageData.analysisId)
+            if (!pageData || !pageData.analysisId) {
+                console.error("Safely: no scan id for this result - the response can't be saved");
+                alert(tr("Could not save your response. Please try again."));
                 return;
+            }
             if (proceedBtn)
                 proceedBtn.disabled = true;
             if (abortBtn)
                 abortBtn.disabled = true;
-            const success = await window.__safelyAPI.submitOutcome(pageData.analysisId, action);
-            if (success) {
+            const result = await window.__safelyAPI.submitOutcome(pageData.analysisId, action);
+            if (result === true) {
                 if (proceedBtn)
                     proceedBtn.style.display = "none";
                 if (abortBtn)
                     abortBtn.style.display = "none";
                 if (outcomeConfirmed)
                     outcomeConfirmed.style.display = "block";
+                return;
             }
-            else {
-                if (proceedBtn)
-                    proceedBtn.disabled = false;
-                if (abortBtn)
-                    abortBtn.disabled = false;
-            }
+            if (proceedBtn)
+                proceedBtn.disabled = false;
+            if (abortBtn)
+                abortBtn.disabled = false;
+            alert(result === "unauthorized"
+                ? tr("Please sign in again to save your response.")
+                : tr("Could not save your response. Please try again."));
         }
         if (proceedBtn) {
             proceedBtn.addEventListener("click", () => handleOutcomeClick("proceeded"));

@@ -94,6 +94,8 @@
         "I'm proceeding": "Vou prosseguir",
         "I'm backing out": "Vou desistir",
         "Thanks - your response has been recorded.": "Obrigado — sua resposta foi registrada.",
+        "Could not save your response. Please try again.": "Não foi possível salvar sua resposta. Tente novamente.",
+        "Please sign in again to save your response.": "Entre novamente na sua conta para salvar sua resposta.",
         "No fraud reports found on the Safely network.": "Registro limpo na rede Safely. Nenhuma denúncia de fraude encontrada.",
         "1 fraud report found on the Safely network. Proceed with caution.": "1 denúncia de fraude encontrada na rede Safely. Prossiga com cautela.",
         "{n} fraud reports found on the Safely network. High-risk seller.": "{n} denúncias de fraude encontradas na rede Safely. Vendedor de alto risco.",

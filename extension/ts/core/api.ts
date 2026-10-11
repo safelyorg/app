@@ -267,7 +267,12 @@ function formatPlatformName(platform: string | null | undefined): string {
         return null;
       }
     },
-    submitOutcome: async function (analysisId: string, action: "proceeded" | "aborted"): Promise<boolean> {
+    // True when saved, "unauthorized" when the person must sign in
+    // again, false for any other failure (the reason goes to the console).
+    submitOutcome: async function (
+      analysisId: string,
+      action: "proceeded" | "aborted",
+    ): Promise<true | false | "unauthorized"> {
       try {
         const authHeaders = await getAuthHeaders();
         const response = await fetch(API_BASE + "/outcomes", {
@@ -275,7 +280,10 @@ function formatPlatformName(platform: string | null | undefined): string {
           headers: Object.assign({ "Content-Type": "application/json" }, authHeaders),
           body: JSON.stringify({ analysis_id: analysisId, action }),
         });
-        return response.ok;
+        if (response.ok) return true;
+        const rawText = await response.text();
+        console.error("Safely: outcome error:", response.status, rawText.substring(0, 300));
+        return response.status === 401 ? "unauthorized" : false;
       } catch (error) {
         console.error("Safely: failed to record outcome", error);
         return false;

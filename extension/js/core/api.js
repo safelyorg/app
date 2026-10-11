@@ -170,6 +170,8 @@ function formatPlatformName(platform) {
                 return null;
             }
         },
+        // True when saved, "unauthorized" when the person must sign in
+        // again, false for any other failure (the reason goes to the console).
         submitOutcome: async function (analysisId, action) {
             try {
                 const authHeaders = await getAuthHeaders();
@@ -178,7 +180,11 @@ function formatPlatformName(platform) {
                     headers: Object.assign({ "Content-Type": "application/json" }, authHeaders),
                     body: JSON.stringify({ analysis_id: analysisId, action }),
                 });
-                return response.ok;
+                if (response.ok)
+                    return true;
+                const rawText = await response.text();
+                console.error("Safely: outcome error:", response.status, rawText.substring(0, 300));
+                return response.status === 401 ? "unauthorized" : false;
             }
             catch (error) {
                 console.error("Safely: failed to record outcome", error);
