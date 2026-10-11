@@ -3,6 +3,11 @@
 (function () {
     "use strict";
     const STORAGE_KEY = "safely_session_token";
+    // Where the website saved the ad a visitor came from (site/ts/tracking.ts).
+    const UTM_STORAGE_KEY = "safely_utm";
+    // True right after a brand-new account signed in for the first time
+    // (the server sends it to "/dashboard/?new=1#session=..." only then).
+    let isFirstSignIn = false;
     function captureSessionFromUrl() {
         const hash = window.location.hash;
         if (hash.indexOf("#session=") === 0) {
@@ -10,7 +15,48 @@
             if (token) {
                 localStorage.setItem(STORAGE_KEY, token);
             }
-            history.replaceState(null, "", window.location.pathname + window.location.search);
+            // "?new=1" counts only together with a fresh session, and is
+            // removed from the address so a reload does not count it again.
+            const search = new URLSearchParams(window.location.search);
+            isFirstSignIn = search.get("new") === "1";
+            search.delete("new");
+            const rest = search.toString();
+            history.replaceState(null, "", window.location.pathname + (rest ? "?" + rest : ""));
+        }
+    }
+    // First sign-in of a new account: tells the Meta Pixel (a sign-up for
+    // the ads) and saves the ad the person came from with the account.
+    // Runs once - the "new=1" mark is removed from the address right away.
+    async function recordFirstSignIn(token) {
+        const fbq = window.fbq;
+        if (typeof fbq === "function")
+            fbq("track", "CompleteRegistration");
+        let source = null;
+        try {
+            const saved = localStorage.getItem(UTM_STORAGE_KEY);
+            source = saved ? JSON.parse(saved) : null;
+        }
+        catch (e) {
+            source = null;
+        }
+        if (!source || !source.utm_source)
+            return;
+        try {
+            const response = await fetch("/api/v1/auth/signup-source", {
+                method: "POST",
+                headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
+                body: JSON.stringify({
+                    utm_source: source.utm_source || null,
+                    utm_medium: source.utm_medium || null,
+                    utm_campaign: source.utm_campaign || null,
+                    utm_content: source.utm_content || null,
+                }),
+            });
+            if (response.ok)
+                localStorage.removeItem(UTM_STORAGE_KEY);
+        }
+        catch (e) {
+            console.error("Safely: could not save where this sign-up came from", e);
         }
     }
     // Reads a ?error=... left in the URL by a failed auth attempt (e.g.
@@ -67,6 +113,10 @@
                     app.classList.remove("hidden");
                 if (gate)
                     gate.classList.add("hidden");
+                if (isFirstSignIn) {
+                    isFirstSignIn = false;
+                    recordFirstSignIn(token);
+                }
             }
             else {
                 clearToken();

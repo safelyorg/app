@@ -2,12 +2,13 @@ use crate::{
     errors::auth::AuthError,
     models::users::{
         GoogleAfterLoginQuery, GoogleConnectQuery, MagicLinkAuthResponse, MagicLinkRequest,
-        VerifyMagicLinkToken,
+        SignupSourceRequest, VerifyMagicLinkToken,
     },
     services::{
         auth::{
             delete_session, extract_user_id, find_or_create_user_by_email, finish_sign_in,
-            handle_google_connect, insert_magic_link, validate_email_format, validate_magic_link,
+            handle_google_connect, insert_magic_link, save_signup_source, validate_email_format,
+            validate_magic_link,
         },
         email::send_magic_link_email,
         google_oauth::{
@@ -31,6 +32,16 @@ use uuid::Uuid;
 pub const DASHBOARD_PATH: &str = "/dashboard/";
 pub const OAUTH_STATE_COOKIE: &str = "oauth_state";
 pub const OAUTH_LINK_USER_COOKIE: &str = "oauth_link_user_id";
+
+/// Where a finished sign-in sends the person: the dashboard, with the
+/// session in the link ("#session=<token>", unchanged). A brand-new
+/// account also gets "?new=1" before it, so the dashboard can count the
+/// sign-up once (Meta Pixel "CompleteRegistration") and save the ad the
+/// person came from.
+fn dashboard_after_sign_in(session_token: &str, is_new: bool) -> String {
+    let new_mark = if is_new { "?new=1" } else { "" };
+    format!("{}{}#session={}", DASHBOARD_PATH, new_mark, session_token)
+}
 
 /// POST /api/v1/auth/magic-link
 ///
@@ -90,9 +101,9 @@ pub async fn verify_magic_link(
         })?;
     let session_token = finish_sign_in(&pool, user.id, is_new, &validate.email, "email").await?;
 
-    Ok(Redirect::to(&format!(
-        "{}#session={}",
-        DASHBOARD_PATH, session_token
+    Ok(Redirect::to(&dashboard_after_sign_in(
+        &session_token,
+        is_new,
     )))
 }
 
@@ -251,8 +262,39 @@ pub async fn google_callback(
 
     Ok((
         jar,
-        Redirect::to(&format!("{}#session={}", DASHBOARD_PATH, session_token)),
+        Redirect::to(&dashboard_after_sign_in(&session_token, is_new)),
     ))
+}
+
+/// POST /api/v1/auth/signup-source
+///
+/// Saves which ad a new account came from (utm_source, utm_medium,
+/// utm_campaign, utm_content from the ad's link), so sign-ups can be
+/// counted per ad. The dashboard sends it once, right after the first
+/// sign-in. Only fills an account's empty source, and only within a day
+/// of creating the account - an older account or a second call changes
+/// nothing. Answers {"saved": false} when the person is not signed in.
+pub async fn record_signup_source(
+    State(pool): State<Pool<Postgres>>,
+    headers: HeaderMap,
+    Json(req): Json<SignupSourceRequest>,
+) -> Result<Json<Value>, AuthError> {
+    let user_id = extract_user_id(&headers, &pool).await.map_err(|e| {
+        eprintln!("record_signup_source session error: {}", e);
+        AuthError::InternalServerError("Failed to verify session".to_string())
+    })?;
+    let Some(user_id) = user_id else {
+        return Ok(Json(json!({ "saved": false })));
+    };
+
+    let saved = save_signup_source(&pool, user_id, &req)
+        .await
+        .map_err(|e| {
+            eprintln!("save_signup_source error: {}", e);
+            AuthError::InternalServerError("Failed to save the sign-up source".to_string())
+        })?;
+
+    Ok(Json(json!({ "saved": saved })))
 }
 
 /// POST /api/v1/auth/logout

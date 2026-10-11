@@ -25,6 +25,27 @@
         <link rel="stylesheet" href="css/subscribe.css?v=20261003g" />
         <link rel="stylesheet" href="css/modals.css?v=20261003g" />
         <link rel="stylesheet" href="css/responsive.css?v=20261003g" />
+        <!-- Meta Pixel Code (Safely Pixel). Not loaded when this page is
+             shown inside another page (the sign-in box on the home page),
+             so one visit counts as one PageView. -->
+        <script>
+            if (window.self === window.top) {
+                !function(f,b,e,v,n,t,s)
+                {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+                n.callMethod.apply(n,arguments):n.queue.push(arguments)};
+                if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
+                n.queue=[];t=b.createElement(e);t.async=!0;
+                t.src=v;s=b.getElementsByTagName(e)[0];
+                s.parentNode.insertBefore(t,s)}(window, document,'script',
+                'https://connect.facebook.net/en_US/fbevents.js');
+                fbq('init', '1104878615811054');
+                fbq('track', 'PageView');
+            }
+        </script>
+        <noscript><img height="1" width="1" style="display:none" alt=""
+            src="https://www.facebook.com/tr?id=1104878615811054&ev=PageView&noscript=1"
+        /></noscript>
+        <!-- End Meta Pixel Code -->
     </head>
     <body>
         <input
@@ -518,8 +539,10 @@
                 <div class="mbody">
                     <p data-i18n="modal.cookie.body1">
                         We use a small number of essential cookies to keep you
-                        signed in and remember your settings. We do not use
-                        advertising or cross-site tracking cookies.
+                        signed in and remember your settings. We also use the
+                        Meta Pixel, which sets cookies so we can measure our
+                        Facebook and Instagram ads (for example, how many
+                        people install Safely after seeing an ad).
                     </p>
                     <p data-i18n="modal.cookie.body2">You can clear cookies any time from your browser settings.</p>
                 </div>
@@ -736,6 +759,7 @@
             </div>
         </div>
 
+        <script src="js/tracking.js"></script>
         <script src="js/i18n.js"></script>
         <script src="js/subscribe.js"></script>
     </body>

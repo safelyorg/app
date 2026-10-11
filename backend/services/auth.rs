@@ -1,7 +1,7 @@
 use crate::{
     errors::auth::{AuthError, AuthServiceError},
     handlers::auth::{DASHBOARD_PATH, OAUTH_LINK_USER_COOKIE, OAUTH_STATE_COOKIE},
-    models::users::{GoogleUserInfoEndpoint, MagicLink, User},
+    models::users::{GoogleUserInfoEndpoint, MagicLink, SignupSourceRequest, User},
     services::{
         email::send_welcome_email,
         google_oauth::{find_user_by_google_id, link_google_account},
@@ -343,6 +343,49 @@ pub async fn handle_google_connect(
         jar,
         Redirect::to(&format!("{}?google_connected=1", DASHBOARD_PATH)),
     ))
+}
+
+/// Longest UTM value kept (ad links are short; this stops junk).
+const MAX_UTM_LENGTH: usize = 200;
+
+/// A UTM value trimmed and cut to MAX_UTM_LENGTH; empty becomes None.
+fn clean_utm(value: Option<&str>) -> Option<String> {
+    let trimmed = value?.trim();
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed.chars().take(MAX_UTM_LENGTH).collect())
+    }
+}
+
+/// Saves which ad an account came from. Only an account created in the
+/// last day whose source is still empty is changed, so the first ad is
+/// kept and an old account can't be relabelled. Returns true when saved.
+pub async fn save_signup_source(
+    pool: &Pool<Postgres>,
+    user_id: Uuid,
+    source: &SignupSourceRequest,
+) -> Result<bool, Error> {
+    let utm_source = clean_utm(source.utm_source.as_deref());
+    if utm_source.is_none() {
+        return Ok(false);
+    }
+    let result = query(
+        "UPDATE users
+         SET utm_source = $2, utm_medium = $3, utm_campaign = $4, utm_content = $5
+         WHERE id = $1
+           AND utm_source IS NULL
+           AND created_at > NOW() - INTERVAL '1 day'",
+    )
+    .bind(user_id)
+    .bind(utm_source)
+    .bind(clean_utm(source.utm_medium.as_deref()))
+    .bind(clean_utm(source.utm_campaign.as_deref()))
+    .bind(clean_utm(source.utm_content.as_deref()))
+    .execute(pool)
+    .await?;
+
+    Ok(result.rows_affected() > 0)
 }
 
 /// It deletes a specific session from the database, using its token to find it.

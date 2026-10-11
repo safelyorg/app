@@ -65,3 +65,13 @@ pub struct GoogleUserInfoEndpoint {
 pub struct GoogleConnectQuery {
     pub session: String,
 }
+
+/// Which ad a new account came from - the utm_* values of the ad's link,
+/// sent by the dashboard after the first sign-in. All are optional.
+#[derive(Debug, Deserialize)]
+pub struct SignupSourceRequest {
+    pub utm_source: Option<String>,
+    pub utm_medium: Option<String>,
+    pub utm_campaign: Option<String>,
+    pub utm_content: Option<String>,
+}

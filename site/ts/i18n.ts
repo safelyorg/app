@@ -53,9 +53,11 @@
   // 3. Portuguese if the visitor's browser is set to Portuguese;
   // 4. English.
   function getSavedLang(): string {
-    const fromLink = new URLSearchParams(window.location.search)
+    const rawLink = new URLSearchParams(window.location.search)
       .get("lang")
       ?.toLowerCase();
+    // "?lang=pt" (short form in some ads) means Portuguese (BR) too.
+    const fromLink = rawLink === "pt" ? "pt-br" : rawLink;
     if (isSupported(fromLink)) {
       saveLang(fromLink);
       return fromLink;

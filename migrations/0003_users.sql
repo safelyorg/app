@@ -7,5 +7,9 @@ CREATE TABLE users (
     avatar_data BYTEA,
     avatar_content_type TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    last_login_at TIMESTAMPTZ
+    last_login_at TIMESTAMPTZ,
+    utm_source TEXT,
+    utm_medium TEXT,
+    utm_campaign TEXT,
+    utm_content TEXT
 );

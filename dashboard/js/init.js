@@ -198,6 +198,21 @@ document.addEventListener("DOMContentLoaded", async () => {
     let realSubscriptionStatus = null;
     let realSubscriptionPlan = null;
     let realSubscriptionInterval = null;
+    // The plan and billing picked right before Creem checkout, kept for the
+    // Meta Pixel "Subscribe" event when the buyer comes back.
+    const CHECKOUT_PICK_KEY = "safely_checkout_pick";
+    // What each paid plan costs (USD), the same prices the plan picker
+    // shows. Null for a plan or billing this list does not know.
+    const PLAN_PRICES_USD = {
+        Team: { month: 200, year: 1440 },
+        Enterprise: { month: 500, year: 3600 },
+    };
+    function planPriceUsd(plan, interval) {
+        const prices = PLAN_PRICES_USD[plan];
+        if (!prices)
+            return null;
+        return prices[interval === "year" ? "year" : "month"] ?? null;
+    }
     const intervalNote = document.getElementById("plan-interval-note");
     function productIdFor(plan, interval) {
         return productIds[interval === "year" ? plan + "Yearly" : plan] || null;
@@ -401,6 +416,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         history.replaceState(null, "", window.location.pathname);
         loadRealSubscriptionStatus().then(() => {
             showToast(t("dash.toast.sub_active", "Welcome! Your subscription is now active."));
+            trackPurchase();
         });
     }
     document.querySelectorAll(".plan-option").forEach((opt) => {
@@ -411,6 +427,32 @@ document.addEventListener("DOMContentLoaded", async () => {
                 continueBtn.disabled = false;
         });
     });
+    // Tells the Meta Pixel about a paid plan bought through checkout.
+    // The plan comes from the subscription status, or - if Creem's
+    // confirmation has not reached Safely yet - from the plan picked just
+    // before checkout. Sent once: the "checkout=success" mark is removed
+    // from the address and the saved pick is cleared.
+    function trackPurchase() {
+        let plan = realSubscriptionPlan;
+        let interval = realSubscriptionInterval;
+        try {
+            const picked = sessionStorage.getItem(CHECKOUT_PICK_KEY);
+            sessionStorage.removeItem(CHECKOUT_PICK_KEY);
+            if (!plan && picked) {
+                const parsed = JSON.parse(picked);
+                plan = parsed.plan || null;
+                interval = parsed.interval || null;
+            }
+        }
+        catch (e) {
+            // Storage blocked: only the subscription status is used.
+        }
+        const value = plan ? planPriceUsd(plan, interval) : null;
+        const fbq = window.fbq;
+        if (value === null || typeof fbq !== "function")
+            return;
+        fbq("track", "Subscribe", { value, currency: "USD" });
+    }
     async function startCheckout(productId) {
         const res = await fetch(API_BASE + "/billing/checkout", {
             method: "POST",
@@ -486,6 +528,13 @@ document.addEventListener("DOMContentLoaded", async () => {
             }
             continueBtn.textContent = t("dash.common.redirecting", "Redirecting...");
             try {
+                // Remembered for the Meta Pixel "Subscribe" event after checkout.
+                try {
+                    sessionStorage.setItem(CHECKOUT_PICK_KEY, JSON.stringify({ plan, interval }));
+                }
+                catch (e) {
+                    // Storage blocked: the subscription status is used instead.
+                }
                 await startCheckout(productId);
             }
             catch (e) {
