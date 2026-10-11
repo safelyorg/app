@@ -6,6 +6,15 @@ use serde_json::{Value, json};
 use sqlx::{Pool, Postgres, query};
 use uuid::Uuid;
 
+/// The platform's stored name ("thomasnet", "b2bmap", "olx") from what
+/// the extension sends. The extension shows the platform with capitals
+/// ("ThomasNet", "B2BMap", "OLX") and has been sending that shown name,
+/// while sellers are saved under the lower-case name - so the seller was
+/// never found and every report failed.
+fn platform_key(platform: &str) -> String {
+    platform.trim().to_lowercase()
+}
+
 /// POST /api/v1/reports
 ///
 /// It records a real, permanent fraud report against a seller, and
@@ -29,12 +38,19 @@ pub async fn create_fraud_report(
         .map_err(|_| FraudReportError::InternalError("Failed to verify session".to_string()))?
         .ok_or(FraudReportError::Unauthorized)?;
 
+    let platform = platform_key(&request.platform);
     let platform_id = request.platform_id.as_deref().unwrap_or("");
 
-    let seller = find_seller(&pool, &request.platform, platform_id)
+    let seller = find_seller(&pool, &platform, platform_id)
         .await
         .map_err(|e| FraudReportError::InternalError(e.to_string()))?
-        .ok_or_else(|| FraudReportError::NotFound("Seller not found".to_string()))?;
+        .ok_or_else(|| {
+            eprintln!(
+                "Safely: report failed - no seller saved for platform \"{}\" and id \"{}\"",
+                platform, platform_id
+            );
+            FraudReportError::NotFound("Seller not found".to_string())
+        })?;
 
     let id = Uuid::now_v7();
     query(
@@ -46,7 +62,7 @@ pub async fn create_fraud_report(
     )
     .bind(id)
     .bind(seller.id)
-    .bind(&request.platform)
+    .bind(&platform)
     .bind(platform_id)
     .bind(&request.report_type)
     .bind(&request.description)
@@ -63,4 +79,26 @@ pub async fn create_fraud_report(
         .map_err(|e| FraudReportError::InternalError(e.to_string()))?;
 
     Ok(Json(json!({ "success": true })))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::platform_key;
+
+    #[test]
+    fn shown_platform_names_become_the_stored_names() {
+        for (shown, stored) in [
+            ("ThomasNet", "thomasnet"),
+            ("B2BMap", "b2bmap"),
+            ("B2Brazil", "b2brazil"),
+            ("TradeWheel", "tradewheel"),
+            ("ExportHub", "exporthub"),
+            ("Kompass", "kompass"),
+            ("Alibaba", "alibaba"),
+            ("OLX", "olx"),
+            ("olx", "olx"),
+        ] {
+            assert_eq!(platform_key(shown), stored);
+        }
+    }
 }
