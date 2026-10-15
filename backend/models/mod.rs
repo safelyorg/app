@@ -6,6 +6,7 @@ pub mod helpers;
 pub mod history;
 pub mod listings;
 pub mod outcomes;
+pub mod reviews;
 pub mod risk_factors;
 pub mod sellers;
 pub mod subscriptions;

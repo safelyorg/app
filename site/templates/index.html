@@ -35,6 +35,7 @@
         <link rel="stylesheet" href="css/modals.css?v=20261006a" />
         <link rel="stylesheet" href="css/responsive.css?v=20261006a" />
         <link rel="stylesheet" href="css/marquee.css?v=20261006a">
+        <link rel="stylesheet" href="css/reviews.css?v=20261015a" />
         <!-- Meta Pixel Code (Safely Pixel). Not loaded when this page is
              shown inside another page (the sign-in box on the home page),
              so one visit counts as one PageView. -->
@@ -1216,252 +1217,23 @@
         </div>
     </section>
 
-        <!-- ============ WALL OF LOVE (dark) ============ -->
-        <!--<section class="wall">
+        <!-- ============ REVIEWS ============
+             Approved reviews from signed-in users (js/reviews.js).
+             Hidden until at least one review is approved. -->
+        <section class="sec reviews-sec" id="reviews" hidden>
             <div class="wrap">
-                <div class="wall-head reveal">
-                    <div class="lhead-card">
-                        <span class="st">★★★★★</span>
-                        <h2 class="disp">Wall of Love</h2>
-                    </div>
-                    <p>
-                        Real buyers. Real protection. Here is what people say
-                        after Safely caught a scam before they paid.
+                <div class="head">
+                    <span class="badge o"><span class="bd"></span><span data-i18n="reviews.badge">Reviews</span></span>
+                    <h2 class="gasoek" data-i18n="reviews.title">What buyers say</h2>
+                    <p data-i18n="reviews.sub">
+                        Real reviews from people who check their suppliers with Safely.
                     </p>
                 </div>
-                <div class="lgrid">
-                    <article class="lcard reveal">
-                        <span class="ltape"></span>
-                        <div class="stars">★★★★★</div>
-                        <p class="q">
-                            "I was about to send $1,200 for a laptop when Safely
-                            reported the seller as having 3 fraud reports. Saved
-                            me from losing everything. This should be mandatory
-                            on Ebay."
-                        </p>
-                        <div class="who">
-                            <svg class="ava" viewBox="0 0 48 48">
-                                <rect
-                                    x="6"
-                                    y="6"
-                                    width="36"
-                                    height="36"
-                                    rx="13"
-                                    fill="#93c6f5"
-                                    stroke="#161616"
-                                    stroke-width="3"
-                                />
-                                <circle cx="18" cy="22" r="3" fill="#161616" />
-                                <circle cx="30" cy="22" r="3" fill="#161616" />
-                                <path
-                                    d="M17 30q7 6 14 0"
-                                    stroke="#161616"
-                                    stroke-width="3"
-                                    fill="none"
-                                    stroke-linecap="round"
-                                />
-                            </svg>
-                            <div>
-                                <div class="nm">John</div>
-                                <span class="ro">Buyer · London</span>
-                            </div>
-                        </div>
-                    </article>
-                    <article class="lcard reveal d1">
-                        <span class="ltape"></span>
-                        <div class="stars">★★★★★</div>
-                        <p class="q">
-                            "The AI caught that the seller was asking for
-                            payment via WhatsApp — a classic scam move I almost
-                            missed. The signal breakdown is incredibly clear."
-                        </p>
-                        <div class="who">
-                            <svg class="ava" viewBox="0 0 48 48">
-                                <rect
-                                    x="6"
-                                    y="6"
-                                    width="36"
-                                    height="36"
-                                    rx="13"
-                                    fill="#5fd6a3"
-                                    stroke="#161616"
-                                    stroke-width="3"
-                                />
-                                <circle cx="18" cy="22" r="3" fill="#161616" />
-                                <circle cx="30" cy="22" r="3" fill="#161616" />
-                                <path
-                                    d="M17 31q7 5 14 0"
-                                    stroke="#161616"
-                                    stroke-width="3"
-                                    fill="none"
-                                    stroke-linecap="round"
-                                />
-                            </svg>
-                            <div>
-                                <div class="nm">Bilal Khan</div>
-                                <span class="ro">Buyer · Toronto</span>
-                            </div>
-                        </div>
-                    </article>
-                    <article class="lcard reveal d2">
-                        <span class="ltape"></span>
-                        <div class="stars">★★★★★</div>
-                        <p class="q">
-                            "Safely caught that the listing images were stolen
-                            from another listing. The seller had zero history
-                            and a brand new account. Score of 88. I walked
-                            away."
-                        </p>
-                        <div class="who">
-                            <svg class="ava" viewBox="0 0 48 48">
-                                <rect
-                                    x="6"
-                                    y="6"
-                                    width="36"
-                                    height="36"
-                                    rx="13"
-                                    fill="#ffd86a"
-                                    stroke="#161616"
-                                    stroke-width="3"
-                                />
-                                <circle cx="18" cy="22" r="3" fill="#161616" />
-                                <circle cx="30" cy="22" r="3" fill="#161616" />
-                                <path
-                                    d="M17 30q7 6 14 0"
-                                    stroke="#161616"
-                                    stroke-width="3"
-                                    fill="none"
-                                    stroke-linecap="round"
-                                />
-                            </svg>
-                            <div>
-                                <div class="nm">Usman Khan</div>
-                                <span class="ro">Buyer · Sydney</span>
-                            </div>
-                        </div>
-                    </article>
-                    <article class="lcard reveal">
-                        <span class="ltape"></span>
-                        <div class="stars">★★★★★</div>
-                        <p class="q">
-                            "I buy phones frequently on Ebay. This extension has
-                            become essential to my process. I don't open a
-                            listing without checking the score first."
-                        </p>
-                        <div class="who">
-                            <svg class="ava" viewBox="0 0 48 48">
-                                <rect
-                                    x="6"
-                                    y="6"
-                                    width="36"
-                                    height="36"
-                                    rx="13"
-                                    fill="#ff9f93"
-                                    stroke="#161616"
-                                    stroke-width="3"
-                                />
-                                <circle cx="18" cy="22" r="3" fill="#161616" />
-                                <circle cx="30" cy="22" r="3" fill="#161616" />
-                                <path
-                                    d="M17 30q7 6 14 0"
-                                    stroke="#161616"
-                                    stroke-width="3"
-                                    fill="none"
-                                    stroke-linecap="round"
-                                />
-                            </svg>
-                            <div>
-                                <div class="nm">Amjad Khan</div>
-                                <span class="ro">Frequent buyer · Berlin</span>
-                            </div>
-                        </div>
-                    </article>
-                    <article class="lcard reveal d1">
-                        <span class="ltape"></span>
-                        <div class="stars">★★★★★</div>
-                        <p class="q">
-                            "Works on Facebook Marketplace too, which is where
-                            most of the scammers are. Finally one tool that
-                            covers everything in one place."
-                        </p>
-                        <div class="who">
-                            <svg class="ava" viewBox="0 0 48 48">
-                                <rect
-                                    x="6"
-                                    y="6"
-                                    width="36"
-                                    height="36"
-                                    rx="13"
-                                    fill="#93c6f5"
-                                    stroke="#161616"
-                                    stroke-width="3"
-                                />
-                                <circle cx="18" cy="22" r="3" fill="#161616" />
-                                <circle cx="30" cy="22" r="3" fill="#161616" />
-                                <path
-                                    d="M17 31q7 5 14 0"
-                                    stroke="#161616"
-                                    stroke-width="3"
-                                    fill="none"
-                                    stroke-linecap="round"
-                                />
-                            </svg>
-                            <div>
-                                <div class="nm">Zaid Ali</div>
-                                <span class="ro">Buyer · Austin</span>
-                            </div>
-                        </div>
-                    </article>
-                    <article class="lcard reveal d2">
-                        <span class="ltape"></span>
-                        <div class="stars">★★★★★</div>
-                        <p class="q">
-                            "The report feature is great. I reported a scammer,
-                            and knowing that protects the next buyer makes it
-                            feel worthwhile. Community-driven fraud detection
-                            actually works."
-                        </p>
-                        <div class="who">
-                            <svg class="ava" viewBox="0 0 48 48">
-                                <rect
-                                    x="6"
-                                    y="6"
-                                    width="36"
-                                    height="36"
-                                    rx="13"
-                                    fill="#5fd6a3"
-                                    stroke="#161616"
-                                    stroke-width="3"
-                                />
-                                <circle cx="18" cy="22" r="3" fill="#161616" />
-                                <circle cx="30" cy="22" r="3" fill="#161616" />
-                                <path
-                                    d="M17 30q7 6 14 0"
-                                    stroke="#161616"
-                                    stroke-width="3"
-                                    fill="none"
-                                    stroke-linecap="round"
-                                />
-                            </svg>
-                            <div>
-                                <div class="nm">Hassan Ali</div>
-                                <span class="ro"
-                                    >Buyer &amp; seller · Singapore</span
-                                >
-                            </div>
-                        </div>
-                    </article>
-                </div>
             </div>
-            <div class="wv down" aria-hidden="true">
-                <svg viewBox="0 0 1440 80" preserveAspectRatio="none">
-                    <path
-                        d="M0,40 C 240,75 480,5 720,28 C 960,50 1200,80 1440,38 L1440,80 L0,80 Z"
-                        fill="#f1ebda"
-                    />
-                </svg>
+            <div class="rv-viewport">
+                <div class="rv-track" id="reviews-track"></div>
             </div>
-        </section>-->
+        </section>
 
         <!-- ============ FAQ ============ -->
         <section class="sec" id="faq">
@@ -2562,5 +2334,6 @@
         <script src="js/tracking.js"></script>
         <script src="js/i18n.js"></script>
         <script src="js/landing.js"></script>
+        <script src="js/reviews.js"></script>
     </body>
 </html>

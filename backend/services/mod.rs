@@ -18,6 +18,7 @@ pub mod osint;
 pub mod outcomes;
 pub mod pdf_report;
 pub mod platform_config;
+pub mod reviews;
 pub mod risk_factors;
 pub mod scoring;
 pub mod scraper_client;

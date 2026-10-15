@@ -5,4 +5,5 @@ pub mod dashboard;
 pub mod fraud_reports;
 pub mod outcomes;
 pub mod pdf;
+pub mod reviews;
 pub mod subscribe;

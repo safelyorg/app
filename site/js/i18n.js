@@ -32,10 +32,31 @@
         { code: "pt-br", label: "Português (BR)", shortLabel: "PT" },
     ];
     const DEFAULT_LANG = "en";
+    function isSupported(code) {
+        return !!code && SUPPORTED_LANGS.some((l) => l.code === code);
+    }
+    // Which language to show, in this order:
+    // 1. ?lang=pt-br in the link (used by the Brazilian Facebook ads) -
+    //    it is also saved, so the rest of the site stays in that language;
+    // 2. the language the visitor picked before;
+    // 3. Portuguese if the visitor's browser is set to Portuguese;
+    // 4. English.
     function getSavedLang() {
+        const rawLink = new URLSearchParams(window.location.search)
+            .get("lang")
+            ?.toLowerCase();
+        // "?lang=pt" (short form in some ads) means Portuguese (BR) too.
+        const fromLink = rawLink === "pt" ? "pt-br" : rawLink;
+        if (isSupported(fromLink)) {
+            saveLang(fromLink);
+            return fromLink;
+        }
         const saved = localStorage.getItem(STORAGE_KEY);
-        if (saved && SUPPORTED_LANGS.some((l) => l.code === saved))
+        if (isSupported(saved))
             return saved;
+        const browser = (navigator.language || "").toLowerCase();
+        if (browser.startsWith("pt"))
+            return "pt-br";
         return DEFAULT_LANG;
     }
     function saveLang(code) {

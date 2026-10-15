@@ -550,6 +550,36 @@
                             </div>
                         </div>
 
+                        <div class="text-[10px] font-extrabold uppercase tracking-wider text-muted mb-2 mt-7" data-i18n="dash.settings.connected_accounts">
+                            Connected Accounts
+                        </div>
+                        <div class="bg-surface border border-line rounded-2xl p-4">
+                            <div class="flex items-center justify-between">
+                                <div class="flex items-center gap-3">
+                                    <span class="w-8 h-8 rounded-lg bg-surface2 border border-line flex items-center justify-center flex-shrink-0">
+                                        <svg width="15" height="15" viewBox="0 0 24 24">
+                                            <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.76h3.56c2.08-1.92 3.28-4.74 3.28-8.09z" />
+                                            <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.56-2.76c-.98.66-2.23 1.06-3.72 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84A11 11 0 0012 23z" />
+                                            <path fill="#FBBC05" d="M5.84 14.11a6.6 6.6 0 010-4.22V7.05H2.18a11 11 0 000 9.9l3.66-2.84z" />
+                                            <path fill="#EA4335" d="M12 4.75c1.62 0 3.06.56 4.21 1.64l3.15-3.15A10.5 10.5 0 0012 1 11 11 0 002.18 7.05l3.66 2.84C6.71 6.68 9.14 4.75 12 4.75z" />
+                                        </svg>
+                                    </span>
+                                    <span class="text-[13px] font-semibold">Google</span>
+                                </div>
+                                <button
+                                    id="google-connect-btn"
+                                    type="button"
+                                    class="px-3.5 py-1.5 rounded-lg bg-surface2 border border-line text-[12px] font-bold hover:bg-surface3 transition"
+                                >
+                                    Connect
+                                </button>
+                            </div>
+                            <div
+                                id="google-status-message"
+                                class="hidden mt-3 px-3 py-2.5 rounded-lg bg-mint/10 text-mint text-[12px] font-semibold"
+                            ></div>
+                        </div>
+
                         <div class="text-[10px] font-extrabold uppercase tracking-wider text-muted mb-2 mt-7" data-i18n="dash.settings.plan_billing">
                             Plan &amp; Billing
                         </div>
@@ -650,6 +680,110 @@
                             </div>
                         </div>
 
+                        <div class="text-[10px] font-extrabold uppercase tracking-wider text-muted mb-2 mt-7" data-i18n="dash.review.section">
+                            Your review
+                        </div>
+                        <!-- Review form (reviews.ts). Goes live on safely.sh after you approve it (scripts/reviews.sh). -->
+                        <div id="review-card" class="bg-surface border border-line rounded-2xl p-5">
+                            <div class="flex items-start justify-between gap-3 mb-5">
+                                <div>
+                                    <div class="text-[14px] font-bold" data-i18n="dash.review.title">Share your experience</div>
+                                    <div class="text-[12px] text-muted mt-1 leading-relaxed" data-i18n="dash.review.desc">
+                                        Tell other buyers how Safely helped you. Approved reviews are shown on safely.sh.
+                                    </div>
+                                </div>
+                                <span id="review-status" class="hidden"></span>
+                            </div>
+
+                            <div class="flex items-center gap-4 mb-5">
+                                <div class="relative w-16 h-16 flex-shrink-0">
+                                    <img id="review-photo-preview" alt="" class="hidden w-16 h-16 rounded-full object-cover border border-line" />
+                                    <div id="review-photo-placeholder" class="w-16 h-16 rounded-full bg-surface2 border border-dashed border-line flex items-center justify-center text-muted">
+                                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                            <path d="M4 8a2 2 0 0 1 2-2h1.2a2 2 0 0 0 1.66-.89l.28-.42A2 2 0 0 1 10.8 4h2.4a2 2 0 0 1 1.66.89l.28.42A2 2 0 0 0 16.8 6H18a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8z" />
+                                            <circle cx="12" cy="13" r="3.2" />
+                                        </svg>
+                                    </div>
+                                </div>
+                                <div class="min-w-0">
+                                    <label
+                                        for="review-photo-input"
+                                        class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-surface2 border border-line text-[12px] font-bold hover:bg-surface3 transition cursor-pointer"
+                                        data-i18n="dash.review.choose_photo"
+                                        >Choose photo</label
+                                    >
+                                    <input type="file" id="review-photo-input" accept="image/png,image/jpeg,image/webp" class="hidden" />
+                                    <div class="text-[11px] text-muted mt-1.5" data-i18n="dash.review.photo_hint">
+                                        Required. A clear photo of you (JPG, PNG or WebP).
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="text-[12px] font-semibold text-muted mb-1.5" data-i18n="dash.review.rating">Your rating</div>
+                            <div class="flex gap-1 mb-5" role="group" aria-label="Rating">
+                                <button type="button" class="review-star text-surface3 text-[26px] leading-none transition hover:scale-110" data-value="1" aria-label="1 star">&#9733;</button>
+                                <button type="button" class="review-star text-surface3 text-[26px] leading-none transition hover:scale-110" data-value="2" aria-label="2 stars">&#9733;</button>
+                                <button type="button" class="review-star text-surface3 text-[26px] leading-none transition hover:scale-110" data-value="3" aria-label="3 stars">&#9733;</button>
+                                <button type="button" class="review-star text-surface3 text-[26px] leading-none transition hover:scale-110" data-value="4" aria-label="4 stars">&#9733;</button>
+                                <button type="button" class="review-star text-surface3 text-[26px] leading-none transition hover:scale-110" data-value="5" aria-label="5 stars">&#9733;</button>
+                            </div>
+
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+                                <div>
+                                    <label for="review-name" class="block text-[12px] font-semibold text-muted mb-1.5" data-i18n="dash.review.name">Name shown</label>
+                                    <input
+                                        id="review-name"
+                                        type="text"
+                                        maxlength="60"
+                                        class="w-full px-3 py-2 bg-surface2 border border-line rounded-lg text-[13px] outline-none focus:border-brand"
+                                    />
+                                </div>
+                                <div>
+                                    <label for="review-role" class="block text-[12px] font-semibold text-muted mb-1.5" data-i18n="dash.review.role">Role or company (optional)</label>
+                                    <input
+                                        id="review-role"
+                                        type="text"
+                                        maxlength="80"
+                                        placeholder="e.g. Buyer · São Paulo"
+                                        class="w-full px-3 py-2 bg-surface2 border border-line rounded-lg text-[13px] outline-none focus:border-brand"
+                                        data-i18n="dash.review.role_placeholder"
+                                        data-i18n-attr="placeholder"
+                                    />
+                                </div>
+                            </div>
+
+                            <div class="flex items-center justify-between mb-1.5">
+                                <label for="review-body" class="text-[12px] font-semibold text-muted" data-i18n="dash.review.body">Your review</label>
+                                <span id="review-counter" class="text-[11px] text-muted num">0/600</span>
+                            </div>
+                            <textarea
+                                id="review-body"
+                                rows="4"
+                                maxlength="600"
+                                placeholder="How did Safely help you check a supplier?"
+                                class="w-full px-3 py-2 bg-surface2 border border-line rounded-lg text-[13px] leading-relaxed outline-none focus:border-brand resize-y mb-4"
+                                data-i18n="dash.review.body_placeholder"
+                                data-i18n-attr="placeholder"
+                            ></textarea>
+
+                            <label class="flex items-start gap-2.5 text-[12px] text-muted leading-relaxed cursor-pointer mb-4">
+                                <input id="review-consent" type="checkbox" class="mt-0.5 accent-[#6fb3ef] flex-shrink-0" />
+                                <span data-i18n="dash.review.consent">I agree that Safely can show my review, name and photo on its website.</span>
+                            </label>
+
+                            <div id="review-error" class="hidden mb-3 px-3 py-2.5 rounded-lg bg-coral/10 text-coral text-[12px] font-semibold"></div>
+                            <div id="review-success" class="hidden mb-3 px-3 py-2.5 rounded-lg bg-mint/10 text-mint text-[12px] font-semibold"></div>
+
+                            <button
+                                id="review-submit"
+                                type="button"
+                                class="w-full sm:w-auto px-4 py-2 rounded-lg bg-ink text-bg text-[12px] font-bold hover:bg-white transition disabled:opacity-40 disabled:cursor-not-allowed"
+                                data-i18n="dash.review.submit"
+                            >
+                                Submit review
+                            </button>
+                        </div>
+
                         <div class="text-[10px] font-extrabold uppercase tracking-wider text-muted mb-2 mt-7" data-i18n="dash.settings.account_history">
                             Account history
                         </div>
@@ -662,36 +796,6 @@
                                 <span class="text-muted" data-i18n="dash.settings.last_signed_in">Last signed in</span>
                                 <span id="settings-last-login" class="font-semibold num"></span>
                             </div>
-                        </div>
-
-                        <div class="text-[10px] font-extrabold uppercase tracking-wider text-muted mb-2 mt-7" data-i18n="dash.settings.connected_accounts">
-                            Connected Accounts
-                        </div>
-                        <div class="bg-surface border border-line rounded-2xl p-4">
-                            <div class="flex items-center justify-between">
-                                <div class="flex items-center gap-3">
-                                    <span class="w-8 h-8 rounded-lg bg-surface2 border border-line flex items-center justify-center flex-shrink-0">
-                                        <svg width="15" height="15" viewBox="0 0 24 24">
-                                            <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.76h3.56c2.08-1.92 3.28-4.74 3.28-8.09z" />
-                                            <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.56-2.76c-.98.66-2.23 1.06-3.72 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84A11 11 0 0012 23z" />
-                                            <path fill="#FBBC05" d="M5.84 14.11a6.6 6.6 0 010-4.22V7.05H2.18a11 11 0 000 9.9l3.66-2.84z" />
-                                            <path fill="#EA4335" d="M12 4.75c1.62 0 3.06.56 4.21 1.64l3.15-3.15A10.5 10.5 0 0012 1 11 11 0 002.18 7.05l3.66 2.84C6.71 6.68 9.14 4.75 12 4.75z" />
-                                        </svg>
-                                    </span>
-                                    <span class="text-[13px] font-semibold">Google</span>
-                                </div>
-                                <button
-                                    id="google-connect-btn"
-                                    type="button"
-                                    class="px-3.5 py-1.5 rounded-lg bg-surface2 border border-line text-[12px] font-bold hover:bg-surface3 transition"
-                                >
-                                    Connect
-                                </button>
-                            </div>
-                            <div
-                                id="google-status-message"
-                                class="hidden mt-3 px-3 py-2.5 rounded-lg bg-mint/10 text-mint text-[12px] font-semibold"
-                            ></div>
                         </div>
 
                         <div class="text-[10px] font-extrabold uppercase tracking-wider text-muted mb-2 mt-7" data-i18n="dash.settings.about_safely">
@@ -1174,6 +1278,7 @@
         <script src="js/profile.js"></script>
         <script src="js/settings.js"></script>
         <script src="js/detail_view.js"></script>
+        <script src="js/reviews.js"></script>
         <script src="js/init.js"></script>
     </body>
 </html>

@@ -38,6 +38,27 @@ pub async fn run_grants(pool: &PgPool) {
     .await
     .expect("new tables should automatically grant privileges to safely role");
 
+    // Auto-numbered ids (like reviews.id) come from a sequence. Without
+    // this, adding a row to such a table fails with "permission denied".
+    query(
+        r#"
+            GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO safely;
+        "#,
+    )
+    .execute(pool)
+    .await
+    .expect("safely role should be able to use existing id sequences");
+
+    query(
+        r#"
+            ALTER DEFAULT PRIVILEGES IN SCHEMA public
+            GRANT USAGE, SELECT ON SEQUENCES TO safely;
+        "#,
+    )
+    .execute(pool)
+    .await
+    .expect("new id sequences should automatically be usable by safely role");
+
     query(
         r#"
             REVOKE UPDATE, DELETE ON evidence FROM safely;

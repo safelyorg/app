@@ -3,7 +3,8 @@ use axum::serve;
 use axum::{Router, response::Redirect, routing::get};
 use backend::db::{bootstrap::run_grants, connection::load_pool};
 use backend::routes::{
-    analyze, auth, billing, dashboard, fraud_reports, outcomes, platform_domains, subscribe,
+    analyze, auth, billing, dashboard, fraud_reports, outcomes, platform_domains, reviews,
+    subscribe,
 };
 use backend::services::scraper_client::warn_if_scraperapi_key_missing;
 use dotenvy::dotenv;
@@ -51,6 +52,7 @@ fn build_router(app_pool: Pool<Postgres>) -> Router {
         .merge(subscribe::subscribe_routes())
         .merge(outcomes::outcomes_routes())
         .merge(platform_domains::platform_domains_routes())
+        .merge(reviews::reviews_routes())
         .route(
             "/dashboard",
             get(|| async { Redirect::permanent("/dashboard/") }),
