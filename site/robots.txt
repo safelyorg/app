@@ -1,0 +1,6 @@
+User-agent: *
+Allow: /
+Disallow: /signin.html
+Disallow: /templates/
+
+Sitemap: https://safely.sh/sitemap.xml
