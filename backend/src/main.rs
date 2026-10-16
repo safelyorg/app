@@ -105,6 +105,51 @@ fn build_router(app_pool: Pool<Postgres>) -> Router {
                 "/../site/templates/partners.html"
             )),
         )
+        // SEO pages: comparison pages and legal pages. Each has its own
+        // address so Google can list it separately. The pop-ups on the
+        // home page link to these.
+        .route_service(
+            "/vs-norton",
+            ServeFile::new(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../site/templates/vs-norton.html"
+            )),
+        )
+        .route_service(
+            "/vs-manual-research",
+            ServeFile::new(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../site/templates/vs-manual-research.html"
+            )),
+        )
+        .route_service(
+            "/vs-basic-reviews",
+            ServeFile::new(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../site/templates/vs-basic-reviews.html"
+            )),
+        )
+        .route_service(
+            "/vs-other-extensions",
+            ServeFile::new(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../site/templates/vs-other-extensions.html"
+            )),
+        )
+        .route_service(
+            "/privacy",
+            ServeFile::new(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../site/templates/privacy.html"
+            )),
+        )
+        .route_service(
+            "/terms",
+            ServeFile::new(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../site/templates/terms.html"
+            )),
+        )
         // Landing page for ads (Facebook etc.): one goal, install the extension.
         .route_service(
             "/try",
