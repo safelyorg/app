@@ -1,8 +1,11 @@
 //! Blog articles: Markdown files turned into pages, one folder per language.
 //!
+//! "blogs" is the list of articles, "blog" is one article:
+//!
 //! ```text
-//! content/blogs/en/<name>.md     ->  safely.sh/blogs/<name>
-//! content/blogs/pt-br/<name>.md  ->  safely.sh/pt-br/blogs/<name>
+//! the list                       ->  safely.sh/blogs        safely.sh/pt-br/blogs
+//! content/blogs/en/<name>.md     ->  safely.sh/blog/<name>
+//! content/blogs/pt-br/<name>.md  ->  safely.sh/pt-br/blog/<name>
 //! ```
 //!
 //! The same file name in two folders is the same article in two
@@ -47,25 +50,15 @@ const MORE_ARTICLES: usize = 3;
 /// The list page shows 2 rows of 3 first, then 1 more row per click.
 pub const FIRST_CARDS: usize = 6;
 
-const POST_TEMPLATE: &str = include_str!("../../site/templates/blog_post.html");
-const LIST_TEMPLATE: &str = include_str!("../../site/templates/blogs.html");
+const BLOG_TEMPLATE: &str = include_str!("../../site/templates/blog.html");
+const BLOGS_TEMPLATE: &str = include_str!("../../site/templates/blogs.html");
 
 /// Pages that are always in the sitemap, besides the blog pages.
 /// The blog list pages and articles are added for every language.
-pub const SITEMAP_PAGES: &[&str] = &[
-    "/",
-    "/partners",
-    "/subscribe",
-    "/vs-norton",
-    "/vs-manual-research",
-    "/vs-basic-reviews",
-    "/vs-other-extensions",
-    "/privacy",
-    "/terms",
-];
+pub const SITEMAP_PAGES: &[&str] = &["/", "/partners", "/subscribe", "/privacy", "/terms"];
 
 /// The English page text. Keys that already exist on the other pages
-/// (nav.*, footer.*, cmp.*, cta.*) use the same English words here.
+/// (nav.*, footer.*, cmp.*, cta.*, modal.*) use the same English words here.
 const ENGLISH: &[(&str, &str)] = &[
     ("nav.home", "Home"),
     ("nav.pricing", "Pricing"),
@@ -145,6 +138,130 @@ const ENGLISH: &[(&str, &str)] = &[
     ("footer.privacy", "Privacy"),
     ("footer.terms_short", "Terms"),
     ("footer.contact_short", "Contact"),
+    // Pop-ups at the bottom of the page (same text as the home page)
+    ("modal.about.title", "About Safely"),
+    (
+        "modal.about.body1",
+        "Safely started after one too many friends lost money buying second-hand online. We build AI-powered fraud detection that runs quietly in your browser and warns you before money ever leaves your hands.",
+    ),
+    (
+        "modal.about.body2",
+        "Our mission is simple: make every online marketplace safe to buy from.",
+    ),
+    ("modal.got_it", "Got it"),
+    ("modal.careers.title", "Careers"),
+    (
+        "modal.careers.body1",
+        "We're a small, fully-remote team building trust infrastructure for online commerce, and we care a lot about protecting buyers.",
+    ),
+    (
+        "modal.careers.body2",
+        "There are no open roles listed right now, but we're always happy to hear from thoughtful people — reach out at <b>help@safely.sh</b>.",
+    ),
+    ("modal.contact.title", "Contact"),
+    (
+        "modal.contact.body1",
+        "Questions, partnership ideas, or a scam you'd like us to look into? Email the team at <b>help@safely.sh</b> and we'll get back to you within one business day.",
+    ),
+    (
+        "modal.contact.body2",
+        "Pro and Business customers receive priority support.",
+    ),
+    ("modal.privacy.title", "Privacy Policy"),
+    (
+        "modal.privacy.body1",
+        "We only read listing and seller data from pages you actively open on supported marketplaces. We never track your general browsing history and never sell your data to third parties.",
+    ),
+    (
+        "modal.privacy.body2",
+        "You can export or delete your account and all associated data at any time. This is a plain-language summary of our full policy.",
+    ),
+    ("modal.privacy.full", "Read the full privacy policy &rarr;"),
+    ("modal.terms.title", "Terms of Service"),
+    (
+        "modal.terms.body1",
+        "By using Safely you agree to use it for lawful buying and selling only. Risk scores are guidance to help you decide — not a guarantee — so always use your own judgement before paying.",
+    ),
+    (
+        "modal.terms.body2",
+        "The service is provided as-is. This is an overview of the full terms.",
+    ),
+    ("modal.terms.full", "Read the full terms &rarr;"),
+    ("modal.cookie.title", "Cookie Policy"),
+    (
+        "modal.cookie.body1",
+        "We use a small number of essential cookies to keep you signed in and remember your settings. We also use the Meta Pixel, which sets cookies so we can measure our Facebook and Instagram ads (for example, how many people install Safely after seeing an ad).",
+    ),
+    (
+        "modal.cookie.body2",
+        "You can clear cookies any time from your browser settings.",
+    ),
+    ("modal.report.title", "Report Abuse"),
+    (
+        "modal.report.body1",
+        "Spotted a scammer, an abusive seller, or misuse of Safely? Report it directly from the extension on the seller's page, or email <b>help@safely.sh</b>.",
+    ),
+    (
+        "modal.report.body2",
+        "Reports are reviewed quickly and help protect the whole community.",
+    ),
+    ("modal.chrome.title", "Chrome Extension"),
+    (
+        "modal.chrome.body1",
+        "Safely is a lightweight Chrome extension. Install it in one click and it activates automatically on any supported marketplace — no account needed to start.",
+    ),
+    (
+        "modal.chrome.body2",
+        "Support for Edge and Firefox is on the way.",
+    ),
+    ("modal.api.title", "API"),
+    (
+        "modal.api.body1",
+        "The Safely API lets Business and Enterprise customers score listings and sellers programmatically, run bulk analyses, and pull fraud reports into their own tools.",
+    ),
+    (
+        "modal.api.body2",
+        "API access is included on the Enterprise plan.",
+    ),
+    ("modal.vs_norton.title", "Safely vs Norton"),
+    (
+        "modal.vs_norton.body1",
+        "Norton and similar antivirus tools protect your computer — they catch malware, viruses, and malicious files trying to attack your device.",
+    ),
+    (
+        "modal.vs_norton.body2",
+        "Safely protects you from a different kind of risk: a supplier or listing that looks real but is not. Norton looks after your device and warns about scam messages and websites. Safely checks the supplier behind a B2B listing, including their registration, the listing itself and community fraud reports. They cover different things, and many people use both.",
+    ),
+    ("modal.vs_manual.title", "Safely vs manual research"),
+    (
+        "modal.vs_manual.body1",
+        "Most buyers today check a listing by reading it carefully, searching the seller's name, and going with their gut. That works reasonably well for obvious scams, but it takes time and still misses those signals — recycled images, slightly-off pricing, or urgency language designed specifically to bypass exactly that kind of gut check.",
+    ),
+    (
+        "modal.vs_manual.body2",
+        "Safely runs the same checks a careful buyer would want to do, automatically, in about 10 seconds, every time you open a listing.",
+    ),
+    ("modal.vs_reviews.title", "Safely vs basic seller reviews"),
+    (
+        "modal.vs_reviews.body1",
+        "Star ratings and reviews built into marketplaces are useful, but a brand-new seller account naturally has none yet — which tells you nothing either way, and is exactly the situation most scam listings are posted from.",
+    ),
+    (
+        "modal.vs_reviews.body2",
+        "Safely doesn't rely on a review history existing at all. It analyzes the listing itself — the language used, the images, the price, the seller's account age — so it can flag risk even on a seller's very first post.",
+    ),
+    (
+        "modal.vs_extensions.title",
+        "Safely vs generic browser extensions",
+    ),
+    (
+        "modal.vs_extensions.body1",
+        "Ad blockers, price trackers, and coupon extensions are built to change or add something to a page — they were never designed to evaluate whether the person selling to you is trustworthy.",
+    ),
+    (
+        "modal.vs_extensions.body2",
+        "Safely is purpose-built around one question: is this specific listing and seller safe to send money to. That's the only thing it does, which is why it can go deep on it — 15 distinct fraud signals, seller history, and a community fraud report network, all in one focused tool.",
+    ),
 ];
 
 /// The page text for one language.
@@ -233,8 +350,9 @@ pub fn short_label(lang: &str) -> String {
     lang.split('-').next().unwrap_or(lang).to_ascii_uppercase()
 }
 
-/// Where a language's blog lives: /blogs for English, /pt-br/blogs for Portuguese.
-pub fn blog_base(lang: &str) -> String {
+/// Where a language's list of articles lives: /blogs for English,
+/// /pt-br/blogs for Portuguese.
+pub fn blogs_base(lang: &str) -> String {
     if lang == DEFAULT_LANG {
         "/blogs".to_string()
     } else {
@@ -242,8 +360,14 @@ pub fn blog_base(lang: &str) -> String {
     }
 }
 
-pub fn post_path(lang: &str, slug: &str) -> String {
-    format!("{}/{}", blog_base(lang), slug)
+/// Where one article lives: /blog/<name> for English,
+/// /pt-br/blog/<name> for Portuguese.
+pub fn blog_path(lang: &str, slug: &str) -> String {
+    if lang == DEFAULT_LANG {
+        format!("/blog/{}", slug)
+    } else {
+        format!("/{}/blog/{}", lang, slug)
+    }
 }
 
 /// Every language that has a folder in content/blogs. English first.
@@ -442,19 +566,19 @@ struct Version {
     exact: bool,
 }
 
-fn list_versions(library: &Library) -> Vec<Version> {
+fn blogs_versions(library: &Library) -> Vec<Version> {
     library
         .languages
         .iter()
         .map(|(lang, _)| Version {
             lang: lang.clone(),
-            path: blog_base(lang),
+            path: blogs_base(lang),
             exact: true,
         })
         .collect()
 }
 
-fn post_versions(library: &Library, slug: &str) -> Vec<Version> {
+fn blog_versions(library: &Library, slug: &str) -> Vec<Version> {
     library
         .languages
         .iter()
@@ -463,9 +587,9 @@ fn post_versions(library: &Library, slug: &str) -> Vec<Version> {
             Version {
                 lang: lang.clone(),
                 path: if exact {
-                    post_path(lang, slug)
+                    blog_path(lang, slug)
                 } else {
-                    blog_base(lang)
+                    blogs_base(lang)
                 },
                 exact,
             }
@@ -556,7 +680,7 @@ pub fn fill_template(template: &str, values: &[(&str, &str)], texts: &Texts) -> 
 
 /// Article data for Google (structured data), safe inside a <script>.
 fn article_json_ld(post: &BlogPost, lang: &str) -> String {
-    let url = format!("{}{}", SITE_URL, post_path(lang, &post.slug));
+    let url = format!("{}{}", SITE_URL, blog_path(lang, &post.slug));
     let data = serde_json::json!({
         "@context": "https://schema.org",
         "@type": "Article",
@@ -575,7 +699,7 @@ fn article_json_ld(post: &BlogPost, lang: &str) -> String {
 
 /// Cards linking to articles. Cards from `visible` onwards start hidden
 /// and are shown by the "Show more" button.
-fn post_cards(posts: &[&BlogPost], lang: &str, texts: &Texts, visible: usize) -> String {
+fn blog_cards(posts: &[&BlogPost], lang: &str, texts: &Texts, visible: usize) -> String {
     posts
         .iter()
         .enumerate()
@@ -586,7 +710,7 @@ fn post_cards(posts: &[&BlogPost], lang: &str, texts: &Texts, visible: usize) ->
                  <span class=\"blog-card-desc\">{desc}</span>\
                  <span class=\"blog-card-more\">{read}</span></a></li>",
                 hidden = if i >= visible { " hidden" } else { "" },
-                href = post_path(lang, &p.slug),
+                href = blog_path(lang, &p.slug),
                 date = escape_html(&texts.date(p.date)),
                 title = escape_html(&p.title),
                 desc = escape_html(&p.description),
@@ -596,7 +720,7 @@ fn post_cards(posts: &[&BlogPost], lang: &str, texts: &Texts, visible: usize) ->
         .collect()
 }
 
-pub fn render_post(post: &BlogPost, lang: &str, library: &Library, texts: &Texts) -> String {
+pub fn render_blog(post: &BlogPost, lang: &str, library: &Library, texts: &Texts) -> String {
     let others: Vec<&BlogPost> = library
         .posts(lang)
         .iter()
@@ -609,11 +733,11 @@ pub fn render_post(post: &BlogPost, lang: &str, library: &Library, texts: &Texts
         format!(
             "<div class=\"cmp-block related\"><h2>{}</h2><ul class=\"blog-cards\">{}</ul></div>",
             texts.get("blog.more"),
-            post_cards(&others, lang, texts, usize::MAX)
+            blog_cards(&others, lang, texts, usize::MAX)
         )
     };
-    let versions = post_versions(library, &post.slug);
-    let canonical = format!("{}{}", SITE_URL, post_path(lang, &post.slug));
+    let versions = blog_versions(library, &post.slug);
+    let canonical = format!("{}{}", SITE_URL, blog_path(lang, &post.slug));
     let title = escape_html(&post.title);
     let description = escape_html(&post.description);
     let date_iso = post.date.to_string();
@@ -624,9 +748,9 @@ pub fn render_post(post: &BlogPost, lang: &str, library: &Library, texts: &Texts
     let html_lang = hreflang(lang);
     let options = lang_options(&versions, lang);
     let alternates = alternate_links(&versions);
-    let base = blog_base(lang);
+    let base = blogs_base(lang);
     fill_template(
-        POST_TEMPLATE,
+        BLOG_TEMPLATE,
         &[
             ("lang", lang),
             ("html_lang", &html_lang),
@@ -635,7 +759,7 @@ pub fn render_post(post: &BlogPost, lang: &str, library: &Library, texts: &Texts
             ("canonical", &canonical),
             ("alternates", &alternates),
             ("lang_options", &options),
-            ("blog_base", &base),
+            ("blogs_base", &base),
             ("date_iso", &date_iso),
             ("date_human", &date_human),
             ("reading_minutes", &minutes),
@@ -648,7 +772,7 @@ pub fn render_post(post: &BlogPost, lang: &str, library: &Library, texts: &Texts
     )
 }
 
-pub fn render_list(lang: &str, library: &Library, texts: &Texts) -> String {
+pub fn render_blogs(lang: &str, library: &Library, texts: &Texts) -> String {
     let posts = library.posts(lang);
     let cards = if posts.is_empty() {
         format!("<p class=\"cmp-note\">{}</p>", texts.get("blog.empty"))
@@ -664,25 +788,25 @@ pub fn render_list(lang: &str, library: &Library, texts: &Texts) -> String {
         };
         format!(
             "<ul class=\"blog-cards\">{}</ul>{}",
-            post_cards(&all, lang, texts, FIRST_CARDS),
+            blog_cards(&all, lang, texts, FIRST_CARDS),
             button
         )
     };
-    let versions = list_versions(library);
-    let canonical = format!("{}{}", SITE_URL, blog_base(lang));
+    let versions = blogs_versions(library);
+    let canonical = format!("{}{}", SITE_URL, blogs_base(lang));
     let html_lang = hreflang(lang);
     let options = lang_options(&versions, lang);
     let alternates = alternate_links(&versions);
-    let base = blog_base(lang);
+    let base = blogs_base(lang);
     fill_template(
-        LIST_TEMPLATE,
+        BLOGS_TEMPLATE,
         &[
             ("lang", lang),
             ("html_lang", &html_lang),
             ("canonical", &canonical),
             ("alternates", &alternates),
             ("lang_options", &options),
-            ("blog_base", &base),
+            ("blogs_base", &base),
             ("cards", &cards),
         ],
         texts,
@@ -697,7 +821,7 @@ pub fn render_not_found(lang: &str, texts: &Texts) -> String {
          <h1>{title}</h1><p><a href=\"{base}\">{see_all}</a></p></body></html>",
         lang = hreflang(lang),
         title = escape_html(texts.get("blog.not_found")),
-        base = blog_base(lang),
+        base = blogs_base(lang),
         see_all = escape_html(texts.get("blog.see_all")),
     )
 }
@@ -714,13 +838,13 @@ pub fn render_sitemap(library: &Library) -> String {
         xml.push_str(&format!(
             "  <url><loc>{}{}</loc></url>\n",
             SITE_URL,
-            blog_base(lang)
+            blogs_base(lang)
         ));
         for post in posts {
             xml.push_str(&format!(
                 "  <url><loc>{}{}</loc><lastmod>{}</lastmod></url>\n",
                 SITE_URL,
-                post_path(lang, &post.slug),
+                blog_path(lang, &post.slug),
                 post.date
             ));
         }
@@ -836,8 +960,9 @@ mod tests {
         assert_eq!(hreflang("pt-br"), "pt-BR");
         assert_eq!(hreflang("en"), "en");
         assert_eq!(short_label("pt-br"), "PT");
-        assert_eq!(blog_base("en"), "/blogs");
-        assert_eq!(post_path("pt-br", "x"), "/pt-br/blogs/x");
+        assert_eq!(blogs_base("en"), "/blogs");
+        assert_eq!(blog_path("pt-br", "x"), "/pt-br/blog/x");
+        assert_eq!(blog_path("en", "x"), "/blog/x");
     }
 
     #[test]
@@ -893,9 +1018,9 @@ mod tests {
     fn rendered_page_has_everything_and_is_escaped() {
         let p = parse_post("how-to-check", GOOD).unwrap();
         let lib = library(vec![("en", vec![p.clone()])]);
-        let html = render_post(&p, "en", &lib, &english());
+        let html = render_blog(&p, "en", &lib, &english());
         assert!(html.contains("<title>How to check a supplier | Safely</title>"));
-        assert!(html.contains("https://safely.sh/blogs/how-to-check"));
+        assert!(html.contains("https://safely.sh/blog/how-to-check"));
         assert!(html.contains("Check the registration &amp; the contacts."));
         assert!(html.contains("October 20, 2026"));
         assert!(html.contains("\"@type\":\"Article\""));
@@ -913,24 +1038,28 @@ mod tests {
         let t = english();
 
         // Article in both languages: menu goes to the same article, Google is told.
-        let html = render_post(&en[0], "en", &lib, &t);
-        assert!(html.contains("<option value=\"/blogs/both\" data-lang=\"en\" data-exact=\"true\" selected>EN</option>"));
-        assert!(html.contains("<option value=\"/pt-br/blogs/both\" data-lang=\"pt-br\" data-exact=\"true\">PT</option>"));
-        assert!(html.contains("hreflang=\"pt-BR\" href=\"https://safely.sh/pt-br/blogs/both\""));
-        assert!(html.contains("hreflang=\"x-default\" href=\"https://safely.sh/blogs/both\""));
+        let html = render_blog(&en[0], "en", &lib, &t);
+        assert!(html.contains(
+            "<option value=\"/blog/both\" data-lang=\"en\" data-exact=\"true\" selected>EN</option>"
+        ));
+        assert!(html.contains(
+            "<option value=\"/pt-br/blog/both\" data-lang=\"pt-br\" data-exact=\"true\">PT</option>"
+        ));
+        assert!(html.contains("hreflang=\"pt-BR\" href=\"https://safely.sh/pt-br/blog/both\""));
+        assert!(html.contains("hreflang=\"x-default\" href=\"https://safely.sh/blog/both\""));
 
         // English-only article: PT goes to the Portuguese list, no Google link.
-        let html = render_post(&en[1], "en", &lib, &t);
+        let html = render_blog(&en[1], "en", &lib, &t);
         assert!(html.contains(
             "<option value=\"/pt-br/blogs\" data-lang=\"pt-br\" data-exact=\"false\">PT</option>"
         ));
         assert!(!html.contains("hreflang"));
 
         // List pages link to each other.
-        let list = render_list("pt-br", &lib, &t);
+        let list = render_blogs("pt-br", &lib, &t);
         assert!(list.contains("<html lang=\"pt-BR\""));
         assert!(list.contains("<link rel=\"canonical\" href=\"https://safely.sh/pt-br/blogs\""));
-        assert!(list.contains("href=\"/pt-br/blogs/both\""));
+        assert!(list.contains("href=\"/pt-br/blog/both\""));
         assert!(list.contains("hreflang=\"en\" href=\"https://safely.sh/blogs\""));
     }
 
@@ -938,24 +1067,24 @@ mod tests {
     fn list_shows_six_then_a_button() {
         let t = english();
         let five: Vec<BlogPost> = (1..=5).rev().map(|d| post(&format!("a{d}"), d)).collect();
-        let html = render_list("en", &library(vec![("en", five)]), &t);
+        let html = render_blogs("en", &library(vec![("en", five)]), &t);
         assert!(!html.contains("<li hidden>"));
         assert!(!html.contains("data-blog-more"), "no button for 6 or fewer");
 
         let eight: Vec<BlogPost> = (1..=8).rev().map(|d| post(&format!("a{d}"), d)).collect();
-        let html = render_list("en", &library(vec![("en", eight)]), &t);
+        let html = render_blogs("en", &library(vec![("en", eight)]), &t);
         assert_eq!(html.matches("<li><a").count(), FIRST_CARDS);
         assert_eq!(html.matches("<li hidden><a").count(), 2);
         assert!(html.contains("data-blog-more hidden>Show more articles</button>"));
         // newest first
-        assert!(html.find("/blogs/a8").unwrap() < html.find("/blogs/a1").unwrap());
+        assert!(html.find("/blog/a8").unwrap() < html.find("/blog/a1").unwrap());
         assert!(!html.contains("{{"));
     }
 
     #[test]
     fn empty_language_and_not_found() {
         let t = english();
-        let html = render_list("en", &library(vec![("en", vec![])]), &t);
+        let html = render_blogs("en", &library(vec![("en", vec![])]), &t);
         assert!(html.contains("The first articles are on their way."));
         let nf = render_not_found("pt-br", &t);
         assert!(nf.contains("href=\"/pt-br/blogs\""));
@@ -973,12 +1102,13 @@ mod tests {
         assert!(xml.contains("<loc>https://safely.sh/blogs</loc>"));
         assert!(xml.contains("<loc>https://safely.sh/pt-br/blogs</loc>"));
         assert!(
-            xml.contains("<loc>https://safely.sh/blogs/older</loc><lastmod>2026-10-01</lastmod>")
+            xml.contains("<loc>https://safely.sh/blog/older</loc><lastmod>2026-10-01</lastmod>")
         );
         assert!(xml.contains(
-            "<loc>https://safely.sh/pt-br/blogs/newer</loc><lastmod>2026-10-20</lastmod>"
+            "<loc>https://safely.sh/pt-br/blog/newer</loc><lastmod>2026-10-20</lastmod>"
         ));
         assert!(!xml.contains("/try"));
+        assert!(!xml.contains("/vs-"), "the comparison pages were removed");
     }
 
     #[test]

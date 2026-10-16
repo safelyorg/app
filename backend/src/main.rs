@@ -73,7 +73,7 @@ fn build_router(app_pool: Pool<Postgres>) -> Router {
     // hold and serve these from its edge, instead of round-tripping
     // to the origin on every single visit.
     let public_routes = Router::new()
-        // Blog articles (content/blogs/*.md), the /blogs list and sitemap.xml
+        // The /blogs list, each /blog/<name> article and sitemap.xml
         .merge(blogs::blogs_routes())
         .nest_service(
             "/extension",
@@ -107,36 +107,21 @@ fn build_router(app_pool: Pool<Postgres>) -> Router {
                 "/../site/templates/partners.html"
             )),
         )
-        // SEO pages: comparison pages and legal pages. Each has its own
-        // address so Google can list it separately. The pop-ups on the
-        // home page link to these.
-        .route_service(
+        .route(
             "/vs-norton",
-            ServeFile::new(concat!(
-                env!("CARGO_MANIFEST_DIR"),
-                "/../site/templates/vs-norton.html"
-            )),
+            get(|| async { Redirect::permanent("/#m-vs-norton") }),
         )
-        .route_service(
+        .route(
             "/vs-manual-research",
-            ServeFile::new(concat!(
-                env!("CARGO_MANIFEST_DIR"),
-                "/../site/templates/vs-manual-research.html"
-            )),
+            get(|| async { Redirect::permanent("/#m-vs-manual") }),
         )
-        .route_service(
+        .route(
             "/vs-basic-reviews",
-            ServeFile::new(concat!(
-                env!("CARGO_MANIFEST_DIR"),
-                "/../site/templates/vs-basic-reviews.html"
-            )),
+            get(|| async { Redirect::permanent("/#m-vs-reviews") }),
         )
-        .route_service(
+        .route(
             "/vs-other-extensions",
-            ServeFile::new(concat!(
-                env!("CARGO_MANIFEST_DIR"),
-                "/../site/templates/vs-other-extensions.html"
-            )),
+            get(|| async { Redirect::permanent("/#m-vs-extensions") }),
         )
         .route_service(
             "/privacy",

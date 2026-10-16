@@ -1,5 +1,6 @@
 /**
- * Safely blog pages (/blogs, /pt-br/blogs, and their articles).
+ * Safely blog pages: the /blogs list and each /blog/<article>,
+ * in every language (/pt-br/blogs, /pt-br/blog/<article>).
  *
  * 1. Language menu: each option is the address of this page in that
  *    language (the server writes it). Picking one saves the choice with

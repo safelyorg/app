@@ -1,5 +1,5 @@
 /* ============================================================
-   COMPARE + LEGAL PAGES (vs-*.html, privacy.html, terms.html)
+   LEGAL PAGES AND BLOG ARTICLES (privacy.html, terms.html, blog.html)
    Reuses base.css, nav.css, subscribe.css (hero), cta_footer.css.
    Uses the same colors, borders, shadows, corners and hover lift
    as the home page (all from the variables in base.css).
@@ -29,7 +29,7 @@
     max-width: 780px;
 }
 /* base.css removes list bullets site-wide; these pages need them back */
-.cmp ul:not(.cmp-links) {
+.cmp ul:not(.blog-cards) {
     list-style: disc;
     margin: 0 0 14px;
     padding-left: 22px;
@@ -50,9 +50,7 @@
 
 /* ---------- shared card look + hover lift (same as home cards) ---------- */
 .cmp-card,
-.cmp-short,
-.cmp-table-wrap,
-.cmp-links a {
+.cmp-short {
     border: var(--bd);
     box-shadow: var(--sh);
     transition:
@@ -60,8 +58,7 @@
         box-shadow 0.18s cubic-bezier(0.22, 0.61, 0.36, 1);
 }
 .cmp-card:hover,
-.cmp-short:hover,
-.cmp-links a:hover {
+.cmp-short:hover {
     transform: translate(-3px, -3px);
     box-shadow: var(--sh-lg);
 }
@@ -136,8 +133,8 @@
     margin: 0 0 12px;
 }
 
-/* Section titles ("Side by side", "More comparisons"): same as the
-   home page section headings (Gasoek, centered) */
+/* Section titles ("More articles"): same as the home page section
+   headings (Gasoek, centered) */
 .cmp-block h2 {
     font-family: var(--disp-gasoek);
     font-weight: 400;
@@ -148,81 +145,11 @@
     margin: 0 0 26px;
 }
 
-.cmp-duo {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 30px;
-    margin: 0 0 30px;
-}
-.cmp-duo .cmp-card {
-    margin: 0;
-}
 .cmp-block {
     margin: 50px 0 34px;
 }
 
-/* ---------- comparison table (same look as the home pricing table) ---------- */
-.cmp-table-wrap {
-    max-width: 920px;
-    margin-inline: auto;
-    border-radius: var(--r-lg);
-    background: var(--paper);
-    overflow: hidden;
-}
-.cmp-table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 15px;
-    line-height: 1.5;
-    table-layout: fixed;
-}
-.cmp-table th,
-.cmp-table td {
-    text-align: left;
-    padding: 14px 18px;
-    vertical-align: top;
-}
-.cmp-table th:first-child,
-.cmp-table td:first-child {
-    width: 28%;
-    padding-left: 24px;
-}
-.cmp-table thead th {
-    background: var(--cream);
-    border-bottom: var(--bd-thin);
-    font-family: var(--disp);
-    font-weight: 800;
-    font-size: 16px;
-    color: var(--ink);
-    padding-top: 18px;
-    padding-bottom: 16px;
-}
-/* The Safely column is highlighted in the home page's yellow */
-.cmp-table thead th:nth-child(3) {
-    background: var(--sun-2);
-}
-.cmp-table tbody td {
-    border-bottom: 1.5px solid var(--cream-2);
-    font-weight: 600;
-    color: var(--muted);
-    transition: background 0.15s ease;
-}
-.cmp-table tbody td:first-child {
-    color: var(--ink);
-    font-weight: 700;
-}
-.cmp-table tbody td:nth-child(3) {
-    color: var(--ink);
-    background: #fffaf0;
-}
-.cmp-table tbody tr:last-child td {
-    border-bottom: none;
-}
-.cmp-table tbody tr:hover td {
-    background: #fff4d6;
-}
-
-/* ---------- notes, sources, related ---------- */
+/* ---------- note and related articles ---------- */
 .cmp-note {
     background: var(--cream-2);
     border-radius: var(--r);
@@ -236,70 +163,12 @@
     max-width: 780px;
     text-align: center;
 }
-.cmp p.cmp-src {
-    margin: 40px auto 0;
-    max-width: 780px;
-    text-align: center;
-    font-size: 14px;
-    line-height: 1.7;
-    color: var(--muted);
-}
-.cmp p.cmp-caption {
-    margin: 22px auto 0;
-    max-width: 780px;
-    text-align: center;
-    font-size: 14.5px;
-    color: var(--muted);
-}
-
-.cmp-links {
-    list-style: none;
-    padding: 0;
-    margin: 0 auto;
-    max-width: 940px;
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 22px;
-}
-.cmp-links li {
-    margin: 0;
-}
-.cmp-links a {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    text-align: center;
-    height: 100%;
-    padding: 18px 22px;
-    border-radius: var(--r);
-    background: var(--paper);
-    text-decoration: none;
-    font-family: var(--disp);
-    font-weight: 700;
-    font-size: 17px;
-    line-height: 1.3;
-}
-.cmp-links li:nth-child(1) a {
-    background: var(--sky-card);
-}
-.cmp-links li:nth-child(2) a {
-    background: var(--sun-2);
-}
-.cmp-links li:nth-child(3) a {
-    background: var(--mint);
-}
 .cmp-block.related {
     text-align: center;
     margin-top: 56px;
 }
 
 @media (max-width: 860px) {
-    .cmp-duo {
-        grid-template-columns: 1fr;
-    }
-    .cmp-links {
-        grid-template-columns: 1fr;
-    }
     .cmp-card {
         padding: 24px 22px 12px;
     }
@@ -311,51 +180,9 @@
     }
 }
 
-/* phones: each table row becomes a small card, no sideways scrolling
-   (same as the home pricing table). Labels come from data-label. */
-@media (max-width: 640px) {
-    .cmp-table thead {
-        display: none;
-    }
-    .cmp-table tbody tr {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        border-bottom: 1.5px solid var(--cream-2);
-    }
-    .cmp-table tbody tr:last-child {
-        border-bottom: none;
-    }
-    .cmp-table tbody td {
-        border-bottom: none;
-        padding: 6px 12px 12px;
-        font-size: 14px;
-    }
-    .cmp-table tbody td:first-child {
-        grid-column: 1 / -1;
-        width: auto;
-        padding: 12px 16px 4px;
-        text-align: center;
-    }
-    .cmp-table tbody td:nth-child(2) {
-        border-right: 1.5px solid var(--cream-2);
-    }
-    .cmp-table tbody td:nth-child(n + 2)::before {
-        content: attr(data-label);
-        display: block;
-        margin-bottom: 4px;
-        font-family: "JetBrains Mono", monospace;
-        font-size: 10px;
-        font-weight: 500;
-        letter-spacing: 0.06em;
-        text-transform: uppercase;
-        color: var(--muted);
-    }
-}
-
 @media (hover: none) {
     .cmp-card:hover,
-    .cmp-short:hover,
-    .cmp-links a:hover {
+    .cmp-short:hover {
         transform: none;
         box-shadow: var(--sh);
     }
