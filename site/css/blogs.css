@@ -12,6 +12,17 @@
     max-width: 920px;
     margin-inline: auto;
 }
+/* Blog list title ("Guides for B2B buyers"): bigger, and kept to
+   two even lines so it never runs too wide */
+.blog-hero .head.blog-list-head {
+    max-width: 1100px;
+}
+.blog-hero .head h1.blog-list-title {
+    font-size: clamp(44px, 8.4vw, 100px);
+    line-height: 1;
+    max-width: 1060px;
+    text-wrap: balance;
+}
 /* Eyes sit above the title so a long title never runs into them */
 .blog-hero .nl-eyes {
     top: -34px;
@@ -230,6 +241,18 @@ ul.blog-cards,
 .blog-list {
     max-width: 1100px;
     margin: 0 auto;
+}
+/* Cards after the first 6 wait for the "Show more articles" button */
+.blog-cards li[hidden] {
+    display: none;
+}
+.blog-more-row {
+    display: flex;
+    justify-content: center;
+    margin-top: 44px;
+}
+.blog-more[hidden] {
+    display: none;
 }
 
 @media (max-width: 640px) {

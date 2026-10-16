@@ -1,11 +1,12 @@
 <!doctype html>
-<html lang="en">
+<html lang="{{html_lang}}" data-blog-lang="{{lang}}">
     <head>
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <title>{{title}} | Safely</title>
         <meta name="description" content="{{description}}" />
         <link rel="canonical" href="{{canonical}}" />
+        {{alternates}}
         <meta property="og:type" content="article" />
         <meta property="og:site_name" content="Safely" />
         <meta property="og:title" content="{{title}}" />
@@ -28,15 +29,15 @@
             href="https://fonts.googleapis.com/css2?family=Archivo:ital,wght@0,600;0,700;0,800;0,900;1,700;1,800;1,900&family=Archivo+Black&family=Gasoek+One&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500&family=Sora:wght@500;600;700;800&display=swap"
             rel="stylesheet"
         />
-        <link rel="stylesheet" href="/css/base.css?v=20261016b" />
-        <link rel="stylesheet" href="/css/nav.css?v=20261016b" />
-        <link rel="stylesheet" href="/css/how_it_works.css?v=20261016b" />
-        <link rel="stylesheet" href="/css/faq.css?v=20261016b" />
-        <link rel="stylesheet" href="/css/cta_footer.css?v=20261016b" />
-        <link rel="stylesheet" href="/css/subscribe.css?v=20261016b" />
-        <link rel="stylesheet" href="/css/compare.css?v=20261016b" />
-        <link rel="stylesheet" href="/css/blogs.css?v=20261016b" />
-        <link rel="stylesheet" href="/css/responsive.css?v=20261016b" />
+        <link rel="stylesheet" href="/css/base.css?v=20261016d" />
+        <link rel="stylesheet" href="/css/nav.css?v=20261016d" />
+        <link rel="stylesheet" href="/css/how_it_works.css?v=20261016d" />
+        <link rel="stylesheet" href="/css/faq.css?v=20261016d" />
+        <link rel="stylesheet" href="/css/cta_footer.css?v=20261016d" />
+        <link rel="stylesheet" href="/css/subscribe.css?v=20261016d" />
+        <link rel="stylesheet" href="/css/compare.css?v=20261016d" />
+        <link rel="stylesheet" href="/css/blogs.css?v=20261016d" />
+        <link rel="stylesheet" href="/css/responsive.css?v=20261016d" />
         <!-- Meta Pixel Code (Safely Pixel). Not loaded when this page is
              shown inside another page (the sign-in box on the home page),
              so one visit counts as one PageView. -->
@@ -70,25 +71,27 @@
                         Safely
                     </a>
                     <div class="nav-links">
-                        <a href="/">Home</a>
-                        <a href="/#pricing">Pricing</a>
-                        <a href="/#faq">FAQ</a>
-                        <a href="/partners">Partners</a>
-                        <a href="/blogs">Blogs</a>
+                        <a href="/">{{t:nav.home}}</a>
+                        <a href="/#pricing">{{t:nav.pricing}}</a>
+                        <a href="/#faq">{{t:nav.faq}}</a>
+                        <a href="/partners">{{t:nav.partners}}</a>
+                        <a href="{{blog_base}}">{{t:nav.blog}}</a>
                     </div>
                     <div class="nav-right">
-                        <a href="https://chromewebstore.google.com/detail/safely/bmjdfmkocaaeephfpokmpffhlogmjlnf" class="btn btn-sun" target="_blank" rel="noopener"><span>Add to Chrome</span><svg viewBox="0 0 24 24" fill="none"><path d="M5 12h14M13 5l7 7-7 7" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" /></svg></a>
+                        <select data-blog-lang class="lang-select" aria-label="{{a:blog.lang_label}}">{{lang_options}}</select>
+                        <a href="https://chromewebstore.google.com/detail/safely/bmjdfmkocaaeephfpokmpffhlogmjlnf" class="btn btn-sun" target="_blank" rel="noopener"><span>{{t:try.nav_btn}}</span><svg viewBox="0 0 24 24" fill="none"><path d="M5 12h14M13 5l7 7-7 7" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" /></svg></a>
                         <label class="hamb" for="nav-toggle" aria-label="Open menu"><span></span></label>
                     </div>
                 </nav>
             </div>
         </div>
         <div class="drawer" id="drawer">
-            <a href="/">Home</a>
-            <a href="/#pricing">Pricing</a>
-            <a href="/#faq">FAQ</a>
-            <a href="/partners">Partners</a>
-            <a href="/blogs">Blogs</a>
+            <a href="/">{{t:nav.home}}</a>
+            <a href="/#pricing">{{t:nav.pricing}}</a>
+            <a href="/#faq">{{t:nav.faq}}</a>
+            <a href="/partners">{{t:nav.partners}}</a>
+            <a href="{{blog_base}}">{{t:nav.blog}}</a>
+            <select data-blog-lang class="lang-select lang-select-drawer" aria-label="{{a:blog.lang_label}}">{{lang_options}}</select>
         </div>
         <label class="drawer-backdrop" for="nav-toggle" aria-hidden="true"></label>
 
@@ -104,9 +107,9 @@
                     <circle cx="100" cy="46" r="12" fill="#161616" />
                 </svg>
                 <div class="head">
-                    <span class="badge p"><span class="bd"></span><span>Guide</span></span>
+                    <span class="badge p"><span class="bd"></span><span>{{t:blog.badge_guide}}</span></span>
                     <h1 class="disp gasoek">{{title}}</h1>
-                    <p class="blog-meta"><time datetime="{{date_iso}}">{{date_human}}</time> · {{reading_minutes}} min read</p>
+                    <p class="blog-meta"><time datetime="{{date_iso}}">{{date_human}}</time> · {{reading_minutes}} {{t:blog.min_read}}</p>
                 </div>
             </div>
             <div class="wv down" aria-hidden="true"><svg viewBox="0 0 1440 80" preserveAspectRatio="none"><path d="M0,40 C 240,75 480,5 720,28 C 960,50 1200,80 1440,38 L1440,80 L0,80 Z" fill="#fbf7ed" /></svg></div>
@@ -116,11 +119,11 @@
         <section class="sec cmp-sec blog-sec">
             <div class="wrap">
                 <article class="cmp blog-post">
-                    <div class="cmp-short"><span class="mono">The short answer</span><p>{{short_answer}}</p></div>
+                    <div class="cmp-short"><span class="mono">{{t:cmp.short_answer}}</span><p>{{short_answer}}</p></div>
                     <div class="post-body">
 {{body}}
                     </div>
-                    <p class="cmp-note">Safely gives a risk score from 0 to 100 as guidance. It is not a guarantee, and it does not replace calling the supplier on a phone number you already had.</p>
+                    <p class="cmp-note">{{t:cmp.disclaimer}}</p>
                     {{more_articles}}
                 </article>
             </div>
@@ -140,13 +143,13 @@
                         <circle cx="44" cy="46" r="12" fill="#161616" />
                         <circle cx="100" cy="46" r="12" fill="#161616" />
                     </svg>
-                    <span class="cta-sticker" aria-hidden="true">10-second install</span>
+                    <span class="cta-sticker" aria-hidden="true">{{t:cta.sticker}}</span>
                     <div class="box">
-                        <span class="badge o"><span class="bd"></span><span>Free plan</span></span>
-                        <h2 class="disp gasoek" style="margin-top: 18px">Check your next supplier first.</h2>
-                        <p>Safely reads the supplier page and shows a 0 to 100 risk score with the reasons in about 10 seconds. The free plan covers 5 scans a month, no card needed.</p>
+                        <span class="badge o"><span class="bd"></span><span>{{t:cmp.free_plan}}</span></span>
+                        <h2 class="disp gasoek" style="margin-top: 18px">{{t:blog.cta_title}}</h2>
+                        <p>{{t:blog.cta_sub}}</p>
                         <div class="cta-row">
-                            <a href="https://chromewebstore.google.com/detail/safely/bmjdfmkocaaeephfpokmpffhlogmjlnf" class="btn btn-lg btn-sun" target="_blank" rel="noopener"><span>Add to Chrome, it is free</span><svg viewBox="0 0 24 24" fill="none"><path d="M5 12h14M13 5l7 7-7 7" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" /></svg></a>
+                            <a href="https://chromewebstore.google.com/detail/safely/bmjdfmkocaaeephfpokmpffhlogmjlnf" class="btn btn-lg btn-sun" target="_blank" rel="noopener"><span>{{t:cmp.add_free}}</span><svg viewBox="0 0 24 24" fill="none"><path d="M5 12h14M13 5l7 7-7 7" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" /></svg></a>
                         </div>
                     </div>
                 </div>
@@ -161,7 +164,7 @@
                             <span class="mk" aria-hidden="true"><img src="/images/white_logo.png" alt="" /></span>
                             Safely
                         </a>
-                        <p>Fraud detection for any online marketplace. Powered by AI, protected by community. Works anywhere you buy and sell online.</p>
+                        <p>{{t:footer.tagline}}</p>
                         <div class="socials">
                             <a href="https://x.com/ibilalkayyy" target="_blank" aria-label="X"
                                 ><svg viewBox="0 0 24 24" fill="none"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" fill="currentColor" /></svg
@@ -175,35 +178,36 @@
                         </div>
                     </div>
                     <div class="fcol">
-                        <h5>Product</h5>
-                        <a href="/#how">How it works</a><a href="/#features">Features</a><a href="/#pricing">Pricing</a><a href="/#m-chrome">Chrome Extension</a><a href="/#m-api">API</a>
+                        <h5>{{t:footer.product}}</h5>
+                        <a href="/#how">{{t:footer.how_it_works}}</a><a href="/#features">{{t:footer.features}}</a><a href="/#pricing">{{t:footer.pricing}}</a><a href="/#m-chrome">{{t:footer.chrome_extension}}</a><a href="/#m-api">{{t:footer.api}}</a>
                     </div>
                     <div class="fcol">
-                        <h5>Company</h5>
-                        <a href="/#m-about">About</a>
-                        <a href="/partners">Partners</a>
-                        <a href="/subscribe">Subscribe</a>
-                        <a href="/blogs">Blogs</a>
-                        <a href="/#m-careers">Careers</a>
-                        <a href="/#m-contact">Contact</a>
+                        <h5>{{t:footer.company}}</h5>
+                        <a href="/#m-about">{{t:footer.about}}</a>
+                        <a href="/partners">{{t:footer.partners}}</a>
+                        <a href="/subscribe">{{t:footer.subscribe}}</a>
+                        <a href="{{blog_base}}">{{t:footer.blog}}</a>
+                        <a href="/#m-careers">{{t:footer.careers}}</a>
+                        <a href="/#m-contact">{{t:footer.contact}}</a>
                     </div>
                     <div class="fcol">
-                        <h5>Legal</h5>
-                        <a href="/privacy">Privacy Policy</a><a href="/terms">Terms of Service</a><a href="/#m-cookie">Cookie Policy</a><a href="/#m-report">Report Abuse</a>
+                        <h5>{{t:footer.legal}}</h5>
+                        <a href="/privacy">{{t:footer.privacy_policy}}</a><a href="/terms">{{t:footer.terms}}</a><a href="/#m-cookie">{{t:footer.cookie_policy}}</a><a href="/#m-report">{{t:footer.report_abuse}}</a>
                     </div>
                     <div class="fcol">
-                        <h5>Compare</h5>
-                        <a href="/vs-norton">vs Norton</a><a href="/vs-manual-research">vs Manual Research</a><a href="/vs-basic-reviews">vs Basic Reviews</a><a href="/vs-other-extensions">vs Other Extensions</a>
+                        <h5>{{t:footer.compare}}</h5>
+                        <a href="/vs-norton">{{t:footer.vs_norton}}</a><a href="/vs-manual-research">{{t:footer.vs_manual}}</a><a href="/vs-basic-reviews">{{t:footer.vs_reviews}}</a><a href="/vs-other-extensions">{{t:footer.vs_extensions}}</a>
                     </div>
                 </div>
                 <div class="fbottom">
-                    <div class="cp">&copy; 2026 Safely. All rights reserved.</div>
-                    <div class="links"><a href="/privacy">Privacy</a><a href="/terms">Terms</a><a href="/#m-contact">Contact</a></div>
+                    <div class="cp">{{t:footer.copyright}}</div>
+                    <div class="links"><a href="/privacy">{{t:footer.privacy}}</a><a href="/terms">{{t:footer.terms_short}}</a><a href="/#m-contact">{{t:footer.contact_short}}</a></div>
                 </div>
             </div>
             <div class="fword" aria-hidden="true">Safely</div>
         </footer>
 
         <script src="/js/tracking.js"></script>
+        <script src="/js/blogs.js?v=20261016d"></script>
     </body>
 </html>
