@@ -1,9 +1,16 @@
-// Handles the newsletter subscribe form submission.
+// Handles the subscribe form on /subscribe. Subscribing gives the free
+// Procurement Red Flag Scorecard, but not on this page: Kit emails a
+// confirmation link, and the PDF downloads only after the person clicks
+// it. So after subscribing we only tell them to check their inbox.
 (function () {
   const form = document.getElementById("nl-form") as HTMLFormElement | null;
   const emailInput = document.getElementById("nl-email") as HTMLInputElement | null;
   const submitBtn = document.getElementById("nl-submit") as HTMLButtonElement | null;
   const messageEl = document.getElementById("nl-message") as HTMLElement | null;
+  // The "check your inbox" text lives in the page, so it is translated
+  // with the rest of the page (data-i18n), not fixed in English here.
+  const checkInboxEl = document.getElementById("lead-check-inbox") as HTMLElement | null;
+  const sendingEl = document.getElementById("lead-sending") as HTMLElement | null;
 
   if (!form || !emailInput || !submitBtn || !messageEl) return;
 
@@ -14,7 +21,7 @@
 
     const originalText = submitBtn.textContent;
     submitBtn.disabled = true;
-    submitBtn.textContent = "Subscribing...";
+    submitBtn.textContent = sendingEl?.textContent?.trim() || "Sending...";
     messageEl.textContent = "";
     messageEl.className = "nl-message";
 
@@ -31,7 +38,7 @@
         throw new Error(data.message || "Something went wrong. Please try again.");
       }
 
-      messageEl.textContent = data.message || "You're subscribed! Check your inbox to confirm.";
+      messageEl.textContent = checkInboxEl?.textContent?.trim() || data.message || "";
       messageEl.className = "nl-message success";
       form.reset();
     } catch (err) {

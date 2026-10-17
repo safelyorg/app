@@ -40,7 +40,9 @@ async fn newsletter_subscribe_success() {
     assert_eq!(result["success"], json!(true));
     assert_eq!(
         result["message"],
-        json!("You're subscribed! Check your inbox to confirm.")
+        json!(
+            "Almost there! Check your inbox and click the confirm button. Your free scorecard downloads as soon as you confirm."
+        )
     );
 }
 

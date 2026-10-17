@@ -19,8 +19,12 @@ pub struct NewsletterSubscribeRequest {
 ///
 /// It cleans up and validates the email address, hands it off to Kit
 /// to actually create the subscription, and reports back a friendly
-/// confirmation message - or the specific reason it failed, if the
-/// email was invalid or the subscription itself couldn't be created.
+/// message - or the specific reason it failed, if the email was invalid
+/// or the subscription itself couldn't be created.
+///
+/// Kit then sends its confirmation email. The free Procurement Red Flag
+/// Scorecard is attached to that email in Kit, so the PDF downloads only
+/// after the person confirms - never straight from our website.
 pub async fn newsletter_subscribe(
     Json(req): Json<NewsletterSubscribeRequest>,
 ) -> Result<Json<Value>, AuthError> {
@@ -29,6 +33,6 @@ pub async fn newsletter_subscribe(
 
     Ok(Json(json!({
         "success": true,
-        "message": "You're subscribed! Check your inbox to confirm."
+        "message": "Almost there! Check your inbox and click the confirm button. Your free scorecard downloads as soon as you confirm."
     })))
 }

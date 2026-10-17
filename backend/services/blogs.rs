@@ -120,7 +120,7 @@ const ENGLISH: &[(&str, &str)] = &[
     ("footer.company", "Company"),
     ("footer.about", "About"),
     ("footer.partners", "Partners"),
-    ("footer.subscribe", "Subscribe"),
+    ("footer.subscribe", "Free Scorecard 🎁"),
     ("footer.blog", "Blogs"),
     ("footer.careers", "Careers"),
     ("footer.contact", "Contact"),

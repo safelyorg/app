@@ -547,7 +547,13 @@ async fn verify_magic_link_succeeds_with_a_real_token() {
         .to_str()
         .unwrap();
 
-    assert!(location.starts_with("/dashboard/#session="));
+    // A brand-new account gets "?new=1" before the session, so the
+    // dashboard can count the sign-up once.
+    assert!(
+        location.starts_with("/dashboard/?new=1#session="),
+        "expected a new user to land on the dashboard with ?new=1, got: {}",
+        location
+    );
 
     cleanup_test_user(&pool, email).await;
 }
