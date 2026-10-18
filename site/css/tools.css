@@ -1,0 +1,406 @@
+/* ============================================================
+   FREE TOOLS (the /tools list and each /tools/<name> page)
+   Builds on compare.css: same cards, colors and shadows as the
+   rest of the site. This file adds the list cards, the tool box
+   and the text under the tool.
+   ============================================================ */
+
+/* ---------- hero ---------- */
+.tool-hero .head h1 {
+    font-size: clamp(34px, 5.6vw, 64px);
+    line-height: 1.05;
+    margin-top: 18px;
+    max-width: 920px;
+    margin-inline: auto;
+    text-wrap: balance;
+}
+/* List title ("Free tools to check suppliers"): bigger, and kept to
+   two even lines so it never runs too wide */
+.tool-hero .head.tool-list-head {
+    max-width: 1100px;
+}
+.tool-hero .head h1.tool-list-title {
+    font-size: clamp(44px, 8.4vw, 100px);
+    line-height: 1;
+    max-width: 1060px;
+}
+/* Eyes sit above the title so a long title never runs into them */
+.tool-hero .nl-eyes {
+    top: -34px;
+}
+.tool-lead {
+    max-width: 680px;
+    margin: 16px auto 0;
+    font-size: 19px;
+    line-height: 1.55;
+}
+.tool-meta {
+    margin-top: 14px;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 13px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: #1f3a55;
+}
+
+/* ---------- sections ---------- */
+.sec.tool-sec {
+    padding-bottom: clamp(90px, 10vw, 130px);
+}
+.tool-empty {
+    text-align: center;
+    font-size: 18px;
+    color: #2c2e26;
+}
+
+/* ---------- the tool box (shared by every tool) ----------
+   A white card with the form on top and the result under it.
+   Each tool's own file in site/templates/tool-widgets/ uses these. */
+.tool-box {
+    max-width: 760px;
+    margin: 0 auto 56px;
+    padding: clamp(22px, 4vw, 34px);
+    background: var(--paper);
+    border: var(--bd);
+    border-radius: var(--r-lg);
+    box-shadow: var(--sh-lg);
+}
+.tool-form {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+.tool-label {
+    display: block;
+    width: 100%;
+    font-family: var(--disp);
+    font-weight: 800;
+    font-size: 17px;
+    color: var(--ink);
+}
+.tool-input {
+    flex: 1 1 260px;
+    min-width: 0;
+    padding: 14px 16px;
+    font: inherit;
+    font-size: 17px;
+    color: var(--ink);
+    background: #fff;
+    border: var(--bd);
+    border-radius: var(--r);
+    box-shadow: var(--sh-sm);
+}
+.tool-input:focus {
+    outline: 3px solid var(--sun);
+    outline-offset: 2px;
+}
+.tool-form .btn {
+    flex: 0 0 auto;
+}
+.tool-form .btn[disabled] {
+    opacity: 0.6;
+    cursor: progress;
+}
+.tool-hint {
+    width: 100%;
+    margin: 2px 0 0;
+    font-size: 14px;
+    color: #4a4c43;
+}
+/* The result appears under the form after a check */
+.tool-result {
+    margin-top: 22px;
+    padding: 20px 22px;
+    background: var(--cream);
+    border: var(--bd);
+    border-radius: var(--r);
+}
+.tool-result[hidden] {
+    display: none;
+}
+.tool-result.is-good {
+    background: var(--mint);
+}
+.tool-result.is-warn {
+    background: var(--sun-2);
+}
+.tool-result.is-bad {
+    background: #ffd9d2;
+}
+.tool-result h3 {
+    margin: 0 0 8px;
+    font-family: var(--disp);
+    font-weight: 800;
+    font-size: 21px;
+    line-height: 1.3;
+}
+.tool-result p {
+    margin: 0 0 8px;
+    line-height: 1.6;
+}
+.tool-result dl {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: 6px 18px;
+    margin: 12px 0 0;
+}
+.tool-result dt {
+    font-weight: 700;
+}
+.tool-result dd {
+    margin: 0;
+    overflow-wrap: anywhere;
+}
+/* Soft link to the extension, under a result */
+.tool-upsell {
+    margin-top: 16px;
+    padding-top: 14px;
+    border-top: 2px dashed rgba(22, 22, 22, 0.18);
+    font-size: 15px;
+}
+.tool-upsell a {
+    font-weight: 700;
+    color: var(--ink);
+}
+
+/* ---------- the text under the tool: narrow column, easy to read ---------- */
+.tool-guide {
+    max-width: 760px;
+}
+.tool-body {
+    margin: 8px 0 30px;
+    font-size: 18px;
+    line-height: 1.75;
+    color: #2c2e26;
+}
+.tool-body > * {
+    max-width: none;
+}
+.cmp .tool-body p,
+.cmp .tool-body ul,
+.cmp .tool-body ol {
+    max-width: none;
+    margin: 0 0 18px;
+}
+.tool-body h2 {
+    font-family: var(--disp);
+    font-weight: 800;
+    font-size: clamp(24px, 3vw, 30px);
+    line-height: 1.2;
+    letter-spacing: -0.015em;
+    color: var(--ink);
+    margin: 44px 0 14px;
+}
+.tool-body h2:first-child {
+    margin-top: 0;
+}
+.tool-body h3 {
+    font-family: var(--disp);
+    font-weight: 700;
+    font-size: 21px;
+    line-height: 1.3;
+    color: var(--ink);
+    margin: 30px 0 10px;
+}
+.tool-body strong {
+    color: var(--ink);
+}
+.tool-body ol {
+    list-style: decimal;
+    padding-left: 24px;
+}
+.tool-body li::marker {
+    font-weight: 700;
+}
+.tool-body hr {
+    border: none;
+    border-top: 2px dashed var(--cream-2);
+    margin: 36px 0;
+}
+.tool-body code {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 0.88em;
+    background: var(--cream-2);
+    border-radius: 6px;
+    padding: 2px 6px;
+}
+/* A quote (> in Markdown) becomes a yellow tip card */
+.tool-body blockquote {
+    background: var(--sun-2);
+    border: var(--bd);
+    border-radius: var(--r-lg);
+    box-shadow: var(--sh);
+    padding: 20px 26px 4px;
+    margin: 28px 0;
+    color: var(--ink);
+    font-weight: 500;
+}
+.tool-body blockquote p {
+    margin-bottom: 16px;
+}
+/* Markdown tables: same look as the rest of the site */
+.tool-body table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 24px 0;
+    font-size: 15.5px;
+    line-height: 1.5;
+    background: var(--paper);
+    border: var(--bd);
+    border-radius: var(--r);
+    box-shadow: var(--sh);
+    overflow: hidden;
+    display: block;
+    overflow-x: auto;
+}
+.tool-body th,
+.tool-body td {
+    text-align: left;
+    padding: 12px 16px;
+    vertical-align: top;
+    border-bottom: 1.5px solid var(--cream-2);
+}
+.tool-body thead th {
+    background: var(--cream);
+    border-bottom: var(--bd-thin);
+    font-family: var(--disp);
+    font-weight: 800;
+    color: var(--ink);
+}
+.tool-body tbody tr:last-child td {
+    border-bottom: none;
+}
+
+/* ---------- "More free tools" under a tool ---------- */
+.tool-related {
+    max-width: 1100px;
+    margin: 64px auto 0;
+}
+.tool-related h2 {
+    margin: 0 0 26px;
+    text-align: center;
+    font-family: var(--disp);
+    font-weight: 800;
+    font-size: clamp(24px, 3vw, 30px);
+    color: var(--ink);
+}
+
+/* ---------- tool cards (list page + "More free tools") ----------
+   Same look as the "How it works" step cards on the home and partner pages. */
+ul.tool-cards {
+    list-style: none;
+    padding: 0;
+    margin: 0 auto;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 340px));
+    justify-content: center;
+    gap: 26px;
+    text-align: left;
+}
+.tool-cards li {
+    margin: 0;
+    padding: 0;
+}
+.tool-cards a {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+    height: 100%;
+    padding: 26px 26px 30px;
+    background: var(--paper);
+    border: var(--bd);
+    border-radius: var(--r-lg);
+    box-shadow: var(--sh);
+    color: var(--ink);
+    text-decoration: none;
+    font-weight: 500;
+    transition:
+        transform 0.18s cubic-bezier(0.22, 0.61, 0.36, 1),
+        box-shadow 0.18s cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+.tool-cards a:hover {
+    transform: translate(-3px, -3px);
+    box-shadow: var(--sh-lg);
+}
+.tool-cards li:nth-child(3n + 1) a {
+    background: var(--sky-card);
+}
+.tool-cards li:nth-child(3n + 2) a {
+    background: var(--sun-2);
+}
+.tool-cards li:nth-child(3n + 3) a {
+    background: var(--mint);
+}
+/* "Free": white pill, like the "01 · Join" label on step cards */
+.tool-card-badge {
+    font-family: var(--disp);
+    font-weight: 700;
+    font-size: 14px;
+    border: var(--bd-thin);
+    border-radius: 999px;
+    background: #fff;
+    padding: 5px 13px;
+    box-shadow: var(--sh-sm);
+}
+.tool-card-title {
+    margin-top: 6px;
+    font-family: var(--disp);
+    font-weight: 800;
+    font-size: 21px;
+    line-height: 1.25;
+    letter-spacing: -0.01em;
+}
+.tool-card-desc {
+    font-size: 15.5px;
+    line-height: 1.55;
+    color: #2c2e26;
+    flex: 1;
+}
+.tool-card-more {
+    font-weight: 700;
+    font-size: 15px;
+    border-bottom: 2px solid currentColor;
+}
+.tool-list {
+    max-width: 1100px;
+    margin: 0 auto;
+}
+/* Cards after the first 6 wait for the "Show more tools" button */
+.tool-cards li[hidden] {
+    display: none;
+}
+.tool-more-row {
+    display: flex;
+    justify-content: center;
+    margin-top: 44px;
+}
+.tool-more[hidden] {
+    display: none;
+}
+
+@media (max-width: 640px) {
+    .tool-body {
+        font-size: 17px;
+    }
+    .tool-body blockquote {
+        padding: 16px 18px 2px;
+    }
+    .tool-form .btn {
+        width: 100%;
+        justify-content: center;
+    }
+    .tool-result dl {
+        grid-template-columns: 1fr;
+        gap: 2px;
+    }
+    .tool-result dd {
+        margin-bottom: 8px;
+    }
+}
+@media (hover: none) {
+    .tool-cards a:hover {
+        transform: none;
+        box-shadow: var(--sh);
+    }
+}

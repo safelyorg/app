@@ -1,6 +1,5 @@
 pub mod analysis;
 pub mod billing;
-pub mod blogs;
 pub mod evidence;
 pub mod fraud_reports;
 pub mod helpers;
@@ -11,4 +10,5 @@ pub mod reviews;
 pub mod risk_factors;
 pub mod sellers;
 pub mod subscriptions;
+pub mod tools;
 pub mod users;

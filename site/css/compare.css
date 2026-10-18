@@ -1,5 +1,5 @@
 /* ============================================================
-   LEGAL PAGES AND BLOG ARTICLES (privacy.html, terms.html, blog.html)
+   LEGAL PAGES AND TOOL PAGES (privacy.html, terms.html, tool.html)
    Reuses base.css, nav.css, subscribe.css (hero), cta_footer.css.
    Uses the same colors, borders, shadows, corners and hover lift
    as the home page (all from the variables in base.css).
@@ -29,7 +29,7 @@
     max-width: 780px;
 }
 /* base.css removes list bullets site-wide; these pages need them back */
-.cmp ul:not(.blog-cards) {
+.cmp ul:not(.tool-cards) {
     list-style: disc;
     margin: 0 0 14px;
     padding-left: 22px;

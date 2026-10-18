@@ -3,8 +3,8 @@ use axum::serve;
 use axum::{Router, response::Redirect, routing::get};
 use backend::db::{bootstrap::run_grants, connection::load_pool};
 use backend::routes::{
-    analyze, auth, billing, blogs, dashboard, fraud_reports, outcomes, platform_domains, reviews,
-    subscribe,
+    analyze, auth, billing, dashboard, fraud_reports, outcomes, platform_domains, reviews,
+    subscribe, tools,
 };
 use backend::services::scraper_client::warn_if_scraperapi_key_missing;
 use dotenvy::dotenv;
@@ -73,8 +73,8 @@ fn build_router(app_pool: Pool<Postgres>) -> Router {
     // hold and serve these from its edge, instead of round-tripping
     // to the origin on every single visit.
     let public_routes = Router::new()
-        // The /blogs list, each /blog/<name> article and sitemap.xml
-        .merge(blogs::blogs_routes())
+        // The /tools list, each /tools/<name> tool page and sitemap.xml
+        .merge(tools::tools_routes())
         .nest_service(
             "/extension",
             ServeDir::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../extension")),

@@ -1,7 +1,7 @@
 "use strict";
 /**
- * Safely blog pages: the /blogs list and each /blog/<article>,
- * in every language (/pt-br/blogs, /pt-br/blog/<article>).
+ * Safely free tools pages: the /tools list and each /tools/<tool>,
+ * in every language (/pt-br/tools, /pt-br/tools/<tool>).
  *
  * 1. Language menu: each option is the address of this page in that
  *    language (the server writes it). Picking one saves the choice with
@@ -9,8 +9,11 @@
  *    opens that page.
  * 2. A visitor who already chose a language on another page is taken
  *    to the same page in that language, when it exists.
- * 3. "Show more articles": the list shows 6 articles, then 3 more
+ * 3. "Show more tools": the list shows 6 tools, then 3 more
  *    (one row) per click. The button goes away when all are shown.
+ *
+ * Each tool's own box (the form and the result) has its own script,
+ * loaded by the box itself. This file only runs the page around it.
  */
 (function () {
     "use strict";
@@ -38,8 +41,8 @@
         }
     }
     function setupLanguage() {
-        const pageLang = document.documentElement.dataset.blogLang ?? "en";
-        const selects = document.querySelectorAll("select[data-blog-lang]");
+        const pageLang = document.documentElement.dataset.toolsLang ?? "en";
+        const selects = document.querySelectorAll("select[data-tools-lang]");
         selects.forEach((sel) => {
             sel.setAttribute("autocomplete", "off");
             const current = sel.querySelector(`option[data-lang="${pageLang}"]`);
@@ -56,7 +59,7 @@
         const choice = readChoice();
         if (!choice || choice === pageLang || !selects[0])
             return;
-        // Only move to the same page in the chosen language. If this article
+        // Only move to the same page in the chosen language. If this tool
         // is not translated yet, the visitor stays on it.
         const match = selects[0].querySelector(`option[data-lang="${choice}"][data-exact="true"]`);
         if (match) {
@@ -65,8 +68,8 @@
         }
     }
     function setupShowMore() {
-        document.querySelectorAll("[data-blog-more]").forEach((btn) => {
-            const list = btn.closest(".blog-list")?.querySelector("ul.blog-cards");
+        document.querySelectorAll("[data-tools-more]").forEach((btn) => {
+            const list = btn.closest(".tool-list")?.querySelector("ul.tool-cards");
             if (!list)
                 return;
             btn.hidden = false;
@@ -75,7 +78,7 @@
                 next.forEach((li) => {
                     li.hidden = false;
                 });
-                // Keyboard users land on the first new article.
+                // Keyboard users land on the first new tool.
                 next[0]?.querySelector("a")?.focus();
                 if (!list.querySelector("li[hidden]"))
                     btn.hidden = true;
