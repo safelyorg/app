@@ -1,8 +1,9 @@
 /* ============================================================
-   FREE TOOLS (the /tools list and each /tools/<name> page)
+   FREE TOOLS PAGE (the /tools list with its "Free Tools / Blogs"
+   switch, each /tools/<name> tool and each /blog/<name> blog)
    Builds on compare.css: same cards, colors and shadows as the
-   rest of the site. This file adds the list cards, the tool box
-   and the text under the tool.
+   rest of the site. This file adds the switch, the cards, the tool
+   box and the reading layout for the text under a tool or a blog.
    ============================================================ */
 
 /* ---------- hero ---------- */
@@ -163,7 +164,7 @@
     color: var(--ink);
 }
 
-/* ---------- the text under the tool: narrow column, easy to read ---------- */
+/* ---------- the text under a tool, and a blog: narrow column, easy to read ---------- */
 .tool-guide {
     max-width: 760px;
 }
@@ -271,7 +272,7 @@
     border-bottom: none;
 }
 
-/* ---------- "More free tools" under a tool ---------- */
+/* ---------- "More free tools" / "More blogs" at the bottom ---------- */
 .tool-related {
     max-width: 1100px;
     margin: 64px auto 0;
@@ -285,7 +286,55 @@
     color: var(--ink);
 }
 
-/* ---------- tool cards (list page + "More free tools") ----------
+/* ---------- "Free Tools / Blogs" switch on the list page ----------
+   Two pill buttons in one white track, like a toggle. The chosen one
+   is filled yellow. Both lists are in the page; the switch shows one. */
+.tool-tabs {
+    display: flex;
+    width: fit-content;
+    max-width: 100%;
+    margin: 0 auto 40px;
+    padding: 6px;
+    gap: 6px;
+    background: var(--paper);
+    border: var(--bd);
+    border-radius: 999px;
+    box-shadow: var(--sh);
+}
+.tool-tab {
+    flex: 1 1 0;
+    min-width: 0;
+    padding: 12px 26px;
+    font: inherit;
+    font-family: var(--disp);
+    font-weight: 800;
+    font-size: 17px;
+    white-space: nowrap;
+    color: var(--ink);
+    background: transparent;
+    border: 2px solid transparent;
+    border-radius: 999px;
+    cursor: pointer;
+    transition: background 0.15s ease;
+}
+.tool-tab:hover {
+    background: var(--cream);
+}
+.tool-tab[aria-selected="true"] {
+    background: var(--sun);
+    border-color: var(--ink);
+}
+.tool-tab:focus-visible {
+    outline: 3px solid var(--ink);
+    outline-offset: 2px;
+}
+.tool-list[hidden] {
+    display: none;
+}
+
+/* ---------- cards (list page, "More free tools", "More blogs") ----------
+   Tools and blogs use the same cards. A tool's pill says "Free",
+   a blog's pill shows its date.
    Same look as the "How it works" step cards on the home and partner pages. */
 ul.tool-cards {
     list-style: none;
@@ -332,7 +381,7 @@ ul.tool-cards {
 .tool-cards li:nth-child(3n + 3) a {
     background: var(--mint);
 }
-/* "Free": white pill, like the "01 · Join" label on step cards */
+/* "Free" or the blog's date: white pill, like the "01 · Join" label on step cards */
 .tool-card-badge {
     font-family: var(--disp);
     font-weight: 700;
@@ -366,7 +415,7 @@ ul.tool-cards {
     max-width: 1100px;
     margin: 0 auto;
 }
-/* Cards after the first 6 wait for the "Show more tools" button */
+/* Cards after the first 6 wait for the "Show more" button */
 .tool-cards li[hidden] {
     display: none;
 }
@@ -380,6 +429,10 @@ ul.tool-cards {
 }
 
 @media (max-width: 640px) {
+    .tool-tab {
+        padding: 10px 16px;
+        font-size: 15.5px;
+    }
     .tool-body {
         font-size: 17px;
     }

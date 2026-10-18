@@ -1,5 +1,5 @@
 use crate::services::tools::{
-    DEFAULT_LANG, LOCALES_DIR, Library, NOT_FOUND_PAGE, TOOLS_DIR, Texts, WIDGETS, is_valid_lang,
+    CONTENT_DIR, DEFAULT_LANG, LOCALES_DIR, Library, NOT_FOUND_PAGE, Texts, WIDGETS, is_valid_lang,
     is_valid_slug, render_sitemap, render_tool, render_tools, widget_for,
 };
 use axum::{
@@ -11,14 +11,15 @@ use std::path::Path as FsPath;
 
 /// GET /tools
 ///
-/// The English list of free tools, newest first.
+/// The English "Free Tools" page: the tools, and the blogs behind the
+/// "Blogs" switch, newest first.
 pub async fn tools_list() -> Response {
     tools_page(DEFAULT_LANG)
 }
 
 /// GET /{lang}/tools   (for example /pt-br/tools)
 ///
-/// The list of free tools in another language.
+/// The "Free Tools" page in another language.
 pub async fn tools_list_lang(Path(lang): Path<String>) -> Response {
     if lang == DEFAULT_LANG {
         return Redirect::permanent("/tools").into_response();
@@ -45,10 +46,10 @@ pub async fn tool_lang(Path((lang, slug)): Path<(String, String)>) -> Response {
 
 /// GET /sitemap.xml
 ///
-/// Built fresh from the page list and the tool files, so a new
-/// tool is in the sitemap as soon as it is published.
+/// Built fresh from the page list and the tool and blog files, so a
+/// new tool or blog is in the sitemap as soon as it is published.
 pub async fn sitemap() -> Response {
-    let library = Library::load(FsPath::new(TOOLS_DIR));
+    let library = Library::load(FsPath::new(CONTENT_DIR));
     (
         [(header::CONTENT_TYPE, "application/xml; charset=utf-8")],
         render_sitemap(&library),
@@ -57,7 +58,7 @@ pub async fn sitemap() -> Response {
 }
 
 fn tools_page(lang: &str) -> Response {
-    let library = Library::load(FsPath::new(TOOLS_DIR));
+    let library = Library::load(FsPath::new(CONTENT_DIR));
     if !is_valid_lang(lang) || !library.has_language(lang) {
         return not_found();
     }
@@ -67,7 +68,7 @@ fn tools_page(lang: &str) -> Response {
 
 /// Unknown, draft or missing tools get the site's 404 page.
 fn tool_page(lang: &str, slug: &str) -> Response {
-    let library = Library::load(FsPath::new(TOOLS_DIR));
+    let library = Library::load(FsPath::new(CONTENT_DIR));
     if !is_valid_lang(lang) || !library.has_language(lang) {
         return not_found();
     }

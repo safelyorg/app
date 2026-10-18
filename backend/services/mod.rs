@@ -3,6 +3,7 @@ pub mod auth;
 pub mod b2b_scrapers;
 pub mod b2c_scrapers;
 pub mod billing;
+pub mod blogs;
 pub mod claude;
 pub mod confidence;
 pub mod dashboard;

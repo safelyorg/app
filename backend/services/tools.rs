@@ -1,15 +1,20 @@
-//! Free tools: one page per tool, one folder per language.
+//! The "Free Tools" page: free tools and blogs, one folder per language.
 //!
-//! "tools" is the list of tools, "tools/<name>" is one tool:
+//! One page lists both, with a switch under the hero: "Free Tools"
+//! (shown first) and "Blogs". Each tool and each blog has its own page:
 //!
 //! ```text
-//! the list                       ->  safely.sh/tools        safely.sh/pt-br/tools
-//! content/tools/en/<name>.md     ->  safely.sh/tools/<name>
-//! content/tools/pt-br/<name>.md  ->  safely.sh/pt-br/tools/<name>
+//! the list (both)                     ->  safely.sh/tools        safely.sh/pt-br/tools
+//! content/tools/en/<name>.md          ->  safely.sh/tools/<name>
+//! content/tools/pt-br/<name>.md       ->  safely.sh/pt-br/tools/<name>
+//! content/blogs/en/<name>.md          ->  safely.sh/blog/<name>
+//! content/blogs/pt-br/<name>.md       ->  safely.sh/pt-br/blog/<name>
 //! ```
 //!
-//! The same file name in two folders is the same tool in two
-//! languages. That is how the language menu knows where to go.
+//! The same file name in two language folders is the same tool (or
+//! blog) in two languages. That is how the language menu knows where
+//! to go. Blogs are read in services/blogs.rs; this file has the tools,
+//! the list page, the sitemap and the parts both share.
 //!
 //! A tool page has three parts:
 //!
@@ -39,31 +44,38 @@
 //! file without a box in WIDGETS is also left out, so a page never
 //! shows up with no tool on it.
 //!
-//! The page text around the tool (menu, buttons, footer) is English
+//! The page text around the content (menu, buttons, footer) is English
 //! in ENGLISH below. Other languages take it from site/locales/<code>.json,
 //! the same file the rest of the site uses. A missing key falls back
 //! to English, so a half-translated language never shows an empty spot.
 //!
-//! To add a language: make the folder content/tools/<code>/ and the
-//! file site/locales/<code>.json. No code change is needed.
+//! To add a language: make the folders content/tools/<code>/ and
+//! content/blogs/<code>/, and the file site/locales/<code>.json.
+//! No code change is needed.
 
+use crate::models::blogs::BlogPost;
 use crate::models::tools::Tool;
-use chrono::NaiveDate;
+use crate::services::blogs::{blog_path, load_posts};
+use chrono::{Datelike, NaiveDate};
 use pulldown_cmark::{Options, Parser, html};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 pub const SITE_URL: &str = "https://safely.sh";
-pub const TOOLS_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../content/tools");
+/// Holds the two folders: tools/ and blogs/.
+pub const CONTENT_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../content");
 pub const LOCALES_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../site/locales");
 pub const DEFAULT_LANG: &str = "en";
-const MORE_TOOLS: usize = 3;
-/// The list page shows 2 rows of 3 first, then 1 more row per click.
+/// How many other tools or blogs are linked at the bottom of a page.
+pub const MORE_ITEMS: usize = 3;
+/// Each list shows 2 rows of 3 first, then 1 more row per click.
 pub const FIRST_CARDS: usize = 6;
+/// The address part that opens the "Blogs" side of the list: /tools#blogs
+pub const BLOGS_TAB: &str = "#blogs";
 
 const TOOL_TEMPLATE: &str = include_str!("../../site/templates/tool.html");
 const TOOLS_TEMPLATE: &str = include_str!("../../site/templates/tools.html");
-/// The site's "page not found" page, shown for a tool that does not exist.
+/// The site's "page not found" page, shown for a tool or blog that does not exist.
 pub const NOT_FOUND_PAGE: &str = include_str!("../../site/templates/404.html");
 
 /// The box of each tool, by its name (the Markdown file name).
@@ -71,8 +83,8 @@ pub const NOT_FOUND_PAGE: &str = include_str!("../../site/templates/404.html");
 /// ("domain-age-checker", include_str!("../../site/templates/tool-widgets/domain-age-checker.html")),
 pub const WIDGETS: &[(&str, &str)] = &[];
 
-/// Pages that are always in the sitemap, besides the tool pages.
-/// The tool list pages and tools are added for every language.
+/// Pages that are always in the sitemap. The list page, every tool and
+/// every blog are added for each language.
 pub const SITEMAP_PAGES: &[&str] = &["/", "/partners", "/subscribe", "/privacy", "/terms"];
 
 /// The English page text. Keys that already exist on the other pages
@@ -84,11 +96,15 @@ const ENGLISH: &[(&str, &str)] = &[
     ("nav.partners", "Partners"),
     ("nav.tools", "Free Tools"),
     ("try.nav_btn", "Add to Chrome"),
+    // The list page
     ("tools.lang_label", "Choose language"),
-    ("tools.list_title_tag", "Free Supplier Check Tools | Safely"),
+    (
+        "tools.list_title_tag",
+        "Free Supplier Check Tools and Guides | Safely",
+    ),
     (
         "tools.list_description",
-        "Free tools for B2B buyers: check a supplier's website, email, phone number or bank details in seconds, before you send money.",
+        "Free tools and plain-language guides for B2B buyers: check a supplier's website, email or bank details, and learn to spot payment scams before you send money.",
     ),
     ("tools.badge", "Free tools"),
     (
@@ -97,8 +113,12 @@ const ENGLISH: &[(&str, &str)] = &[
     ),
     (
         "tools.list_sub",
-        "Check a website, an email, a phone number or bank details in seconds. Free, with no sign-up.",
+        "Check a website, an email or bank details in seconds, and read plain-language guides for B2B buyers. Free, with no sign-up.",
     ),
+    ("tools.tabs_label", "Choose what to see"),
+    ("tools.tab_tools", "Free Tools"),
+    ("tools.tab_blogs", "Blogs"),
+    // Tools
     ("tools.empty", "The first free tools are on their way."),
     ("tools.show_more", "Show more tools"),
     ("tools.card_badge", "Free"),
@@ -118,6 +138,23 @@ const ENGLISH: &[(&str, &str)] = &[
         "tools.cta_sub",
         "Safely checks 15 signals on any supplier page and shows a 0 to 100 risk score with the reasons in about 10 seconds. The free plan covers 5 scans a month, no card needed.",
     ),
+    // Blogs
+    ("blogs.empty", "The first blogs are on their way."),
+    ("blogs.show_more", "Show more blogs"),
+    ("blogs.read", "Read the blog →"),
+    ("blogs.badge", "Blog"),
+    ("blogs.min_read", "min read"),
+    ("blogs.more", "More blogs"),
+    ("blogs.short_answer", "The short answer"),
+    (
+        "blogs.disclaimer",
+        "Safely gives a risk score from 0 to 100 as guidance. It is not a guarantee, and it does not replace calling the supplier on a phone number you already had.",
+    ),
+    (
+        "blogs.months",
+        "January,February,March,April,May,June,July,August,September,October,November,December",
+    ),
+    ("blogs.date_format", "{month} {day}, {year}"),
     ("cmp.free_plan", "Free plan"),
     ("cmp.add_free", "Add to Chrome, it is free"),
     ("cta.sticker", "10-second install"),
@@ -316,10 +353,23 @@ impl Texts {
             .map(|(_, v)| *v)
             .unwrap_or(key)
     }
+
+    /// "October 16, 2026" in English, "16 de outubro de 2026" in Portuguese.
+    pub fn date(&self, date: NaiveDate) -> String {
+        let months: Vec<&str> = self.get("blogs.months").split(',').map(str::trim).collect();
+        let month = months
+            .get(date.month0() as usize)
+            .copied()
+            .unwrap_or_default();
+        self.get("blogs.date_format")
+            .replace("{month}", month)
+            .replace("{day}", &date.day().to_string())
+            .replace("{year}", &date.year().to_string())
+    }
 }
 
 /// Only lowercase letters, digits and dashes. Stops anyone asking for
-/// files outside the tools folder (like "../../.env").
+/// files outside the content folders (like "../../.env").
 pub fn is_valid_slug(slug: &str) -> bool {
     !slug.is_empty()
         && slug.len() <= 120
@@ -351,7 +401,7 @@ pub fn short_label(lang: &str) -> String {
     lang.split('-').next().unwrap_or(lang).to_ascii_uppercase()
 }
 
-/// Where a language's list of tools lives: /tools for English,
+/// Where a language's list page lives: /tools for English,
 /// /pt-br/tools for Portuguese.
 pub fn tools_base(lang: &str) -> String {
     if lang == DEFAULT_LANG {
@@ -372,27 +422,38 @@ pub fn widget_for<'a>(widgets: &[(&str, &'a str)], slug: &str) -> Option<&'a str
     widgets.iter().find(|(s, _)| *s == slug).map(|(_, w)| *w)
 }
 
-/// Every language that has a folder in content/tools. English first.
-pub fn available_languages(tools_dir: &Path) -> Vec<String> {
-    let mut langs: Vec<String> = std::fs::read_dir(tools_dir)
-        .map(|entries| {
-            entries
-                .filter_map(|e| e.ok())
-                .filter(|e| e.path().is_dir())
-                .filter_map(|e| e.file_name().to_str().map(str::to_string))
-                .filter(|name| is_valid_lang(name))
-                .collect()
-        })
-        .unwrap_or_default();
+/// The folders with the tools and the blogs, inside content/.
+pub fn tools_dir(content_dir: &Path) -> PathBuf {
+    content_dir.join("tools")
+}
+
+pub fn blogs_dir(content_dir: &Path) -> PathBuf {
+    content_dir.join("blogs")
+}
+
+/// Every language that has a folder in content/tools or content/blogs.
+/// English first, and always there.
+pub fn available_languages(content_dir: &Path) -> Vec<String> {
+    let mut langs: Vec<String> = Vec::new();
+    for dir in [tools_dir(content_dir), blogs_dir(content_dir)] {
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        for entry in entries.filter_map(|e| e.ok()) {
+            if !entry.path().is_dir() {
+                continue;
+            }
+            let name = entry.file_name().to_string_lossy().to_string();
+            if is_valid_lang(&name) && !langs.contains(&name) {
+                langs.push(name);
+            }
+        }
+    }
     langs.sort_by(|a, b| (a != DEFAULT_LANG).cmp(&(b != DEFAULT_LANG)).then(a.cmp(b)));
     if !langs.iter().any(|l| l == DEFAULT_LANG) {
         langs.insert(0, DEFAULT_LANG.to_string());
     }
     langs
-}
-
-pub fn lang_dir(tools_dir: &Path, lang: &str) -> PathBuf {
-    tools_dir.join(lang)
 }
 
 /// Makes text safe to put inside HTML (and inside attribute quotes).
@@ -411,9 +472,9 @@ pub fn escape_html(text: &str) -> String {
     out
 }
 
-/// Reads one tool file's text. Returns an error message that says
-/// exactly what is wrong, so a broken file is easy to fix.
-pub fn parse_tool(slug: &str, source: &str) -> Result<Tool, String> {
+/// Splits a Markdown file into its details (the `key: value` lines
+/// between the two --- lines) and its text. Used by tools and blogs.
+pub fn split_front_matter(source: &str) -> Result<(Vec<(String, String)>, String), String> {
     let source = source.replace("\r\n", "\n");
     let source = source.trim_start_matches('\u{feff}');
     let rest = source
@@ -425,11 +486,7 @@ pub fn parse_tool(slug: &str, source: &str) -> Result<Tool, String> {
         .ok_or("the details part must end with a line containing only ---")?;
     let (front, body) = rest.split_at(end);
     let body = body.trim_start_matches("\n---").trim_start_matches('\n');
-
-    let mut title = None;
-    let mut description = None;
-    let mut date = None;
-    let mut draft = false;
+    let mut details = Vec::new();
     for line in front.lines() {
         let line = line.trim();
         if line.is_empty() || line.starts_with('#') {
@@ -438,31 +495,47 @@ pub fn parse_tool(slug: &str, source: &str) -> Result<Tool, String> {
         let (key, value) = line
             .split_once(':')
             .ok_or_else(|| format!("this line has no \"key: value\": {}", line))?;
-        let value = value.trim().to_string();
-        match key.trim() {
+        details.push((key.trim().to_string(), value.trim().to_string()));
+    }
+    Ok((details, body.to_string()))
+}
+
+/// "2026-10-20" -> a date, with a clear message when it is written wrong.
+pub fn parse_date(value: &str) -> Result<NaiveDate, String> {
+    NaiveDate::parse_from_str(value, "%Y-%m-%d")
+        .map_err(|_| format!("date must look like 2026-10-20, got: {}", value))
+}
+
+/// A detail that must be there and not empty.
+pub fn required(value: Option<String>, name: &str) -> Result<String, String> {
+    value
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| format!("\"{}\" is missing", name))
+}
+
+/// Reads one tool file's text. Returns an error message that says
+/// exactly what is wrong, so a broken file is easy to fix.
+pub fn parse_tool(slug: &str, source: &str) -> Result<Tool, String> {
+    let (details, body) = split_front_matter(source)?;
+    let mut title = None;
+    let mut description = None;
+    let mut date = None;
+    let mut draft = false;
+    for (key, value) in details {
+        match key.as_str() {
             "title" => title = Some(value),
             "description" => description = Some(value),
-            "date" => {
-                date = Some(
-                    NaiveDate::parse_from_str(&value, "%Y-%m-%d")
-                        .map_err(|_| format!("date must look like 2026-10-20, got: {}", value))?,
-                )
-            }
+            "date" => date = Some(parse_date(&value)?),
             "draft" => draft = value == "true",
             other => return Err(format!("unknown detail \"{}\"", other)),
         }
     }
-
-    let need = |v: Option<String>, name: &str| {
-        v.filter(|s| !s.is_empty())
-            .ok_or_else(|| format!("\"{}\" is missing", name))
-    };
     Ok(Tool {
         slug: slug.to_string(),
-        title: need(title, "title")?,
-        description: need(description, "description")?,
+        title: required(title, "title")?,
+        description: required(description, "description")?,
         date: date.ok_or("\"date\" is missing")?,
-        body_html: markdown_to_html(body),
+        body_html: markdown_to_html(&body),
         draft,
     })
 }
@@ -477,15 +550,14 @@ pub fn markdown_to_html(markdown: &str) -> String {
     out
 }
 
-/// All published tools in one folder, newest first. A file with a
-/// mistake, or a tool with no box yet, is skipped (and logged) so one
-/// bad file never breaks the page.
-pub fn load_tools(dir: &Path, widgets: &[(&str, &str)]) -> Vec<Tool> {
+/// The Markdown files in one folder, as (name, text). A missing folder
+/// is normal (nothing written in that language yet) and gives nothing.
+/// A file name that is not lowercase-with-dashes is skipped and logged.
+pub fn markdown_files(dir: &Path) -> Vec<(String, String, PathBuf)> {
     let Ok(entries) = std::fs::read_dir(dir) else {
-        eprintln!("Safely: tools folder not found: {}", dir.display());
         return Vec::new();
     };
-    let mut tools: Vec<Tool> = entries
+    entries
         .filter_map(|entry| entry.ok())
         .filter_map(|entry| {
             let path = entry.path();
@@ -495,26 +567,36 @@ pub fn load_tools(dir: &Path, widgets: &[(&str, &str)]) -> Vec<Tool> {
             let slug = path.file_stem()?.to_str()?.to_string();
             if !is_valid_slug(&slug) {
                 eprintln!(
-                    "Safely: tool file name must be lowercase-with-dashes: {}",
+                    "Safely: file name must be lowercase-with-dashes: {}",
                     path.display()
                 );
                 return None;
             }
             let source = std::fs::read_to_string(&path).ok()?;
-            match parse_tool(&slug, &source) {
-                Ok(tool) if tool.draft => None,
-                Ok(_) if widget_for(widgets, &slug).is_none() => {
-                    eprintln!(
-                        "Safely: tool {} has no box in WIDGETS yet, so it is hidden",
-                        slug
-                    );
-                    None
-                }
-                Ok(tool) => Some(tool),
-                Err(e) => {
-                    eprintln!("Safely: tool file {} has a problem: {}", path.display(), e);
-                    None
-                }
+            Some((slug, source, path))
+        })
+        .collect()
+}
+
+/// All published tools in one folder, newest first. A file with a
+/// mistake, or a tool with no box yet, is skipped (and logged) so one
+/// bad file never breaks the page.
+pub fn load_tools(dir: &Path, widgets: &[(&str, &str)]) -> Vec<Tool> {
+    let mut tools: Vec<Tool> = markdown_files(dir)
+        .into_iter()
+        .filter_map(|(slug, source, path)| match parse_tool(&slug, &source) {
+            Ok(tool) if tool.draft => None,
+            Ok(_) if widget_for(widgets, &slug).is_none() => {
+                eprintln!(
+                    "Safely: tool {} has no box in WIDGETS yet, so it is hidden",
+                    slug
+                );
+                None
+            }
+            Ok(tool) => Some(tool),
+            Err(e) => {
+                eprintln!("Safely: tool file {} has a problem: {}", path.display(), e);
+                None
             }
         })
         .collect();
@@ -522,62 +604,82 @@ pub fn load_tools(dir: &Path, widgets: &[(&str, &str)]) -> Vec<Tool> {
     tools
 }
 
-/// Every language with its published tools. Used to build the
-/// language menu and the sitemap.
+/// Everything published in one language.
+pub struct LangContent {
+    pub lang: String,
+    pub tools: Vec<Tool>,
+    pub blogs: Vec<BlogPost>,
+}
+
+/// Every language with its published tools and blogs. Used to build
+/// the pages, the language menu and the sitemap.
 pub struct Library {
-    pub languages: Vec<(String, Vec<Tool>)>,
+    pub languages: Vec<LangContent>,
 }
 
 impl Library {
-    /// The real tools: content/tools and the boxes in WIDGETS.
-    pub fn load(tools_dir: &Path) -> Library {
-        Library::load_with(tools_dir, WIDGETS)
+    /// The real content: content/tools, content/blogs and the boxes in WIDGETS.
+    pub fn load(content_dir: &Path) -> Library {
+        Library::load_with(content_dir, WIDGETS)
     }
 
-    pub fn load_with(tools_dir: &Path, widgets: &[(&str, &str)]) -> Library {
+    pub fn load_with(content_dir: &Path, widgets: &[(&str, &str)]) -> Library {
         Library {
-            languages: available_languages(tools_dir)
+            languages: available_languages(content_dir)
                 .into_iter()
-                .map(|lang| {
-                    let tools = load_tools(&lang_dir(tools_dir, &lang), widgets);
-                    (lang, tools)
+                .map(|lang| LangContent {
+                    tools: load_tools(&tools_dir(content_dir).join(&lang), widgets),
+                    blogs: load_posts(&blogs_dir(content_dir).join(&lang)),
+                    lang,
                 })
                 .collect(),
         }
     }
 
     pub fn has_language(&self, lang: &str) -> bool {
-        self.languages.iter().any(|(l, _)| l == lang)
+        self.languages.iter().any(|c| c.lang == lang)
+    }
+
+    fn content(&self, lang: &str) -> Option<&LangContent> {
+        self.languages.iter().find(|c| c.lang == lang)
     }
 
     pub fn tools(&self, lang: &str) -> &[Tool] {
-        self.languages
-            .iter()
-            .find(|(l, _)| l == lang)
-            .map(|(_, t)| t.as_slice())
+        self.content(lang)
+            .map(|c| c.tools.as_slice())
             .unwrap_or(&[])
     }
 
-    fn has_tool(&self, lang: &str, slug: &str) -> bool {
+    pub fn blogs(&self, lang: &str) -> &[BlogPost] {
+        self.content(lang)
+            .map(|c| c.blogs.as_slice())
+            .unwrap_or(&[])
+    }
+
+    pub fn has_tool(&self, lang: &str, slug: &str) -> bool {
         self.tools(lang).iter().any(|t| t.slug == slug)
+    }
+
+    pub fn has_blog(&self, lang: &str, slug: &str) -> bool {
+        self.blogs(lang).iter().any(|p| p.slug == slug)
     }
 }
 
 /// One language version of a page: where it lives, and whether it is
-/// the same tool (true) or only that language's tool list (false).
-struct Version {
-    lang: String,
-    path: String,
-    exact: bool,
+/// the same page (true) or only that language's list (false).
+pub struct Version {
+    pub lang: String,
+    pub path: String,
+    pub exact: bool,
 }
 
-fn tools_versions(library: &Library) -> Vec<Version> {
+fn list_versions(library: &Library) -> Vec<Version> {
     library
         .languages
         .iter()
-        .map(|(lang, _)| Version {
-            lang: lang.clone(),
-            path: tools_base(lang),
+        .map(|c| Version {
+            lang: c.lang.clone(),
+            path: tools_base(&c.lang),
             exact: true,
         })
         .collect()
@@ -587,14 +689,14 @@ fn tool_versions(library: &Library, slug: &str) -> Vec<Version> {
     library
         .languages
         .iter()
-        .map(|(lang, _)| {
-            let exact = library.has_tool(lang, slug);
+        .map(|c| {
+            let exact = library.has_tool(&c.lang, slug);
             Version {
-                lang: lang.clone(),
+                lang: c.lang.clone(),
                 path: if exact {
-                    tool_path(lang, slug)
+                    tool_path(&c.lang, slug)
                 } else {
-                    tools_base(lang)
+                    tools_base(&c.lang)
                 },
                 exact,
             }
@@ -603,7 +705,7 @@ fn tool_versions(library: &Library, slug: &str) -> Vec<Version> {
 }
 
 /// <option>s for the language menu. Picking one opens that page.
-fn lang_options(versions: &[Version], current: &str) -> String {
+pub fn lang_options(versions: &[Version], current: &str) -> String {
     versions
         .iter()
         .map(|v| {
@@ -621,7 +723,7 @@ fn lang_options(versions: &[Version], current: &str) -> String {
 
 /// <link rel="alternate"> tags that tell Google about the other
 /// languages of the same page.
-fn alternate_links(versions: &[Version]) -> String {
+pub fn alternate_links(versions: &[Version]) -> String {
     let exact: Vec<&Version> = versions.iter().filter(|v| v.exact).collect();
     if exact.len() < 2 {
         return String::new();
@@ -728,6 +830,62 @@ fn tool_cards(tools: &[&Tool], lang: &str, texts: &Texts, visible: usize) -> Str
         .collect()
 }
 
+/// Cards linking to blogs, with the date in the pill.
+pub fn blog_cards(posts: &[&BlogPost], lang: &str, texts: &Texts, visible: usize) -> String {
+    posts
+        .iter()
+        .enumerate()
+        .map(|(i, p)| {
+            format!(
+                "<li{hidden}><a href=\"{href}\"><span class=\"tool-card-badge\">{date}</span>\
+                 <span class=\"tool-card-title\">{title}</span>\
+                 <span class=\"tool-card-desc\">{desc}</span>\
+                 <span class=\"tool-card-more\">{read}</span></a></li>",
+                hidden = if i >= visible { " hidden" } else { "" },
+                href = blog_path(lang, &p.slug),
+                date = escape_html(&texts.date(p.date)),
+                title = escape_html(&p.title),
+                desc = escape_html(&p.description),
+                read = texts.get("blogs.read"),
+            )
+        })
+        .collect()
+}
+
+/// One side of the list page: the cards, and a "Show more" button
+/// when there are more than 6. An empty side shows a short note.
+fn card_list(
+    cards: String,
+    count: usize,
+    empty_key: &str,
+    more_key: &str,
+    texts: &Texts,
+) -> String {
+    if count == 0 {
+        return format!("<p class=\"tool-empty\">{}</p>", texts.get(empty_key));
+    }
+    let button = if count > FIRST_CARDS {
+        format!(
+            "<div class=\"tool-more-row\"><button type=\"button\" class=\"btn btn-lg tool-more\" data-more hidden>{}</button></div>",
+            texts.get(more_key)
+        )
+    } else {
+        String::new()
+    };
+    format!("<ul class=\"tool-cards\">{}</ul>{}", cards, button)
+}
+
+/// The "More free tools" or "More blogs" row at the bottom of a page.
+pub fn related(title: &str, cards: String) -> String {
+    if cards.is_empty() {
+        return String::new();
+    }
+    format!(
+        "<div class=\"tool-related\"><h2>{}</h2><ul class=\"tool-cards\">{}</ul></div>",
+        title, cards
+    )
+}
+
 /// One tool page. `widget` is the tool's box, still with its
 /// {{t:key}} spots; they are filled here in the page's language.
 pub fn render_tool(
@@ -741,17 +899,12 @@ pub fn render_tool(
         .tools(lang)
         .iter()
         .filter(|t| t.slug != tool.slug)
-        .take(MORE_TOOLS)
+        .take(MORE_ITEMS)
         .collect();
-    let more = if others.is_empty() {
-        String::new()
-    } else {
-        format!(
-            "<div class=\"tool-related\"><h2>{}</h2><ul class=\"tool-cards\">{}</ul></div>",
-            texts.get("tools.more"),
-            tool_cards(&others, lang, texts, usize::MAX)
-        )
-    };
+    let more = related(
+        texts.get("tools.more"),
+        tool_cards(&others, lang, texts, usize::MAX),
+    );
     let versions = tool_versions(library, &tool.slug);
     let canonical = format!("{}{}", SITE_URL, tool_path(lang, &tool.slug));
     let title = escape_html(&tool.title);
@@ -783,27 +936,27 @@ pub fn render_tool(
     )
 }
 
+/// The list page: the hero, the "Free Tools / Blogs" switch, and both
+/// lists. Both are in the page (so Google sees every link); the
+/// "Blogs" side starts hidden and the switch shows it.
 pub fn render_tools(lang: &str, library: &Library, texts: &Texts) -> String {
-    let tools = library.tools(lang);
-    let cards = if tools.is_empty() {
-        format!("<p class=\"tool-empty\">{}</p>", texts.get("tools.empty"))
-    } else {
-        let all: Vec<&Tool> = tools.iter().collect();
-        let button = if tools.len() > FIRST_CARDS {
-            format!(
-                "<div class=\"tool-more-row\"><button type=\"button\" class=\"btn btn-lg tool-more\" data-tools-more hidden>{}</button></div>",
-                texts.get("tools.show_more")
-            )
-        } else {
-            String::new()
-        };
-        format!(
-            "<ul class=\"tool-cards\">{}</ul>{}",
-            tool_cards(&all, lang, texts, FIRST_CARDS),
-            button
-        )
-    };
-    let versions = tools_versions(library);
+    let tools: Vec<&Tool> = library.tools(lang).iter().collect();
+    let blogs: Vec<&BlogPost> = library.blogs(lang).iter().collect();
+    let tool_list = card_list(
+        tool_cards(&tools, lang, texts, FIRST_CARDS),
+        tools.len(),
+        "tools.empty",
+        "tools.show_more",
+        texts,
+    );
+    let blog_list = card_list(
+        blog_cards(&blogs, lang, texts, FIRST_CARDS),
+        blogs.len(),
+        "blogs.empty",
+        "blogs.show_more",
+        texts,
+    );
+    let versions = list_versions(library);
     let canonical = format!("{}{}", SITE_URL, tools_base(lang));
     let html_lang = hreflang(lang);
     let options = lang_options(&versions, lang);
@@ -818,13 +971,16 @@ pub fn render_tools(lang: &str, library: &Library, texts: &Texts) -> String {
             ("alternates", &alternates),
             ("lang_options", &options),
             ("tools_base", &base),
-            ("cards", &cards),
+            ("tool_list", &tool_list),
+            ("blog_list", &blog_list),
         ],
         texts,
     )
 }
 
-/// sitemap.xml: the fixed pages, then each language's tool list and tools.
+/// sitemap.xml: the fixed pages, then for each language the list page,
+/// every tool and every blog. A new tool or blog is in it as soon as
+/// its file is on the server.
 pub fn render_sitemap(library: &Library) -> String {
     let mut xml = String::from(
         "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">\n",
@@ -832,18 +988,26 @@ pub fn render_sitemap(library: &Library) -> String {
     for page in SITEMAP_PAGES {
         xml.push_str(&format!("  <url><loc>{}{}</loc></url>\n", SITE_URL, page));
     }
-    for (lang, tools) in &library.languages {
+    for c in &library.languages {
         xml.push_str(&format!(
             "  <url><loc>{}{}</loc></url>\n",
             SITE_URL,
-            tools_base(lang)
+            tools_base(&c.lang)
         ));
-        for tool in tools {
+        for tool in &c.tools {
             xml.push_str(&format!(
                 "  <url><loc>{}{}</loc><lastmod>{}</lastmod></url>\n",
                 SITE_URL,
-                tool_path(lang, &tool.slug),
+                tool_path(&c.lang, &tool.slug),
                 tool.date
+            ));
+        }
+        for post in &c.blogs {
+            xml.push_str(&format!(
+                "  <url><loc>{}{}</loc><lastmod>{}</lastmod></url>\n",
+                SITE_URL,
+                blog_path(&c.lang, &post.slug),
+                post.date
             ));
         }
     }
@@ -854,8 +1018,10 @@ pub fn render_sitemap(library: &Library) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::services::blogs::parse_post;
 
     const GOOD: &str = "---\ntitle: Domain Age Checker\ndescription: See how old a website is & who registered it.\ndate: 2026-10-20\n---\n\n## What it checks\nSome **bold** text.\n";
+    const POST: &str = "---\ntitle: How to check a supplier\ndescription: Seven checks.\ndate: 2026-10-16\nshort_answer: Check the registration.\n---\n\n## First\nText.\n";
     const BOX: &str = "<form data-lang=\"{{lang}}\"><button>{{t:nav.home}}</button></form>";
 
     fn english() -> Texts {
@@ -868,14 +1034,27 @@ mod tests {
         t
     }
 
-    fn library(langs: Vec<(&str, Vec<Tool>)>) -> Library {
+    fn post(slug: &str, day: u32) -> BlogPost {
+        let mut p = parse_post(slug, POST).unwrap();
+        p.date = NaiveDate::from_ymd_opt(2026, 10, day).unwrap();
+        p
+    }
+
+    fn library(langs: Vec<(&str, Vec<Tool>, Vec<BlogPost>)>) -> Library {
         Library {
-            languages: langs.into_iter().map(|(l, t)| (l.to_string(), t)).collect(),
+            languages: langs
+                .into_iter()
+                .map(|(l, tools, blogs)| LangContent {
+                    lang: l.to_string(),
+                    tools,
+                    blogs,
+                })
+                .collect(),
         }
     }
 
     #[test]
-    fn parses_a_good_file() {
+    fn parses_a_good_tool_file() {
         let t = parse_tool("domain-age-checker", GOOD).unwrap();
         assert_eq!(t.title, "Domain Age Checker");
         assert_eq!(t.date, NaiveDate::from_ymd_opt(2026, 10, 20).unwrap());
@@ -992,19 +1171,26 @@ mod tests {
     fn texts_fall_back_to_english() {
         let dir = std::env::temp_dir().join(format!("safely-locales-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
-        std::fs::write(dir.join("pt-br.json"), r#"{"nav.home": "Início"}"#).unwrap();
+        std::fs::write(
+            dir.join("pt-br.json"),
+            r#"{"nav.home": "Início", "blogs.months": "janeiro,fevereiro,março,abril,maio,junho,julho,agosto,setembro,outubro,novembro,dezembro", "blogs.date_format": "{day} de {month} de {year}"}"#,
+        )
+        .unwrap();
         let pt = Texts::load("pt-br", &dir);
         let missing = Texts::load("xx", &dir);
         std::fs::remove_dir_all(&dir).unwrap();
         assert_eq!(pt.get("nav.home"), "Início");
         assert_eq!(pt.get("nav.faq"), "FAQ", "missing key uses English");
+        let day = NaiveDate::from_ymd_opt(2026, 10, 16).unwrap();
+        assert_eq!(pt.date(day), "16 de outubro de 2026");
+        assert_eq!(english().date(day), "October 16, 2026");
         assert_eq!(missing.get("nav.home"), "Home", "no file means English");
     }
 
     #[test]
-    fn rendered_page_has_everything_and_is_escaped() {
+    fn rendered_tool_page_has_everything_and_is_escaped() {
         let t = parse_tool("domain-age-checker", GOOD).unwrap();
-        let lib = library(vec![("en", vec![t.clone()])]);
+        let lib = library(vec![("en", vec![t.clone()], vec![])]);
         let html = render_tool(&t, BOX, "en", &lib, &english());
         assert!(html.contains("<title>Domain Age Checker | Safely</title>"));
         assert!(html.contains("https://safely.sh/tools/domain-age-checker"));
@@ -1022,7 +1208,11 @@ mod tests {
 
     #[test]
     fn related_tools_are_shown() {
-        let lib = library(vec![("en", vec![tool("a", 3), tool("b", 2), tool("c", 1)])]);
+        let lib = library(vec![(
+            "en",
+            vec![tool("a", 3), tool("b", 2), tool("c", 1)],
+            vec![],
+        )]);
         let html = render_tool(&lib.tools("en")[0], BOX, "en", &lib, &english());
         assert!(html.contains("More free tools"));
         assert!(html.contains("href=\"/tools/b\"") && html.contains("href=\"/tools/c\""));
@@ -1033,7 +1223,7 @@ mod tests {
     fn language_menu_and_google_links() {
         let en = vec![tool("both", 1), tool("only-english", 2)];
         let pt = vec![tool("both", 1)];
-        let lib = library(vec![("en", en.clone()), ("pt-br", pt)]);
+        let lib = library(vec![("en", en.clone(), vec![]), ("pt-br", pt, vec![])]);
         let t = english();
 
         // Tool in both languages: menu goes to the same tool, Google is told.
@@ -1063,31 +1253,37 @@ mod tests {
     }
 
     #[test]
-    fn list_shows_six_then_a_button() {
+    fn list_page_has_both_sides_and_a_button_each() {
         let t = english();
-        let five: Vec<Tool> = (1..=5).rev().map(|d| tool(&format!("a{d}"), d)).collect();
-        let html = render_tools("en", &library(vec![("en", five)]), &t);
-        assert!(!html.contains("<li hidden>"));
+        let tools: Vec<Tool> = (1..=8).rev().map(|d| tool(&format!("t{d}"), d)).collect();
+        let blogs: Vec<BlogPost> = (1..=5).rev().map(|d| post(&format!("b{d}"), d)).collect();
+        let html = render_tools("en", &library(vec![("en", tools, blogs)]), &t);
+        // Both switch buttons, tools first and chosen
         assert!(
-            !html.contains("data-tools-more"),
-            "no button for 6 or fewer"
+            html.find("data-tab=\"tools\"").unwrap() < html.find("data-tab=\"blogs\"").unwrap()
         );
-
-        let eight: Vec<Tool> = (1..=8).rev().map(|d| tool(&format!("a{d}"), d)).collect();
-        let html = render_tools("en", &library(vec![("en", eight)]), &t);
-        assert_eq!(html.matches("<li><a").count(), FIRST_CARDS);
-        assert_eq!(html.matches("<li hidden><a").count(), 2);
-        assert!(html.contains("data-tools-more hidden>Show more tools</button>"));
+        assert!(
+            html.contains("id=\"blogs\""),
+            "/tools#blogs opens the blogs side"
+        );
+        // 8 tools: 6 shown, 2 waiting, one button. 5 blogs: all shown, no button.
+        assert_eq!(html.matches("<li hidden><a href=\"/tools/").count(), 2);
+        assert_eq!(html.matches("<li><a href=\"/tools/").count(), FIRST_CARDS);
+        assert_eq!(html.matches("<li><a href=\"/blog/").count(), 5);
+        assert_eq!(html.matches("data-more hidden>").count(), 1);
+        assert!(html.contains("data-more hidden>Show more tools</button>"));
+        assert!(html.contains("October 5, 2026"), "blog cards show the date");
         // newest first
-        assert!(html.find("/tools/a8").unwrap() < html.find("/tools/a1").unwrap());
+        assert!(html.find("/tools/t8").unwrap() < html.find("/tools/t1").unwrap());
         assert!(!html.contains("{{"));
     }
 
     #[test]
-    fn empty_language_and_not_found() {
+    fn empty_sides_show_a_note() {
         let t = english();
-        let html = render_tools("en", &library(vec![("en", vec![])]), &t);
+        let html = render_tools("en", &library(vec![("en", vec![], vec![])]), &t);
         assert!(html.contains("The first free tools are on their way."));
+        assert!(html.contains("The first blogs are on their way."));
         assert!(
             NOT_FOUND_PAGE.contains("noindex"),
             "Google must not index the 404 page"
@@ -1096,10 +1292,14 @@ mod tests {
     }
 
     #[test]
-    fn sitemap_has_every_language() {
+    fn sitemap_has_every_tool_and_blog_in_every_language() {
         let lib = library(vec![
-            ("en", vec![tool("newer", 20), tool("older", 1)]),
-            ("pt-br", vec![tool("newer", 20)]),
+            (
+                "en",
+                vec![tool("newer", 20), tool("older", 1)],
+                vec![post("guide", 16)],
+            ),
+            ("pt-br", vec![tool("newer", 20)], vec![post("guide", 16)]),
         ]);
         let xml = render_sitemap(&lib);
         assert!(xml.contains("<loc>https://safely.sh/</loc>"));
@@ -1111,16 +1311,26 @@ mod tests {
         assert!(xml.contains(
             "<loc>https://safely.sh/pt-br/tools/newer</loc><lastmod>2026-10-20</lastmod>"
         ));
+        assert!(
+            xml.contains("<loc>https://safely.sh/blog/guide</loc><lastmod>2026-10-16</lastmod>")
+        );
+        assert!(xml.contains(
+            "<loc>https://safely.sh/pt-br/blog/guide</loc><lastmod>2026-10-16</lastmod>"
+        ));
         assert!(!xml.contains("/try"));
     }
 
     #[test]
     fn loads_folders_and_skips_bad_files() {
-        let dir = std::env::temp_dir().join(format!("safely-tools-test-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("safely-content-test-{}", std::process::id()));
         for lang in ["en", "pt-br", "Bad_Folder"] {
-            std::fs::create_dir_all(dir.join(lang)).unwrap();
+            std::fs::create_dir_all(dir.join("tools").join(lang)).unwrap();
         }
-        let en = dir.join("en");
+        // A language that only has blogs still counts.
+        std::fs::create_dir_all(dir.join("blogs").join("es")).unwrap();
+        std::fs::create_dir_all(dir.join("blogs").join("en")).unwrap();
+        std::fs::write(dir.join("blogs").join("en").join("a-guide.md"), POST).unwrap();
+        let en = dir.join("tools").join("en");
         std::fs::write(en.join("good-one.md"), GOOD).unwrap();
         std::fs::write(en.join("no-box-yet.md"), GOOD).unwrap();
         std::fs::write(en.join("broken.md"), "no front matter").unwrap();
@@ -1131,43 +1341,41 @@ mod tests {
         )
         .unwrap();
         std::fs::write(en.join("notes.txt"), "ignore me").unwrap();
-        std::fs::write(dir.join("pt-br").join("good-one.md"), GOOD).unwrap();
-        std::fs::write(dir.join("stray.md"), GOOD).unwrap();
+        std::fs::write(dir.join("tools").join("pt-br").join("good-one.md"), GOOD).unwrap();
         let widgets: &[(&str, &str)] = &[("good-one", BOX), ("hidden", BOX), ("broken", BOX)];
         let lib = Library::load_with(&dir, widgets);
+        let empty = Library::load_with(&dir.join("nothing-here"), widgets);
         std::fs::remove_dir_all(&dir).unwrap();
-        let langs: Vec<&str> = lib.languages.iter().map(|(l, _)| l.as_str()).collect();
-        assert_eq!(langs, vec!["en", "pt-br"]);
+        let langs: Vec<&str> = lib.languages.iter().map(|c| c.lang.as_str()).collect();
+        assert_eq!(langs, vec!["en", "es", "pt-br"]);
         let slugs: Vec<&str> = lib.tools("en").iter().map(|t| t.slug.as_str()).collect();
         assert_eq!(
             slugs,
             vec!["good-one"],
             "no box, draft and broken are left out"
         );
-        assert!(lib.has_language("pt-br") && !lib.has_language("es"));
+        assert_eq!(lib.blogs("en").len(), 1);
+        assert!(lib.has_blog("en", "a-guide") && !lib.has_blog("pt-br", "a-guide"));
+        // No content folder at all: English only, empty, no crash.
+        assert_eq!(empty.languages.len(), 1);
+        assert!(empty.tools("en").is_empty() && empty.blogs("en").is_empty());
     }
 
     #[test]
-    fn the_shipped_tools_and_texts_are_valid() {
-        let langs = available_languages(Path::new(TOOLS_DIR));
+    fn the_shipped_content_and_texts_are_valid() {
+        let content = Path::new(CONTENT_DIR);
+        let langs = available_languages(content);
         assert!(langs.contains(&"en".to_string()));
         for (slug, widget) in WIDGETS {
             assert!(is_valid_slug(slug), "{slug}");
             assert!(!widget.trim().is_empty(), "the box of {slug} is empty");
         }
         for lang in &langs {
-            let dir = lang_dir(Path::new(TOOLS_DIR), lang);
-            if let Ok(entries) = std::fs::read_dir(&dir) {
-                for entry in entries {
-                    let path = entry.unwrap().path();
-                    if path.extension().and_then(|e| e.to_str()) != Some("md") {
-                        continue;
-                    }
-                    let slug = path.file_stem().unwrap().to_str().unwrap();
-                    assert!(is_valid_slug(slug), "{slug}");
-                    let source = std::fs::read_to_string(&path).unwrap();
-                    parse_tool(slug, &source).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
-                }
+            for (slug, source, path) in markdown_files(&tools_dir(content).join(lang)) {
+                parse_tool(&slug, &source).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+            }
+            for (slug, source, path) in markdown_files(&blogs_dir(content).join(lang)) {
+                parse_post(&slug, &source).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
             }
             if lang != DEFAULT_LANG {
                 let source =
