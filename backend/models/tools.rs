@@ -14,6 +14,9 @@ pub struct Tool {
     /// The day the tool was added or last changed. Newest tools come
     /// first on the list, and Google sees it in the sitemap.
     pub date: NaiveDate,
+    /// The banner on the tool's card, for example
+    /// "/images/tool-banners/domain-age-checker.svg". Optional.
+    pub image: Option<String>,
     /// The text under the tool (what it checks, how to read the
     /// result, questions), already turned from Markdown into HTML.
     pub body_html: String,

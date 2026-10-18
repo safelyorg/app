@@ -34,13 +34,15 @@
 //! title: Domain Age Checker
 //! description: One line for the heading, Google results and the card.
 //! date: 2026-10-20
+//! image: /images/tool-banners/domain-age-checker.svg
 //! ---
 //!
 //! ## What this tool checks
 //! Normal Markdown text...
 //! ```
 //!
-//! Optional: `draft: true` hides a tool until it is ready. A Markdown
+//! `image` is the banner on the tool's card (optional; a file in
+//! site/images/). Optional: `draft: true` hides a tool until it is ready. A Markdown
 //! file without a box in WIDGETS is also left out, so a page never
 //! shows up with no tool on it.
 //!
@@ -79,9 +81,11 @@ const TOOLS_TEMPLATE: &str = include_str!("../../site/templates/tools.html");
 pub const NOT_FOUND_PAGE: &str = include_str!("../../site/templates/404.html");
 
 /// The box of each tool, by its name (the Markdown file name).
-/// A new tool adds one line here, for example:
-/// ("domain-age-checker", include_str!("../../site/templates/tool-widgets/domain-age-checker.html")),
-pub const WIDGETS: &[(&str, &str)] = &[];
+/// A new tool adds one entry here, like the Domain Age Checker below.
+pub const WIDGETS: &[(&str, &str)] = &[(
+    "domain-age-checker",
+    include_str!("../../site/templates/tool_widgets/domain-age-checker.html"),
+)];
 
 /// Pages that are always in the sitemap. The list page, every tool and
 /// every blog are added for each language.
@@ -154,6 +158,70 @@ const ENGLISH: &[(&str, &str)] = &[
         "January,February,March,April,May,June,July,August,September,October,November,December",
     ),
     ("blogs.date_format", "{month} {day}, {year}"),
+    // The Domain Age Checker box (site/templates/tool-widgets/domain-age-checker.html)
+    ("dac.label", "Website address"),
+    ("dac.placeholder", "supplier.com"),
+    ("dac.button", "Check age"),
+    (
+        "dac.hint",
+        "Paste any link or type a domain, like supplier.com. We only read the public registration record.",
+    ),
+    ("dac.checking", "Checking..."),
+    ("dac.registered", "Registered on"),
+    ("dac.expires", "Expires on"),
+    ("dac.updated", "Last changed"),
+    ("dac.registrar", "Registrar"),
+    ("dac.domain", "Domain"),
+    ("dac.not_shared", "Not shared by the registry"),
+    ("dac.year", "1 year"),
+    ("dac.years", "{n} years"),
+    ("dac.month", "1 month"),
+    ("dac.months", "{n} months"),
+    ("dac.day", "1 day"),
+    ("dac.days", "{n} days"),
+    ("dac.and", "and"),
+    ("dac.new_title", "Very new: registered {age} ago"),
+    (
+        "dac.new_text",
+        "This domain is less than 6 months old. That is a red flag if the company says it has been in business for years. Check it more before you pay.",
+    ),
+    ("dac.young_title", "Fairly new: registered {age} ago"),
+    (
+        "dac.young_text",
+        "This domain is less than 2 years old. That is not a problem by itself, but compare it with how long the company says it has been trading.",
+    ),
+    ("dac.established_title", "Established: registered {age} ago"),
+    (
+        "dac.established_text",
+        "This domain is more than 2 years old, which is a good sign. Old domains can still be bought or taken over, so keep checking the other details.",
+    ),
+    ("dac.unknown_title", "The registration date is not public"),
+    (
+        "dac.unknown_text",
+        "This domain's registry does not share when it was created. Check the company in its official business registry instead.",
+    ),
+    ("dac.expires_soon", "Expires in less than 3 months"),
+    (
+        "dac.err_invalid",
+        "That does not look like a website address. Try something like supplier.com.",
+    ),
+    (
+        "dac.err_not_found",
+        "We could not find this domain. It may not be registered, or it may be spelled differently.",
+    ),
+    (
+        "dac.err_busy",
+        "You have run a lot of checks in the last hour. Please wait a little and try again.",
+    ),
+    (
+        "dac.err_failed",
+        "The lookup did not work this time. Please try again in a moment.",
+    ),
+    (
+        "dac.upsell",
+        "Safely checks domain age, and 14 other signals, on every supplier page automatically.",
+    ),
+    ("dac.upsell_link", "Add Safely to Chrome →"),
     ("cmp.free_plan", "Free plan"),
     ("cmp.add_free", "Add to Chrome, it is free"),
     ("cta.sticker", "10-second install"),
@@ -519,12 +587,14 @@ pub fn parse_tool(slug: &str, source: &str) -> Result<Tool, String> {
     let mut title = None;
     let mut description = None;
     let mut date = None;
+    let mut image = None;
     let mut draft = false;
     for (key, value) in details {
         match key.as_str() {
             "title" => title = Some(value),
             "description" => description = Some(value),
             "date" => date = Some(parse_date(&value)?),
+            "image" => image = Some(parse_image(&value)?),
             "draft" => draft = value == "true",
             other => return Err(format!("unknown detail \"{}\"", other)),
         }
@@ -534,9 +604,39 @@ pub fn parse_tool(slug: &str, source: &str) -> Result<Tool, String> {
         title: required(title, "title")?,
         description: required(description, "description")?,
         date: date.ok_or("\"date\" is missing")?,
+        image,
         body_html: markdown_to_html(&body),
         draft,
     })
+}
+
+/// A card banner must be one of the site's own images:
+/// "/images/tool-banners/domain-age-checker.svg".
+///
+/// The folder must not be called "tools" or "blog": an address like
+/// /images/tools/x.svg looks like a tool page in another language
+/// (/{lang}/tools/{name}), so the server would never send the image.
+pub fn parse_image(value: &str) -> Result<String, String> {
+    let second_folder = value.split('/').nth(2).unwrap_or_default();
+    if second_folder == "tools" || second_folder == "blog" {
+        return Err(format!(
+            "image folder must not be called \"{}\" (it looks like a page address): {}",
+            second_folder, value
+        ));
+    }
+    let ok = value.starts_with("/images/")
+        && !value.contains("..")
+        && value
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || "/-_.".contains(c));
+    if ok {
+        Ok(value.to_string())
+    } else {
+        Err(format!(
+            "image must be a file in site/images, like /images/tool-banners/name.svg, got: {}",
+            value
+        ))
+    }
 }
 
 pub fn markdown_to_html(markdown: &str) -> String {
@@ -806,18 +906,29 @@ fn tool_json_ld(tool: &Tool, lang: &str) -> String {
     data.to_string().replace("</", "<\\/")
 }
 
-/// Cards linking to tools. Cards from `visible` onwards start hidden
-/// and are shown by the "Show more tools" button.
+/// Cards linking to tools: the name, the line under it, the banner
+/// (when the tool has one) and "Use the tool". Cards from `visible`
+/// onwards start hidden and are shown by the "Show more tools" button.
 fn tool_cards(tools: &[&Tool], lang: &str, texts: &Texts, visible: usize) -> String {
     tools
         .iter()
         .enumerate()
         .map(|(i, t)| {
+            let banner = t
+                .image
+                .as_deref()
+                .map(|src| {
+                    format!(
+                        "<span class=\"tool-card-img\"><img src=\"{}\" alt=\"\" width=\"640\" height=\"320\" loading=\"lazy\" /></span>",
+                        escape_html(src)
+                    )
+                })
+                .unwrap_or_default();
             format!(
                 "<li{hidden}><a href=\"{href}\"><span class=\"tool-card-badge\">{badge}</span>\
                  <span class=\"tool-card-title\">{title}</span>\
                  <span class=\"tool-card-desc\">{desc}</span>\
-                 <span class=\"tool-card-more\">{use_it}</span></a></li>",
+                 {banner}<span class=\"tool-card-more\">{use_it}</span></a></li>",
                 hidden = if i >= visible { " hidden" } else { "" },
                 href = tool_path(lang, &t.slug),
                 badge = texts.get("tools.card_badge"),
@@ -1108,6 +1219,38 @@ mod tests {
     }
 
     #[test]
+    fn card_banner_is_shown_and_checked() {
+        let s = GOOD.replace(
+            "---\n\n##",
+            "image: /images/tool-banners/x-y_1.svg\n---\n\n##",
+        );
+        let t = parse_tool("x", &s).unwrap();
+        assert_eq!(t.image.as_deref(), Some("/images/tool-banners/x-y_1.svg"));
+        let lib = library(vec![("en", vec![t], vec![])]);
+        let html = render_tools("en", &lib, &english());
+        assert!(html.contains(
+            "<span class=\"tool-card-img\"><img src=\"/images/tool-banners/x-y_1.svg\" alt=\"\""
+        ));
+        for bad in [
+            "/images/tools/a.svg",
+            "/images/blog/a.svg",
+            "https://evil.com/a.png",
+            "/images/../.env",
+            "/images/a\".png",
+            "images/a.png",
+        ] {
+            let s = GOOD.replace("---\n\n##", &format!("image: {bad}\n---\n\n##"));
+            assert!(parse_tool("x", &s).is_err(), "{bad}");
+        }
+        let no_image = render_tools(
+            "en",
+            &library(vec![("en", vec![tool("y", 1)], vec![])]),
+            &english(),
+        );
+        assert!(!no_image.contains("tool-card-img"));
+    }
+
+    #[test]
     fn slugs_and_languages() {
         assert!(is_valid_slug("domain-age-checker-2"));
         for bad in [
@@ -1368,10 +1511,52 @@ mod tests {
         for (slug, widget) in WIDGETS {
             assert!(is_valid_slug(slug), "{slug}");
             assert!(!widget.trim().is_empty(), "the box of {slug} is empty");
+            // Every word in the box has English text (and the language
+            // files are checked against ENGLISH below).
+            let filled = fill_template(
+                widget,
+                &[("lang", "en")],
+                &Texts::load("en", Path::new(LOCALES_DIR)),
+            );
+            assert!(
+                !filled.contains("{{"),
+                "the box of {slug} has an empty spot"
+            );
+            for key in widget
+                .split("{{t:")
+                .skip(1)
+                .chain(widget.split("{{a:").skip(1))
+            {
+                let key = key.split("}}").next().unwrap();
+                assert!(
+                    ENGLISH.iter().any(|(k, _)| *k == key),
+                    "the box of {slug} uses {key}, which has no English text"
+                );
+            }
+            // Every tool with a box has its page text in English.
+            assert!(
+                tools_dir(content)
+                    .join("en")
+                    .join(format!("{slug}.md"))
+                    .exists(),
+                "content/tools/en/{slug}.md is missing"
+            );
         }
         for lang in &langs {
             for (slug, source, path) in markdown_files(&tools_dir(content).join(lang)) {
-                parse_tool(&slug, &source).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+                let tool = parse_tool(&slug, &source)
+                    .unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+                if let Some(image) = tool.image {
+                    let file = Path::new(CONTENT_DIR)
+                        .join("../site")
+                        .join(image.trim_start_matches('/'));
+                    assert!(
+                        file.exists(),
+                        "{}: the image {} is missing",
+                        path.display(),
+                        file.display()
+                    );
+                }
             }
             for (slug, source, path) in markdown_files(&blogs_dir(content).join(lang)) {
                 parse_post(&slug, &source).unwrap_or_else(|e| panic!("{}: {e}", path.display()));

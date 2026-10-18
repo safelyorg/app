@@ -3,6 +3,7 @@ pub mod auth;
 pub mod billing;
 pub mod blogs;
 pub mod dashboard;
+pub mod domain_age;
 pub mod fraud_reports;
 pub mod outcomes;
 pub mod pdf;

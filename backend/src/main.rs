@@ -4,7 +4,7 @@ use axum::{Router, response::Redirect, routing::get};
 use backend::db::{bootstrap::run_grants, connection::load_pool};
 use backend::routes::{
     analyze, auth, billing, dashboard, fraud_reports, outcomes, platform_domains, reviews,
-    subscribe, tools,
+    subscribe, tool_api, tools,
 };
 use backend::services::scraper_client::warn_if_scraperapi_key_missing;
 use dotenvy::dotenv;
@@ -57,6 +57,8 @@ fn build_router(app_pool: Pool<Postgres>) -> Router {
         .merge(outcomes::outcomes_routes())
         .merge(platform_domains::platform_domains_routes())
         .merge(reviews::reviews_routes())
+        // The free tools' lookups, like /api/v1/tools/domain-age
+        .merge(tool_api::tool_api_routes())
         .route(
             "/dashboard",
             get(|| async { Redirect::permanent("/dashboard/") }),

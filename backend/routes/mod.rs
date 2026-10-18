@@ -7,4 +7,5 @@ pub mod outcomes;
 pub mod platform_domains;
 pub mod reviews;
 pub mod subscribe;
+pub mod tool_api;
 pub mod tools;

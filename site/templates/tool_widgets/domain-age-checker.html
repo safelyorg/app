@@ -1,0 +1,57 @@
+<!-- Domain Age Checker: the box on safely.sh/tools/domain-age-checker.
+     The words are filled in by the server in the page's language.
+     The hidden texts at the bottom are read by domain-age-checker.ts
+     to write the result in the same language. -->
+<div class="dac" data-dac data-api="/api/v1/tools/domain-age">
+    <form class="tool-form" data-dac-form novalidate>
+        <label class="tool-label" for="dac-domain">{{t:dac.label}}</label>
+        <input
+            class="tool-input"
+            id="dac-domain"
+            name="domain"
+            type="text"
+            inputmode="url"
+            autocomplete="off"
+            autocapitalize="off"
+            spellcheck="false"
+            maxlength="300"
+            placeholder="{{a:dac.placeholder}}"
+            required
+        />
+        <button class="btn btn-lg btn-sun" type="submit" data-dac-button>{{t:dac.button}}</button>
+        <p class="tool-hint">{{t:dac.hint}}</p>
+    </form>
+    <div class="tool-result" data-dac-result hidden aria-live="polite"></div>
+    <div hidden data-dac-texts>
+        <span data-k="checking">{{t:dac.checking}}</span>
+        <span data-k="registered">{{t:dac.registered}}</span>
+        <span data-k="expires">{{t:dac.expires}}</span>
+        <span data-k="updated">{{t:dac.updated}}</span>
+        <span data-k="registrar">{{t:dac.registrar}}</span>
+        <span data-k="domain">{{t:dac.domain}}</span>
+        <span data-k="not_shared">{{t:dac.not_shared}}</span>
+        <span data-k="year">{{t:dac.year}}</span>
+        <span data-k="years">{{t:dac.years}}</span>
+        <span data-k="month">{{t:dac.month}}</span>
+        <span data-k="months">{{t:dac.months}}</span>
+        <span data-k="day">{{t:dac.day}}</span>
+        <span data-k="days">{{t:dac.days}}</span>
+        <span data-k="and">{{t:dac.and}}</span>
+        <span data-k="new_title">{{t:dac.new_title}}</span>
+        <span data-k="new_text">{{t:dac.new_text}}</span>
+        <span data-k="young_title">{{t:dac.young_title}}</span>
+        <span data-k="young_text">{{t:dac.young_text}}</span>
+        <span data-k="established_title">{{t:dac.established_title}}</span>
+        <span data-k="established_text">{{t:dac.established_text}}</span>
+        <span data-k="unknown_title">{{t:dac.unknown_title}}</span>
+        <span data-k="unknown_text">{{t:dac.unknown_text}}</span>
+        <span data-k="expires_soon">{{t:dac.expires_soon}}</span>
+        <span data-k="err_invalid">{{t:dac.err_invalid}}</span>
+        <span data-k="err_not_found">{{t:dac.err_not_found}}</span>
+        <span data-k="err_busy">{{t:dac.err_busy}}</span>
+        <span data-k="err_failed">{{t:dac.err_failed}}</span>
+        <span data-k="upsell">{{t:dac.upsell}}</span>
+        <span data-k="upsell_link">{{t:dac.upsell_link}}</span>
+    </div>
+</div>
+<script src="/js/domain-age-checker.js?v=20261018c" defer></script>

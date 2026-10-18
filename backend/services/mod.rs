@@ -7,6 +7,7 @@ pub mod blogs;
 pub mod claude;
 pub mod confidence;
 pub mod dashboard;
+pub mod domain_age;
 pub mod email;
 pub mod entity_detection;
 pub mod evidence;

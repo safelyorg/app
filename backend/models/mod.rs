@@ -1,6 +1,7 @@
 pub mod analysis;
 pub mod billing;
 pub mod blogs;
+pub mod domain_age;
 pub mod evidence;
 pub mod fraud_reports;
 pub mod helpers;

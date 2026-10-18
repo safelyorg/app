@@ -152,6 +152,17 @@
     margin: 0;
     overflow-wrap: anywhere;
 }
+/* A small warning under a date, like "Expires in less than 3 months" */
+.dac-note {
+    display: inline-block;
+    margin-left: 10px;
+    padding: 1px 10px;
+    font-size: 13px;
+    font-weight: 700;
+    background: #fff;
+    border: var(--bd-thin);
+    border-radius: 999px;
+}
 /* Soft link to the extension, under a result */
 .tool-upsell {
     margin-top: 16px;
@@ -405,6 +416,21 @@ ul.tool-cards {
     line-height: 1.55;
     color: #2c2e26;
     flex: 1;
+}
+/* A tool's banner, between the text and "Use the tool" */
+.tool-card-img {
+    display: block;
+    width: 100%;
+    margin-top: 4px;
+    border: var(--bd-thin);
+    border-radius: var(--r);
+    overflow: hidden;
+    background: var(--paper);
+}
+.tool-card-img img {
+    display: block;
+    width: 100%;
+    height: auto;
 }
 .tool-card-more {
     font-weight: 700;
