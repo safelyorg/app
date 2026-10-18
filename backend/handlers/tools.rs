@@ -1,6 +1,6 @@
 use crate::services::tools::{
-    DEFAULT_LANG, LOCALES_DIR, Library, TOOLS_DIR, Texts, WIDGETS, is_valid_lang, is_valid_slug,
-    render_not_found, render_sitemap, render_tool, render_tools, widget_for,
+    DEFAULT_LANG, LOCALES_DIR, Library, NOT_FOUND_PAGE, TOOLS_DIR, Texts, WIDGETS, is_valid_lang,
+    is_valid_slug, render_sitemap, render_tool, render_tools, widget_for,
 };
 use axum::{
     extract::Path,
@@ -59,18 +59,17 @@ pub async fn sitemap() -> Response {
 fn tools_page(lang: &str) -> Response {
     let library = Library::load(FsPath::new(TOOLS_DIR));
     if !is_valid_lang(lang) || !library.has_language(lang) {
-        return not_found(DEFAULT_LANG);
+        return not_found();
     }
     let texts = Texts::load(lang, FsPath::new(LOCALES_DIR));
     Html(render_tools(lang, &library, &texts)).into_response()
 }
 
-/// Unknown, draft or missing tools get a 404 page with a link back
-/// to the list in the same language.
+/// Unknown, draft or missing tools get the site's 404 page.
 fn tool_page(lang: &str, slug: &str) -> Response {
     let library = Library::load(FsPath::new(TOOLS_DIR));
     if !is_valid_lang(lang) || !library.has_language(lang) {
-        return not_found(DEFAULT_LANG);
+        return not_found();
     }
     let found = is_valid_slug(slug)
         .then(|| library.tools(lang).iter().find(|t| t.slug == slug))
@@ -81,11 +80,11 @@ fn tool_page(lang: &str, slug: &str) -> Response {
             let texts = Texts::load(lang, FsPath::new(LOCALES_DIR));
             Html(render_tool(tool, widget, lang, &library, &texts)).into_response()
         }
-        _ => not_found(lang),
+        _ => not_found(),
     }
 }
 
-fn not_found(lang: &str) -> Response {
-    let texts = Texts::load(lang, FsPath::new(LOCALES_DIR));
-    (StatusCode::NOT_FOUND, Html(render_not_found(lang, &texts))).into_response()
+/// The same "page not found" page as the rest of the site.
+fn not_found() -> Response {
+    (StatusCode::NOT_FOUND, Html(NOT_FOUND_PAGE)).into_response()
 }

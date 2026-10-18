@@ -1,0 +1,42 @@
+/* ============================================================
+   404 PAGE (any address that does not exist)
+   Builds on subscribe.css (hero) and compare.css. Only the big
+   "404", the title size and the two buttons are new here.
+   ============================================================ */
+.nf-hero {
+    padding-bottom: clamp(100px, 11vw, 150px);
+}
+.nf-hero .head p.nf-code {
+    margin: 18px 0 0;
+    font-size: clamp(110px, 22vw, 220px);
+    line-height: 0.9;
+    color: var(--ink);
+    text-shadow: 6px 6px 0 var(--sun);
+}
+.nf-hero .head h1.nf-title {
+    margin-top: 10px;
+    font-size: clamp(30px, 4.6vw, 52px);
+    line-height: 1.08;
+    text-wrap: balance;
+}
+.nf-hero .head p:not(.nf-code) {
+    max-width: 560px;
+    margin-inline: auto;
+}
+.nf-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 14px;
+    margin-top: 28px;
+}
+.nf-alt {
+    background: var(--paper);
+    color: var(--ink);
+}
+@media (max-width: 640px) {
+    .nf-actions .btn {
+        width: 100%;
+        justify-content: center;
+    }
+}

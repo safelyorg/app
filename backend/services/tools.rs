@@ -63,6 +63,8 @@ pub const FIRST_CARDS: usize = 6;
 
 const TOOL_TEMPLATE: &str = include_str!("../../site/templates/tool.html");
 const TOOLS_TEMPLATE: &str = include_str!("../../site/templates/tools.html");
+/// The site's "page not found" page, shown for a tool that does not exist.
+pub const NOT_FOUND_PAGE: &str = include_str!("../../site/templates/404.html");
 
 /// The box of each tool, by its name (the Markdown file name).
 /// A new tool adds one line here, for example:
@@ -104,8 +106,6 @@ const ENGLISH: &[(&str, &str)] = &[
     ("tools.badge_tool", "Free tool"),
     ("tools.hero_meta", "Free · No sign-up · Results in seconds"),
     ("tools.more", "More free tools"),
-    ("tools.not_found", "Tool not found"),
-    ("tools.see_all", "See all free tools"),
     (
         "tools.disclaimer",
         "This tool gives guidance, not a guarantee. Before you pay a new supplier, also call them on a phone number you found yourself.",
@@ -824,19 +824,6 @@ pub fn render_tools(lang: &str, library: &Library, texts: &Texts) -> String {
     )
 }
 
-/// The page shown for a tool that does not exist, in the right language.
-pub fn render_not_found(lang: &str, texts: &Texts) -> String {
-    format!(
-        "<!doctype html><html lang=\"{lang}\"><head><meta charset=\"utf-8\"><title>{title} | Safely</title>\
-         <meta name=\"robots\" content=\"noindex\"></head><body style=\"font-family:sans-serif;padding:60px;text-align:center\">\
-         <h1>{title}</h1><p><a href=\"{base}\">{see_all}</a></p></body></html>",
-        lang = hreflang(lang),
-        title = escape_html(texts.get("tools.not_found")),
-        base = tools_base(lang),
-        see_all = escape_html(texts.get("tools.see_all")),
-    )
-}
-
 /// sitemap.xml: the fixed pages, then each language's tool list and tools.
 pub fn render_sitemap(library: &Library) -> String {
     let mut xml = String::from(
@@ -1101,9 +1088,11 @@ mod tests {
         let t = english();
         let html = render_tools("en", &library(vec![("en", vec![])]), &t);
         assert!(html.contains("The first free tools are on their way."));
-        let nf = render_not_found("pt-br", &t);
-        assert!(nf.contains("href=\"/pt-br/tools\""));
-        assert!(nf.contains("noindex"));
+        assert!(
+            NOT_FOUND_PAGE.contains("noindex"),
+            "Google must not index the 404 page"
+        );
+        assert!(NOT_FOUND_PAGE.contains("href=\"/tools\""));
     }
 
     #[test]

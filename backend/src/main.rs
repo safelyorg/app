@@ -40,6 +40,10 @@ fn build_cors_layer() -> CorsLayer {
         .allow_headers([header::CONTENT_TYPE, header::AUTHORIZATION])
 }
 
+/// The "page not found" page. Any address that does not exist gets
+/// this page with a real 404 status, so Google does not index it.
+const NOT_FOUND_FILE: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../site/templates/404.html");
+
 fn build_router(app_pool: Pool<Postgres>) -> Router {
     // API + dashboard: genuinely dynamic, often authenticated, per-user
     // data - this must never be cached by Cloudflare or the browser.
@@ -60,7 +64,8 @@ fn build_router(app_pool: Pool<Postgres>) -> Router {
         .nest_service(
             "/dashboard/",
             ServeDir::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../dashboard"))
-                .append_index_html_on_directories(true),
+                .append_index_html_on_directories(true)
+                .not_found_service(ServeFile::new(NOT_FOUND_FILE)),
         )
         .layer(SetResponseHeaderLayer::overriding(
             header::CACHE_CONTROL,
@@ -145,9 +150,12 @@ fn build_router(app_pool: Pool<Postgres>) -> Router {
                 "/../site/templates/try.html"
             )),
         )
+        // Files in site/ (css, js, images). Anything else is not a real
+        // page, so it gets the 404 page.
         .fallback_service(
             ServeDir::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../site"))
-                .append_index_html_on_directories(true),
+                .append_index_html_on_directories(true)
+                .not_found_service(ServeFile::new(NOT_FOUND_FILE)),
         )
         .layer(SetResponseHeaderLayer::overriding(
             header::CACHE_CONTROL,
