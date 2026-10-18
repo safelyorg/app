@@ -90,7 +90,6 @@ pub const SITEMAP_PAGES: &[&str] = &["/", "/partners", "/subscribe", "/privacy",
 /// The English page text. Keys that already exist on the other pages
 /// (nav.*, footer.*, cmp.*, cta.*, modal.*) use the same English words here.
 const ENGLISH: &[(&str, &str)] = &[
-    ("nav.home", "Home"),
     ("nav.pricing", "Pricing"),
     ("nav.faq", "FAQ"),
     ("nav.partners", "Partners"),
@@ -172,7 +171,7 @@ const ENGLISH: &[(&str, &str)] = &[
     ("footer.about", "About"),
     ("footer.partners", "Partners"),
     ("footer.subscribe", "Free Scorecard 🎁"),
-    ("footer.tools", "Free Tools"),
+    ("footer.tools", "Free Tools 🛠️"),
     ("footer.careers", "Careers"),
     ("footer.contact", "Contact"),
     ("footer.legal", "Legal"),
@@ -1022,7 +1021,7 @@ mod tests {
 
     const GOOD: &str = "---\ntitle: Domain Age Checker\ndescription: See how old a website is & who registered it.\ndate: 2026-10-20\n---\n\n## What it checks\nSome **bold** text.\n";
     const POST: &str = "---\ntitle: How to check a supplier\ndescription: Seven checks.\ndate: 2026-10-16\nshort_answer: Check the registration.\n---\n\n## First\nText.\n";
-    const BOX: &str = "<form data-lang=\"{{lang}}\"><button>{{t:nav.home}}</button></form>";
+    const BOX: &str = "<form data-lang=\"{{lang}}\"><button>{{t:nav.faq}}</button></form>";
 
     fn english() -> Texts {
         Texts::load("en", Path::new(LOCALES_DIR))
@@ -1157,13 +1156,13 @@ mod tests {
     fn template_fills_in_one_pass() {
         let t = english();
         let out = fill_template(
-            "<h1>{{title}}</h1>{{body}}{{unknown}}<p>{{t:nav.home}}</p><i title=\"{{a:tools.list_title}}\">",
+            "<h1>{{title}}</h1>{{body}}{{unknown}}<p>{{t:nav.faq}}</p><i title=\"{{a:tools.list_title}}\">",
             &[("title", "{{body}}"), ("body", "B")],
             &t,
         );
         assert_eq!(
             out,
-            "<h1>{{body}}</h1>B{{unknown}}<p>Home</p><i title=\"Free tools to &lt;span class=&quot;u&quot;&gt;check suppliers&lt;/span&gt;\">"
+            "<h1>{{body}}</h1>B{{unknown}}<p>FAQ</p><i title=\"Free tools to &lt;span class=&quot;u&quot;&gt;check suppliers&lt;/span&gt;\">"
         );
     }
 
@@ -1173,18 +1172,18 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(
             dir.join("pt-br.json"),
-            r#"{"nav.home": "Início", "blogs.months": "janeiro,fevereiro,março,abril,maio,junho,julho,agosto,setembro,outubro,novembro,dezembro", "blogs.date_format": "{day} de {month} de {year}"}"#,
+            r#"{"nav.faq": "Perguntas", "blogs.months": "janeiro,fevereiro,março,abril,maio,junho,julho,agosto,setembro,outubro,novembro,dezembro", "blogs.date_format": "{day} de {month} de {year}"}"#,
         )
         .unwrap();
         let pt = Texts::load("pt-br", &dir);
         let missing = Texts::load("xx", &dir);
         std::fs::remove_dir_all(&dir).unwrap();
-        assert_eq!(pt.get("nav.home"), "Início");
-        assert_eq!(pt.get("nav.faq"), "FAQ", "missing key uses English");
+        assert_eq!(pt.get("nav.faq"), "Perguntas");
+        assert_eq!(pt.get("nav.pricing"), "Pricing", "missing key uses English");
         let day = NaiveDate::from_ymd_opt(2026, 10, 16).unwrap();
         assert_eq!(pt.date(day), "16 de outubro de 2026");
         assert_eq!(english().date(day), "October 16, 2026");
-        assert_eq!(missing.get("nav.home"), "Home", "no file means English");
+        assert_eq!(missing.get("nav.faq"), "FAQ", "no file means English");
     }
 
     #[test]
@@ -1198,7 +1197,7 @@ mod tests {
         assert!(html.contains("\"@type\":\"WebApplication\""));
         assert!(html.contains("<html lang=\"en\""));
         assert!(
-            html.contains("<form data-lang=\"en\"><button>Home</button></form>"),
+            html.contains("<form data-lang=\"en\"><button>FAQ</button></form>"),
             "the box is in the page, in the page's language"
         );
         assert!(!html.contains("{{"), "a {{spot}} was left empty");
