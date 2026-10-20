@@ -205,28 +205,6 @@ function translateSignalValue(value: string): string {
   return translatePatternValue(value);
 }
 
-// The seller's fraud-report line, written from the report count, so it
-// reads exactly the same as in the extension. In English the server's
-// own sentence is kept.
-function networkSummaryText(count: number, serverText: string | null): string {
-  if (count <= 0) {
-    return t(
-      "dash.network.clean",
-      serverText || "Clean record on Safely network. No fraud reports found.",
-    );
-  }
-  if (count === 1) {
-    return t(
-      "dash.network.one_report",
-      serverText || "1 fraud report found on Safely network. Proceed with caution.",
-    );
-  }
-  return t(
-    "dash.network.many_reports",
-    serverText || "{n} fraud reports found on Safely network. High risk seller.",
-  ).replace("{n}", String(count));
-}
-
 // Real, fixed field-name checklist, confirmed straight from
 // services/signals.rs's own hardcoded field arrays - not AI-generated,
 // genuinely translatable the same way signal labels are.
@@ -292,11 +270,11 @@ function translateAccountAge(value: string): string {
 }
 
 const REPORT_REASON_TRANSLATIONS: Record<string, [string, string]> = {
-  scam: ["dash.report.scam", "Scam"],
-  fake_item: ["dash.report.fake_item", "Fake item"],
-  no_delivery: ["dash.report.no_delivery", "No delivery"],
-  wrong_item: ["dash.report.wrong_item", "Wrong item"],
-  non_responsive: ["dash.report.non_responsive", "Non responsive"],
+  no_delivery: ["dash.report.no_delivery", "Took payment and never shipped"],
+  fake_item: ["dash.report.fake_item", "Goods were fake or not as described"],
+  wrong_item: ["dash.report.wrong_item", "Sent the wrong goods"],
+  non_responsive: ["dash.report.non_responsive", "Stopped replying after payment"],
+  scam: ["dash.report.scam", "Something else looked like a scam"],
 };
 
 function translateReportReason(reason: string): string {
@@ -314,57 +292,6 @@ const SOCIAL_PLATFORM_TRANSLATIONS: Record<string, string> = {
 function translateSocialPlatform(platform: string): string {
   const key = SOCIAL_PLATFORM_TRANSLATIONS[platform];
   return key ? t(key, platform) : platform;
-}
-
-function buildRiskGauge(score: number, level: string): string {
-  const color = riskHex(level);
-  const r = 44;
-  const circumference = 2 * Math.PI * r;
-  const offset = circumference * (1 - score / 100);
-
-  let ticks = "";
-  const tickCount = 48;
-  for (let i = 0; i < tickCount; i++) {
-    const angle = (i * 360) / tickCount;
-    const major = i % 6 === 0;
-    const len = major ? 6 : 3;
-    const outerR = 54;
-    const innerR = outerR - len;
-    ticks +=
-      '<line x1="60" y1="' +
-      (60 - outerR) +
-      '" x2="60" y2="' +
-      (60 - innerR) +
-      '" stroke="' +
-      (major ? "#3a3a42" : "#24242b") +
-      '" stroke-width="1.5" transform="rotate(' +
-      angle +
-      ' 60 60)" />';
-  }
-
-  return (
-    '<svg viewBox="0 0 120 120" class="w-full h-full">' +
-    ticks +
-    '<circle cx="60" cy="60" r="' +
-    r +
-    '" fill="none" stroke="#1b1b20" stroke-width="9" />' +
-    '<circle cx="60" cy="60" r="' +
-    r +
-    '" fill="none" stroke="' +
-    color +
-    '" stroke-width="9" stroke-linecap="round" stroke-dasharray="' +
-    circumference +
-    '" stroke-dashoffset="' +
-    offset +
-    '" transform="rotate(-90 60 60)" />' +
-    '<text x="60" y="57" text-anchor="middle" font-family="JetBrains Mono, monospace" font-weight="700" font-size="30" fill="' +
-    color +
-    '">' +
-    score +
-    "</text>" +
-    '<text x="60" y="75" text-anchor="middle" font-family="Inter, sans-serif" font-weight="600" font-size="9" fill="#8a8a93" letter-spacing="0.5">/ 100</text>' +
-    "</svg>"
-  );
 }
 
 async function openDetail(analysisId: string): Promise<void> {
@@ -406,319 +333,520 @@ async function openDetail(analysisId: string): Promise<void> {
   }
 }
 
-// ---- Signal mix ring ---------------------------------------------
-// Same ring as the extension's Intelligence tab (intelligence.ts) -
-// change both together. At rest it is one colour: the kind of result
-// most cards have. Hovering it splits it into one coloured part per
-// kind (good / info / warning / red flag); hovering a part shows its
-// share in the middle and highlights its cards in the list below.
-// Leaving the ring brings back the dominant colour.
+// ---- Result page -------------------------------------------------
+// Same layout and words as the extension's panel (extension/ts/tabs/
+// risk.ts and intelligence.ts): a dark score card, "What we found",
+// the supplier, and a Details tab with the checks - change both
+// together.
 
-type MixType = "good" | "info" | "caution" | "bad";
+const CHECK_ICON =
+  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
+const CROSS_ICON =
+  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" aria-hidden="true"><path d="M7 7l10 10M17 7L7 17"/></svg>';
+const CHEVRON =
+  '<svg class="d-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>';
 
-// Worst first: on a tie, the more serious kind is the dominant one.
-const MIX_ORDER: MixType[] = ["bad", "caution", "info", "good"];
+// Rows shown before "Show more".
+const FIRST_FINE = 2;
+const FIRST_PLATFORMS = 3;
+const MAX_FINDINGS = 3;
 
-const MIX_COLORS: Record<MixType, string> = {
-  good: "#35d0a6",
-  info: "#6fb3ef",
-  caution: "#f2b84c",
-  bad: "#ff5d5d",
+const NOT_ENOUGH_INFORMATION = "not_enough_information";
+
+const PLATFORM_NAMES: Record<string, string> = {
+  olx: "OLX",
+  b2brazil: "B2Brazil",
+  alibaba: "Alibaba",
+  tradewheel: "TradeWheel",
+  exporthub: "ExportHub",
+  b2bmap: "B2BMap",
+  thomasnet: "ThomasNet",
+  kompass: "Kompass",
 };
 
-function mixName(type: MixType): string {
-  const names: Record<MixType, [string, string]> = {
-    good: ["dash.mix.good", "Good"],
-    info: ["dash.mix.info", "Info"],
-    caution: ["dash.mix.warning", "Warning"],
-    bad: ["dash.mix.red_flag", "Red flag"],
-  };
-  return t(names[type][0], names[type][1]);
+function platformName(platform: string | null | undefined): string {
+  if (!platform) return "";
+  return PLATFORM_NAMES[platform.toLowerCase()] || platform;
 }
 
-function mixType(type: string): MixType {
-  return type === "good" || type === "info" || type === "caution" ? type : "bad";
+function capitalizeFirst(str: string): string {
+  return str ? str.charAt(0).toUpperCase() + str.slice(1) : str;
 }
 
-interface MixPart {
-  type: MixType;
-  count: number;
-  pct: number;
+function isFlagged(type: string): boolean {
+  return type !== "good" && type !== "info";
 }
 
-// Whole percentages that always add up to 100 (largest remainder).
-function mixParts(signals: DetailSignal[]): MixPart[] {
-  const total = signals.length;
-  if (total === 0) return [];
-  const counts: Record<MixType, number> = { good: 0, info: 0, caution: 0, bad: 0 };
-  signals.forEach((s) => (counts[mixType(s.type)] += 1));
-  const parts = (["good", "info", "caution", "bad"] as MixType[])
-    .filter((k) => counts[k] > 0)
-    .map((k) => {
-      const exact = (counts[k] * 100) / total;
-      return { type: k, count: counts[k], pct: Math.floor(exact), rest: exact % 1 };
-    });
-  let left = 100 - parts.reduce((sum, p) => sum + p.pct, 0);
-  parts
-    .slice()
-    .sort((a, b) => b.rest - a.rest)
-    .forEach((p) => {
-      if (left > 0) {
-        p.pct += 1;
-        left -= 1;
-      }
-    });
-  return parts.map(({ type, count, pct }) => ({ type, count, pct }));
+// Values that mean "we don't know": rows with these are not shown.
+function hasValue(value: string | null | undefined): value is string {
+  if (!value) return false;
+  return ["", "not found", "unknown", "none", "n/a"].indexOf(value.trim().toLowerCase()) === -1;
 }
 
-function dominantPart(parts: MixPart[]): MixPart {
-  return parts.reduce((best, p) =>
-    p.count > best.count ||
-    (p.count === best.count && MIX_ORDER.indexOf(p.type) < MIX_ORDER.indexOf(best.type))
-      ? p
-      : best,
+// One row. With extra text it opens on click; extra rows stay hidden
+// until "Show more".
+function detailRow(opts: {
+  mark: string;
+  title: string;
+  value?: string;
+  moreHTML?: string;
+  extra?: boolean;
+  open?: boolean;
+  quiet?: boolean;
+}): string {
+  const canOpen = !!opts.moreHTML;
+  return (
+    '<div class="d-row' +
+    (opts.extra ? " d-extra" : "") +
+    (canOpen && opts.open ? " is-open" : "") +
+    '">' +
+    (canOpen
+      ? '<button type="button" class="d-row-head" data-open aria-expanded="' +
+        (opts.open ? "true" : "false") +
+        '">'
+      : '<div class="d-row-head">') +
+    opts.mark +
+    '<span class="d-title' +
+    (opts.quiet ? " is-quiet" : "") +
+    '">' +
+    escapeHtml(opts.title) +
+    (opts.value ? "<small>" + escapeHtml(opts.value) + "</small>" : "") +
+    "</span>" +
+    (canOpen ? CHEVRON + "</button>" : "</div>") +
+    (canOpen
+      ? '<div class="d-more-wrap"><div><div class="d-text">' + opts.moreHTML + "</div></div></div>"
+      : "") +
+    "</div>"
   );
 }
 
-// Labels only B2B (supplier) scans have - the info points apply to
-// B2B scores only.
-const MIX_B2B_ONLY_LABELS = [
-  "Company profile completeness",
-  "Listing completeness",
-  "Registration consistency",
-];
-
-const MIX_STYLE =
-  "<style>" +
-  ".smx{display:flex;align-items:center;gap:20px;padding:16px;margin-bottom:12px;border-radius:14px;border:1px solid rgba(127,127,127,0.2);}" +
-  ".smx-ring{width:132px;height:132px;flex-shrink:0;cursor:pointer;-webkit-tap-highlight-color:transparent;}" +
-  ".smx-ring svg{width:100%;height:100%;overflow:visible;}" +
-  ".smx-seg{fill:none;stroke-width:12;stroke:var(--dom);stroke-dasharray:var(--whole);transition:stroke .45s ease,stroke-dasharray .45s ease,stroke-width .2s ease,opacity .2s ease;}" +
-  ".smx-open .smx-seg{stroke:var(--c);stroke-dasharray:var(--split);}" +
-  ".smx-open .smx-seg.smx-dim{opacity:.35;}" +
-  ".smx-open .smx-seg.smx-hot{stroke-width:16;}" +
-  ".smx-glow{fill:none;stroke:var(--dom);stroke-width:22;opacity:.10;transition:opacity .45s ease,stroke .45s ease;}" +
-  ".smx-open .smx-glow{opacity:0;}" +
-  ".smx-pct{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:24px;transition:fill .3s ease;}" +
-  ".smx-name{font-weight:700;font-size:9px;letter-spacing:.6px;text-transform:uppercase;transition:fill .3s ease;}" +
-  ".smx-count{font-size:8px;fill:#8a8a93;}" +
-  ".smx-side{flex:1;min-width:0;}" +
-  ".smx-title{font-size:10px;font-weight:800;color:#8a8a93;text-transform:uppercase;letter-spacing:.08em;}" +
-  ".smx-lead{font-size:15px;font-weight:800;margin:3px 0 8px;}" +
-  ".smx-row{display:flex;align-items:center;gap:8px;padding:5px 8px;margin:0 -8px;border-radius:8px;font-size:12px;cursor:default;transition:background .2s ease,opacity .2s ease;}" +
-  ".smx-row.smx-hot{background:rgba(127,127,127,0.12);}" +
-  ".smx-row.smx-dim{opacity:.45;}" +
-  ".smx-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;}" +
-  ".smx-row b{margin-left:auto;font-family:'JetBrains Mono',monospace;font-size:11px;}" +
-  ".smx-hint{font-size:11px;color:#8a8a93;margin-top:8px;line-height:1.4;}" +
-  "[data-smx-type]{transition:opacity .2s ease;}" +
-  "</style>";
-
-function buildSignalMix(signals: DetailSignal[]): string {
-  const parts = mixParts(signals);
-  if (parts.length === 0) return "";
-  const dom = dominantPart(parts);
-  const r = 46;
-  const c = 2 * Math.PI * r;
-  // Gap between parts when split; none when there is only one part.
-  const gap = parts.length > 1 ? 3 : 0;
-  let start = 0;
-  const segs = parts
-    .map((p) => {
-      const len = (p.count / signals.length) * c;
-      // At rest every part runs a hair past its end, so the ring reads
-      // as one solid colour with no seams.
-      const whole = Math.min(len + 1, c) + " " + c;
-      const split = Math.max(len - gap, 0.5) + " " + c;
-      const seg =
-        '<circle class="smx-seg" data-smx="' +
-        p.type +
-        '" cx="60" cy="60" r="' +
-        r +
-        '" stroke-dashoffset="' +
-        -start +
-        '" transform="rotate(-90 60 60)" style="--c:' +
-        MIX_COLORS[p.type] +
-        ";--whole:" +
-        whole +
-        ";--split:" +
-        split +
-        '"><title>' +
-        escapeHtml(mixName(p.type) + ": " + p.pct + "%") +
-        "</title></circle>";
-      start += len;
-      return seg;
-    })
-    .join("");
-
-  const rows = parts
-    .map(
-      (p) =>
-        '<div class="smx-row" data-smx="' +
-        p.type +
-        '"><span class="smx-dot" style="background:' +
-        MIX_COLORS[p.type] +
-        '"></span><span>' +
-        escapeHtml(mixName(p.type)) +
-        " · " +
-        p.count +
-        '</span><b style="color:' +
-        MIX_COLORS[p.type] +
-        '">' +
-        p.pct +
-        "%</b></div>",
-    )
-    .join("");
-
-  const isB2b = signals.some((s) => MIX_B2B_ONLY_LABELS.includes(s.label));
-  const hint =
-    isB2b && parts.some((p) => p.type === "info")
-      ? t(
-          "dash.mix.info_points",
-          "Info cards are not warnings, but each adds 5 points to the score (15 at most).",
-        )
-      : t("dash.mix.hint", "Hover the ring to see each part.");
-
+function moreButton(hidden: number): string {
+  if (hidden <= 0) return "";
+  const label = t("dash.detail.show_more", "Show {n} more").replace("{n}", String(hidden));
   return (
-    MIX_STYLE +
-    '<div class="smx" id="detail-smx" style="--dom:' +
-    MIX_COLORS[dom.type] +
-    '">' +
-    '<div class="smx-ring" id="detail-smx-ring" role="img" aria-label="' +
-    escapeHtml(t("dash.mix.title", "Signal mix")) +
-    '"><svg viewBox="0 0 120 120">' +
-    '<circle class="smx-glow" cx="60" cy="60" r="' +
+    '<button type="button" class="d-more" data-more="' +
+    escapeAttr(label) +
+    '"><span>' +
+    escapeHtml(label) +
+    "</span>" +
+    CHEVRON +
+    "</button>"
+  );
+}
+
+function mark(kind: "flag" | "ok" | "info" | "none"): string {
+  if (kind === "flag") return '<span class="d-mark d-mark-flag">!</span>';
+  if (kind === "info") return '<span class="d-mark d-mark-ok">i</span>';
+  if (kind === "none") return '<span class="d-mark d-mark-none">' + CROSS_ICON + "</span>";
+  return '<span class="d-mark d-mark-ok">' + CHECK_ICON + "</span>";
+}
+
+// ✓ for what the supplier gave, ✕ for what is missing.
+function checklistHTML(checklist: [string, boolean][]): string {
+  if (checklist.length === 0) return "";
+  return (
+    "<ul>" +
+    checklist
+      .map(
+        ([name, present]) =>
+          "<li" +
+          (present ? "" : ' class="is-missing"') +
+          ">" +
+          (present ? CHECK_ICON : CROSS_ICON) +
+          escapeHtml(translateChecklistField(name)) +
+          "</li>",
+      )
+      .join("") +
+    "</ul>"
+  );
+}
+
+// ---- Score card ----------------------------------------------------
+
+function buildScoreCard(data: DetailResponse): string {
+  const signals = data.signals || [];
+  const flags = signals.filter((s) => isFlagged(s.type)).length;
+  const level = data.risk_level;
+  const tooLittle = (data.risk_factors || []).some((f) => f && f.name === NOT_ENOUGH_INFORMATION);
+
+  const labels: Record<string, string> = {
+    low: t("dash.risk.low", "Low risk"),
+    caution: t("dash.risk.caution", "Caution"),
+    high: t("dash.risk.high", "High risk"),
+  };
+  const label = tooLittle
+    ? t("dash.label.not_enough_information", "Not enough information")
+    : labels[level] || labels.high;
+
+  // Never "no warning signs" while a check needs a look.
+  const say = tooLittle
+    ? t("dash.detail.say_too_little", "Check this supplier carefully yourself")
+    : level === "low"
+      ? flags === 0
+        ? t("dash.detail.say_low_clean", "No warning signs found.")
+        : t("dash.detail.say_low", "No serious warning signs.")
+      : level === "caution"
+        ? t("dash.detail.say_caution", "Check these points before you pay.")
+        : t("dash.detail.say_high", "Don't pay this supplier yet.");
+
+  const sub =
+    flags === 0
+      ? t("dash.detail.sub_all_fine", "All {total} checks look fine.").replace(
+          "{total}",
+          String(signals.length),
+        )
+      : flags === 1
+        ? t("dash.detail.sub_one", "1 of {total} checks needs a look.").replace(
+            "{total}",
+            String(signals.length),
+          )
+        : t("dash.detail.sub_many", "{n} of {total} checks need a look.")
+            .replace("{n}", String(flags))
+            .replace("{total}", String(signals.length));
+
+  const score = Math.max(0, Math.min(100, data.risk_score || 0));
+  const r = 42;
+  const c = 2 * Math.PI * r;
+  return (
+    '<div class="verdict-card"><div class="verdict-ring"><svg viewBox="0 0 100 100">' +
+    '<circle cx="50" cy="50" r="' +
     r +
-    '"/>' +
-    '<circle cx="60" cy="60" r="' +
+    '" fill="none" stroke="var(--card-track)" stroke-width="8"/>' +
+    '<circle class="verdict-ring-arc" cx="50" cy="50" r="' +
     r +
-    '" fill="none" stroke="rgba(127,127,127,0.18)" stroke-width="12"/>' +
-    segs +
-    '<text id="detail-smx-pct" class="smx-pct" x="60" y="62" text-anchor="middle"></text>' +
-    '<text id="detail-smx-name" class="smx-name" x="60" y="76" text-anchor="middle"></text>' +
-    '<text id="detail-smx-count" class="smx-count" x="60" y="87" text-anchor="middle"></text>' +
-    "</svg></div>" +
-    '<div class="smx-side">' +
-    '<div class="smx-title">' +
-    escapeHtml(t("dash.mix.title", "Signal mix")) +
-    "</div>" +
-    '<div class="smx-lead" style="color:' +
-    MIX_COLORS[dom.type] +
+    '" fill="none" stroke="#ffb938" stroke-width="8" stroke-linecap="round" stroke-dasharray="' +
+    ((c * score) / 100).toFixed(1) +
+    " " +
+    c.toFixed(1) +
+    '"/></svg><div class="verdict-number">' +
+    score +
+    '</div></div><div><div class="verdict-level' +
+    (level === "low" && !tooLittle ? " is-calm" : "") +
     '">' +
-    escapeHtml(t("dash.mix.mostly", "Mostly: {type}").replace("{type}", mixName(dom.type))) +
-    "</div>" +
-    rows +
-    '<div class="smx-hint">' +
-    escapeHtml(hint) +
+    escapeHtml(label) +
+    '</div><div class="verdict-say">' +
+    escapeHtml(say) +
+    '</div><div class="verdict-sub">' +
+    escapeHtml(sub) +
     "</div></div></div>"
   );
 }
 
-function attachSignalMixListeners(signals: DetailSignal[]): void {
-  const box = document.getElementById("detail-smx");
-  const ring = document.getElementById("detail-smx-ring");
-  const pctEl = document.getElementById("detail-smx-pct");
-  const nameEl = document.getElementById("detail-smx-name");
-  const countEl = document.getElementById("detail-smx-count");
-  if (!box || !ring || !pctEl || !nameEl || !countEl) return;
+// ---- What we found ---------------------------------------------------
 
-  const parts = mixParts(signals);
-  if (parts.length === 0) return;
-  const dom = dominantPart(parts);
-  const list = document.getElementById("detail-signals-list") || document;
+const SEVERITY_ORDER = ["hard", "compound", "soft"];
 
-  function show(p: MixPart): void {
-    pctEl!.textContent = p.pct + "%";
-    pctEl!.setAttribute("fill", MIX_COLORS[p.type]);
-    nameEl!.textContent = mixName(p.type);
-    nameEl!.setAttribute("fill", MIX_COLORS[p.type]);
-    countEl!.textContent = t("dash.mix.count", "{n} of {total} cards")
-      .replace("{n}", String(p.count))
-      .replace("{total}", String(signals.length));
+function severityLabel(severity: string): string {
+  // Not "Confirmed": the same check's row can read "Not confirmed", and
+  // the two looked like they contradicted each other.
+  const labels: Record<string, string> = {
+    hard: t("dash.detail.severity_serious", "Serious"),
+    compound: t("dash.detail.severity_pattern_match", "Pattern match"),
+    soft: t("dash.detail.severity_worth_noting", "Worth noting"),
+  };
+  return labels[severity] || labels.soft;
+}
+
+// The title is the checks the factor comes from ("Advance payment
+// request + Account age"), exactly like the extension.
+function riskFactorTitle(f: DetailRiskFactor): string {
+  if (f.contributing_signals && f.contributing_signals.length > 0) {
+    return f.contributing_signals.map((label) => translateSignalLabel(label)).join(" + ");
   }
+  return translateSignalLabel(capitalizeFirst(f.name.replace(/_/g, " ")));
+}
 
-  // Highlights one kind everywhere: its ring part, its legend row and
-  // its cards in the list. null clears the highlight.
-  function focus(type: MixType | null): void {
-    box!.querySelectorAll<Element>("[data-smx]").forEach((el) => {
-      const mine = el.getAttribute("data-smx") === type;
-      el.classList.toggle("smx-hot", type !== null && mine);
-      el.classList.toggle("smx-dim", type !== null && !mine);
-    });
-    list.querySelectorAll<HTMLElement>("[data-smx-type]").forEach((card) => {
-      card.style.opacity =
-        type === null || card.getAttribute("data-smx-type") === type ? "" : "0.35";
-    });
-    const part = parts.find((p) => p.type === type);
-    show(part || dom);
+// Always up to three rows, problems first: the risk factors (most
+// serious first) or, without them, the flagged checks; then checks
+// that passed fill the rest.
+function buildFindings(data: DetailResponse): string {
+  const signals = data.signals || [];
+  const factors = (data.risk_factors || [])
+    .filter((f) => f && f.name !== NOT_ENOUGH_INFORMATION)
+    .slice()
+    .sort((a, b) => SEVERITY_ORDER.indexOf(a.severity) - SEVERITY_ORDER.indexOf(b.severity));
+
+  interface Finding {
+    flag: boolean;
+    title: string;
+    value: string;
+    text: string;
+    checklist: [string, boolean][];
   }
+  const fromSignal = (s: DetailSignal): Finding => {
+    const { realSub, checklist } = parseChecklistSignal(s.sub);
+    return {
+      flag: isFlagged(s.type),
+      title: translateSignalLabel(s.label),
+      value: translateSignalValue(s.value),
+      text: capitalizeFirst(realSub.trim()),
+      checklist,
+    };
+  };
+  const problems: Finding[] =
+    factors.length > 0
+      ? factors.map((f) => {
+          const { realSub, checklist } = parseChecklistSignal(f.description);
+          return {
+            flag: true,
+            title: riskFactorTitle(f),
+            value: severityLabel(f.severity),
+            text: capitalizeFirst(realSub.trim()),
+            checklist,
+          };
+        })
+      : signals.filter((s) => isFlagged(s.type)).map(fromSignal);
+  const passed = signals.filter((s) => s.type === "good").map(fromSignal);
+  const list = problems.concat(passed).slice(0, MAX_FINDINGS);
+  if (list.length === 0) return "";
 
-  function open(): void {
-    box!.classList.add("smx-open");
+  return (
+    '<div class="d-heading">' +
+    escapeHtml(t("dash.detail.what_we_found", "What we found")) +
+    '</div><div class="d-rows">' +
+    list
+      .map((f, i) =>
+        detailRow({
+          mark: mark(f.flag ? "flag" : "ok"),
+          title: f.title,
+          value: f.value,
+          moreHTML: f.text || f.checklist.length ? escapeHtml(f.text) + checklistHTML(f.checklist) : "",
+          open: i === 0 && f.flag,
+        }),
+      )
+      .join("") +
+    "</div>"
+  );
+}
+
+// ---- Supplier --------------------------------------------------------
+
+function fact(label: string, value: string): string {
+  return (
+    '<div class="d-fact"><small>' +
+    escapeHtml(label) +
+    "</small><div>" +
+    escapeHtml(value) +
+    "</div></div>"
+  );
+}
+
+function buildFacts(data: DetailResponse): string {
+  const seller = data.seller;
+  const platform = platformName(data.platform);
+  const facts: string[] = [];
+  if (hasValue(seller.account_age)) {
+    facts.push(
+      fact(
+        platform
+          ? t("dash.detail.on_platform_for", "On {platform} for").replace("{platform}", platform)
+          : t("dash.detail.account_age", "Account age"),
+        translateAccountAge(seller.account_age),
+      ),
+    );
   }
-
-  function close(): void {
-    box!.classList.remove("smx-open");
-    focus(null);
+  facts.push(
+    fact(t("dash.detail.reports_on_safely", "Reports on Safely"), String(data.fraud_report_count || 0)),
+  );
+  if (hasValue(seller.phone)) facts.push(fact(t("dash.detail.phone", "Phone"), seller.phone));
+  if (seller.verification === "verified" || seller.verification === "reported") {
+    facts.push(
+      fact(
+        t("dash.detail.status", "Status"),
+        seller.verification === "verified"
+          ? t("dash.detail.verified", "Verified")
+          : t("dash.detail.reported", "Reported"),
+      ),
+    );
   }
+  if (hasValue(seller.handle)) facts.push(fact(t("dash.detail.contact", "Contact"), seller.handle));
+  if (hasValue(seller.last_active)) {
+    facts.push(fact(t("dash.detail.last_active", "Last active"), seller.last_active));
+  }
+  return facts.join("");
+}
 
-  show(dom);
+// Visits by month, January to December. This month is dark, the rest
+// grey. Hidden when there were no visits at all.
+function buildVisits(months: number[] | null): string {
+  const values = (months || []).slice(0, 12).map((v) => Math.max(0, Number(v) || 0));
+  const total = values.reduce((sum, v) => sum + v, 0);
+  if (total === 0) return "";
+  const max = Math.max.apply(null, values);
+  const thisMonth = new Date().getMonth();
+  return (
+    '<div class="d-bars">' +
+    values
+      .map(
+        (v, i) =>
+          "<i" +
+          (i === thisMonth ? ' class="is-now"' : "") +
+          ' style="height:' +
+          (v === 0 ? 2 : Math.max(4, Math.round((v / max) * 42))) +
+          'px"></i>',
+      )
+      .join("") +
+    '</div><div class="d-bars-label"><span>' +
+    escapeHtml(t("dash.detail.visits_by_month", "Safely visits by month")) +
+    "</span><span>" +
+    total +
+    "</span></div>"
+  );
+}
 
-  ring.addEventListener("mouseenter", open);
-  ring.addEventListener("mouseleave", close);
-  box.querySelectorAll<Element>("[data-smx]").forEach((el) => {
-    const type = el.getAttribute("data-smx") as MixType;
-    el.addEventListener("mouseenter", () => {
-      open();
-      focus(type);
-    });
-    el.addEventListener("mouseleave", () => {
-      if (el.classList.contains("smx-row")) close();
-      else focus(null);
-    });
-  });
-  // Touch screens have no hover: a tap opens the ring and picks the
-  // tapped part, a tap on the middle closes it again.
-  ring.addEventListener("click", (e) => {
-    const target = (e.target as Element).closest("[data-smx]");
-    if (target) {
-      open();
-      focus(target.getAttribute("data-smx") as MixType);
-    } else if (box.classList.contains("smx-open")) {
-      close();
-    } else {
-      open();
-    }
+// ---- Details tab -----------------------------------------------------
+
+function signalRow(s: DetailSignal, extra: boolean): string {
+  const type = isFlagged(s.type) ? "flag" : s.type === "info" ? "info" : "ok";
+  const { realSub, checklist } = parseChecklistSignal(s.sub);
+  const text = capitalizeFirst(realSub.trim());
+  return detailRow({
+    mark: mark(type),
+    title: translateSignalLabel(s.label),
+    value: translateSignalValue(s.value),
+    moreHTML: text || checklist.length ? escapeHtml(text) + checklistHTML(checklist) : "",
+    extra,
   });
 }
 
-// The ring sits right above the signal list. Its box is made here the
-// first time, so index.html needs no change.
-function renderSignalMix(signals: DetailSignal[]): void {
-  const list = document.getElementById("detail-signals-list");
-  if (!list || !list.parentElement) return;
-  let mix = document.getElementById("detail-signal-mix");
-  if (!mix) {
-    mix = document.createElement("div");
-    mix.id = "detail-signal-mix";
-    list.parentElement.insertBefore(mix, list);
+function buildDetailsTab(data: DetailResponse): string {
+  const signals = data.signals || [];
+  const flagged = signals.filter((s) => isFlagged(s.type));
+  const fine = signals.filter((s) => !isFlagged(s.type));
+
+  let html =
+    '<div class="d-counts"><div class="d-count' +
+    (flagged.length > 0 ? " stat-hot" : "") +
+    '"><b>' +
+    flagged.length +
+    "</b><small>" +
+    escapeHtml(
+      flagged.length === 1
+        ? t("dash.detail.needs_a_look_count", "needs a look")
+        : t("dash.detail.need_a_look_count", "need a look"),
+    ) +
+    '</small></div><div class="d-count"><b>' +
+    fine.length +
+    "</b><small>" +
+    escapeHtml(
+      fine.length === 1
+        ? t("dash.detail.looks_fine_count", "looks fine")
+        : t("dash.detail.look_fine_count", "look fine"),
+    ) +
+    "</small></div></div>";
+
+  if (flagged.length > 0) {
+    html +=
+      '<div class="d-heading">' +
+      escapeHtml(t("dash.detail.needs_a_look", "Needs a look")) +
+      '</div><div class="d-rows">' +
+      flagged.map((s) => signalRow(s, false)).join("") +
+      "</div>";
   }
-  mix.innerHTML = buildSignalMix(signals);
-  attachSignalMixListeners(signals);
+  if (fine.length > 0) {
+    html +=
+      '<div class="d-heading">' +
+      escapeHtml(t("dash.detail.looks_fine", "Looks fine")) +
+      '</div><div class="d-rows">' +
+      fine.map((s, i) => signalRow(s, i >= FIRST_FINE)).join("") +
+      moreButton(fine.length - FIRST_FINE) +
+      "</div>";
+  }
+  return html + buildPresence(data.social_candidates || []);
+}
+
+const PLATFORM_ORDER = [
+  "Facebook", "LinkedIn", "TikTok", "Instagram", "Reddit", "Trustpilot",
+  "Reviews", "Contact (Facebook)", "Contact (LinkedIn)", "Contact (Web)",
+];
+
+// One row per platform where something was found; it opens to show
+// every link. The first 3 show, the rest sit under "Show more".
+// Platforms with nothing found share one line at the end.
+function buildPresence(results: PlatformCheckResult[]): string {
+  if (!results || results.length === 0) return "";
+
+  const grouped: Record<string, SocialCandidateLink[]> = {};
+  results.forEach((entry) => {
+    if (!(entry.platform in grouped)) grouped[entry.platform] = [];
+    entry.candidates.forEach((c) => {
+      if (!grouped[entry.platform].some((existing) => existing.url === c.url)) {
+        grouped[entry.platform].push(c);
+      }
+    });
+  });
+  const order = PLATFORM_ORDER.filter((p) => p in grouped).concat(
+    Object.keys(grouped).filter((p) => PLATFORM_ORDER.indexOf(p) === -1),
+  );
+  const found = order.filter((p) => grouped[p].length > 0);
+  const missing = order.filter((p) => grouped[p].length === 0);
+
+  const rows = found
+    .map((platform, i) => {
+      const links = grouped[platform];
+      return detailRow({
+        mark: mark("ok"),
+        title: translateSocialPlatform(platform),
+        value:
+          links.length === 1
+            ? t("dash.detail.one_link", "1 link")
+            : t("dash.detail.links", "{n} links").replace("{n}", String(links.length)),
+        moreHTML: links
+          .map(
+            (link) =>
+              '<a href="' +
+              escapeAttr(link.url) +
+              '" target="_blank" rel="noopener noreferrer">' +
+              escapeHtml(link.title || link.url) +
+              "</a>",
+          )
+          .join(""),
+        extra: i >= FIRST_PLATFORMS,
+      });
+    })
+    .join("");
+  const none =
+    missing.length === 0
+      ? ""
+      : detailRow({
+          mark: mark("none"),
+          title: t("dash.detail.not_found_on", "Not found on {list}").replace(
+            "{list}",
+            missing.map((p) => translateSocialPlatform(p)).join(", "),
+          ),
+          quiet: true,
+        });
+
+  return (
+    '<div class="d-heading">' +
+    escapeHtml(t("dash.detail.online_presence", "Online presence")) +
+    '</div><div class="d-rows">' +
+    rows +
+    moreButton(found.length - FIRST_PLATFORMS) +
+    none +
+    "</div>"
+  );
+}
+
+// ---- Report tab ------------------------------------------------------
+
+function buildReports(reports: DetailReport[]): string {
+  return (
+    '<div class="d-rows">' +
+    reports
+      .map((r) =>
+        detailRow({
+          mark: mark("flag"),
+          title: translateReportReason(r.report_type),
+          value: t("dash.detail.submitted", "Submitted") + " " + formatDate(r.reported_at),
+        }),
+      )
+      .join("") +
+    "</div>"
+  );
 }
 
 function renderDetailBody(data: DetailResponse): void {
-  const tabBtn = document.querySelector(".detail-tab-btn");
-  if (tabBtn && tabBtn.parentElement) {
-    tabBtn.parentElement.classList.remove("max-w-md");
-    tabBtn.parentElement.classList.add("w-full");
-  }
-
-  const intelTab = document.getElementById("detail-tab-content-intel");
-  const reportTab = document.getElementById("detail-tab-content-report");
-  if (intelTab) intelTab.classList.remove("max-w-2xl");
-  if (reportTab) reportTab.classList.remove("max-w-2xl");
-
   (document.getElementById("detail-title") as HTMLElement).textContent =
     data.listing_title || t("dash.detail.untitled_listing", "Untitled listing");
 
@@ -732,259 +860,58 @@ function renderDetailBody(data: DetailResponse): void {
     }
   }
 
-  (document.getElementById("detail-gauge-wrap") as HTMLElement).innerHTML = buildRiskGauge(
-    data.risk_score,
-    data.risk_level,
+  (document.getElementById("detail-verdict") as HTMLElement).innerHTML = buildScoreCard(data);
+  (document.getElementById("detail-findings") as HTMLElement).innerHTML = buildFindings(data);
+
+  const seller = data.seller;
+  (document.getElementById("detail-seller-name") as HTMLElement).textContent = hasValue(seller.name)
+    ? seller.name
+    : platformName(data.platform) || t("dash.detail.supplier", "Supplier");
+  const locationEl = document.getElementById("detail-seller-location") as HTMLElement;
+  locationEl.textContent = hasValue(seller.location) ? seller.location : "";
+  locationEl.classList.toggle("hidden", !hasValue(seller.location));
+  (document.getElementById("detail-facts") as HTMLElement).innerHTML = buildFacts(data);
+  (document.getElementById("detail-visits") as HTMLElement).innerHTML = buildVisits(
+    seller.monthly_activity,
   );
 
-  const levelEl = document.getElementById("detail-risk-level") as HTMLElement;
-  const riskLevelLabels: Record<string, string> = {
-    low: t("dash.risk.low", "Low risk"),
-    caution: t("dash.risk.caution", "Caution risk"),
-    high: t("dash.risk.high", "High risk"),
-  };
-  levelEl.textContent =
-    riskLevelLabels[data.risk_level] ||
-    data.risk_level.charAt(0).toUpperCase() + data.risk_level.slice(1) + " risk";
-  levelEl.className = "text-[15px] font-extrabold mt-1 " + verdictTextClass(data.risk_level);
-
-  const reportsChip = document.getElementById("detail-chip-reports") as HTMLElement;
-  reportsChip.textContent = String(data.fraud_report_count || 0);
-  reportsChip.className =
-    "num text-lg font-bold " + (data.fraud_report_count > 0 ? "text-coral" : "text-muted");
-
-  const statusText =
-    data.seller.verification === "verified"
-      ? t("dash.detail.verified", "Verified")
-      : data.seller.verification === "reported"
-        ? t("dash.detail.reported", "Reported")
-        : t("dash.common.unknown", "Unknown");
-  (document.getElementById("detail-chip-status") as HTMLElement).textContent = statusText;
-  (document.getElementById("detail-chip-platform") as HTMLElement).textContent = data.platform;
-  const notFound = t("dash.common.not_found", "Not found");
-  (document.getElementById("detail-seller-name") as HTMLElement).textContent =
-    data.seller.name || notFound;
-  (document.getElementById("detail-seller-username") as HTMLElement).textContent =
-    data.seller.handle || notFound;
-  (document.getElementById("detail-seller-phone") as HTMLElement).textContent =
-    data.seller.phone || notFound;
-  (document.getElementById("detail-seller-age") as HTMLElement).textContent =
-    data.seller.account_age ? translateAccountAge(data.seller.account_age) : notFound;
-  (document.getElementById("detail-seller-location") as HTMLElement).textContent =
-    data.seller.location || notFound;
-  (document.getElementById("detail-seller-lastactive") as HTMLElement).textContent =
-    data.seller.last_active || notFound;
-
-  const chart = document.getElementById("detail-activity-chart") as HTMLElement;
-  const activity = data.seller.monthly_activity || new Array(12).fill(0);
-  const max = Math.max.apply(null, activity) || 1;
-  chart.innerHTML = activity
-    .map((v: number) => {
-      const heightPx = Math.max(3, Math.round((v / max) * 44));
-      return (
-        '<div class="flex-1 flex flex-col items-center justify-end relative">' +
-        '<span class="text-[9px] text-ink font-bold num absolute top-0">' +
-        v +
-        "</span>" +
-        '<div class="w-full bg-brand/70 rounded-t" style="height:' +
-        heightPx +
-        'px"></div></div>'
-      );
-    })
-    .join("");
-
-  (document.getElementById("detail-network-summary") as HTMLElement).textContent =
-    networkSummaryText(data.fraud_report_count || 0, data.seller.network_summary);
-
-  const signals = data.signals || [];
-  const badCount = signals.filter((s) => s.type !== "good" && s.type !== "info").length;
-  const summaryEl = document.getElementById("detail-intel-summary") as HTMLElement;
-
-  if (badCount === 0) {
-    summaryEl.className = "flex gap-2.5 p-3.5 rounded-xl text-[12px] mb-5 bg-mint/10 text-mint";
-    summaryEl.innerHTML =
-      "<span>&#9679;</span><span>" +
-      t("dash.detail.all_signals_checked", "All {n} signals checked. No red flags detected.").replace(
-        "{n}",
-        String(signals.length),
-      ) +
-      "</span>";
-  } else {
-    summaryEl.className = "flex gap-2.5 p-3.5 rounded-xl text-[12px] mb-5 bg-amber/10 text-amber";
-    summaryEl.innerHTML =
-      "<span>&#9679;</span><span>" +
-      t("dash.detail.signals_need_attention", "{bad} of {total} signals need your attention.")
-        .replace("{bad}", String(badCount))
-        .replace("{total}", String(signals.length)) +
-      "</span>";
-  }
-
-  const priceSignal = signals.find((s) => s.label === "Price analysis");
-  const priceSection = document.getElementById("detail-price-vs-market");
-  if (priceSection) {
-    if (priceSignal) {
-      const verdict = priceSignal.value || "unknown";
-      const verdictClass = verdict === "normal" ? "text-mint" : "text-amber";
-      priceSection.classList.remove("hidden");
-      priceSection.innerHTML =
-        '<div class="text-[10px] font-extrabold uppercase tracking-wider text-muted mb-1.5">' +
-        t("dash.detail.price_vs_market", "Price vs market") +
-        "</div>" +
-        '<div class="bg-surface border border-line rounded-xl p-4">' +
-        '<div class="text-[14px] font-bold ' +
-        verdictClass +
-        '">' +
-        escapeHtml(translateSignalValue(verdict.charAt(0).toUpperCase() + verdict.slice(1))) +
-        "</div>" +
-        '<div class="text-[12px] text-muted mt-1.5">' +
-        escapeHtml(parseChecklistSignal(priceSignal.sub).realSub) +
-        "</div></div>";
-    } else {
-      priceSection.classList.add("hidden");
-    }
-  }
-
-  const signalsList = document.getElementById("detail-signals-list") as HTMLElement;
-  signalsList.innerHTML = signals
-    .map((s, idx) => {
-      const { realSub, checklist } = parseChecklistSignal(s.sub);
-      const dropdownId = "detail-checklist-" + idx;
-      return (
-        '<div class="bg-surface border border-line rounded-xl p-4 mb-2.5 last:mb-0" data-smx-type="' +
-        mixType(s.type) +
-        '">' +
-        '<div class="flex justify-between items-baseline gap-3">' +
-        '<div class="font-semibold text-[13px]">' +
-        escapeHtml(translateSignalLabel(s.label)) +
-        "</div>" +
-        '<div class="text-[13px] font-bold whitespace-nowrap" style="color:' +
-        MIX_COLORS[mixType(s.type)] +
-        '">' +
-        escapeHtml(translateSignalValue(s.value)) +
-        "</div></div>" +
-        '<div class="text-[12px] text-muted mt-1.5">' +
-        escapeHtml(realSub) +
-        "</div>" +
-        buildChecklistDropdown(dropdownId, checklist) +
-        "</div>"
-      );
-    })
-    .join("");
-
-  signals.forEach((_, idx) => attachChecklistListener("detail-checklist-" + idx));
-  renderSignalMix(signals);
-
-  const socialPresenceEl = document.getElementById("detail-social-presence");
-  if (socialPresenceEl) {
-    socialPresenceEl.innerHTML = buildSocialPresenceSection(data.social_candidates || []);
-  }
-
-  const riskFactorsSection = document.getElementById("detail-risk-factors");
-  const riskFactors = data.risk_factors || [];
-  if (riskFactorsSection) {
-    if (riskFactors.length > 0) {
-      const severityColors: Record<string, string> = {
-        hard: "text-coral",
-        compound: "text-amber",
-        soft: "text-muted",
-      };
-      // Not "Confirmed": the same check's row above can read "Not
-      // confirmed", and the two looked like they contradicted each
-      // other. Same words as the extension.
-      const severityLabels: Record<string, string> = {
-        hard: t("dash.detail.severity_serious", "Serious"),
-        compound: t("dash.detail.severity_pattern_match", "Pattern match"),
-        soft: t("dash.detail.severity_worth_noting", "Worth noting"),
-      };
-      const capitalizeFirst = (str: string): string =>
-        str ? str.charAt(0).toUpperCase() + str.slice(1) : str;
-
-      // The title is the checks the factor comes from ("Advance
-      // payment request + Account age"), exactly like the extension.
-      function riskFactorTitle(f: DetailRiskFactor): string {
-        if (f.contributing_signals && f.contributing_signals.length > 0) {
-          return f.contributing_signals.map((label) => translateSignalLabel(label)).join(" + ");
-        }
-        return translateSignalLabel(capitalizeFirst(f.name.replace(/_/g, " ")));
-      }
-
-      riskFactorsSection.classList.remove("hidden");
-      riskFactorsSection.innerHTML =
-        '<div class="text-[10px] font-extrabold uppercase tracking-wider text-muted mb-2">' +
-        t("dash.detail.risk_factors", "Risk factors") +
-        "</div>" +
-        riskFactors
-          .map((f, idx) => {
-            const colorClass = severityColors[f.severity] || "text-muted";
-            const severityLabel = severityLabels[f.severity] || f.severity;
-
-            // Same ###CHECKLIST### parsing the signals list above
-            // already uses - a risk factor's description is very
-            // often the exact same text as the signal.sub it was
-            // derived from (e.g. "Listing completeness").
-            const { realSub, checklist } = parseChecklistSignal(f.description);
-            const dropdownId = "detail-rf-checklist-" + idx;
-
-            return (
-              '<div class="bg-surface border border-line rounded-xl p-4 mb-2.5 last:mb-0">' +
-              '<div class="flex justify-between items-baseline gap-3">' +
-              '<div class="font-semibold text-[13px]">' +
-              escapeHtml(riskFactorTitle(f)) +
-              "</div>" +
-              '<div class="text-[13px] font-bold whitespace-nowrap ' +
-              colorClass +
-              '">' +
-              escapeHtml(severityLabel) +
-              "</div></div>" +
-              '<div class="text-[12px] text-muted mt-1.5">' +
-              escapeHtml(capitalizeFirst(realSub)) +
-              "</div>" +
-              buildChecklistDropdown(dropdownId, checklist) +
-              "</div>"
-            );
-          })
-          .join("");
-
-      riskFactors.forEach((_, idx) => attachChecklistListener("detail-rf-checklist-" + idx));
-    } else {
-      riskFactorsSection.classList.add("hidden");
-      riskFactorsSection.innerHTML = "";
-    }
-  }
+  (document.getElementById("detail-tab-content-intel") as HTMLElement).innerHTML =
+    buildDetailsTab(data);
 
   const filedBlock = document.getElementById("detail-report-filed") as HTMLElement;
   const emptyBlock = document.getElementById("detail-report-empty") as HTMLElement;
   const reports = data.reports || [];
-
-  if (reports.length > 0) {
-    filedBlock.classList.remove("hidden");
-    emptyBlock.classList.add("hidden");
-    filedBlock.innerHTML = reports
-      .map(
-        (r) =>
-          '<div class="bg-surface border border-line rounded-xl p-4 mb-2.5 last:mb-0">' +
-          '<div class="text-[10px] font-extrabold uppercase tracking-wider text-muted mb-1.5">' +
-          t("dash.detail.report_reason", "Report reason") +
-          "</div>" +
-          '<div class="text-[14px] font-semibold">' +
-          escapeHtml(translateReportReason(r.report_type)) +
-          "</div>" +
-          '<div class="text-[12px] text-muted mt-2">' +
-          t("dash.detail.submitted", "Submitted") +
-          " " +
-          formatDate(r.reported_at) +
-          "</div>" +
-          "</div>",
-      )
-      .join("");
-  } else {
-    filedBlock.classList.add("hidden");
-    filedBlock.innerHTML = "";
-    emptyBlock.classList.remove("hidden");
-  }
+  filedBlock.innerHTML = reports.length > 0 ? buildReports(reports) : "";
+  filedBlock.classList.toggle("hidden", reports.length === 0);
+  emptyBlock.classList.toggle("hidden", reports.length > 0);
 
   switchDetailTab("risk");
 }
+
+// Rows that open and "Show more" / "Show less", for every list on the
+// result page.
+document.getElementById("detail-view")?.addEventListener("click", (e: MouseEvent) => {
+  const target = e.target as HTMLElement;
+  const opener = target.closest("[data-open]");
+  if (opener) {
+    const row = opener.closest(".d-row");
+    if (row) {
+      const open = row.classList.toggle("is-open");
+      opener.setAttribute("aria-expanded", open ? "true" : "false");
+    }
+    return;
+  }
+  const more = target.closest("[data-more]") as HTMLElement | null;
+  if (more) {
+    const list = more.closest(".d-rows");
+    if (!list) return;
+    const all = list.classList.toggle("show-all");
+    const label = more.querySelector("span");
+    if (label) {
+      label.textContent = all ? t("dash.detail.show_less", "Show less") : more.dataset.more || "";
+    }
+  }
+});
 
 let currentAnalysisId: string | null = null;
 
@@ -1024,70 +951,6 @@ async function downloadEvidencePdf(): Promise<void> {
 
 document.getElementById("detail-download-pdf")?.addEventListener("click", downloadEvidencePdf);
 
-const PLATFORM_ORDER = [
-  "Facebook", "LinkedIn", "TikTok", "Instagram", "Reddit", "Trustpilot",
-  "Reviews", "Contact (Facebook)", "Contact (LinkedIn)", "Contact (Web)",
-];
-
-function buildSocialPresenceSection(results: PlatformCheckResult[]): string {
-  if (!results || results.length === 0) return "";
-
-  const grouped: Record<string, SocialCandidateLink[]> = {};
-  results.forEach((entry) => {
-    if (!(entry.platform in grouped)) grouped[entry.platform] = [];
-    entry.candidates.forEach((c) => {
-      if (!grouped[entry.platform].some((existing) => existing.url === c.url)) {
-        grouped[entry.platform].push(c);
-      }
-    });
-  });
-
-  const order = PLATFORM_ORDER.filter((p) => p in grouped).concat(
-    Object.keys(grouped).filter((p) => !PLATFORM_ORDER.includes(p)),
-  );
-
-  const groupsHTML = order
-    .map((platform, index) => {
-      const links = grouped[platform];
-      const isLast = index === order.length - 1;
-      const body =
-        links.length === 0
-          ? '<div class="text-[12px] text-muted py-1">' + t("dash.common.not_found", "Not found") + "</div>"
-          : links
-              .map(
-                (link) =>
-                  '<div class="flex items-start gap-2 py-1.5">' +
-                  '<span class="text-muted flex-shrink-0 mt-0.5">&#8226;</span>' +
-                  '<a href="' +
-                  escapeHtml(link.url) +
-                  '" target="_blank" rel="noopener noreferrer" class="text-[12px] text-ink hover:text-brand flex-1 min-w-0 no-underline">' +
-                  escapeHtml(link.title) +
-                  "</a></div>",
-              )
-              .join("");
-      return (
-        '<div class="py-2.5' +
-        (isLast ? "" : " border-b border-line") +
-        '">' +
-        '<div class="text-[10px] font-extrabold uppercase tracking-wider text-muted mb-1.5">' +
-        escapeHtml(translateSocialPlatform(platform)) +
-        "</div>" +
-        body +
-        "</div>"
-      );
-    })
-    .join("");
-
-  return (
-    '<div class="text-[10px] font-extrabold uppercase tracking-wider text-muted mb-2 mt-5">' +
-    t("dash.detail.social_presence", "Social presence check") +
-    "</div>" +
-    '<div class="bg-surface border border-line rounded-xl p-4 mb-5">' +
-    groupsHTML +
-    "</div>"
-  );
-}
-
 function escapeHtml(str: string): string {
   const div = document.createElement("div");
   div.textContent = str;
@@ -1111,57 +974,6 @@ function parseChecklistSignal(sub: string | null): { realSub: string; checklist:
   return { realSub, checklist };
 }
 
-function buildChecklistDropdown(id: string, checklist: [string, boolean][]): string {
-  if (checklist.length === 0) return "";
-  const rows = checklist
-    .map(([name, present]) => {
-      const icon = present
-        ? '<span class="text-mint flex-shrink-0">&#10003;</span>'
-        : '<span class="text-muted flex-shrink-0">&#10005;</span>';
-      return (
-        '<div class="flex items-center gap-2 py-1">' +
-        icon +
-        '<span class="text-[12px] text-ink">' +
-        escapeHtml(translateChecklistField(name)) +
-        "</span></div>"
-      );
-    })
-    .join("");
-  return (
-    '<button id="' +
-    id +
-    '-toggle" type="button" class="w-full text-left bg-transparent border-0 cursor-pointer p-0 pt-2 text-[11px] font-semibold text-muted flex justify-between items-center">' +
-    '<span id="' +
-    id +
-    '-toggle-text">' + t("dash.detail.click_see_checks", "Click to see checks") + '</span><span id="' +
-    id +
-    '-arrow">&#9662;</span>' +
-    "</button>" +
-    '<div id="' +
-    id +
-    '-dropdown" class="hidden mt-1.5">' +
-    rows +
-    "</div>"
-  );
-}
-
-function attachChecklistListener(id: string): void {
-  const toggle = document.getElementById(id + "-toggle");
-  const dropdown = document.getElementById(id + "-dropdown");
-  const arrow = document.getElementById(id + "-arrow");
-  const toggleText = document.getElementById(id + "-toggle-text");
-  if (toggle && dropdown && arrow && toggleText) {
-    toggle.addEventListener("click", () => {
-      const isOpen = !dropdown.classList.contains("hidden");
-      dropdown.classList.toggle("hidden", isOpen);
-      arrow.innerHTML = isOpen ? "&#9662;" : "&#9652;";
-      toggleText.textContent = isOpen
-        ? t("dash.detail.click_see_checks", "Click to see checks")
-        : t("dash.detail.click_hide_checks", "Click to hide checks");
-    });
-  }
-}
-
 function switchDetailTab(tab: string): void {
   ["risk", "intel", "report"].forEach((name) => {
     const content = document.getElementById("detail-tab-content-" + name);
@@ -1169,8 +981,7 @@ function switchDetailTab(tab: string): void {
   });
   document.querySelectorAll<HTMLElement>(".detail-tab-btn").forEach((btn) => {
     const active = btn.dataset.detailTab === tab;
-    btn.classList.toggle("bg-surface3", active);
-    btn.classList.toggle("text-ink", active);
+    btn.classList.toggle("is-active", active);
   });
 }
 

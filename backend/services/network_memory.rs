@@ -71,11 +71,15 @@ pub async fn build_network_memory_signal(pool: &Pool<Postgres>, seller_id: Uuid)
 /// The "Safely history" line from the number of scam reports Safely
 /// users filed against this seller.
 /// - 0 reports: neutral ("info").
-/// - 1 or more: shown in red ("bad") so the buyer sees it, and listed
-///   under risk factors as "Worth noting". It does not add to the score
-///   itself: each report already adds +5 to the score elsewhere (up to
-///   +20), so counting it here too would count the same reports twice.
-fn fraud_report_history(reports: i64) -> Signal {
+/// - 1 or more: shown in red ("bad") so the buyer sees it. 1-2 reports
+///   are "Worth noting", 3 or more a "Serious" risk factor. It does not
+///   add to the score itself: the report count already sets the score
+///   elsewhere (report_points and report_floor in fraud_reports.rs), so
+///   counting it here too would count the same reports twice.
+///
+/// Public so a new report can refresh this line in the reporter's saved
+/// scans (handlers/fraud_reports.rs).
+pub fn fraud_report_history(reports: i64) -> Signal {
     let (value, sub, signal_type) = match reports {
         n if n <= 0 => (
             "No scam reports".to_string(),

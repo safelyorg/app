@@ -5,8 +5,8 @@
 # own bookkeeping consistent, not because anything depends on it.
 #
 # Usage:
-# 1. sed -i 's/\r$//' bump-version.sh
-# 2. chmod +x bump-version.sh
+# 1. sed -i 's/\r$//' scripts/bump-version.sh
+# 2. chmod +x scripts/bump-version.sh
 # 3. ./scripts/bump-version.sh 1.0.2
 if [ -z "$1" ]; then
   echo "Usage: ./scripts/bump-version.sh <new-version>"

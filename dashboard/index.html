@@ -7,13 +7,23 @@
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
         <link
-            href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@500;600;700&display=swap"
+            href="https://fonts.googleapis.com/css2?family=Gasoek+One&family=Inter:wght@400;500;600;700;800&display=swap"
             rel="stylesheet"
         />
         <link rel="icon" type="image/x-icon" href="images/favicon.ico" />
         <link rel="icon" type="image/png" sizes="32x32" href="images/favicon-32x32.png" />
         <link rel="icon" type="image/png" sizes="16x16" href="images/favicon-16x16.png" />
         <link rel="apple-touch-icon" sizes="180x180" href="images/apple-touch-icon.png" />
+        <!-- Light is the default; Settings > Appearance can switch to Dark.
+             Set before the page draws so it never flashes the wrong theme. -->
+        <script>
+            try {
+                document.documentElement.dataset.theme =
+                    localStorage.getItem("safely_theme") === "dark" ? "dark" : "light";
+            } catch (e) {
+                document.documentElement.dataset.theme = "light";
+            }
+        </script>
         <link rel="stylesheet" href="css/dashboard.css" />
         <script src="https://cdn.tailwindcss.com"></script>
         <script src="https://cdn.jsdelivr.net/npm/htmx.org@2.0.10/dist/htmx.js" integrity="sha384-Q+Dky3iHVJOr6wUjQ4ulh6uQ76an/t+ak1+PjMVaxRjbZamFLAG+u9InkfjbsEQf" crossorigin="anonymous"></script>
@@ -21,22 +31,25 @@
             tailwind.config = {
                 theme: {
                     extend: {
+                        // Every colour comes from a CSS variable in
+                        // css/dashboard.css, so Light and Dark switch
+                        // the whole page at once.
                         colors: {
-                            bg: "#0a0a0c",
-                            surface: "#131316",
-                            surface2: "#1b1b20",
-                            surface3: "#24242b",
-                            line: "rgba(255,255,255,0.07)",
-                            ink: "#f2f1ed",
-                            muted: "#8a8a93",
-                            brand: "#6fb3ef",
-                            mint: "#35d0a6",
-                            amber: "#f2b84c",
-                            coral: "#ff5d5d",
+                            bg: "rgb(var(--c-bg) / <alpha-value>)",
+                            surface: "rgb(var(--c-surface) / <alpha-value>)",
+                            surface2: "rgb(var(--c-surface2) / <alpha-value>)",
+                            surface3: "rgb(var(--c-surface3) / <alpha-value>)",
+                            line: "rgb(var(--c-line) / <alpha-value>)",
+                            ink: "rgb(var(--c-ink) / <alpha-value>)",
+                            muted: "rgb(var(--c-muted) / <alpha-value>)",
+                            brand: "rgb(var(--c-brand) / <alpha-value>)",
+                            mint: "rgb(var(--c-mint) / <alpha-value>)",
+                            amber: "rgb(var(--c-amber) / <alpha-value>)",
+                            coral: "rgb(var(--c-coral) / <alpha-value>)",
                         },
                         fontFamily: {
                             sans: ["Inter", "system-ui", "sans-serif"],
-                            mono: ["JetBrains Mono", "monospace"],
+                            display: ["Gasoek One", "Inter", "sans-serif"],
                         },
                     },
                 },
@@ -118,6 +131,8 @@
                         <path d="M4 6h16M4 12h16M4 18h16" />
                     </svg>
                 </label>
+                <img src="images/logo-dark.png" alt="" class="logo-for-light w-6 h-6" />
+                <img src="images/logo-light.png" alt="" class="logo-for-dark w-6 h-6" />
                 <span class="text-[14px] font-extrabold tracking-tight"
                     >Safely</span
                 >
@@ -136,9 +151,8 @@
                 <div
                     class="flex items-center gap-2.5 px-2 pb-5 mb-4 border-b border-line"
                 >
-                    <div class="w-8 h-8 rounded-lg bg-surface2 border border-line flex items-center justify-center flex-shrink-0">
-                        <img src="images/white_logo.png" alt="" class="w-5 h-5 object-contain" />
-                    </div>
+                    <img src="images/logo-dark.png" alt="" class="logo-for-light w-7 h-7 flex-shrink-0" />
+                    <img src="images/logo-light.png" alt="" class="logo-for-dark w-7 h-7 flex-shrink-0" />
                     <span class="text-[15px] font-extrabold tracking-tight"
                         >Safely</span
                     >
@@ -234,22 +248,25 @@
                         </span>
                     </summary>
                     <div
-                        class="absolute bottom-full mb-2 left-0 w-48 bg-surface2 border border-line rounded-xl p-1.5 shadow-2xl"
+                        class="absolute bottom-full mb-2 left-0 right-0 bg-surface border border-line rounded-xl p-1.5 shadow-xl"
                     >
+                        <!-- The whole row is clickable and lights up on hover. -->
                         <label
                             for="view-settings"
                             id="account-settings-link"
-                            class="flex items-center gap-3 px-3 py-2 rounded-lg text-[13px] font-semibold hover:bg-white/5 cursor-pointer"
-                            data-i18n="dash.nav.settings"
-                            >Settings</label
+                            class="menu-row flex w-full items-center gap-2.5 px-3 py-2.5 rounded-lg text-[13px] font-semibold text-ink hover:bg-surface2 cursor-pointer transition"
                         >
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-muted flex-shrink-0"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.7 1.7 0 00.3 1.8l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.7 1.7 0 00-1.8-.3 1.7 1.7 0 00-1 1.5V21a2 2 0 11-4 0v-.1a1.7 1.7 0 00-1.1-1.5 1.7 1.7 0 00-1.8.3l-.1.1a2 2 0 11-2.8-2.8l.1-.1a1.7 1.7 0 00.3-1.8 1.7 1.7 0 00-1.5-1H3a2 2 0 110-4h.1a1.7 1.7 0 001.5-1.1 1.7 1.7 0 00-.3-1.8l-.1-.1a2 2 0 112.8-2.8l.1.1a1.7 1.7 0 001.8.3H9a1.7 1.7 0 001-1.5V3a2 2 0 114 0v.1a1.7 1.7 0 001 1.5 1.7 1.7 0 001.8-.3l.1-.1a2 2 0 112.8 2.8l-.1.1a1.7 1.7 0 00-.3 1.8V9a1.7 1.7 0 001.5 1H21a2 2 0 110 4h-.1a1.7 1.7 0 00-1.5 1z" /></svg>
+                            <span class="flex-1" data-i18n="dash.nav.settings">Settings</span>
+                        </label>
                         <a
                             href="#"
                             id="btnLogout"
-                            class="flex items-center gap-3 px-3 py-2 rounded-lg text-[13px] font-semibold text-coral hover:bg-white/5 border-t border-line mt-1 pt-2.5"
-                            data-i18n="dash.nav.logout"
-                            >Log out</a
+                            class="menu-row flex w-full items-center gap-2.5 px-3 py-2.5 mt-1 rounded-lg text-[13px] font-semibold text-coral hover:bg-coral/10 cursor-pointer transition"
                         >
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="flex-shrink-0"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" /></svg>
+                            <span class="flex-1" data-i18n="dash.nav.logout">Log out</span>
+                        </a>
                     </div>
                 </details>
             </aside>
@@ -260,36 +277,20 @@
                 class="flex-1 overflow-y-auto p-5 md:p-9 pt-20 md:pt-9"
             >
                 <div class="w-full max-w-5xl mx-auto">
-                    <div
-                        class="flex items-center gap-3 mb-7 flex-wrap justify-center md:justify-start"
-                    >
-                        <div
-                            class="flex items-center gap-2.5 px-3.5 py-2 rounded-xl bg-surface border border-line"
-                        >
-                            <span
-                                id="stat-checked-num"
-                                class="num text-lg font-bold text-ink"
-                                >0</span
-                            >
-                            <span
-                                class="text-[10px] font-bold uppercase tracking-wider text-muted"
-                                data-i18n="dash.stat.checked"
-                                >Checked</span
-                            >
+                    <h1 class="text-[22px] font-bold tracking-tight" data-i18n="dash.history.page_title">History</h1>
+                    <p class="text-[13px] text-muted mt-1" data-i18n="dash.history.page_desc">Every listing you checked with the Safely extension.</p>
+                    <div class="grid grid-cols-3 gap-3 mt-5 mb-7">
+                        <div class="bg-surface border border-line rounded-2xl px-4 py-3.5">
+                            <span id="stat-checked-num" class="block font-display text-[26px] leading-tight">0</span>
+                            <span class="text-[12px] text-muted" data-i18n="dash.stat.checked">listings checked</span>
                         </div>
-                        <div
-                            class="flex items-center gap-2.5 px-3.5 py-2 rounded-xl bg-surface border border-line"
-                        >
-                            <span
-                                id="stat-reported-num"
-                                class="num text-lg font-bold text-coral"
-                                >0</span
-                            >
-                            <span
-                                class="text-[10px] font-bold uppercase tracking-wider text-muted"
-                                data-i18n="dash.stat.reported"
-                                >Reported</span
-                            >
+                        <div class="stat-hot bg-surface border border-line rounded-2xl px-4 py-3.5">
+                            <span id="stat-high-num" class="block font-display text-[26px] leading-tight">0</span>
+                            <span class="text-[12px] text-muted" data-i18n="dash.stat.high">high risk</span>
+                        </div>
+                        <div class="bg-surface border border-line rounded-2xl px-4 py-3.5">
+                            <span id="stat-reported-num" class="block font-display text-[26px] leading-tight">0</span>
+                            <span class="text-[12px] text-muted" data-i18n="dash.stat.reported">reported by you</span>
                         </div>
                     </div>
 
@@ -297,7 +298,7 @@
                         class="flex justify-between items-center mb-4 gap-3 flex-wrap"
                     >
                         <h2
-                            class="text-[15px] font-extrabold tracking-tight w-full sm:w-auto"
+                            class="text-[15px] font-bold tracking-tight w-full sm:w-auto"
                             data-i18n="dash.history.title"
                         >
                             Analysis History
@@ -305,13 +306,13 @@
                         <div class="flex gap-2 flex-nowrap items-center">
                             <div class="relative">
                                 <svg
-                                    class="absolute left-3 top-1/2 -translate-y-1/2"
                                     width="13"
                                     height="13"
                                     viewBox="0 0 24 24"
                                     fill="none"
-                                    stroke="#8a8a93"
+                                    stroke="currentColor"
                                     stroke-width="2"
+                                    class="absolute left-3 top-1/2 -translate-y-1/2 text-muted"
                                 >
                                     <circle cx="11" cy="11" r="7" />
                                     <path d="M21 21l-4-4" />
@@ -366,12 +367,12 @@
                                     style="width: 110px"
                                 />
                                 <col />
-                                <col style="width: 90px" />
-                                <col style="width: 110px" />
+                                <col style="width: 150px" />
+                                <col style="width: 100px" />
                             </colgroup>
                             <thead>
                                 <tr
-                                    class="text-left text-[10px] font-extrabold uppercase tracking-wider text-muted bg-surface2/50 border-b border-line"
+                                    class="text-left text-[12px] font-semibold text-muted bg-surface2 border-b border-line"
                                 >
                                     <th class="hidden sm:table-cell px-4 py-3" data-i18n="dash.table.date">
                                         Date
@@ -399,7 +400,7 @@
                 class="flex-1 overflow-y-auto p-5 md:p-9 pt-20 md:pt-9"
             >
                 <div class="w-full max-w-5xl mx-auto">
-                    <h2 class="text-[15px] font-extrabold tracking-tight mb-4" data-i18n="dash.reports.title">
+                    <h2 class="text-[22px] font-bold tracking-tight mb-5" data-i18n="dash.reports.title">
                         Fraud Reports
                     </h2>
                     <div
@@ -408,7 +409,7 @@
                         <table class="w-full">
                             <thead>
                                 <tr
-                                    class="text-left text-[10px] font-extrabold uppercase tracking-wider text-muted bg-surface2/50 border-b border-line"
+                                    class="text-left text-[12px] font-semibold text-muted bg-surface2 border-b border-line"
                                 >
                                     <th class="hidden sm:table-cell px-4 py-3" data-i18n="dash.table.date">
                                         Date
@@ -438,7 +439,7 @@
                 class="flex-1 overflow-y-auto p-5 md:p-9 pt-20 md:pt-9"
             >
                 <div class="w-full max-w-2xl mx-auto">
-                    <h2 class="text-[15px] font-extrabold tracking-tight mb-4" data-i18n="dash.settings.title">
+                    <h2 class="text-[22px] font-bold tracking-tight mb-5" data-i18n="dash.settings.title">
                         Account Settings
                     </h2>
 
@@ -452,7 +453,7 @@
 
                     <div id="settings-body" class="hidden">
                         <div class="flex items-center justify-between mb-2">
-                            <div class="text-[10px] font-extrabold uppercase tracking-wider text-muted" data-i18n="dash.settings.account">Account</div>
+                            <div class="text-[13px] font-bold text-ink" data-i18n="dash.settings.account">Account</div>
                             <button
                                 id="profile-edit-btn"
                                 type="button"
@@ -475,7 +476,7 @@
                                 <button
                                     id="profile-save-btn"
                                     type="button"
-                                    class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-ink text-bg text-[12px] font-bold hover:bg-white transition"
+                                    class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-ink text-bg text-[12px] font-bold hover:opacity-90 transition"
                                 >
                                     <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
                                         <path d="M20 6L9 17l-5-5" />
@@ -550,7 +551,7 @@
                             </div>
                         </div>
 
-                        <div class="text-[10px] font-extrabold uppercase tracking-wider text-muted mb-2 mt-7" data-i18n="dash.settings.connected_accounts">
+                        <div class="text-[13px] font-bold text-ink mb-2.5 mt-7" data-i18n="dash.settings.connected_accounts">
                             Connected Accounts
                         </div>
                         <div class="bg-surface border border-line rounded-2xl p-4">
@@ -580,7 +581,7 @@
                             ></div>
                         </div>
 
-                        <div class="text-[10px] font-extrabold uppercase tracking-wider text-muted mb-2 mt-7" data-i18n="dash.settings.plan_billing">
+                        <div class="text-[13px] font-bold text-ink mb-2.5 mt-7" data-i18n="dash.settings.plan_billing">
                             Plan &amp; Billing
                         </div>
                         <div class="bg-surface border border-line rounded-2xl overflow-hidden">
@@ -610,7 +611,7 @@
                             <div id="plan-billing-expanded" class="overflow-hidden transition-all duration-300 ease-in-out" style="max-height: 0;">
                                 <div class="border-t border-line p-3">
                                     <div class="flex items-center justify-between gap-2 px-3 pb-2">
-                                        <div class="text-[10px] font-extrabold uppercase tracking-wider text-muted" data-i18n="dash.settings.upgrade_label">Upgrade for more scans</div>
+                                        <div class="text-[12px] font-semibold text-muted" data-i18n="dash.settings.upgrade_label">Upgrade for more scans</div>
                                         <!-- Monthly / Yearly switch (init.ts) -->
                                         <div class="flex gap-0.5 bg-surface2 border border-line rounded-lg p-0.5 flex-shrink-0">
                                             <button type="button" class="billing-interval-btn px-2.5 py-1 rounded-md text-[11px] font-bold text-muted transition" data-interval="month" data-i18n="dash.plan.monthly">Monthly</button>
@@ -620,7 +621,7 @@
                                             </button>
                                         </div>
                                     </div>
-                                    <button type="button" class="plan-option w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg text-left hover:bg-white/5 transition" data-plan="Team">
+                                    <button type="button" class="plan-option w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg text-left hover:bg-surface2 transition" data-plan="Team">
                                         <span>
                                             <span class="block text-[13px] font-semibold" data-i18n="dash.plan.team">Team</span>
                                             <span class="plan-desc block text-[11px] text-muted" data-i18n="dash.plan.team_desc" data-i18n-month="dash.plan.team_desc" data-i18n-year="dash.plan.team_desc_yearly" data-text-month="750 scans/month · $200/month" data-text-year="750 scans/month · $1,440/year ($120/mo)">750 scans/month · $200/month</span>
@@ -629,7 +630,7 @@
                                             <path d="M20 6L9 17l-5-5" />
                                         </svg>
                                     </button>
-                                    <button type="button" class="plan-option w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg text-left hover:bg-white/5 transition" data-plan="Enterprise">
+                                    <button type="button" class="plan-option w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg text-left hover:bg-surface2 transition" data-plan="Enterprise">
                                         <span>
                                             <span class="block text-[13px] font-semibold" data-i18n="dash.plan.enterprise">Enterprise</span>
                                             <span class="plan-desc block text-[11px] text-muted" data-i18n="dash.plan.enterprise_desc" data-i18n-month="dash.plan.enterprise_desc" data-i18n-year="dash.plan.enterprise_desc_yearly" data-text-month="Unlimited scans · $500/month" data-text-year="Unlimited scans · $3,600/year ($300/mo)">Unlimited scans · $500/month</span>
@@ -645,7 +646,7 @@
                                             type="button"
                                             id="plan-continue-btn"
                                             disabled
-                                            class="w-full px-3 py-2 rounded-lg bg-ink text-bg text-[12px] font-bold transition disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white"
+                                            class="w-full px-3 py-2 rounded-lg bg-ink text-bg text-[12px] font-bold transition disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-90"
                                             data-i18n="dash.common.continue"
                                         >
                                             Continue
@@ -680,7 +681,21 @@
                             </div>
                         </div>
 
-                        <div class="text-[10px] font-extrabold uppercase tracking-wider text-muted mb-2 mt-7" data-i18n="dash.review.section">
+                        <div class="text-[13px] font-bold text-ink mb-2.5 mt-7" data-i18n="dash.settings.appearance">
+                            Appearance
+                        </div>
+                        <div class="bg-surface border border-line rounded-2xl p-4 flex items-center justify-between gap-4">
+                            <div>
+                                <div class="text-[13px] font-semibold" data-i18n="dash.settings.theme">Theme</div>
+                                <div class="text-[12px] text-muted mt-0.5" data-i18n="dash.settings.theme_desc">Light is the default. Your choice is saved on this browser.</div>
+                            </div>
+                            <div class="flex gap-0.5 bg-surface2 rounded-lg p-0.5 flex-shrink-0" role="group" aria-label="Theme">
+                                <button type="button" class="theme-btn px-3 py-1.5 rounded-md text-[12px] font-semibold text-muted transition" data-theme-choice="light" data-i18n="dash.settings.light">Light</button>
+                                <button type="button" class="theme-btn px-3 py-1.5 rounded-md text-[12px] font-semibold text-muted transition" data-theme-choice="dark" data-i18n="dash.settings.dark">Dark</button>
+                            </div>
+                        </div>
+
+                        <div class="text-[13px] font-bold text-ink mb-2.5 mt-7" data-i18n="dash.review.section">
                             Your review
                         </div>
                         <!-- Review form (reviews.ts). Goes live on safely.sh after you approve it (scripts/reviews.sh). -->
@@ -767,7 +782,7 @@
                             ></textarea>
 
                             <label class="flex items-start gap-2.5 text-[12px] text-muted leading-relaxed cursor-pointer mb-4">
-                                <input id="review-consent" type="checkbox" class="mt-0.5 accent-[#6fb3ef] flex-shrink-0" />
+                                <input id="review-consent" type="checkbox" class="mt-0.5 accent-ink flex-shrink-0" />
                                 <span data-i18n="dash.review.consent">I agree that Safely can show my review, name and photo on its website.</span>
                             </label>
 
@@ -777,14 +792,14 @@
                             <button
                                 id="review-submit"
                                 type="button"
-                                class="w-full sm:w-auto px-4 py-2 rounded-lg bg-ink text-bg text-[12px] font-bold hover:bg-white transition disabled:opacity-40 disabled:cursor-not-allowed"
+                                class="w-full sm:w-auto px-4 py-2 rounded-lg bg-ink text-bg text-[12px] font-bold hover:opacity-90 transition disabled:opacity-40 disabled:cursor-not-allowed"
                                 data-i18n="dash.review.submit"
                             >
                                 Submit review
                             </button>
                         </div>
 
-                        <div class="text-[10px] font-extrabold uppercase tracking-wider text-muted mb-2 mt-7" data-i18n="dash.settings.account_history">
+                        <div class="text-[13px] font-bold text-ink mb-2.5 mt-7" data-i18n="dash.settings.account_history">
                             Account history
                         </div>
                         <div class="bg-surface border border-line rounded-2xl p-4 divide-y divide-line">
@@ -798,7 +813,7 @@
                             </div>
                         </div>
 
-                        <div class="text-[10px] font-extrabold uppercase tracking-wider text-muted mb-2 mt-7" data-i18n="dash.settings.about_safely">
+                        <div class="text-[13px] font-bold text-ink mb-2.5 mt-7" data-i18n="dash.settings.about_safely">
                             About Safely
                         </div>
                         <div class="bg-surface border border-line rounded-2xl p-4 divide-y divide-line">
@@ -812,7 +827,7 @@
                             </div>
                         </div>
 
-                        <div class="text-[10px] font-extrabold uppercase tracking-wider text-coral mb-2 mt-7" data-i18n="dash.settings.danger_zone">
+                        <div class="text-[13px] font-bold text-coral mb-2.5 mt-7" data-i18n="dash.settings.danger_zone">
                             Danger Zone
                         </div>
                         <div class="bg-coral/5 border border-coral/25 rounded-2xl p-4">
@@ -903,7 +918,7 @@
                         </button>
                         <div
                             id="detail-title"
-                            class="text-[15px] font-extrabold truncate flex-1"
+                            class="text-[18px] font-bold tracking-tight truncate flex-1"
                         ></div>
                         <button
                             id="detail-download-pdf"
@@ -935,285 +950,73 @@
                     </div>
 
                     <div id="detail-body" class="hidden">
-                        <div
-                            class="flex gap-1 mb-6 bg-surface2 border border-line rounded-xl p-1 max-w-md"
-                        >
+                        <div class="flex gap-0.5 mb-6 bg-surface2 rounded-xl p-1 max-w-sm">
                             <button
                                 data-detail-tab="risk"
-                                class="detail-tab-btn flex-1 text-center py-2 rounded-lg text-[12px] font-bold text-muted cursor-pointer transition"
+                                class="detail-tab-btn flex-1 text-center py-2 rounded-lg text-[13px] font-semibold text-muted cursor-pointer transition"
                                 data-i18n="dash.detail.tab_risk"
                             >
                                 Risk
                             </button>
                             <button
                                 data-detail-tab="intel"
-                                class="detail-tab-btn flex-1 text-center py-2 rounded-lg text-[12px] font-bold text-muted cursor-pointer transition"
+                                class="detail-tab-btn flex-1 text-center py-2 rounded-lg text-[13px] font-semibold text-muted cursor-pointer transition"
                                 data-i18n="dash.detail.tab_intel"
                             >
-                                Intelligence
+                                Details
                             </button>
                             <button
                                 data-detail-tab="report"
-                                class="detail-tab-btn flex-1 text-center py-2 rounded-lg text-[12px] font-bold text-muted cursor-pointer transition"
+                                class="detail-tab-btn flex-1 text-center py-2 rounded-lg text-[13px] font-semibold text-muted cursor-pointer transition"
                                 data-i18n="dash.detail.tab_report"
                             >
                                 Report
                             </button>
                         </div>
 
-                        <!-- RISK TAB - two columns on larger screens so the wider
-               container gets used with purpose instead of just
-               stretching single-column rows. -->
+                        <!-- RISK TAB: score card and findings on the left,
+                             the supplier on the right (one column on phones).
+                             Filled by detail_view.ts. -->
                         <div
                             id="detail-tab-content-risk"
                             class="detail-tab-content grid grid-cols-1 lg:grid-cols-2 gap-6 items-start"
                         >
                             <div>
-                                <div
-                                    class="flex flex-col items-center bg-surface border border-line rounded-2xl py-8"
-                                >
-                                    <div
-                                        id="detail-gauge-wrap"
-                                        class="w-32 h-32"
-                                    ></div>
-                                    <div
-                                        id="detail-risk-level"
-                                        class="text-[15px] font-extrabold mt-1"
-                                    ></div>
-                                </div>
-                                <div class="grid grid-cols-3 gap-2.5 mt-5">
-                                    <div
-                                        class="bg-surface border border-line rounded-xl p-3 text-center"
-                                    >
-                                        <div
-                                            id="detail-chip-reports"
-                                            class="num text-lg font-bold text-muted"
-                                        ></div>
-                                        <div
-                                            class="text-[9px] font-bold uppercase tracking-wider text-muted mt-0.5"
-                                            data-i18n="dash.detail.reports"
-                                        >
-                                            Reports
-                                        </div>
-                                    </div>
-                                    <div
-                                        class="bg-surface border border-line rounded-xl p-3 text-center"
-                                    >
-                                        <div
-                                            id="detail-chip-status"
-                                            class="text-[13px] font-bold text-muted"
-                                        ></div>
-                                        <div
-                                            class="text-[9px] font-bold uppercase tracking-wider text-muted mt-0.5"
-                                            data-i18n="dash.detail.status"
-                                        >
-                                            Status
-                                        </div>
-                                    </div>
-                                    <div
-                                        class="bg-surface border border-line rounded-xl p-3 text-center"
-                                    >
-                                        <div
-                                            id="detail-chip-platform"
-                                            class="text-[13px] font-bold text-brand capitalize"
-                                        ></div>
-                                        <div
-                                            class="text-[9px] font-bold uppercase tracking-wider text-muted mt-0.5"
-                                            data-i18n="dash.detail.platform"
-                                        >
-                                            Platform
-                                        </div>
-                                    </div>
-                                </div>
-                                <div
-                                    class="flex gap-2.5 mt-5 p-3.5 bg-surface border border-line rounded-xl text-[12px] text-muted"
-                                >
-                                    <span class="mt-0.5">&#9679;</span
-                                    ><span id="detail-network-summary"></span>
-                                </div>
+                                <div id="detail-verdict"></div>
+                                <div id="detail-findings"></div>
                             </div>
-
                             <div>
-                                <div
-                                    class="text-[10px] font-extrabold uppercase tracking-wider text-muted mb-2"
-                                    data-i18n="dash.detail.seller_info"
-                                >
-                                    Seller Information
-                                </div>
-                                <div
-                                    class="bg-surface border border-line rounded-xl p-4 mb-5 divide-y divide-line"
-                                >
-                                    <div
-                                        class="flex justify-between py-2 text-[13px]"
-                                    >
-                                        <span class="text-muted" data-i18n="dash.detail.name">Name</span
-                                        ><span
-                                            id="detail-seller-name"
-                                            class="font-semibold text-right"
-                                        ></span>
-                                    </div>
-                                    <div
-                                        class="flex justify-between py-2 text-[13px]"
-                                    >
-                                        <span class="text-muted" data-i18n="dash.detail.username">Username</span
-                                        ><span
-                                            id="detail-seller-username"
-                                            class="font-semibold text-right"
-                                        ></span>
-                                    </div>
-                                    <div
-                                        class="flex justify-between py-2 text-[13px]"
-                                    >
-                                        <span class="text-muted" data-i18n="dash.detail.phone">Phone</span
-                                        ><span
-                                            id="detail-seller-phone"
-                                            class="font-semibold num text-right"
-                                        ></span>
-                                    </div>
-                                    <div
-                                        class="flex justify-between py-2 text-[13px]"
-                                    >
-                                        <span class="text-muted"
-                                            data-i18n="dash.detail.account_age">Account age</span
-                                        ><span
-                                            id="detail-seller-age"
-                                            class="font-semibold num"
-                                        ></span>
-                                    </div>
-                                    <div
-                                        class="flex justify-between py-2 text-[13px]"
-                                    >
-                                        <span class="text-muted" data-i18n="dash.detail.location">Location</span
-                                        ><span
-                                            id="detail-seller-location"
-                                            class="font-semibold text-right"
-                                        ></span>
-                                    </div>
-                                    <div
-                                        class="flex justify-between py-2 text-[13px]"
-                                    >
-                                        <span class="text-muted"
-                                            data-i18n="dash.detail.last_active">Last active</span
-                                        ><span
-                                            id="detail-seller-lastactive"
-                                            class="font-semibold"
-                                        ></span>
-                                    </div>
-                                </div>
-
-                                <div
-                                    class="text-[10px] font-extrabold uppercase tracking-wider text-muted mb-2"
-                                    data-i18n="dash.detail.visit_activity"
-                                >
-                                    Visit activity &middot; 12 months
-                                </div>
-                                <div
-                                    class="bg-surface border border-line rounded-xl p-4"
-                                >
-                                    <div
-                                        id="detail-activity-chart"
-                                        class="flex items-end gap-1.5 h-16 mb-2"
-                                    ></div>
-                                    <div class="flex gap-1.5">
-                                        <span
-                                            class="flex-1 text-center text-[9px] font-bold text-muted"
-                                            data-i18n="dash.month.jan">Jan</span
-                                        ><span
-                                            class="flex-1 text-center text-[9px] font-bold text-muted"
-                                            data-i18n="dash.month.feb">Feb</span
-                                        ><span
-                                            class="flex-1 text-center text-[9px] font-bold text-muted"
-                                            data-i18n="dash.month.mar">Mar</span
-                                        ><span
-                                            class="flex-1 text-center text-[9px] font-bold text-muted"
-                                            data-i18n="dash.month.apr">Apr</span
-                                        ><span
-                                            class="flex-1 text-center text-[9px] font-bold text-muted"
-                                            data-i18n="dash.month.may">May</span
-                                        ><span
-                                            class="flex-1 text-center text-[9px] font-bold text-muted"
-                                            data-i18n="dash.month.jun">Jun</span
-                                        ><span
-                                            class="flex-1 text-center text-[9px] font-bold text-muted"
-                                            data-i18n="dash.month.jul">Jul</span
-                                        ><span
-                                            class="flex-1 text-center text-[9px] font-bold text-muted"
-                                            data-i18n="dash.month.aug">Aug</span
-                                        ><span
-                                            class="flex-1 text-center text-[9px] font-bold text-muted"
-                                            data-i18n="dash.month.sep">Sep</span
-                                        ><span
-                                            class="flex-1 text-center text-[9px] font-bold text-muted"
-                                            data-i18n="dash.month.oct">Oct</span
-                                        ><span
-                                            class="flex-1 text-center text-[9px] font-bold text-muted"
-                                            data-i18n="dash.month.nov">Nov</span
-                                        ><span
-                                            class="flex-1 text-center text-[9px] font-bold text-muted"
-                                            data-i18n="dash.month.dec">Dec</span
-                                        >
-                                    </div>
+                                <div class="text-[13px] font-bold mb-2.5" data-i18n="dash.detail.supplier">Supplier</div>
+                                <div class="bg-surface border border-line rounded-2xl p-5">
+                                    <div id="detail-seller-name" class="text-[16px] font-bold leading-snug"></div>
+                                    <div id="detail-seller-location" class="text-[13px] text-muted mt-0.5"></div>
+                                    <div id="detail-facts" class="grid grid-cols-2 gap-x-3 gap-y-3.5 mt-4 pt-4 border-t border-line"></div>
+                                    <div id="detail-visits"></div>
                                 </div>
                             </div>
                         </div>
 
-                        <!-- INTELLIGENCE TAB -->
+                        <!-- DETAILS TAB (filled by detail_view.ts) -->
                         <div
                             id="detail-tab-content-intel"
-                            class="detail-tab-content hidden"
-                        >
-                            <div
-                                id="detail-intel-summary"
-                                class="flex gap-2.5 p-3.5 rounded-xl text-[12px] mb-5"
-                            ></div>
-                            <div id="detail-price-vs-market" class="mb-5 hidden"></div>
-                            <div
-                                class="text-[10px] font-extrabold uppercase tracking-wider text-muted mb-2"
-                                data-i18n="dash.detail.listing_signals"
-                            >
-                                Listing signals
-                            </div>
-                            <div
-                                id="detail-signals-list"
-                                class="mb-5"
-                            ></div>
-                            <div id="detail-social-presence"></div>
-                            <div id="detail-risk-factors" class="mb-5 hidden"></div>
-                        </div>
+                            class="detail-tab-content hidden max-w-3xl"
+                        ></div>
 
                         <!-- REPORT TAB -->
                         <div
                             id="detail-tab-content-report"
-                            class="detail-tab-content hidden"
+                            class="detail-tab-content hidden max-w-3xl"
                         >
-                            <div
-                                id="detail-report-filed"
-                                class="hidden bg-surface border border-line rounded-xl p-4"
-                            >
-                                <div
-                                    class="text-[10px] font-extrabold uppercase tracking-wider text-muted mb-1.5"
-                                    data-i18n="dash.detail.report_reason"
-                                >
-                                    Report reason
-                                </div>
-                                <div
-                                    id="detail-report-reason"
-                                    class="text-[14px] font-semibold"
-                                ></div>
-                                <div
-                                    id="detail-report-date"
-                                    class="text-[12px] text-muted mt-2"
-                                ></div>
-                            </div>
+                            <div id="detail-report-filed" class="hidden"></div>
                             <div
                                 id="detail-report-empty"
                                 class="hidden text-center py-16"
                             >
-                                <div class="text-[14px] font-bold mb-1.5" data-i18n="dash.detail.no_report">
+                                <div class="text-[15px] font-bold mb-1.5" data-i18n="dash.detail.no_report">
                                     No report filed
                                 </div>
                                 <div
-                                    class="text-[12px] text-muted max-w-xs mx-auto"
+                                    class="text-[13px] text-muted max-w-xs mx-auto"
                                     data-i18n="dash.detail.no_report_desc"
                                 >
                                     You have not reported this seller.

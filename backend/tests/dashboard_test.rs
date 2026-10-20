@@ -446,7 +446,7 @@ async fn get_history_html_empty_history() {
     let html = result.0;
 
     assert!(
-        html.contains("No listings analyzed yet"),
+        html.contains("No scans yet"),
         "expected the empty-state message to appear in the rendered HTML, got: {}",
         html
     );
@@ -809,6 +809,10 @@ async fn get_history_detail_success_with_multiple_reports() {
     let pool = test_pool().await;
     let email = "history_detail_multi_reports_test@example.com";
     let (user, _) = create_test_user(&pool, email).await;
+    // Each person can report a seller only once, so the second report
+    // comes from a second person.
+    let other_email = "history_detail_multi_reports_other_test@example.com";
+    let (other_user, _) = create_test_user(&pool, other_email).await;
 
     let platform = "olx";
     let platform_id = "history_detail_multi_reports_001";
@@ -843,14 +847,14 @@ async fn get_history_detail_success_with_multiple_reports() {
         .await
         .expect("expected to find the real listing url");
 
-    for report_type in ["scam", "fake_item"] {
+    for (reporter, report_type) in [(user.id, "scam"), (other_user.id, "fake_item")] {
         query(
             "INSERT INTO fraud_reports (id, seller_id, user_id, platform, platform_id, report_type, listing_url, reported_at)
              VALUES ($1, $2, $3, $4, $5, $6::report_types, $7, NOW())",
         )
         .bind(Uuid::now_v7())
         .bind(seller_id)
-        .bind(user.id)
+        .bind(reporter)
         .bind(platform)
         .bind(platform_id)
         .bind(report_type)
@@ -866,11 +870,18 @@ async fn get_history_detail_success_with_multiple_reports() {
         .expect("expected the analysis detail to be found");
 
     assert!(result.reported, "expected reported to be true");
+    // The seller's count includes everyone's reports...
+    assert_eq!(
+        result.fraud_report_count, 2,
+        "expected both people's reports to be counted"
+    );
+    // ...but "your reports" lists only your own.
     assert_eq!(
         result.reports.len(),
-        2,
-        "expected BOTH reports to appear, not just one"
+        1,
+        "expected only this person's own report in their list"
     );
+    assert_eq!(result.reports[0].report_type, ReportTypes::Scam);
 
     query("DELETE FROM fraud_reports WHERE seller_id = $1")
         .bind(seller_id)
@@ -880,6 +891,7 @@ async fn get_history_detail_success_with_multiple_reports() {
 
     cleanup_test_seller_chain(&pool, platform, platform_id).await;
     cleanup_test_user(&pool, email).await;
+    cleanup_test_user(&pool, other_email).await;
 }
 
 #[tokio::test]
@@ -1095,31 +1107,44 @@ async fn get_user_reports_orders_newest_first() {
     let (user, _) = create_test_user(&pool, email).await;
 
     let platform = "olx";
-    let platform_id = "reports_ordering_seller_001";
-    cleanup_test_seller_with_reports(&pool, platform, platform_id).await;
-
-    let seller_id = Uuid::now_v7();
-    query(
-        "INSERT INTO sellers (id, platform, platform_id, name, verification, created_at, updated_at)
-         VALUES ($1, $2, $3, $4, 'unknown'::seller_verification, NOW(), NOW())",
-    )
-    .bind(seller_id)
-    .bind(platform)
-    .bind(platform_id)
-    .bind("Ordering Test Seller")
-    .execute(&pool)
-    .await
-    .expect("expected to create the seller");
-
     let now = Utc::now();
 
+    // Each person can report a seller only once, so each report goes to
+    // its own seller.
     let reports = [
-        ("scam", now - Duration::hours(3)),        // oldest
-        ("fake_item", now - Duration::hours(2)),   // middle
-        ("no_delivery", now - Duration::hours(1)), // newest
+        (
+            "reports_ordering_seller_001",
+            "scam",
+            now - Duration::hours(3),
+        ), // oldest
+        (
+            "reports_ordering_seller_002",
+            "fake_item",
+            now - Duration::hours(2),
+        ), // middle
+        (
+            "reports_ordering_seller_003",
+            "no_delivery",
+            now - Duration::hours(1),
+        ), // newest
     ];
 
-    for (report_type, reported_at) in reports {
+    for (platform_id, report_type, reported_at) in reports {
+        cleanup_test_seller_with_reports(&pool, platform, platform_id).await;
+
+        let seller_id = Uuid::now_v7();
+        query(
+            "INSERT INTO sellers (id, platform, platform_id, name, verification, created_at, updated_at)
+             VALUES ($1, $2, $3, $4, 'unknown'::seller_verification, NOW(), NOW())",
+        )
+        .bind(seller_id)
+        .bind(platform)
+        .bind(platform_id)
+        .bind("Ordering Test Seller")
+        .execute(&pool)
+        .await
+        .expect("expected to create the seller");
+
         query(
             "INSERT INTO fraud_reports (id, seller_id, user_id, platform, platform_id, report_type, listing_url, reported_at)
              VALUES ($1, $2, $3, $4, $5, $6::report_types, $7, $8)",
@@ -1158,7 +1183,9 @@ async fn get_user_reports_orders_newest_first() {
         "expected the oldest report last"
     );
 
-    cleanup_test_seller_with_reports(&pool, platform, platform_id).await;
+    for (platform_id, _, _) in reports {
+        cleanup_test_seller_with_reports(&pool, platform, platform_id).await;
+    }
     cleanup_test_user(&pool, email).await;
 }
 

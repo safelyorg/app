@@ -444,6 +444,63 @@ pub fn build_b2b_verification_signal(supplier: &B2bSupplierProfile) -> Signal {
     }
 }
 
+/// Words suppliers type in the founding-year box when they give no
+/// year. They mean the same as an empty box.
+const NO_YEAR_WORDS: [&str; 12] = [
+    "n/a",
+    "na",
+    "n.a.",
+    "n.a",
+    "-",
+    "--",
+    "none",
+    "unknown",
+    "not provided",
+    "not specified",
+    "null",
+    "0",
+];
+
+/// The founding year as the supplier wrote it, or None when the box is
+/// empty or holds a "no year" word ("N/A", "-", "Unknown"...). Those
+/// are a missing year, not a wrong one.
+pub fn stated_founding_year(raw: Option<&str>) -> Option<&str> {
+    let text = raw?.trim();
+    if text.is_empty() || NO_YEAR_WORDS.contains(&text.to_ascii_lowercase().as_str()) {
+        None
+    } else {
+        Some(text)
+    }
+}
+
+/// The year in a founding-year text: "2015", or a four-digit year
+/// inside other words ("Est. 2015", "Since 2015", "2015年").
+fn read_founding_year(text: &str) -> Option<i32> {
+    if let Ok(year) = text.parse::<i32>() {
+        return Some(year);
+    }
+    let bytes = text.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i].is_ascii_digit() {
+            let start = i;
+            while i < bytes.len() && bytes[i].is_ascii_digit() {
+                i += 1;
+            }
+            if i - start == 4 {
+                if let Ok(year) = text[start..i].parse::<i32>() {
+                    if (1800..=2100).contains(&year) {
+                        return Some(year);
+                    }
+                }
+            }
+        } else {
+            i += 1;
+        }
+    }
+    None
+}
+
 /// Checks how long ago this company claims to have been established -
 /// a genuinely new company is not inherently fraudulent, but it's a
 /// real, honest anomaly worth noting, the same logic already applied
@@ -453,8 +510,9 @@ pub fn build_b2b_verification_signal(supplier: &B2bSupplierProfile) -> Signal {
 /// scam companies often leave it out so buyers can't see how new they
 /// are. It counts only 10 points (see warning_points in analysis.rs),
 /// less than other warnings, since honest suppliers leave it out too.
+/// "N/A" and similar words count as no year (see stated_founding_year).
 pub fn build_b2b_company_age_signal(supplier: &B2bSupplierProfile) -> Signal {
-    let Some(year_str) = supplier.year_established.as_deref() else {
+    let Some(year_str) = stated_founding_year(supplier.year_established.as_deref()) else {
         return Signal {
             label: "Account age".to_string(),
             sub: "This company does not say when it was founded, so you cannot tell how new it is. Ask the supplier for its founding year and business licence.".to_string(),
@@ -464,7 +522,7 @@ pub fn build_b2b_company_age_signal(supplier: &B2bSupplierProfile) -> Signal {
             check_type: "anomaly".to_string(),
         };
     };
-    let Ok(established_year) = year_str.trim().parse::<i32>() else {
+    let Some(established_year) = read_founding_year(year_str) else {
         return Signal {
             label: "Account age".to_string(),
             sub: format!(
@@ -2102,6 +2160,53 @@ mod b2b_signal_tests {
             ("Not provided", "caution")
         );
         assert!(s.sub.contains("does not say when it was founded"));
+    }
+
+    fn with_year(year: &str) -> B2bSupplierProfile {
+        let mut s = supplier("alibaba", true, None);
+        s.year_established = Some(year.into());
+        s
+    }
+
+    #[test]
+    fn no_year_words_count_as_a_hidden_year() {
+        for word in ["N/A", "n/a", "NA", " - ", "Unknown", "Not specified", ""] {
+            let s = build_b2b_company_age_signal(&with_year(word));
+            assert_eq!(
+                (s.value.as_str(), s.signal_type.as_str()),
+                ("Not provided", "caution"),
+                "{word:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_year_inside_words_is_read() {
+        let year = Utc::now().year() - 11;
+        for text in [
+            format!("Est. {year}"),
+            format!("Since {year}"),
+            format!("{year}年"),
+        ] {
+            let s = build_b2b_company_age_signal(&with_year(&text));
+            assert_eq!(s.value, "About 11 years", "{text:?}");
+        }
+    }
+
+    #[test]
+    fn a_text_with_no_year_is_still_invalid() {
+        let s = build_b2b_company_age_signal(&with_year("long ago"));
+        assert_eq!(
+            (s.value.as_str(), s.signal_type.as_str()),
+            ("Invalid date", "caution")
+        );
+    }
+
+    #[test]
+    fn stated_founding_year_drops_only_no_year_words() {
+        assert_eq!(stated_founding_year(Some(" N/A ")), None);
+        assert_eq!(stated_founding_year(None), None);
+        assert_eq!(stated_founding_year(Some(" 2015 ")), Some("2015"));
     }
 
     fn yingmo_record() -> SupplierRecord {

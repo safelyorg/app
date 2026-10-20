@@ -220,7 +220,12 @@ function formatPlatformName(platform) {
                 const rawText = await response.text();
                 if (!response.ok || rawText.startsWith("error")) {
                     console.error("Safely: report error:", rawText.substring(0, 300));
-                    return response.status === 401 ? { error: "unauthorized" } : null;
+                    if (response.status === 401)
+                        return { error: "unauthorized" };
+                    // Each person can report a seller once.
+                    if (response.status === 409)
+                        return { error: "already_reported" };
+                    return null;
                 }
                 return JSON.parse(rawText);
             }
@@ -326,6 +331,7 @@ function formatPlatformName(platform) {
                 textLanguage: language,
                 riskScore: data.risk_score,
                 fraudReportCount: data.fraud_report_count,
+                reportedByYou: data.reported_by_you === true,
                 riskFactors: data.risk_factors || [],
                 sellerId: data.seller.id,
                 socialCandidates: data.social_candidates || [],

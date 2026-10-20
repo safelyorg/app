@@ -94,6 +94,10 @@ pub struct AnalyzeResponse {
     pub signals: Vec<Signal>,
     pub network_summary: String,
     pub fraud_report_count: i64,
+    /// True when the person who ran this scan already reported this
+    /// seller. Each person can report a seller only once, so the
+    /// extension hides its Report link.
+    pub reported_by_you: bool,
     pub entity_type: String,
     pub confidence_level: String,
     pub confidence_reasoning: String,
@@ -102,7 +106,9 @@ pub struct AnalyzeResponse {
     pub social_candidates: Vec<PlatformCheckResult>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+/// Deserialize lets a saved scan's signals be read back from the
+/// database, so a new report can recalculate that scan's score.
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Signal {
     pub label: String,
     pub sub: String,

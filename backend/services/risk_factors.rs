@@ -36,9 +36,16 @@ fn is_flagged(signal: &Signal) -> bool {
 }
 
 /// How many scam reports from Safely users make the "Safely history"
-/// line a Serious problem. Two matches the seller's fraud-report line,
-/// which already calls 2 or more reports a "High risk seller".
-const MIN_REPORTS_FOR_SERIOUS: u32 = 2;
+/// line a Serious problem. Three, the same count at which a supplier's
+/// minimum score reaches High (report_floor in fraud_reports.rs). One
+/// or two reports stay "Worth noting".
+const MIN_REPORTS_FOR_SERIOUS: u32 = 3;
+
+/// Name of the Serious factor for a seller several Safely users have
+/// reported. The B2B score leaves it out of its "Serious" count, because
+/// report_floor already sets the score from the number of reports -
+/// counting it twice would push the score up twice for the same reports.
+pub const NETWORK_REPORTS_FACTOR: &str = "network_confirmed_high_risk_seller";
 
 /// Reads the number from the "Safely history" line:
 /// "Reported once" -> 1, "Reported 3 times" -> 3, "No scam reports" -> 0.
@@ -150,15 +157,15 @@ pub fn derive_risk_factors(signals: &[Signal]) -> Vec<RiskFactor> {
         }
     }
 
-    // Scam reports from Safely users. Two or more reports make this a
-    // Serious problem. A single report stays "Worth noting" (it falls
-    // through to the soft factors below) - one person's report could be
-    // a mistake or a dispute.
+    // Scam reports from Safely users. Three or more reports make this a
+    // Serious problem. One or two stay "Worth noting" (they fall through
+    // to the soft factors below) - one person's report could be a
+    // mistake or a dispute.
     if let Some(s) = find_signal(signals, "Safely history") {
         if is_flagged(s) && history_count(s) >= MIN_REPORTS_FOR_SERIOUS {
             factors.push(RiskFactor {
                 severity: "hard".to_string(),
-                name: "network_confirmed_high_risk_seller".to_string(),
+                name: NETWORK_REPORTS_FACTOR.to_string(),
                 description: evidence_or(
                     s,
                     "Several Safely users have reported this seller as a scam.",
@@ -744,8 +751,22 @@ mod tests {
     }
 
     #[test]
-    fn two_or_more_scam_reports_are_serious() {
-        for value in ["Reported 2 times", "Reported 5 times"] {
+    fn two_scam_reports_are_still_worth_noting() {
+        let s = vec![sig(
+            "Safely history",
+            "Reported 2 times",
+            "bad",
+            "2 Safely users have reported this seller as a scam.",
+        )];
+        let f = derive_risk_factors(&s);
+        assert!(find(&f, "network_confirmed_high_risk_seller").is_none());
+        let soft = find(&f, "safely_history_flagged").expect("still worth noting");
+        assert_eq!(soft.severity, "soft");
+    }
+
+    #[test]
+    fn three_or_more_scam_reports_are_serious() {
+        for value in ["Reported 3 times", "Reported 5 times"] {
             let s = vec![sig(
                 "Safely history",
                 value,

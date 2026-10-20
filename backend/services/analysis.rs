@@ -18,11 +18,16 @@ use crate::{
         confidence::calculate_confidence,
         entity_detection::classify_entity,
         evidence::{record_evidence, record_risk_factors},
-        fraud_reports::{build_network_summary, count_fraud_reports},
+        fraud_reports::{
+            already_reported, build_network_summary, count_fraud_reports, report_floor,
+            report_points,
+        },
         listings::get_monthly_visit_activity,
         network_memory::build_network_memory_signal,
         osint::{PlatformCheckResult, SCAM_MENTIONS_FOUND, build_social_presence_matrix},
-        risk_factors::{derive_risk_factors, not_enough_information_factor},
+        risk_factors::{
+            NETWORK_REPORTS_FACTOR, derive_risk_factors, not_enough_information_factor,
+        },
         sellers::{create_seller, find_seller},
         signals::{
             apply_found_website, apply_missing_price_note, apply_no_photos_note,
@@ -31,6 +36,7 @@ use crate::{
             build_b2b_listing_completeness_signal, build_b2b_transparency_signal,
             build_b2b_verification_signal, build_domain_signal, build_seller_verification_signals,
             build_signals, build_store_page_signal, build_whois_signal, soften_no_presence,
+            stated_founding_year,
         },
         whois::check_domain_whois,
     },
@@ -427,6 +433,12 @@ pub async fn save_and_build_response(
         .await
         .unwrap_or_else(|_| vec![0i32; 12]);
 
+    // A failed check only means the Report link stays visible; the
+    // server still refuses a second report.
+    let reported_by_you = already_reported(data.pool, data.user_id, data.seller.id)
+        .await
+        .unwrap_or(false);
+
     let mut seller_response = SellersResponse::from(data.seller);
     // B2B: show the same company age as the "Account age" check
     // ("About 11 years"), not one counted in months from 1 January -
@@ -447,6 +459,7 @@ pub async fn save_and_build_response(
         signals: data.signals,
         network_summary: data.overall_risk_notes,
         fraud_report_count: data.fraud_count,
+        reported_by_you,
         entity_type,
         confidence_level,
         confidence_reasoning,
@@ -602,10 +615,8 @@ pub fn resolve_supplier_year(
     mut supplier: B2bSupplierProfile,
     saved_join_date: Option<NaiveDate>,
 ) -> B2bSupplierProfile {
-    let has_year = supplier
-        .year_established
-        .as_deref()
-        .map_or(false, |y| !y.trim().is_empty());
+    // "N/A" and similar count as no year, so the saved year is used.
+    let has_year = stated_founding_year(supplier.year_established.as_deref()).is_some();
     if !has_year {
         if let Some(date) = saved_join_date {
             supplier.year_established = Some(date.year().to_string());
@@ -667,6 +678,38 @@ fn info_points(signals: &[Signal]) -> i16 {
 /// about the supplier (see not_enough_information_factor): the start of
 /// Moderate, so "nothing found" never reads as "Low risk".
 const NOT_ENOUGH_INFORMATION_FLOOR: i16 = 34;
+
+/// The full B2B risk score from a scan's signals and the seller's number
+/// of fraud reports. Used by the scan, and again when someone reports
+/// the seller (handlers/fraud_reports.rs), so a report gives exactly the
+/// score a new scan would.
+///
+/// - Warnings give the base score, plus 5 per report (20 at most).
+/// - Counting warnings alone treats a Western Union demand the same as
+///   a missing field, so any "Serious" risk factor (legitimacy concern,
+///   unsafe payment terms...) puts the scan in the High band (67+),
+///   plus 10 for each extra one. The factor for "several Safely users
+///   reported this seller" is not counted here: report_floor already
+///   sets the score from the number of reports.
+/// - Reports set a minimum: 2 reports 35, 3 reports 67, then +10 each.
+/// - Too little information lifts a low score to Moderate.
+pub fn b2b_score_from_signals(signals: &[Signal], fraud_count: i64) -> i16 {
+    let warning_score: i16 = signals.iter().map(warning_points).sum::<i16>() + info_points(signals);
+    let base_score = warning_score.min(100) + report_points(fraud_count, true);
+    let factors = derive_risk_factors(signals);
+    let count = |severity: &str| {
+        factors
+            .iter()
+            .filter(|f| f.severity == severity && f.name != NETWORK_REPORTS_FACTOR)
+            .count() as i16
+    };
+    let mut risk_score = b2b_risk_score(base_score, count("hard"), count("compound"));
+    risk_score = risk_score.max(report_floor(fraud_count));
+    if not_enough_information_factor(signals).is_some() {
+        risk_score = risk_score.max(NOT_ENOUGH_INFORMATION_FLOOR);
+    }
+    risk_score.min(100)
+}
 
 /// B2B risk score: warnings give the base score, and any "Serious"
 /// risk factor lifts it to at least the High band (67), +10 for each
@@ -904,20 +947,7 @@ pub async fn build_b2b_analysis_path(
     // proves is real (orders, reviews, a company check).
     soften_no_presence(&mut signals);
 
-    let warning_score: i16 =
-        signals.iter().map(warning_points).sum::<i16>() + info_points(&signals);
-    let base_score = warning_score.min(100) + (fraud_count as i16 * 5).min(20);
-    // Counting warnings alone treats a Western Union demand the same as
-    // a missing field. Any "Serious" risk factor (legitimacy concern,
-    // unsafe payment terms, a seller Safely already scored high-risk)
-    // puts the scan in the High band (67+), plus 10 for each extra one.
-    let factors = derive_risk_factors(&signals);
-    let serious_count = factors.iter().filter(|f| f.severity == "hard").count() as i16;
-    let compound_count = factors.iter().filter(|f| f.severity == "compound").count() as i16;
-    let mut risk_score = b2b_risk_score(base_score, serious_count, compound_count);
-    if not_enough_information_factor(&signals).is_some() {
-        risk_score = risk_score.max(NOT_ENOUGH_INFORMATION_FLOOR);
-    }
+    let risk_score = b2b_score_from_signals(&signals, fraud_count);
 
     let overall_risk_notes = claude_result.overall_risk_notes.clone();
     Ok((

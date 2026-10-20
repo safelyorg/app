@@ -218,3 +218,38 @@ function checkGoogleConnectResult() {
         history.replaceState(null, "", url.pathname + url.hash);
     }
 }
+// ── Appearance: Light (default) or Dark ──
+// The choice is saved in this browser (localStorage) and applied
+// before the page draws, by the small script at the top of index.html.
+const THEME_KEY = "safely_theme";
+function currentTheme() {
+    return document.documentElement.dataset.theme === "dark" ? "dark" : "light";
+}
+function showThemeChoice() {
+    const theme = currentTheme();
+    document.querySelectorAll(".theme-btn").forEach((btn) => {
+        const on = btn.dataset.themeChoice === theme;
+        btn.classList.toggle("is-active", on);
+        btn.classList.toggle("text-ink", on);
+        btn.classList.toggle("text-muted", !on);
+        btn.setAttribute("aria-pressed", on ? "true" : "false");
+    });
+}
+function setTheme(theme) {
+    document.documentElement.dataset.theme = theme;
+    try {
+        localStorage.setItem(THEME_KEY, theme);
+    }
+    catch (e) {
+        // Saving can fail in a private window; the page still switches.
+    }
+    showThemeChoice();
+}
+function initThemeSwitch() {
+    document.querySelectorAll(".theme-btn").forEach((btn) => {
+        btn.addEventListener("click", () => {
+            setTheme(btn.dataset.themeChoice === "dark" ? "dark" : "light");
+        });
+    });
+    showThemeChoice();
+}

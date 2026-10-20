@@ -1,4 +1,6 @@
-@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@500;600;700;800&display=swap");
+/* Fonts are loaded by ts/core/panel.ts from extension/fonts/ ("Safely
+   Sans" is Inter, "Safely Display" is Gasoek One). Loading them from a
+   CSS link was blocked on some sites. */
 
 #safely-root {
     all: initial;
@@ -7,116 +9,85 @@
     right: 19px;
     z-index: 2147483647;
     font-family:
-        "Inter",
+        "Safely Sans",
         -apple-system,
         BlinkMacSystemFont,
         "Segoe UI",
         Roboto,
-        sans-serif;
+        sans-serif !important;
     width: 0;
     height: 0;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     text-rendering: optimizeLegibility;
 
-    /* ── surfaces (matches dashboard's bg/surface/surface2/surface3) ── */
-    --bg: #0a0a0c;
-    --surface: #131316;
-    --surface-2: #1b1b20;
-    --surface-3: #24242b;
-    --line: rgba(255, 255, 255, 0.07);
-    --line-soft: rgba(255, 255, 255, 0.05);
+    /* Neutral greys and one accent. The accent (Safely amber) is used
+       in three places only: the score ring, problem markers and the
+       waiting progress. */
+    --accent: #ffb938;
+    --ink: #17171a;
+    --ink-2: #3f3f46;
+    --mute: #71717a;
+    --faint: #a1a1aa;
+    --line: #e7e7ea;
+    --surface: #f5f5f6;
+    --bg: #ffffff;
+    --on-ink: #ffffff;
+    --ink-line: #2e2e33;
 
-    /* ── text (matches dashboard's ink/muted, not warm cream anymore) ── */
-    --text: #f2f1ed;
-    --text-dim: #cfcecb;
-    --muted: #8a8a93;
+    --ease: cubic-bezier(0.22, 1, 0.36, 1);
+    --display: "Safely Display", "Safely Sans", sans-serif;
 
-    /* ── accents (identical hex values to the dashboard's palette) ── */
-    --ink: #0a0a0c; /* dark text used on bright fills */
-    --mint: #35d0a6;
-    --mint-deep: #35d0a6;
-    --coral: #ff5d5d;
-    --coral-deep: #ff5d5d;
-    --sky: #6fb3ef; /* "brand" in the dashboard */
-    --sky-deep: #6fb3ef;
-    --amber: #f2b84c;
-
-    /* ── tinted backgrounds for status pills/alerts ── */
-    --mint-soft: rgba(53, 208, 166, 0.13);
-    --sun-soft: rgba(242, 184, 76, 0.14);
-    --coral-soft: rgba(255, 93, 93, 0.14);
-    --sky-soft: rgba(111, 179, 239, 0.13);
-
+    /* Old names, still read by protect_tab.css (the paused Protect
+       tab). They point at the palette above. */
+    --text: var(--ink);
+    --muted: var(--mute);
+    --surface-2: var(--surface);
+    --surface-3: var(--line);
+    --line-soft: var(--line);
     --bd: 1px solid var(--line);
-    --hi: inset 0 1px 0 rgba(255, 255, 255, 0.05);
-    --sh-panel:
-        0 24px 60px -16px rgba(0, 0, 0, 0.7),
-        0 10px 24px -14px rgba(0, 0, 0, 0.55);
-    --sh-card:
-        0 1px 2px rgba(0, 0, 0, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.04);
-    --ring: 0 0 0 3px rgba(111, 179, 239, 0.25);
-    --r: 15px;
-    --r-lg: 20px;
-
-    --disp:
-        "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui,
-        sans-serif;
-    --mono: "JetBrains Mono", "SF Mono", "Fira Code", monospace;
+    --r: 14px;
+    --mint: var(--ink);
+    --coral: var(--ink);
+    --sky: var(--ink);
+    --amber: var(--ink);
+    --mint-soft: var(--surface);
+    --sun-soft: var(--surface);
+    --coral-soft: var(--surface);
+    --sky-soft: var(--surface);
+    --hi: none;
+    --sh-card: none;
+    --ring: 0 0 0 3px var(--line);
+    --mono: "Safely Sans", sans-serif;
 }
+/* !important: some sites force their own font on every element
+   ("* { font-family: ... !important }"). The id keeps ours stronger. */
 #safely-root * {
     box-sizing: border-box;
-    font-family: inherit;
+    font-family: inherit !important;
 }
 
-/* ============================================================
-   Light-touch recoloring of hardcoded inline hex values from the
-   JS files - this is the mechanism that lets risk.js and protect.js
-   stay completely unedited (aside from risk.js's gauge, rebuilt
-   below) while still picking up the new palette. Each rule matches
-   a literal substring inside an inline style="" attribute and
-   overrides it, regardless of which CSS property originally used
-   that hex value.
-   ============================================================ */
-
-/* shared muted-gray text/icon values used across risk.js + protect.js */
-#safely-root [style*="color:#a0a0a0"],
-#safely-root [style*="color: #a0a0a0"] {
-    color: var(--muted) !important;
-}
-#safely-root [style*="color:#636366"],
-#safely-root [style*="color: #636366"] {
-    color: var(--muted) !important;
-}
-#safely-root [style*="color:#e0e0e0"],
-#safely-root [style*="color: #e0e0e0"] {
-    color: var(--text) !important;
-}
-#safely-root [style*="color:#1d9bf0"] {
-    color: var(--sky) !important;
+/* Drawn tick / cross icons: sized by the box they sit in. */
+#safely-root .safely-icon {
+    width: 1em;
+    height: 1em;
+    display: block;
 }
 
-/* surface fills used inline in protect.js's escrow markup */
-#safely-root [style*="background:#0a0a0a"],
-#safely-root [style*="background: #0a0a0a"] {
-    background: var(--surface-2) !important;
-}
-#safely-root [style*="background:#1a1a1a"],
-#safely-root [style*="background: #1a1a1a"] {
-    background: var(--surface-3) !important;
-}
-#safely-root [style*="border:1.5px dashed #1a1a1a"],
-#safely-root [style*="border: 1.5px dashed #1a1a1a"] {
-    border-color: var(--line) !important;
+/* A clear ring when moving through the panel with the keyboard. */
+#safely-root button:focus-visible,
+#safely-root a:focus-visible,
+#safely-root [data-safely-tick]:focus-visible,
+#safely-root .safely-option:has(input:focus-visible) {
+    outline: 2px solid var(--ink);
+    outline-offset: 2px;
 }
 
-/* icon stroke colors */
-#safely-root svg[stroke="#1d9bf0"] {
-    stroke: var(--sky);
-}
-#safely-root svg[stroke="#a0a0a0"] {
-    stroke: var(--muted);
-}
-#safely-root svg[stroke="#636366"] {
-    stroke: var(--muted);
+@media (prefers-reduced-motion: reduce) {
+    #safely-root *,
+    #safely-root *::before,
+    #safely-root *::after {
+        animation-duration: 0.01ms !important;
+        transition-duration: 0.01ms !important;
+    }
 }

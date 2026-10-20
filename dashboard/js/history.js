@@ -15,7 +15,13 @@ async function loadDashboardData() {
 }
 function renderStats() {
     const checked = document.getElementById("stat-checked-num");
+    const high = document.getElementById("stat-high-num");
     const reported = document.getElementById("stat-reported-num");
+    if (high) {
+        high.textContent = document
+            .querySelectorAll('#history-rows tr[data-id][data-risk="high"]')
+            .length.toString();
+    }
     if (checked) {
         checked.textContent = document
             .querySelectorAll("#history-rows tr[data-id]")

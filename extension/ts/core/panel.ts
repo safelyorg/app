@@ -11,6 +11,28 @@ interface PendingTabRegistration {
 
   if (document.getElementById("safely-root")) return;
 
+  // ── Fonts ──
+  // Some sites block fonts from outside (their security rules), which
+  // made the panel fall back to the site's own font. The fonts ship
+  // inside the extension and are handed to the page as data, which
+  // those rules don't block. Names start with "Safely" so they never
+  // clash with a site's own fonts.
+  const FONTS: [string, string, string][] = [
+    ["Safely Sans", "fonts/inter-400.woff2", "400"],
+    ["Safely Sans", "fonts/inter-500.woff2", "500"],
+    ["Safely Sans", "fonts/inter-600.woff2", "600"],
+    ["Safely Sans", "fonts/inter-700.woff2", "700"],
+    ["Safely Sans", "fonts/inter-800.woff2", "800"],
+    ["Safely Display", "fonts/gasoek-one.woff2", "400"],
+  ];
+  FONTS.forEach(([family, file, weight]) => {
+    fetch(chrome.runtime.getURL(file))
+      .then((res) => res.arrayBuffer())
+      .then((data) => new FontFace(family, data, { weight, display: "swap" }).load())
+      .then((face) => (document.fonts as any).add(face))
+      .catch((e) => console.warn("Safely: could not load " + file, e));
+  });
+
   // Translates through i18n.ts; plain English if it isn't loaded.
   function tr(en: string, vars?: Record<string, string | number>): string {
     const i18n = (window as any).__safelyI18n;
@@ -42,57 +64,112 @@ interface PendingTabRegistration {
   // The scraper's own "not supported" message, when it gave one.
   let unsupportedCustomMessage: string | null = null;
 
+  // Small line icons for the sign-in / limit / error / not-a-listing
+  // messages. The same drawings are used for the toolbar buttons.
+  const ICON_INFO =
+    '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>';
+  const ICON_SIGNIN =
+    '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 012 2v14a2 2 0 01-2 2h-4"></path><polyline points="10 17 15 12 10 7"></polyline><line x1="15" y1="12" x2="3" y2="12"></line></svg>';
+  const ICON_CLOCK =
+    '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M12 6v6l4 2"></path></svg>';
+  const ICON_WARNING =
+    '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>';
+
+  // The same icon, larger, inside the message.
+  function stateIcon(svg: string): string {
+    return (
+      '<div class="safely-state-icon">' +
+      svg.replace(/width="16" height="16"/, 'width="22" height="22"') +
+      "</div>"
+    );
+  }
+
   // Base DOM Structure — the unsupported notice exists from the start
   // as its own permanent piece of the panel, separate from tabsArea
-  // (where the 3 real tabs get built) - this way there's no possibility
+  // (where the real tabs get built) - this way there's no possibility
   // of the real tabs ever appearing alongside it by accident.
   const root = document.createElement("div");
   root.id = "safely-root";
   root.innerHTML =
     '<div id="safely-panel">' +
     '<div class="safely-panel-header">' +
-    '<span class="safely-panel-title" id="safely-panel-title">Safely</span>' +
-    '<span id="safely-usage-line" style="display:none; margin-left:10px; font-size:11px; color:#8a8a93; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;"></span>' +
-    '<button type="button" id="safely-lang-btn" style="margin-left:auto; margin-right:8px; padding:3px 8px; border:1px solid #3a3a42; border-radius:6px; background:transparent; color:#8a8a93; font-size:11px; font-weight:700; letter-spacing:0.4px; line-height:1.4; cursor:pointer;"></button>' +
-    '<div class="safely-close-btn" id="safely-close-btn" style="margin-left:0;">×</div>' +
+    '<img class="safely-panel-logo" src="' +
+    chrome.runtime.getURL("icons/icon48.png") +
+    '" alt="" />' +
+    '<span class="safely-panel-title">Safely</span>' +
+    '<span class="safely-usage-line" id="safely-usage-line" style="display:none"></span>' +
+    '<button type="button" class="safely-lang-btn" id="safely-lang-btn"></button>' +
+    '<div class="safely-close-btn" id="safely-close-btn">' +
+    '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>' +
     "</div>" +
+    "</div>" +
+    '<div class="safely-panel-tabs" id="safely-panel-tabs" style="display:none"></div>' +
+    '<div class="safely-checking" id="safely-checking"></div>' +
     '<div class="safely-tabs-area" id="safely-tabs-area"></div>' +
     '<div class="safely-loading-overlay" id="safely-loading-overlay"><div class="safely-loading-dots"><span></span><span></span><span></span></div></div>' +
-    '<div class="safely-tab-content" id="safely-tab-unsupported" style="display:none; padding: 20px; font-size: 13px; line-height: 1.5; color: #8a8a93;">' +
-    '<span id="safely-unsupported-message"></span>' +
+    '<div class="safely-tab-content safely-state" id="safely-tab-unsupported" style="display:none">' +
+    stateIcon(ICON_INFO) +
+    '<div class="safely-state-title" id="safely-unsupported-title"></div>' +
+    '<div class="safely-state-text" id="safely-unsupported-message"></div>' +
     "</div>" +
-    '<div class="safely-tab-content" id="safely-tab-signin-required" style="display:none; padding: 20px; text-align: center;">' +
-    '<div id="safely-signin-text" style="font-size:13px; line-height:1.6; color:#8a8a93; margin-bottom:16px;"></div>' +
+    '<div class="safely-tab-content safely-state" id="safely-tab-signin-required" style="display:none">' +
+    stateIcon(ICON_SIGNIN) +
+    '<div class="safely-state-title" id="safely-signin-title"></div>' +
+    '<div class="safely-state-text" id="safely-signin-text"></div>' +
     '<a href="' +
     (window as any).__safelyAPI.SITE_BASE +
-    '" target="_blank" class="safely-signin-required-btn" id="safely-signin-btn"></a>' +
+    '" target="_blank" class="safely-btn safely-btn-dark safely-btn-full" id="safely-signin-btn"></a>' +
     "</div>" +
-    '<div class="safely-tab-content" id="safely-tab-analysis-failed" style="display:none; padding: 20px; text-align: center;">' +
-    '<div class="safely-failed-icon">&#9888;</div>' +
-    '<div class="safely-failed-message" id="safely-failed-message" style="font-size:13px; line-height:1.6; color:#8a8a93; margin-top:10px;"></div>' +
-    '<button class="safely-retry-btn" id="safely-retry-btn" style="display:none;">' +
+    '<div class="safely-tab-content safely-state" id="safely-tab-analysis-failed" style="display:none">' +
+    stateIcon(ICON_WARNING) +
+    '<div class="safely-state-title" id="safely-failed-title"></div>' +
+    '<div class="safely-state-text" id="safely-failed-message"></div>' +
+    '<button class="safely-retry-btn safely-btn safely-btn-line safely-btn-full" id="safely-retry-btn">' +
     '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"></polyline><path d="M3.51 15a9 9 0 102.13-9.36L1 10"></path></svg>' +
     '<span id="safely-retry-text"></span>' +
     "</button>" +
     "</div>" +
-    '<div class="safely-tab-content" id="safely-tab-scan-limit-reached" style="display:none; padding: 20px; text-align: center;">' +
-    '<div style="font-size:13px; line-height:1.6; color:#8a8a93; margin-bottom:16px;" id="safely-scan-limit-message"></div>' +
+    '<div class="safely-tab-content safely-state" id="safely-tab-scan-limit-reached" style="display:none">' +
+    stateIcon(ICON_CLOCK) +
+    '<div class="safely-state-title" id="safely-scan-limit-title"></div>' +
+    '<div class="safely-state-text" id="safely-scan-limit-message"></div>' +
     '<a href="' +
     (window as any).__safelyAPI.SITE_BASE +
-    '/dashboard/?manage_billing=1" target="_blank" class="safely-signin-required-btn" id="safely-see-plans-btn"></a>' +
+    '/dashboard/?manage_billing=1" target="_blank" class="safely-btn safely-btn-dark safely-btn-full" id="safely-see-plans-btn"></a>' +
     "</div>" +
     "</div>" +
     '<div id="safely-toolbar"><img class="safely-toolbar-letter" src="' +
     chrome.runtime.getURL("icons/icon48.png") +
     '" alt="Safely" /><div class="safely-toolbar-inner" id="safely-toolbar-inner">' +
     '<span class="safely-toolbar-label" id="safely-collapse-btn">Safely</span>' +
-    "</div></div>";
+    "</div></div>" +
+    '<span class="safely-status-dot" id="safely-status-dot" aria-hidden="true"></span>';
   document.body.appendChild(root);
   (window as any).__safelyRoot = root;
   const panel = document.getElementById("safely-panel") as HTMLElement;
   const toolbar = document.getElementById("safely-toolbar") as HTMLElement;
+  const statusDot = document.getElementById("safely-status-dot") as HTMLElement;
+
+  // ── Status dot on the floating button ──
+  // Amber and pulsing while a check runs; green when the result is in
+  // and hasn't been looked at yet (like a "done" dot on a browser tab).
+  // Opening the panel clears it.
+  type DotState = "" | "run" | "done";
+  let dotState: DotState = "";
+
+  function setStatusDot(state: DotState): void {
+    dotState = state;
+    statusDot.className = "safely-status-dot" + (state ? " safely-dot-" + state : "");
+    toolbar.title =
+      state === "run"
+        ? tr("Checking this supplier")
+        : state === "done"
+          ? tr("Result ready")
+          : "";
+  }
   const collapseBtn = document.getElementById("safely-collapse-btn") as HTMLElement;
-  const panelTitle = document.getElementById("safely-panel-title") as HTMLElement;
+  const panelTabs = document.getElementById("safely-panel-tabs") as HTMLElement;
+  const checkingView = document.getElementById("safely-checking") as HTMLElement;
   const closeBtn = document.getElementById("safely-close-btn") as HTMLElement;
   const langBtn = document.getElementById("safely-lang-btn") as HTMLButtonElement | null;
   const tabsArea = document.getElementById("safely-tabs-area") as HTMLElement;
@@ -121,6 +198,12 @@ interface PendingTabRegistration {
   const failedMessage = document.getElementById("safely-failed-message") as HTMLElement | null;
   const retryBtn = document.getElementById("safely-retry-btn") as HTMLElement | null;
   const retryText = document.getElementById("safely-retry-text") as HTMLElement | null;
+  const stateTitles: Record<string, string> = {
+    "safely-unsupported-title": "Open a supplier listing",
+    "safely-signin-title": "Sign in to check suppliers",
+    "safely-failed-title": "This check didn't finish",
+    "safely-scan-limit-title": "You've used this month's scans",
+  };
 
   if (retryBtn) {
     retryBtn.addEventListener("click", () => {
@@ -164,8 +247,7 @@ interface PendingTabRegistration {
   unsupportedIcon.className = "safely-toolbar-icon";
   unsupportedIcon.dataset.open = "unsupported";
   unsupportedIcon.style.display = "none";
-  unsupportedIcon.innerHTML =
-    '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>';
+  unsupportedIcon.innerHTML = ICON_INFO;
   toolbarInner.insertBefore(unsupportedIcon, collapseBtn);
   unsupportedIcon.addEventListener("click", (e) => {
     e.stopPropagation();
@@ -176,8 +258,7 @@ interface PendingTabRegistration {
   signinRequiredIcon.className = "safely-toolbar-icon";
   signinRequiredIcon.dataset.open = "signin-required";
   signinRequiredIcon.style.display = "none";
-  signinRequiredIcon.innerHTML =
-    '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 012 2v14a2 2 0 01-2 2h-4"></path><polyline points="10 17 15 12 10 7"></polyline><line x1="15" y1="12" x2="3" y2="12"></line></svg>';
+  signinRequiredIcon.innerHTML = ICON_SIGNIN;
   toolbarInner.insertBefore(signinRequiredIcon, collapseBtn);
   signinRequiredIcon.addEventListener("click", (e) => {
     e.stopPropagation();
@@ -187,8 +268,7 @@ interface PendingTabRegistration {
   scanLimitReachedIcon.className = "safely-toolbar-icon";
   scanLimitReachedIcon.dataset.open = "scan-limit-reached";
   scanLimitReachedIcon.style.display = "none";
-  scanLimitReachedIcon.innerHTML =
-    '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M12 6v6l4 2"></path></svg>';
+  scanLimitReachedIcon.innerHTML = ICON_CLOCK;
   toolbarInner.insertBefore(scanLimitReachedIcon, collapseBtn);
   scanLimitReachedIcon.addEventListener("click", (e) => {
     e.stopPropagation();
@@ -199,8 +279,7 @@ interface PendingTabRegistration {
   analysisFailedIcon.className = "safely-toolbar-icon";
   analysisFailedIcon.dataset.open = "analysis-failed";
   analysisFailedIcon.style.display = "none";
-  analysisFailedIcon.innerHTML =
-    '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>';
+  analysisFailedIcon.innerHTML = ICON_WARNING;
   toolbarInner.insertBefore(analysisFailedIcon, collapseBtn);
   analysisFailedIcon.addEventListener("click", (e) => {
     e.stopPropagation();
@@ -238,17 +317,26 @@ interface PendingTabRegistration {
     tabIds.forEach((id) => {
       if (iconSlots[id]) iconSlots[id].title = tr(tabTitles[id] || id);
     });
-    if (currentTab && SPECIAL_STATES.indexOf(currentTab) === -1) {
-      panelTitle.textContent = tr(tabTitles[currentTab] || currentTab);
-    }
+    Object.keys(stateTitles).forEach((id) => {
+      const el = document.getElementById(id);
+      if (el) el.textContent = tr(stateTitles[id]);
+    });
+    panelTabs.querySelectorAll<HTMLElement>("[data-tab]").forEach((btn) => {
+      btn.textContent = tr(tabTitles[btn.dataset.tab || ""] || "");
+    });
+    if (checking) renderChecking();
     if (renderFailedMessage) renderFailedMessage();
     if (renderScanLimitMessage) renderScanLimitMessage();
   }
 
   function switchTab(tab: string): void {
     currentTab = tab;
+    panelTabs.querySelectorAll<HTMLElement>("[data-tab]").forEach((btn) => {
+      btn.classList.toggle("safely-active", btn.dataset.tab === tab);
+    });
     if (SPECIAL_STATES.indexOf(tab) !== -1) {
-      panelTitle.textContent = "Safely";
+      stopChecking();
+      panelTabs.style.display = "none";
       tabIds.forEach((id) => {
         const el = document.getElementById("safely-tab-" + id);
         if (el) el.style.display = "none";
@@ -258,7 +346,7 @@ interface PendingTabRegistration {
       analysisFailedContent.style.display = tab === "analysis-failed" ? "block" : "none";
       scanLimitReachedContent.style.display = tab === "scan-limit-reached" ? "block" : "none";
     } else {
-      panelTitle.textContent = tr(tabTitles[tab] || tab);
+      if (!checking) panelTabs.style.display = "flex";
       unsupportedContent.style.display = "none";
       signinRequiredContent.style.display = "none";
       analysisFailedContent.style.display = "none";
@@ -268,8 +356,17 @@ interface PendingTabRegistration {
         if (el) el.style.display = id === tab ? "block" : "none";
       });
     }
+    playEnter(document.getElementById("safely-tab-" + tab));
     if (tabsArea) tabsArea.scrollTop = 0;
   }
+  // A short fade-in for whatever just appeared.
+  function playEnter(el: HTMLElement | null): void {
+    if (!el) return;
+    el.classList.remove("safely-enter");
+    void el.offsetWidth;
+    el.classList.add("safely-enter");
+  }
+
   function togglePanel(tab: string): void {
     if (panelVisible && currentTab === tab) {
       panelVisible = false;
@@ -278,6 +375,7 @@ interface PendingTabRegistration {
       switchTab(tab);
       panelVisible = true;
       panel.classList.add("safely-visible");
+      if (dotState === "done") setStatusDot("");
     }
   }
 
@@ -311,6 +409,23 @@ interface PendingTabRegistration {
     tabDiv.style.display = "none";
     tabDiv.innerHTML = html;
     tabsArea.appendChild(tabDiv);
+
+    const tabBtn = document.createElement("button");
+    tabBtn.type = "button";
+    tabBtn.className = "safely-panel-tab";
+    tabBtn.dataset.tab = id;
+    tabBtn.textContent = tr(title);
+    tabBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      switchTab(id);
+    });
+    // Keep the bar in the same order as the toolbar icons.
+    const later = Array.prototype.slice
+      .call(panelTabs.children)
+      .find(
+        (b: HTMLElement) => TAB_ORDER.indexOf(b.dataset.tab || "") > TAB_ORDER.indexOf(id),
+      ) as HTMLElement | undefined;
+    panelTabs.insertBefore(tabBtn, later || null);
 
     const iconDiv = iconSlots[id];
     if (iconDiv) {
@@ -388,8 +503,7 @@ interface PendingTabRegistration {
           });
           if (tabIds.indexOf("risk") !== -1) switchTab("risk");
           (window as any).__safelyResetState();
-          if (loadingOverlay) loadingOverlay.classList.add("safely-visible");
-          if (tabsArea) tabsArea.classList.add("safely-loading-blur");
+          startChecking();
           (window as any).__safelyAPI.fetchAnalysis();
         } else {
           TAB_ORDER.forEach((id) => {
@@ -399,6 +513,7 @@ interface PendingTabRegistration {
           analysisFailedIcon.style.display = "none";
           scanLimitReachedIcon.style.display = "none";
           if (usageLine) usageLine.style.display = "none";
+          setStatusDot("");
           switchTab("signin-required");
         }
       });
@@ -417,9 +532,132 @@ interface PendingTabRegistration {
         unsupportedMessageEl.textContent = tr(unsupportedCustomMessage || UNSUPPORTED_TEXT);
       }
 
+      setStatusDot("");
       switchTab("unsupported");
     }
   }
+  // ── Waiting screen ──
+  // While a scan runs, the checks Safely makes are listed one by one.
+  // The server does them all at once and sends one answer, so the list
+  // moves on a timer and the last line keeps spinning until the answer
+  // comes. It never shows a check result before the real one arrives.
+  const CHECK_STEPS = [
+    "Reading the listing",
+    "Checking the seller account",
+    "Looking up the website",
+    "Searching the web for reports",
+    "Comparing the price",
+    "Checking payment terms",
+    "Working out the score",
+  ];
+  const STEP_EVERY_MS = 1400;
+  let checking = false;
+  let checkingStep = 0;
+  let checkingTimer: ReturnType<typeof setInterval> | null = null;
+  let scanStartedAt = 0;
+
+  // Builds the waiting screen once; showStep() then only moves the
+  // highlight, so the spinner keeps turning smoothly.
+  function renderChecking(): void {
+    const r = 18;
+    const arc = (2 * Math.PI * r * 0.3).toFixed(1);
+    checkingView.innerHTML =
+      '<div class="safely-wait-card">' +
+      '<svg class="safely-wait-spin" viewBox="0 0 44 44"><circle cx="22" cy="22" r="' +
+      r +
+      '" fill="none" stroke="#2e2e33" stroke-width="4"/><circle cx="22" cy="22" r="' +
+      r +
+      '" fill="none" stroke="#ffb938" stroke-width="4" stroke-linecap="round" stroke-dasharray="' +
+      arc +
+      ' 200"/></svg>' +
+      '<div><div class="safely-wait-now" id="safely-wait-now"></div>' +
+      '<div class="safely-wait-sub">' +
+      escapeHtml(tr("Checking this supplier. Usually a few seconds.")) +
+      "</div></div></div>" +
+      '<div class="safely-steps">' +
+      CHECK_STEPS.map(
+        (name) =>
+          '<div class="safely-step"><span class="safely-step-dot"></span><span>' +
+          escapeHtml(tr(name)) +
+          "</span></div>",
+      ).join("") +
+      "</div>";
+    showStep();
+  }
+
+  function showStep(): void {
+    const nowEl = document.getElementById("safely-wait-now");
+    if (nowEl) nowEl.textContent = tr(CHECK_STEPS[checkingStep]);
+    checkingView.querySelectorAll<HTMLElement>(".safely-step").forEach((el, i) => {
+      el.classList.toggle("safely-done", i < checkingStep);
+      el.classList.toggle("safely-now", i === checkingStep);
+      const dot = el.querySelector(".safely-step-dot");
+      if (dot) dot.innerHTML = i < checkingStep ? SAFELY_CHECK_ICON : "";
+    });
+  }
+
+  function startChecking(): void {
+    stopChecking();
+    checking = true;
+    checkingStep = 0;
+    scanStartedAt = Date.now();
+    setStatusDot("run");
+    panelTabs.style.display = "none";
+    tabsArea.style.display = "none";
+    checkingView.classList.add("safely-visible");
+    renderChecking();
+    checkingTimer = setInterval(() => {
+      if (checkingStep < CHECK_STEPS.length - 1) {
+        checkingStep += 1;
+        showStep();
+      }
+    }, STEP_EVERY_MS);
+  }
+
+  function stopChecking(): void {
+    if (checkingTimer) clearInterval(checkingTimer);
+    checkingTimer = null;
+    if (!checking) return;
+    checking = false;
+    checkingView.classList.remove("safely-visible");
+    checkingView.innerHTML = "";
+    tabsArea.style.display = "";
+    if (SPECIAL_STATES.indexOf(currentTab) === -1 && tabIds.length > 0) {
+      panelTabs.style.display = "flex";
+    }
+  }
+
+  // ── Rows that open, "Show more" and ticks (used by both tabs) ──
+  root.addEventListener("click", (e) => {
+    const target = e.target as HTMLElement;
+    const tick = target.closest("[data-safely-tick]");
+    if (tick) {
+      const row = tick.closest(".safely-row");
+      if (row) {
+        const on = row.classList.toggle("safely-ticked");
+        tick.setAttribute("aria-checked", on ? "true" : "false");
+      }
+      return;
+    }
+    const opener = target.closest("[data-safely-open]");
+    if (opener) {
+      const row = opener.closest(".safely-row");
+      if (row) {
+        const open = row.classList.toggle("safely-open");
+        opener.setAttribute("aria-expanded", open ? "true" : "false");
+      }
+      return;
+    }
+    const more = target.closest("[data-safely-more]") as HTMLElement | null;
+    if (more) {
+      const list = more.closest(".safely-rows");
+      if (!list) return;
+      const all = list.classList.toggle("safely-show-all");
+      const label = more.querySelector("span");
+      if (label) label.textContent = all ? tr("Show less") : more.dataset.safelyMore || "";
+    }
+  });
+
   // ── Toolbar Hover Events ──
   toolbar.addEventListener("mouseenter", () => {
     clearTimeout(collapseTimer);
@@ -538,9 +776,19 @@ interface PendingTabRegistration {
     showUsageLine();
   }
 
+  // How long the scan took, shown at the top of the Risk tab. Runs
+  // before the tabs redraw (this file loads before tabs/*.js).
+  window.addEventListener("safely-data-ready", () => {
+    const data = (window as any).__safelyData;
+    if (data && scanStartedAt) {
+      data.scanSeconds = Math.max(1, Math.round((Date.now() - scanStartedAt) / 1000));
+    }
+  });
+
   window.addEventListener("safely-analysis-finished", (e: any) => {
-    if (loadingOverlay) loadingOverlay.classList.remove("safely-visible");
-    if (tabsArea) tabsArea.classList.remove("safely-loading-blur");
+    stopChecking();
+    // Already looking at the panel: nothing new to point at.
+    setStatusDot(panelVisible ? "" : "done");
 
     // Refresh the "63/5" scans-used line after every scan attempt.
     // It never blocks anything.
@@ -680,6 +928,7 @@ interface PendingTabRegistration {
   // tabs redraw themselves.
   window.addEventListener("safely-lang-changed", () => {
     applyStaticTexts();
+    setStatusDot(dotState);
     if (lastUsage) showUsageLine();
     const i18n = (window as any).__safelyI18n;
     if (i18n) showResultIn(i18n.getLang());

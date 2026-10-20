@@ -10,10 +10,6 @@
             return en;
         return en.replace(/\{(\w+)\}/g, (whole, key) => Object.prototype.hasOwnProperty.call(vars, key) ? String(vars[key]) : whole);
     }
-    function isPortuguese() {
-        const i18n = window.__safelyI18n;
-        return !!i18n && i18n.getLang() === "pt-br";
-    }
     let wasm;
     try {
         const wasmUrl = chrome.runtime.getURL("pkg/wasm.js");
@@ -26,354 +22,365 @@
         wasm = {
             default: async () => { },
             risk_level: (s) => (s <= 33 ? "low" : s <= 66 ? "caution" : "high"),
-            risk_label: (l) => l === "low" ? "Low risk" : l === "caution" ? "Caution" : "High risk",
-            risk_desc: (l) => l === "low"
-                ? "No major warnings found"
-                : l === "caution"
-                    ? "Review before proceeding"
-                    : "High risk detected",
-            build_activity_bars: (a) => {
-                const values = Array.from(a);
-                const rawMax = values.length > 0 ? Math.max(...values) : 1;
-                const max = rawMax === 0 ? 1 : rawMax;
-                return values
-                    .map((v) => {
-                    const pct = Math.round((v / max) * 100);
-                    const heightPx = Math.max(2, Math.round((pct / 100) * 44));
-                    const opacity = v === 0 ? 0.15 : 0.3 + (pct / 100) * 0.7;
-                    return ('<div style="flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;height:100%;position:relative;">' +
-                        '<div class="safely-activity-bar" style="height:' +
-                        heightPx +
-                        "px;opacity:" +
-                        opacity.toFixed(2) +
-                        ';width:100%;"></div>' +
-                        '<span style="position:absolute;top:6px;font-size:9px;color:#ffffff;line-height:1;">' +
-                        v +
-                        "</span></div>");
-                })
-                    .join("");
-            },
-            verification_badge: (s) => '<span class="safely-verified-badge">' + escapeHtml(s) + "</span>",
         };
     }
     if (!window.__safelyAddTab)
         return;
-    let currentRiskSubTab = "seller";
-    // Same palette as the dashboard's RISK_HEX map.
-    const RISK_HEX = {
-        low: "#35d0a6",
-        caution: "#f2b84c",
-        high: "#ff5d5d",
-    };
-    // The words under the score for each risk level, in English (the
-    // keys for the Portuguese text). Same words as risk_label / risk_desc
-    // in wasm/src/lib.rs. Low risk never says "safe": no check can
-    // promise that, and the buyer should stay careful.
+    const CHEVRON = '<svg class="safely-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>';
+    // The words in the score card, in English (the keys for the
+    // Portuguese text). Low risk never says "safe": no check can promise
+    // that, and the buyer should stay careful.
     const LEVEL_LABEL = {
         low: "Low risk",
         caution: "Caution",
         high: "High risk",
     };
-    const LEVEL_DESC = {
-        low: "No major warnings found",
-        caution: "Review before proceeding",
-        high: "High risk detected",
+    const LEVEL_SAY = {
+        low: "No serious warning signs.",
+        caution: "Check these points before you pay.",
+        high: "Don't pay this supplier yet.",
     };
     // Set by the backend when Safely could check too little about the
     // supplier (most checks came back empty). The score is then at least
-    // Moderate, and the label says why instead of a plain "Caution".
+    // Moderate, and the card says why instead of a plain "Caution".
     const NOT_ENOUGH_INFORMATION = "not_enough_information";
     function hasTooLittleInformation(pageData) {
         return (pageData.riskFactors || []).some((f) => f && f.name === NOT_ENOUGH_INFORMATION);
     }
-    function riskLabelFor(level, pageData) {
-        if (hasTooLittleInformation(pageData))
-            return tr("Not enough information");
-        return tr(LEVEL_LABEL[level] || LEVEL_LABEL.high);
+    // Values that mean "we don't know": rows with these are not shown.
+    const EMPTY_VALUES = ["", "not found", "unknown", "none", "n/a"];
+    function hasValue(value) {
+        if (value === null || value === undefined)
+            return false;
+        return EMPTY_VALUES.indexOf(String(value).trim().toLowerCase()) === -1;
     }
-    function riskDescFor(level, pageData) {
-        if (hasTooLittleInformation(pageData))
-            return tr("Check this supplier carefully yourself");
-        return tr(LEVEL_DESC[level] || LEVEL_DESC.high);
+    function capitalizeFirst(str) {
+        return str ? str.charAt(0).toUpperCase() + str.slice(1) : str;
     }
-    // Labels only the backend's B2B (supplier) scans produce.
-    const B2B_ONLY_LABELS = [
-        "Company profile completeness",
-        "Listing completeness",
-        "Registration consistency",
-    ];
-    // What to check before paying, shown at the top of a Moderate result:
-    // Moderate covers a wide range (34-66) and buyers may read it as
-    // "fine". High results already say "High risk detected".
-    const B2B_BEFORE_YOU_PAY = [
-        "Order a sample first",
-        "Pay through the platform's buyer protection, or only to a bank account in the company's own name",
-        "Confirm the bank details on a video call",
-    ];
-    const B2C_BEFORE_YOU_PAY = [
-        "Ask for a live video call",
-        "Do not pay to number in listing",
-        "Don't pay the full amount before delivery",
-    ];
-    function beforeYouPayHTML(level, pageData) {
-        if (level !== "caution")
-            return "";
-        const isB2b = (pageData.signals || []).some((s) => B2B_ONLY_LABELS.includes(s.label));
-        const items = (isB2b ? B2B_BEFORE_YOU_PAY : B2C_BEFORE_YOU_PAY)
-            .map((item) => '<div style="display:flex;gap:8px;align-items:flex-start;margin-top:6px;">' +
-            '<span style="color:#f2b84c;flex-shrink:0;">&#10003;</span>' +
-            "<span>" +
-            escapeHtml(tr(item)) +
-            "</span></div>")
-            .join("");
-        return ('<div class="safely-network-alert safely-alert-caution" style="display:block;margin:0 0 14px;font-size:12px;line-height:1.45;">' +
-            '<div style="font-weight:700;">' +
-            escapeHtml(tr("Before you pay, check:")) +
-            "</div>" +
-            items +
-            "</div>");
+    function isFlagged(type) {
+        return type !== "good" && type !== "info";
     }
-    // The status badge comes from WASM in English; in Portuguese only its
-    // visible word is swapped, so its colour and style stay the same.
-    function verificationBadgeFor(status) {
-        const html = wasm.verification_badge(status);
-        if (!isPortuguese() || !status)
-            return html;
-        const word = status.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-        return html.replace(new RegExp(">\\s*" + word + "\\s*<", "i"), ">" + escapeHtml(tr(status)) + "<");
+    // Text before the ###CHECKLIST### marker some reasons carry.
+    function plainText(text) {
+        const marker = text.indexOf("###CHECKLIST###");
+        return marker === -1 ? text : text.slice(0, marker);
     }
-    // The line under the activity chart. In Portuguese it is written
-    // here from the report count; in English the server's sentence is
-    // shown as before.
-    function networkSummaryFor(pageData) {
-        if (!isPortuguese())
-            return pageData.seller.networkSummary;
-        const count = pageData.fraudReportCount || 0;
-        if (count === 0)
-            return tr("No fraud reports found on the Safely network.");
-        if (count === 1)
-            return tr("1 fraud report found on the Safely network. Proceed with caution.");
-        return tr("{n} fraud reports found on the Safely network. High-risk seller.", { n: count });
-    }
-    // A seller detail ("Not found", "About 11 years", a name...) in the
-    // current language, made safe to put in the page.
-    function detail(value) {
-        return escapeHtml(tr(value === null || value === undefined ? "" : String(value)));
-    }
-    function buildRiskGauge(score, level) {
-        const color = RISK_HEX[level] || RISK_HEX.high;
-        const r = 44;
-        const circumference = 2 * Math.PI * r;
-        const offset = circumference * (1 - score / 100);
-        let ticks = "";
-        const tickCount = 40;
-        for (let i = 0; i < tickCount; i++) {
-            const angle = (i * 360) / tickCount;
-            const major = i % 5 === 0;
-            const len = major ? 6 : 3;
-            const outerR = 54;
-            const innerR = outerR - len;
-            ticks +=
-                '<line x1="60" y1="' +
-                    (60 - outerR) +
-                    '" x2="60" y2="' +
-                    (60 - innerR) +
-                    '" stroke="' +
-                    (major ? "#3a3a42" : "#24242b") +
-                    '" stroke-width="1.5" transform="rotate(' +
-                    angle +
-                    ' 60 60)" />';
-        }
-        return ('<svg viewBox="0 0 120 120" style="width:100%;height:100%">' +
-            ticks +
-            '<circle cx="60" cy="60" r="' +
+    // ---- Score card ------------------------------------------------
+    function buildRing(score) {
+        const r = 36;
+        const c = 2 * Math.PI * r;
+        const filled = (c * Math.max(0, Math.min(100, score))) / 100;
+        return ('<div class="safely-ring"><svg viewBox="0 0 84 84">' +
+            '<circle cx="42" cy="42" r="' +
             r +
-            '" fill="none" stroke="#1b1b20" stroke-width="9" />' +
-            '<circle cx="60" cy="60" r="' +
+            '" fill="none" stroke="#2e2e33" stroke-width="7"/>' +
+            '<circle class="safely-ring-arc" cx="42" cy="42" r="' +
             r +
-            '" fill="none" stroke="' +
-            color +
-            '" stroke-width="9" stroke-linecap="round" stroke-dasharray="' +
-            circumference +
-            '" stroke-dashoffset="' +
-            offset +
-            '" transform="rotate(-90 60 60)" />' +
-            '<text x="60" y="57" text-anchor="middle" font-family="JetBrains Mono, monospace" font-weight="700" font-size="30" fill="' +
-            color +
-            '">' +
+            '" fill="none" stroke="#ffb938" stroke-width="7" stroke-linecap="round" stroke-dasharray="' +
+            filled.toFixed(1) +
+            " " +
+            c.toFixed(1) +
+            '"/></svg><div class="safely-ring-number">' +
             score +
-            "</text>" +
-            '<text x="60" y="75" text-anchor="middle" font-family="Inter, sans-serif" font-weight="600" font-size="9" fill="#8a8a93" letter-spacing="0.5">/ 100</text>' +
-            "</svg>");
+            "</div></div>");
     }
-    function buildSellerSection() {
-        const pageData = window.__safelyData;
+    function buildScoreCard(pageData) {
         const score = pageData.riskScore || 0;
-        const lvl = wasm.risk_level(score);
-        const riskLabel = riskLabelFor(lvl, pageData);
-        const riskDesc = riskDescFor(lvl, pageData);
-        const riskColor = RISK_HEX[lvl] || RISK_HEX.high;
-        const activityBars = wasm.build_activity_bars(new Uint8Array(pageData.seller.monthlyActivity.map((v) => Math.min(255, Math.max(0, v)))));
-        const circleHTML = '<div style="text-align:center;padding:20px 16px 10px">' +
-            '<div style="width:120px;height:120px;margin:0 auto 12px">' +
-            buildRiskGauge(score, lvl) +
-            "</div>" +
-            '<div style="font-size:18px;font-weight:700;color:' +
-            riskColor +
+        const level = wasm.risk_level(score);
+        const tooLittle = hasTooLittleInformation(pageData);
+        const signals = pageData.signals || [];
+        const flags = signals.filter((s) => isFlagged(s.type)).length;
+        const label = tooLittle ? tr("Not enough information") : tr(LEVEL_LABEL[level] || LEVEL_LABEL.high);
+        // The same words as the Details tab ("need a look" / "look fine"),
+        // and never "no warning signs" while a check needs a look.
+        const say = tooLittle
+            ? tr("Check this supplier carefully yourself")
+            : level === "low" && flags === 0
+                ? tr("No warning signs found.")
+                : tr(LEVEL_SAY[level] || LEVEL_SAY.high);
+        const sub = flags === 0
+            ? tr("All {total} checks look fine.", { total: signals.length })
+            : flags === 1
+                ? tr("1 of {total} checks needs a look.", { total: signals.length })
+                : tr("{n} of {total} checks need a look.", { n: flags, total: signals.length });
+        return ('<div class="safely-verdict">' +
+            buildRing(score) +
+            '<div><div class="safely-level' +
+            (level === "low" && !tooLittle ? " safely-level-calm" : "") +
             '">' +
-            riskLabel +
-            "</div>" +
-            '<div style="font-size:13px;color:#8a8a93;margin-top:4px">' +
-            riskDesc +
-            "</div>" +
-            "</div>";
-        const sellerCardHTML = '<div class="safely-section-label">' +
-            tr("Seller Information") +
-            '</div><div class="safely-seller-card"><div class="safely-seller-name">' +
-            detail(pageData.seller.name) +
-            '</div><div class="safely-seller-detail"><span>' +
-            tr("Username") +
-            "</span><span>" +
-            detail(pageData.seller.handle) +
-            '</span></div><div class="safely-seller-detail"><span>' +
-            tr("Phone") +
-            "</span><span>" +
-            detail(pageData.seller.phone) +
-            '</span></div><div class="safely-seller-detail"><span>' +
-            tr("Account age") +
-            "</span><span>" +
-            detail(pageData.seller.accountAge) +
-            '</span></div><div class="safely-seller-detail"><span>' +
-            tr("Location") +
-            "</span><span>" +
-            detail(pageData.seller.location) +
-            '</span></div><div class="safely-seller-detail"><span>' +
-            tr("Last active") +
-            "</span><span>" +
-            detail(pageData.seller.lastActive) +
-            '</span></div><div class="safely-seller-detail"><span>' +
-            tr("Status") +
-            "</span>" +
-            verificationBadgeFor(pageData.seller.verification) +
-            '</div><div class="safely-seller-detail"><span>' +
-            tr("Fraud Reports") +
-            '</span><span style="color:' +
-            (pageData.fraudReportCount > 0 ? "#ff5d5d" : "#8a8a93") +
-            '">' +
-            (pageData.fraudReportCount || 0) +
-            '</span></div><div class="safely-seller-detail"><span>' +
-            tr("Platform") +
-            '</span><span style="text-transform:capitalize">' +
-            detail(pageData.seller.platform) +
-            "</span></div></div>";
-        const activityHTML = '<div class="safely-section-label" style="margin-top:18px">' +
-            tr("Visit activity — 12 months") +
-            "</div>" +
-            '<div class="safely-activity-card">' +
-            '<div style="display:flex;align-items:flex-end;gap:3px;height:56px">' +
-            activityBars +
-            "</div>" +
-            '<div style="display:flex;gap:3px;margin-top:4px">' +
-            (function () {
-                const months = [
-                    "Jan", "Feb", "Mar", "Apr", "May", "Jun",
-                    "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
-                ];
-                return months
-                    .map((m) => '<span style="flex:1;text-align:center;font-size:8px;color:#8a8a93;">' +
-                    tr(m) +
-                    "</span>")
-                    .join("");
-            })() +
-            "</div></div>";
-        const networkHTML = '<div class="safely-network-alert safely-alert-' +
-            lvl +
-            '" style="margin-top:14px"><span>&#9679;</span><span>' +
-            networkSummaryFor(pageData) +
-            "</span></div>";
-        const outcomeButtonsHTML = '<div style="display:flex;gap:8px;margin-top:14px;">' +
-            '<button id="safely-outcome-proceed" style="flex:1;padding:10px;border-radius:8px;border:1px solid #35d0a6;background:transparent;color:#35d0a6;font-size:12px;font-weight:600;cursor:pointer;">' +
-            escapeHtml(tr("I'm proceeding")) +
-            "</button>" +
-            '<button id="safely-outcome-abort" style="flex:1;padding:10px;border-radius:8px;border:1px solid #ff5d5d;background:transparent;color:#ff5d5d;font-size:12px;font-weight:600;cursor:pointer;">' +
-            escapeHtml(tr("I'm backing out")) +
-            "</button>" +
-            "</div>" +
-            '<div id="safely-outcome-confirmed" style="display:none;text-align:center;margin-top:10px;font-size:12px;color:#8a8a93;">' +
-            tr("Thanks - your response has been recorded.") +
-            "</div>";
-        return (circleHTML +
-            beforeYouPayHTML(lvl, pageData) +
-            sellerCardHTML +
-            activityHTML +
-            networkHTML +
-            outcomeButtonsHTML);
+            escapeHtml(label) +
+            '</div><div class="safely-say">' +
+            escapeHtml(say) +
+            '</div><div class="safely-say-sub">' +
+            escapeHtml(sub) +
+            "</div></div></div>");
     }
-    // The report reasons: [value sent to the server, name, description].
-    const REPORT_REASONS = [
-        ["scam", "Scam", "Seller took payment and disappeared"],
-        ["fake_item", "Fake item", "Item was counterfeit or misrepresented"],
-        ["no_delivery", "No delivery", "Payment sent but item never arrived"],
-        ["wrong_item", "Wrong item", "Received something different"],
-        ["non_responsive", "Non responsive", "Seller stopped responding after payment"],
-    ];
-    function buildReportSection() {
-        const reasons = REPORT_REASONS.map(([value, name, desc]) => '<label class="safely-report-reason"><input type="radio" name="safely-report-reason" value="' +
-            value +
-            '"><div class="safely-report-reason-text"><span class="safely-report-reason-name">' +
-            tr(name) +
-            '</span><span class="safely-reason-desc">' +
-            tr(desc) +
-            "</span></div></label>").join("");
-        return ('<div class="safely-report-section">' +
-            '<div class="safely-section-label">' +
-            tr("Report this seller") +
-            "</div>" +
-            '<p class="safely-report-desc">' +
-            tr("If you experienced fraud or suspicious behavior from this seller, help protect others by submitting a report.") +
-            "</p>" +
-            '<div class="safely-section-label" style="margin-top:14px">' +
-            tr("Select reason") +
-            "</div>" +
-            '<div class="safely-report-reasons" id="safely-report-reasons">' +
-            reasons +
-            "</div>" +
-            '<button class="safely-report-btn" id="safely-report-submit">' +
-            tr("Submit Report") +
-            "</button>" +
-            '<div class="safely-report-success" id="safely-report-success" style="display:none">' +
-            "<span>&#10003;</span> " +
-            tr("Report submitted. Thank you for helping protect the community.") +
-            "</div>" +
+    const SEVERITY_ORDER = ["hard", "compound", "soft"];
+    const SEVERITY_LABELS = {
+        hard: "Serious",
+        compound: "Pattern match",
+        soft: "Worth noting",
+    };
+    const MAX_FINDINGS = 3;
+    // Always up to three rows, problems first: the risk factors (most
+    // serious first) or, without them, the flagged checks; then checks
+    // that passed fill the rest. Every row has a title and a value line.
+    function findings(pageData) {
+        const signals = pageData.signals || [];
+        const factors = (pageData.riskFactors || [])
+            .filter((f) => f && f.name !== NOT_ENOUGH_INFORMATION)
+            .slice()
+            .sort((a, b) => SEVERITY_ORDER.indexOf(a.severity) - SEVERITY_ORDER.indexOf(b.severity));
+        const fromSignal = (s) => ({
+            flag: isFlagged(s.type),
+            title: tr(capitalizeFirst(s.label)),
+            value: tr(capitalizeFirst(s.value)),
+            text: capitalizeFirst(plainText(s.sub || "")),
+        });
+        const problems = factors.length > 0
+            ? factors.map((f) => ({
+                flag: true,
+                title: f.contributing_signals && f.contributing_signals.length > 0
+                    ? f.contributing_signals.map((label) => tr(label)).join(" + ")
+                    : tr(capitalizeFirst(String(f.name || "").replace(/_/g, " "))),
+                value: tr(SEVERITY_LABELS[f.severity] || "Worth noting"),
+                text: capitalizeFirst(plainText(f.description || "")),
+            }))
+            : signals.filter((s) => isFlagged(s.type)).map(fromSignal);
+        const passed = signals.filter((s) => s.type === "good").map(fromSignal);
+        return problems.concat(passed).slice(0, MAX_FINDINGS);
+    }
+    function buildFindings(pageData) {
+        const list = findings(pageData);
+        if (list.length === 0)
+            return "";
+        const rows = list
+            .map((f, i) => {
+            const canOpen = !!f.text;
+            const open = canOpen && i === 0 && f.flag;
+            return ('<div class="safely-row' +
+                (open ? " safely-open" : "") +
+                '">' +
+                (canOpen
+                    ? '<button type="button" class="safely-row-head" data-safely-open aria-expanded="' +
+                        open +
+                        '">'
+                    : '<div class="safely-row-head">') +
+                '<span class="safely-mark ' +
+                (f.flag ? "safely-mark-flag" : "safely-mark-ok") +
+                '">' +
+                (f.flag ? "!" : SAFELY_CHECK_ICON) +
+                '</span><span class="safely-row-title">' +
+                escapeHtml(f.title) +
+                (f.value ? '<span class="safely-row-value">' + escapeHtml(f.value) + "</span>" : "") +
+                "</span>" +
+                (canOpen ? CHEVRON + "</button>" : "</div>") +
+                (canOpen
+                    ? '<div class="safely-row-more"><div><div class="safely-row-text">' +
+                        escapeHtml(f.text) +
+                        "</div></div></div>"
+                    : "") +
+                "</div>");
+        })
+            .join("");
+        return ('<div class="safely-heading">' +
+            escapeHtml(tr("What we found")) +
+            '</div><div class="safely-rows">' +
+            rows +
             "</div>");
+    }
+    // ---- Supplier --------------------------------------------------
+    function fact(label, value) {
+        return ('<div class="safely-fact"><small>' +
+            escapeHtml(label) +
+            "</small><div>" +
+            escapeHtml(value) +
+            "</div></div>");
+    }
+    function buildSupplier(pageData) {
+        const seller = pageData.seller || {};
+        const platform = hasValue(seller.platform) ? String(seller.platform) : "";
+        const facts = [];
+        if (hasValue(seller.accountAge)) {
+            facts.push(fact(platform ? tr("On {platform} for", { platform }) : tr("Account age"), tr(String(seller.accountAge))));
+        }
+        facts.push(fact(tr("Reports on Safely"), String(pageData.fraudReportCount || 0)));
+        if (hasValue(seller.phone))
+            facts.push(fact(tr("Phone"), String(seller.phone)));
+        if (hasValue(seller.verification)) {
+            facts.push(fact(tr("Status"), capitalizeFirst(tr(String(seller.verification).toLowerCase()))));
+        }
+        if (hasValue(seller.handle))
+            facts.push(fact(tr("Contact"), String(seller.handle)));
+        if (hasValue(seller.lastActive))
+            facts.push(fact(tr("Last active"), tr(String(seller.lastActive))));
+        const name = hasValue(seller.name) ? String(seller.name) : platform || tr("Supplier");
+        const where = hasValue(seller.location) ? tr(String(seller.location)) : "";
+        return ('<div class="safely-heading">' +
+            escapeHtml(tr("Supplier")) +
+            '</div><div class="safely-supplier"><div class="safely-supplier-name">' +
+            escapeHtml(name) +
+            "</div>" +
+            (where ? '<div class="safely-supplier-where">' + escapeHtml(where) + "</div>" : "") +
+            '<div class="safely-facts">' +
+            facts.join("") +
+            "</div>" +
+            buildVisits(seller.monthlyActivity || []) +
+            "</div>");
+    }
+    // Visits by month, January to December. This month is dark, the rest
+    // grey. Hidden when there were no visits at all.
+    function buildVisits(months) {
+        const values = months.slice(0, 12).map((v) => Math.max(0, Number(v) || 0));
+        const total = values.reduce((sum, v) => sum + v, 0);
+        if (total === 0)
+            return "";
+        const max = Math.max.apply(null, values);
+        const thisMonth = new Date().getMonth();
+        const bars = values
+            .map((v, i) => "<i" +
+            (i === thisMonth ? ' class="safely-now-bar"' : "") +
+            ' style="height:' +
+            (v === 0 ? 2 : Math.max(4, Math.round((v / max) * 34))) +
+            'px"></i>')
+            .join("");
+        return ('<div class="safely-bars">' +
+            bars +
+            '</div><div class="safely-bars-label"><span>' +
+            escapeHtml(tr("Safely visits by month")) +
+            "</span><span>" +
+            total +
+            "</span></div>");
+    }
+    // ---- Go ahead / walk away, report link, time ----------------------
+    // The line shown instead of the Report link once this person has
+    // reported the supplier (null: show the link).
+    let reportedNote = null;
+    function buildActions(pageData) {
+        const high = wasm.risk_level(pageData.riskScore || 0) === "high";
+        return ('<div class="safely-outcome" id="safely-outcome-buttons">' +
+            '<button type="button" class="safely-btn safely-btn-line" id="safely-outcome-proceed">' +
+            escapeHtml(tr("I'll go ahead")) +
+            "</button>" +
+            '<button type="button" class="safely-btn ' +
+            (high ? "safely-btn-dark" : "safely-btn-line") +
+            '" id="safely-outcome-abort">' +
+            escapeHtml(tr("I'll walk away")) +
+            "</button></div>" +
+            '<div class="safely-outcome-done" id="safely-outcome-confirmed">' +
+            escapeHtml(tr("Thanks - your response has been recorded.")) +
+            "</div>" +
+            '<div class="safely-report-line">' +
+            (reportedNote
+                ? escapeHtml(tr(reportedNote))
+                : escapeHtml(tr("Had a problem with this supplier?")) +
+                    ' <button type="button" class="safely-link" id="safely-report-open">' +
+                    escapeHtml(tr("Report it")) +
+                    "</button>") +
+            "</div>" +
+            (pageData.scanSeconds
+                ? '<div class="safely-foot">' +
+                    escapeHtml(tr("Checked in {s} seconds", { s: pageData.scanSeconds })) +
+                    "</div>"
+                : ""));
     }
     function buildRiskTab() {
-        const sellerVisible = currentRiskSubTab === "seller";
-        return ('<div class="safely-sub-tabs">' +
-            '<button class="safely-sub-tab' +
-            (sellerVisible ? " safely-active" : "") +
-            '" id="safely-risk-subtab-seller">' +
-            tr("Risk") +
-            "</button>" +
-            '<button class="safely-sub-tab' +
-            (!sellerVisible ? " safely-active" : "") +
-            '" id="safely-risk-subtab-report">' +
-            tr("Report") +
-            "</button>" +
-            "</div>" +
-            '<div id="safely-risk-seller-content"' +
-            (sellerVisible ? "" : ' style="display:none"') +
-            ">" +
-            buildSellerSection() +
-            "</div>" +
-            '<div id="safely-risk-report-content"' +
-            (!sellerVisible ? "" : ' style="display:none"') +
-            ">" +
-            buildReportSection() +
-            "</div>");
+        const pageData = window.__safelyData;
+        return (buildScoreCard(pageData) +
+            buildFindings(pageData) +
+            buildSupplier(pageData) +
+            buildActions(pageData));
     }
-    function fraudCountContribution(count) {
-        if (count === 0)
+    // ---- Report sheet ----------------------------------------------
+    // [value the server expects, words shown]. The values are the same
+    // five the backend has always accepted.
+    const REPORT_REASONS = [
+        ["no_delivery", "Took payment and never shipped"],
+        ["fake_item", "Goods were fake or not as described"],
+        ["wrong_item", "Sent the wrong goods"],
+        ["non_responsive", "Stopped replying after payment"],
+        ["scam", "Something else looked like a scam"],
+    ];
+    // The sheet sits on the panel itself, so it covers the whole panel
+    // and is not moved by the tab's scroll.
+    function buildSheet() {
+        const panel = document.getElementById("safely-panel");
+        if (!panel)
+            return;
+        const old = document.getElementById("safely-report-sheet");
+        if (old)
+            old.remove();
+        const wrap = document.createElement("div");
+        wrap.className = "safely-sheet-wrap";
+        wrap.id = "safely-report-sheet";
+        wrap.innerHTML =
+            '<div class="safely-sheet-dim" data-safely-close></div>' +
+                '<div class="safely-sheet" role="dialog" aria-modal="true">' +
+                '<div class="safely-sheet-grab"></div>' +
+                '<div id="safely-report-form">' +
+                '<div class="safely-sheet-top"><div class="safely-sheet-title">' +
+                escapeHtml(tr("Report this supplier")) +
+                '</div><div class="safely-close-btn" data-safely-close title="' +
+                escapeHtml(tr("Close")) +
+                '"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></div></div>' +
+                '<div class="safely-sheet-lead">' +
+                escapeHtml(tr("Your report warns other buyers who check this supplier.")) +
+                "</div>" +
+                REPORT_REASONS.map(([value, words]) => '<label class="safely-option"><input type="radio" name="safely-report-reason" value="' +
+                    value +
+                    '"><span class="safely-option-dot"></span>' +
+                    escapeHtml(tr(words)) +
+                    "</label>").join("") +
+                '<button type="button" class="safely-btn safely-btn-dark safely-btn-full" id="safely-report-submit" style="margin-top:12px" disabled>' +
+                escapeHtml(tr("Send report")) +
+                "</button></div>" +
+                '<div class="safely-sheet-done" id="safely-report-done"><b>' +
+                escapeHtml(tr("Report sent")) +
+                "</b>" +
+                escapeHtml(tr("Thank you for warning other buyers.")) +
+                "</div></div>";
+        panel.appendChild(wrap);
+        wrap.querySelectorAll("[data-safely-close]").forEach((el) => el.addEventListener("click", (e) => {
+            e.stopPropagation();
+            closeSheet();
+        }));
+        const submitBtn = wrap.querySelector("#safely-report-submit");
+        wrap.querySelectorAll('input[name="safely-report-reason"]').forEach((input) => input.addEventListener("change", () => {
+            submitBtn.disabled = false;
+        }));
+        submitBtn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            sendReport(wrap, submitBtn);
+        });
+        if (window.__safelyPreventInputBubbling) {
+            window.__safelyPreventInputBubbling();
+        }
+    }
+    function openSheet() {
+        buildSheet();
+        const wrap = document.getElementById("safely-report-sheet");
+        if (!wrap)
+            return;
+        void wrap.offsetWidth;
+        wrap.classList.add("safely-open");
+    }
+    function closeSheet() {
+        const wrap = document.getElementById("safely-report-sheet");
+        if (wrap)
+            wrap.classList.remove("safely-open");
+    }
+    document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape")
+            closeSheet();
+    }, true);
+    // Points a seller's reports add to the score - the same rule as the
+    // backend (report_points in services/fraud_reports.rs): OLX 0 / 20 /
+    // 35 / 50, suppliers 5 per report and 20 at most. Only used when the
+    // server didn't send the new score back.
+    function reportPoints(count, isB2b) {
+        if (isB2b)
+            return Math.min(Math.max(count, 0), 4) * 5;
+        if (count <= 0)
             return 0;
         if (count === 1)
             return 20;
@@ -381,102 +388,103 @@
             return 35;
         return 50;
     }
-    function attachRiskTabListeners() {
-        const root = document.getElementById("safely-tab-risk");
-        if (!root)
-            return;
-        const sellerBtn = root.querySelector("#safely-risk-subtab-seller");
-        const reportBtn = root.querySelector("#safely-risk-subtab-report");
-        const sellerContent = root.querySelector("#safely-risk-seller-content");
-        const reportContent = root.querySelector("#safely-risk-report-content");
-        if (sellerBtn && reportBtn && sellerContent && reportContent) {
-            sellerBtn.addEventListener("click", () => {
-                currentRiskSubTab = "seller";
-                sellerBtn.classList.add("safely-active");
-                reportBtn.classList.remove("safely-active");
-                sellerContent.style.display = "";
-                reportContent.style.display = "none";
-            });
-            reportBtn.addEventListener("click", () => {
-                currentRiskSubTab = "report";
-                reportBtn.classList.add("safely-active");
-                sellerBtn.classList.remove("safely-active");
-                reportContent.style.display = "";
-                sellerContent.style.display = "none";
-            });
-        }
-        const submitBtn = root.querySelector("#safely-report-submit");
-        if (submitBtn) {
-            submitBtn.addEventListener("click", async () => {
-                const selected = root.querySelector('input[name="safely-report-reason"]:checked');
-                if (!selected) {
-                    alert(tr("Please select a reason before submitting."));
-                    return;
-                }
-                const pageData = window.__safelyData;
-                submitBtn.textContent = tr("Submitting...");
-                submitBtn.disabled = true;
-                const reportData = {
-                    platform: pageData.seller.platform || "olx",
-                    platform_id: pageData.seller.platformId || null,
-                    report_type: selected.value,
-                    description: null,
-                    listing_url: window.location.href,
-                };
-                const result = await window.__safelyAPI.submitReport(reportData);
-                if (!result || result.error) {
-                    submitBtn.textContent = tr("Submit Report");
-                    submitBtn.disabled = false;
-                    if (result && result.error === "unauthorized") {
-                        alert(tr("Please sign in again to submit a report."));
-                    }
-                    else {
-                        alert(tr("Failed to submit report. Please try again."));
-                    }
-                    return;
-                }
-                const success = root.querySelector("#safely-report-success");
-                if (success)
-                    success.style.display = "flex";
-                submitBtn.style.display = "none";
-                // Reflect the report immediately without another /analyze
-                // call - re-fetching here would quietly double-count this
-                // visit's monthly activity. Updating the already-loaded data
-                // in place and redrawing only the seller section avoids that.
-                //
-                // Mirrors the exact fraud-count contribution used by the
-                // backend's calculate_risk_score - a step function, not a
-                // flat +N per report.
-                const oldCount = window.__safelyData.fraudReportCount || 0;
-                const newCount = oldCount + 1;
-                const delta = fraudCountContribution(newCount) - fraudCountContribution(oldCount);
-                window.__safelyData.fraudReportCount = newCount;
-                window.__safelyData.seller.verification = "reported";
-                window.__safelyData.riskScore = Math.min(100, (window.__safelyData.riskScore || 0) + delta);
-                // The network-alert sentence is plain text from the last
-                // analyze call - swap in the new count wherever a standalone
-                // number appears in it. (In Portuguese the sentence is written
-                // from the count itself, so it is always right.)
-                if (window.__safelyData.seller.networkSummary) {
-                    window.__safelyData.seller.networkSummary = window.__safelyData.seller.networkSummary.replace(/\d+/, String(newCount));
-                }
-                // Redrawing the seller section makes new "I'm proceeding" /
-                // "I'm backing out" buttons, so their clicks are connected again.
-                const sellerContentEl = document.getElementById("safely-risk-seller-content");
-                if (sellerContentEl) {
-                    sellerContentEl.innerHTML = buildSellerSection();
-                    attachOutcomeListeners(sellerContentEl);
-                }
-            });
-        }
-        attachOutcomeListeners(root);
+    // The lowest score a supplier with this many reports can have - the
+    // backend's report_floor: 2 reports 35, 3 reports 67, then +10 each,
+    // 95 at most.
+    function reportFloor(count) {
+        if (count <= 1)
+            return 0;
+        if (count === 2)
+            return 35;
+        if (count === 3)
+            return 67;
+        if (count === 4)
+            return 77;
+        if (count === 5)
+            return 87;
+        return 95;
     }
-    // The "I'm proceeding" / "I'm backing out" buttons under the seller
-    // card. A failed save now says so, instead of the click doing nothing.
+    async function sendReport(wrap, submitBtn) {
+        const selected = wrap.querySelector('input[name="safely-report-reason"]:checked');
+        if (!selected)
+            return;
+        const pageData = window.__safelyData;
+        submitBtn.textContent = tr("Sending…");
+        submitBtn.disabled = true;
+        const reportData = {
+            platform: pageData.seller.platform || "olx",
+            platform_id: pageData.seller.platformId || null,
+            report_type: selected.value,
+            description: null,
+            listing_url: window.location.href,
+        };
+        const result = await window.__safelyAPI.submitReport(reportData);
+        if (result && result.error === "already_reported") {
+            // This person reported the supplier before: nothing changes.
+            reportedNote = "You already reported this supplier.";
+            pageData.reportedByYou = true;
+            closeSheet();
+            redrawRiskTab();
+            return;
+        }
+        if (!result || result.error) {
+            submitBtn.textContent = tr("Send report");
+            submitBtn.disabled = false;
+            alert(result && result.error === "unauthorized"
+                ? tr("Please sign in again to submit a report.")
+                : tr("Failed to submit report. Please try again."));
+            return;
+        }
+        const form = wrap.querySelector("#safely-report-form");
+        const done = wrap.querySelector("#safely-report-done");
+        if (form)
+            form.style.display = "none";
+        if (done)
+            done.style.display = "block";
+        // Show the report right away without another /analyze call - that
+        // would quietly count this visit twice. The server saves the new
+        // score on this scan and sends it back, so the panel and the
+        // dashboard show the same number.
+        const oldCount = pageData.fraudReportCount || 0;
+        const newCount = oldCount + 1;
+        pageData.fraudReportCount = newCount;
+        pageData.seller.verification = "reported";
+        if (typeof result.risk_score === "number") {
+            pageData.riskScore = result.risk_score;
+        }
+        else {
+            const isB2b = String(pageData.seller.platform || "").toLowerCase() !== "olx";
+            const raised = (pageData.riskScore || 0) + reportPoints(newCount, isB2b) - reportPoints(oldCount, isB2b);
+            pageData.riskScore = Math.min(100, Math.max(raised, isB2b ? reportFloor(newCount) : 0));
+        }
+        pageData.reportedByYou = true;
+        reportedNote = "You reported this supplier.";
+        setTimeout(() => {
+            closeSheet();
+            redrawRiskTab();
+        }, 1600);
+    }
+    // ---- Listeners -------------------------------------------------
+    function attachRiskTabListeners() {
+        const tab = document.getElementById("safely-tab-risk");
+        if (!tab)
+            return;
+        const openBtn = tab.querySelector("#safely-report-open");
+        if (openBtn) {
+            openBtn.addEventListener("click", (e) => {
+                e.stopPropagation();
+                openSheet();
+            });
+        }
+        attachOutcomeListeners(tab);
+    }
+    // "I'll go ahead" / "I'll walk away". A failed save says so, instead
+    // of the click doing nothing.
     function attachOutcomeListeners(container) {
+        const buttons = container.querySelector("#safely-outcome-buttons");
         const proceedBtn = container.querySelector("#safely-outcome-proceed");
         const abortBtn = container.querySelector("#safely-outcome-abort");
-        const outcomeConfirmed = container.querySelector("#safely-outcome-confirmed");
+        const confirmed = container.querySelector("#safely-outcome-confirmed");
         async function handleOutcomeClick(action) {
             const pageData = window.__safelyData;
             if (!pageData || !pageData.analysisId) {
@@ -490,12 +498,10 @@
                 abortBtn.disabled = true;
             const result = await window.__safelyAPI.submitOutcome(pageData.analysisId, action);
             if (result === true) {
-                if (proceedBtn)
-                    proceedBtn.style.display = "none";
-                if (abortBtn)
-                    abortBtn.style.display = "none";
-                if (outcomeConfirmed)
-                    outcomeConfirmed.style.display = "block";
+                if (buttons)
+                    buttons.style.display = "none";
+                if (confirmed)
+                    confirmed.style.display = "block";
                 return;
             }
             if (proceedBtn)
@@ -506,12 +512,10 @@
                 ? tr("Please sign in again to save your response.")
                 : tr("Could not save your response. Please try again."));
         }
-        if (proceedBtn) {
+        if (proceedBtn)
             proceedBtn.addEventListener("click", () => handleOutcomeClick("proceeded"));
-        }
-        if (abortBtn) {
+        if (abortBtn)
             abortBtn.addEventListener("click", () => handleOutcomeClick("aborted"));
-        }
     }
     function redrawRiskTab() {
         const tabEl = document.getElementById("safely-tab-risk");
@@ -520,13 +524,19 @@
             attachRiskTabListeners();
         }
     }
-    window.__safelyAddTab("risk", "Risk", buildRiskTab(), '<svg viewBox="0 0 24 24" fill="none" stroke="#8a8a93" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="9 12 11 14 15 10"/></svg>', () => {
-        if (window.__safelyPreventInputBubbling) {
-            window.__safelyPreventInputBubbling();
-        }
-        attachRiskTabListeners();
+    // A new scan starts fresh: no report from the last page carries over,
+    // but a supplier you reported before says so instead of offering the
+    // Report link again.
+    window.addEventListener("safely-data-ready", () => {
+        const data = window.__safelyData;
+        reportedNote = data && data.reportedByYou ? "You already reported this supplier." : null;
+        closeSheet();
+        redrawRiskTab();
     });
-    window.addEventListener("safely-data-ready", redrawRiskTab);
-    window.addEventListener("safely-lang-changed", redrawRiskTab);
+    window.addEventListener("safely-lang-changed", () => {
+        closeSheet();
+        redrawRiskTab();
+    });
     window.addEventListener("safely-result-text-changed", redrawRiskTab);
+    window.__safelyAddTab("risk", "Risk", buildRiskTab(), '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="9 12 11 14 15 10"/></svg>', () => attachRiskTabListeners());
 })();

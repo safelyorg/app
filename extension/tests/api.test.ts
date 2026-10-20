@@ -178,6 +178,29 @@ describe("submitReport", () => {
     expect(result).toEqual({ error: "unauthorized" });
   });
 
+  it("returns already_reported when this person reported the supplier before", async () => {
+    (globalThis as any).fetch.mockResolvedValue({
+      ok: false,
+      status: 409,
+      text: async () => JSON.stringify({ error: "already_reported" }),
+    });
+
+    const result = await api.submitReport({} as any);
+    expect(result).toEqual({ error: "already_reported" });
+  });
+
+  it("passes on the new score the server worked out", async () => {
+    (globalThis as any).fetch.mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({ success: true, risk_score: 35, risk_level: "caution" }),
+    });
+
+    const result = await api.submitReport({} as any);
+    expect(result.risk_score).toBe(35);
+    expect(result.risk_level).toBe("caution");
+  });
+
   it("returns null for any other failure", async () => {
     (globalThis as any).fetch.mockResolvedValue({
       ok: false,
@@ -389,6 +412,36 @@ describe("fetchAnalysis", () => {
     expect(pageData.seller.name).toBe("Real Seller");
     expect(pageData.seller.platform).toBe("OLX");
     expect(pageData.signals).toHaveLength(1);
+  });
+
+  it("keeps whether you already reported this supplier", async () => {
+    setupScraperMocks();
+    const scan = (reportedByYou: boolean | undefined) => ({
+      ok: true,
+      status: 200,
+      text: async () =>
+        JSON.stringify({
+          analysis_id: "id",
+          risk_score: 35,
+          fraud_report_count: 2,
+          reported_by_you: reportedByYou,
+          seller: { id: "s1", platform: "thomasnet", monthly_activity: [] },
+          signals: [],
+        }),
+    });
+
+    (globalThis as any).fetch.mockResolvedValue(scan(true));
+    await api.fetchAnalysis();
+    expect((window as any).__safelyData.reportedByYou).toBe(true);
+
+    (globalThis as any).fetch.mockResolvedValue(scan(false));
+    await api.fetchAnalysis();
+    expect((window as any).__safelyData.reportedByYou).toBe(false);
+
+    // An older server that doesn't send it: the Report link stays.
+    (globalThis as any).fetch.mockResolvedValue(scan(undefined));
+    await api.fetchAnalysis();
+    expect((window as any).__safelyData.reportedByYou).toBe(false);
   });
 
   it("dispatches an error event with the real error detail when analyze() fails", async () => {

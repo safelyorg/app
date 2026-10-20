@@ -1,5 +1,6 @@
 document.addEventListener("DOMContentLoaded", async () => {
   checkGoogleConnectResult();
+  initThemeSwitch();
 
   if ((window as any).safelyAuth && (window as any).safelyAuth.getToken()) {
     loadDashboardData();

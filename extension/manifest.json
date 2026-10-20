@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Safely",
-  "version": "1.0.10",
+  "version": "1.0.11",
   "description": "Secure your online transactions. It checks the seller risk score and protect payment everywhere you shop.",
   "permissions": [
     "storage"
@@ -24,7 +24,8 @@
     },
     {
       "resources": [
-        "icons/*"
+        "icons/*",
+        "fonts/*"
       ],
       "matches": [
         "<all_urls>"
@@ -55,8 +56,7 @@
         "css/toolbar.css",
         "css/risk_tab.css",
         "css/intelligence_tab.css",
-        "css/protect_tab.css",
-        "css/polish.css"
+        "css/protect_tab.css"
       ],
       "js": [
         "js/core/i18n.js",

@@ -1,21 +1,26 @@
 {% if items | length == 0 %}
-<tr><td colspan="4" class="px-4 py-14 text-center text-muted text-[13px]">No listings analyzed yet. Open a listing on OLX with the Safely extension to get started.</td></tr>
+<tr><td colspan="4" class="px-4 py-14 text-center text-muted text-[13px]">No scans yet. Open a supplier or listing page with the Safely extension to get started.</td></tr>
 {% else %}
 {% for item in items %}
-<tr data-risk="{{ item.risk_level }}" data-id="{{ item.id }}" data-search="{{ item.search_text }}" class="history-row border-b border-line last:border-b-0 hover:bg-surface2/60 cursor-pointer transition">
+<tr data-risk="{{ item.risk_level }}" data-id="{{ item.id }}" data-search="{{ item.search_text }}" class="history-row border-b border-line last:border-b-0 hover:bg-surface2 cursor-pointer transition">
     <td class="hidden sm:table-cell px-4 py-3.5 text-muted num text-[12px]">{{ item.created_at_formatted }}</td>
     <td class="px-4 py-3.5 overflow-hidden">
         <div class="truncate">
             <div class="flex items-center gap-1 min-w-0">
-                <span class="font-bold truncate">{{ item.listing_title | default(value="Untitled listing") }}</span>
+                <span class="font-semibold truncate">{{ item.listing_title | default(value="Untitled listing") }}</span>
                 {% if item.listing_url %}<a href="{{ item.listing_url }}" target="_blank" rel="noopener noreferrer" class="flex-shrink-0 text-muted hover:text-brand text-[11px]" onclick="event.stopPropagation()" title="Open original listing">&#8599;</a>{% endif %}
             </div>
             <span class="block text-[11px] text-muted truncate">{{ item.seller_name | default(value="Unknown seller") }}</span>
         </div>
     </td>
-    <td class="px-4 py-3.5 num font-extrabold {% if item.risk_level == "low" %}text-mint{% elif item.risk_level == "caution" %}text-amber{% else %}text-coral{% endif %}">{{ item.risk_score }}</td>
     <td class="px-4 py-3.5">
-        {% if item.reported %}<span class="inline-flex px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-coral/10 text-coral">Reported</span>{% else %}<span class="text-muted text-[12px]">No</span>{% endif %}
+        <span class="inline-flex items-center gap-2">
+            <span class="font-display text-[17px] w-7">{{ item.risk_score }}</span>
+            {% if item.risk_level == "low" %}<span class="risk-pill risk-pill-low"><i></i>Low</span>{% elif item.risk_level == "caution" %}<span class="risk-pill risk-pill-caution"><i></i>Caution</span>{% else %}<span class="risk-pill risk-pill-high"><i></i>High</span>{% endif %}
+        </span>
+    </td>
+    <td class="px-4 py-3.5 text-[12.5px]">
+        {% if item.reported %}<span class="font-semibold text-ink">Reported</span>{% else %}<span class="text-muted">No</span>{% endif %}
     </td>
 </tr>
 {% endfor %}

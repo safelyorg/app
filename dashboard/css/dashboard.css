@@ -1,4 +1,53 @@
 /* ============================================================
+   Colours. Tailwind reads these (see tailwind.config in
+   index.html), so every bg-surface / text-ink / border-line class
+   follows the theme. Light is the default; Settings > Appearance
+   sets data-theme="dark" on <html>.
+
+   Same palette as the extension: greys plus one accent (Safely
+   amber). Red (coral) is kept only for errors and deleting.
+   ============================================================ */
+:root,
+:root[data-theme="light"] {
+    color-scheme: light;
+    --c-bg: 245 245 246;
+    --c-surface: 255 255 255;
+    --c-surface2: 245 245 246;
+    --c-surface3: 231 231 234;
+    --c-line: 231 231 234;
+    --c-ink: 23 23 26;
+    --c-muted: 113 113 122;
+    --c-brand: 23 23 26;
+    --c-mint: 23 23 26;
+    --c-amber: 255 185 56;
+    --c-coral: 220 38 38;
+    --card: #17171a;
+    --card-track: #2e2e33;
+    --bar: #d4d4d8;
+}
+:root[data-theme="dark"] {
+    color-scheme: dark;
+    --c-bg: 14 14 16;
+    --c-surface: 23 23 26;
+    --c-surface2: 31 31 35;
+    --c-surface3: 42 42 47;
+    --c-line: 42 42 47;
+    --c-ink: 244 244 245;
+    --c-muted: 161 161 170;
+    --c-brand: 244 244 245;
+    --c-mint: 244 244 245;
+    --c-amber: 255 185 56;
+    --c-coral: 248 113 113;
+    --card: #232327;
+    --card-track: #3a3a40;
+    --bar: #3f3f46;
+}
+
+body {
+    -webkit-font-smoothing: antialiased;
+}
+
+/* ============================================================
     Toast notifications (auth errors, account actions).
     ============================================================ */
 .safely-toast {
@@ -6,9 +55,8 @@
     top: 16px;
     left: 50%;
     transform: translateX(-50%);
-    background: #1b1b20;
-    color: #f2f1ed;
-    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: rgb(var(--c-ink));
+    color: rgb(var(--c-surface));
     padding: 12px 18px;
     border-radius: 12px;
     font-size: 13px;
@@ -16,7 +64,7 @@
     max-width: 90vw;
     text-align: center;
     z-index: 9999;
-    box-shadow: 0 12px 32px -8px rgba(0, 0, 0, 0.5);
+    box-shadow: 0 12px 32px -8px rgba(0, 0, 0, 0.35);
     font-family: Inter, -apple-system, sans-serif;
 }
 
@@ -38,50 +86,6 @@ body:has(#view-reports:checked) #panel-reports {
     display: block;
 }
 body:has(#view-settings:checked) #panel-settings {
-    display: block;
-}
-body:has(#view-detail-h1:checked) #detail-h1 {
-    display: block;
-}
-body:has(#view-detail-h2:checked) #detail-h2 {
-    display: block;
-}
-body:has(#view-detail-h3:checked) #detail-h3 {
-    display: block;
-}
-body:has(#view-detail-h4:checked) #detail-h4 {
-    display: block;
-}
-body:has(#view-detail-h5:checked) #detail-h5 {
-    display: block;
-}
-
-/* per-listing sub-tabs (Risk / Intelligence / Report) */
-.detail-overlay:has(.tab-risk:checked) .content-risk {
-    display: block;
-}
-.detail-overlay:has(.tab-risk:checked) .content-intel {
-    display: none;
-}
-.detail-overlay:has(.tab-risk:checked) .content-report {
-    display: none;
-}
-.detail-overlay:has(.tab-intel:checked) .content-risk {
-    display: none;
-}
-.detail-overlay:has(.tab-intel:checked) .content-intel {
-    display: block;
-}
-.detail-overlay:has(.tab-intel:checked) .content-report {
-    display: none;
-}
-.detail-overlay:has(.tab-report:checked) .content-risk {
-    display: none;
-}
-.detail-overlay:has(.tab-report:checked) .content-intel {
-    display: none;
-}
-.detail-overlay:has(.tab-report:checked) .content-report {
     display: block;
 }
 
@@ -107,15 +111,12 @@ tr[data-search-hidden="true"] {
         position: fixed;
         inset-block: 0;
         left: 0;
-        z-index: 40;
+        z-index: 60;
         transform: translateX(-100%);
         transition: transform 0.22s ease;
     }
     body:has(#mobile-nav-toggle:checked) #sidebar {
         transform: translateX(0);
-    }
-    #sidebar {
-        z-index: 60;
     }
     #mobile-backdrop {
         display: none;
@@ -126,38 +127,375 @@ tr[data-search-hidden="true"] {
 }
 
 /* ============================================================
-   Visual layer - active-state styling for nav, filters, tabs.
+   Selected states: sidebar link, risk filter, tabs, theme.
    ============================================================ */
-body:has(#view-history:checked) label[for="view-history"] {
-    color: #f2f1ed;
-    background: #1b1b20;
-}
-body:has(#view-history:checked) label[for="view-history"] .nav-accent {
-    opacity: 1;
-}
+body:has(#view-history:checked) label[for="view-history"],
 body:has(#view-reports:checked) label[for="view-reports"] {
-    color: #f2f1ed;
-    background: #1b1b20;
+    color: rgb(var(--c-ink));
+    background: rgb(var(--c-surface2));
 }
-body:has(#view-reports:checked) label[for="view-reports"] .nav-accent {
-    opacity: 1;
+.nav-accent {
+    display: none;
 }
 
 body:has(#risk-all:checked) label[for="risk-all"],
 body:has(#risk-low:checked) label[for="risk-low"],
 body:has(#risk-caution:checked) label[for="risk-caution"],
-body:has(#risk-high:checked) label[for="risk-high"] {
-    background: #24242b;
-    color: #f2f1ed;
+body:has(#risk-high:checked) label[for="risk-high"],
+.detail-tab-btn.is-active,
+.theme-btn.is-active,
+.billing-interval-btn.bg-surface3 {
+    background: rgb(var(--c-surface));
+    color: rgb(var(--c-ink));
+    box-shadow:
+        0 1px 2px rgba(0, 0, 0, 0.08),
+        0 0 0 1px rgb(var(--c-line));
 }
 
-.detail-overlay:has(.tab-risk:checked) label[for$="-tab-risk"],
-.detail-overlay:has(.tab-intel:checked) label[for$="-tab-intel"],
-.detail-overlay:has(.tab-report:checked) label[for$="-tab-report"] {
-    background: #24242b;
-    color: #f2f1ed;
+/* Logo: dark logo in Light, white logo in Dark. */
+.logo-for-dark {
+    display: none;
+}
+:root[data-theme="dark"] .logo-for-light {
+    display: none;
+}
+:root[data-theme="dark"] .logo-for-dark {
+    display: block;
 }
 
+/* "High risk" stat: a thin amber edge, like the extension's counts. */
+.stat-hot {
+    box-shadow: inset 3px 0 0 rgb(var(--c-amber));
+}
+
+/* ============================================================
+   Risk labels (History table and the result page).
+   ============================================================ */
+.risk-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 9px;
+    border-radius: 999px;
+    font-size: 11.5px;
+    font-weight: 700;
+    white-space: nowrap;
+}
+.risk-pill i {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: rgb(var(--c-amber));
+}
+.risk-pill-high {
+    background: rgb(var(--c-ink));
+    color: rgb(var(--c-surface));
+}
+.risk-pill-caution {
+    background: rgb(var(--c-amber) / 0.18);
+    color: rgb(var(--c-ink));
+}
+.risk-pill-low {
+    background: rgb(var(--c-surface2));
+    color: rgb(var(--c-muted));
+}
+.risk-pill-low i {
+    background: rgb(var(--c-muted));
+}
+
+/* ============================================================
+   Result page: score card (the one dark block, as in the
+   extension), rows that open, show more.
+   ============================================================ */
+.verdict-card {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    padding: 22px;
+    border-radius: 18px;
+    background: var(--card);
+    color: #ffffff;
+}
+.verdict-ring {
+    position: relative;
+    width: 100px;
+    height: 100px;
+    flex-shrink: 0;
+}
+.verdict-ring svg {
+    width: 100px;
+    height: 100px;
+    transform: rotate(-90deg);
+}
+.verdict-ring-arc {
+    animation: ring-fill 0.9s cubic-bezier(0.22, 1, 0.36, 1) 0.1s both;
+}
+@keyframes ring-fill {
+    from {
+        stroke-dasharray: 0 400;
+    }
+}
+.verdict-number {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding-top: 2px;
+    font-family: "Gasoek One", Inter, sans-serif;
+    font-size: 34px;
+    line-height: 1;
+}
+.verdict-level {
+    font-size: 12.5px;
+    font-weight: 600;
+    color: rgb(var(--c-amber));
+}
+.verdict-level.is-calm {
+    color: #d4d4d8;
+}
+.verdict-say {
+    margin-top: 4px;
+    font-size: 20px;
+    font-weight: 700;
+    line-height: 1.25;
+    letter-spacing: -0.015em;
+}
+.verdict-sub {
+    margin-top: 6px;
+    font-size: 13px;
+    color: #a1a1aa;
+}
+
+.d-heading {
+    margin: 22px 0 10px;
+    font-size: 13px;
+    font-weight: 700;
+    color: rgb(var(--c-ink));
+}
+.d-rows {
+    background: rgb(var(--c-surface));
+    border: 1px solid rgb(var(--c-line));
+    border-radius: 16px;
+    overflow: hidden;
+}
+.d-row {
+    border-top: 1px solid rgb(var(--c-line));
+}
+.d-row:first-child {
+    border-top: none;
+}
+.d-row-head {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    width: 100%;
+    padding: 13px 14px;
+    border: none;
+    background: none;
+    text-align: left;
+    color: rgb(var(--c-ink));
+    font: inherit;
+}
+button.d-row-head {
+    cursor: pointer;
+}
+button.d-row-head:hover {
+    background: rgb(var(--c-surface2) / 0.6);
+}
+.d-mark {
+    width: 19px;
+    height: 19px;
+    margin-top: 1px;
+    border-radius: 6px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 800;
+    line-height: 1;
+}
+.d-mark svg {
+    width: 11px;
+    height: 11px;
+}
+.d-mark-flag {
+    background: rgb(var(--c-amber));
+    color: #17171a;
+}
+.d-mark-ok {
+    background: rgb(var(--c-surface2));
+    color: rgb(var(--c-ink));
+}
+.d-mark-none {
+    box-shadow: inset 0 0 0 1px rgb(var(--c-line));
+    color: rgb(var(--c-muted));
+}
+.d-title {
+    flex: 1;
+    min-width: 0;
+    font-size: 14px;
+    font-weight: 600;
+    line-height: 1.35;
+}
+.d-title small {
+    display: block;
+    margin-top: 2px;
+    font-size: 12.5px;
+    font-weight: 500;
+    color: rgb(var(--c-muted));
+}
+.d-title.is-quiet {
+    font-weight: 500;
+    color: rgb(var(--c-muted));
+}
+.d-chev {
+    width: 15px;
+    height: 15px;
+    margin-top: 2px;
+    flex-shrink: 0;
+    color: rgb(var(--c-muted));
+    transition: transform 0.25s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.is-open > .d-row-head .d-chev,
+.show-all > .d-more .d-chev {
+    transform: rotate(180deg);
+}
+.d-more-wrap {
+    display: grid;
+    grid-template-rows: 0fr;
+    transition: grid-template-rows 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.is-open > .d-more-wrap {
+    grid-template-rows: 1fr;
+}
+.d-more-wrap > div {
+    overflow: hidden;
+}
+.d-text {
+    padding: 0 14px 14px 45px;
+    font-size: 13px;
+    line-height: 1.55;
+    color: rgb(var(--c-muted));
+}
+.d-text ul {
+    margin-top: 6px;
+}
+.d-text li {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 2px 0;
+    color: rgb(var(--c-ink) / 0.85);
+}
+.d-text li svg {
+    width: 12px;
+    height: 12px;
+    flex-shrink: 0;
+}
+.d-text li.is-missing svg {
+    color: rgb(var(--c-muted));
+}
+.d-text a {
+    display: block;
+    padding: 4px 0;
+    color: rgb(var(--c-ink) / 0.85);
+    text-decoration: underline;
+    text-decoration-color: rgb(var(--c-line));
+    text-underline-offset: 3px;
+    word-break: break-word;
+}
+.d-text a:hover {
+    color: rgb(var(--c-ink));
+    text-decoration-color: rgb(var(--c-ink));
+}
+.d-extra {
+    display: none;
+}
+.show-all .d-extra {
+    display: block;
+}
+.d-more {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    padding: 12px 14px;
+    border: none;
+    border-top: 1px solid rgb(var(--c-line));
+    background: none;
+    color: rgb(var(--c-ink) / 0.85);
+    font: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+}
+.d-more .d-chev {
+    margin: 0 0 0 auto;
+}
+
+.d-counts {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+}
+.d-count {
+    padding: 14px 16px;
+    border: 1px solid rgb(var(--c-line));
+    border-radius: 16px;
+    background: rgb(var(--c-surface));
+}
+.d-count b {
+    display: block;
+    font-family: "Gasoek One", Inter, sans-serif;
+    font-weight: 400;
+    font-size: 26px;
+    line-height: 1.1;
+}
+.d-count small {
+    font-size: 12.5px;
+    color: rgb(var(--c-muted));
+}
+
+.d-fact small {
+    display: block;
+    font-size: 12px;
+    color: rgb(var(--c-muted));
+}
+.d-fact div {
+    margin-top: 2px;
+    font-size: 14px;
+    font-weight: 600;
+    word-break: break-word;
+}
+.d-bars {
+    display: flex;
+    align-items: flex-end;
+    gap: 5px;
+    height: 42px;
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px solid rgb(var(--c-line));
+    box-sizing: content-box;
+}
+.d-bars i {
+    flex: 1;
+    min-height: 2px;
+    border-radius: 3px;
+    background: var(--bar);
+}
+.d-bars i.is-now {
+    background: rgb(var(--c-ink));
+}
+.d-bars-label {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 7px;
+    font-size: 12px;
+    color: rgb(var(--c-muted));
+}
+
+/* ============================================================ */
 ::-webkit-scrollbar {
     width: 8px;
     height: 8px;
@@ -166,19 +504,27 @@ body:has(#risk-high:checked) label[for="risk-high"] {
     background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-    background: #24242b;
+    background: rgb(var(--c-surface3));
     border-radius: 8px;
 }
 ::-webkit-scrollbar-thumb:hover {
-    background: #2e2e37;
+    background: rgb(var(--c-muted) / 0.5);
 }
 
 :focus-visible {
-    outline: 2px solid #6fb3ef;
+    outline: 2px solid rgb(var(--c-ink));
     outline-offset: 2px;
 }
 
 .num {
-    font-family: "JetBrains Mono", monospace;
     font-variant-numeric: tabular-nums;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        transition-duration: 0.01ms !important;
+    }
 }

@@ -1,20 +1,52 @@
-.safely-check-card {
-    background: var(--surface);
-    border: var(--bd);
-    border-radius: 10px;
-    padding: 10px 12px;
+/* ── "4 need a look / 5 look fine" ── */
+.safely-counts {
     display: flex;
-    flex-direction: column;
-    gap: 4px;
+    gap: 10px;
 }
-.safely-check-title {
+.safely-count {
+    flex: 1;
+    padding: 12px;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+}
+.safely-count-hot {
+    box-shadow: inset 3px 0 0 var(--accent);
+}
+.safely-count b {
+    display: block;
+    font-size: 24px;
+    font-weight: 400;
+    line-height: 1.1;
+}
+.safely-count small {
     font-size: 12px;
-    font-weight: 700;
-    color: var(--text);
+    color: var(--mute);
 }
-.safely-check-body {
+
+/* ── Before you pay (tick off as you go) ── */
+.safely-tick {
+    width: 18px;
+    height: 18px;
+    margin-top: 1px;
+    flex-shrink: 0;
+    border-radius: 5px;
+    box-shadow: inset 0 0 0 1.5px #d4d4d8;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: transparent;
     font-size: 11px;
-    color: var(--muted);
-    line-height: 1.5;
-    font-weight: 500;
+    font-weight: 800;
+    cursor: pointer;
+    transition:
+        background 0.15s ease,
+        box-shadow 0.15s ease;
+}
+.safely-ticked .safely-tick {
+    background: var(--ink);
+    box-shadow: none;
+    color: var(--on-ink);
+}
+.safely-ticked .safely-row-title {
+    color: var(--mute);
 }

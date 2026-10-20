@@ -2,81 +2,414 @@
     position: absolute;
     bottom: 30px;
     right: 2px;
+    width: 360px;
     background: var(--bg);
-    border: var(--bd);
-    border-radius: 22px;
-    padding: 20px 20px 22px;
-    width: 340px;
+    border-radius: 20px;
+    overflow: hidden;
+    color: var(--ink);
     opacity: 0;
-    transform: translateY(12px) scale(0.98);
+    transform: translateY(14px) scale(0.97);
+    transform-origin: bottom right;
     pointer-events: none;
     transition:
-        opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1),
-        transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    box-shadow: var(--sh-panel), var(--hi);
+        opacity 0.28s var(--ease),
+        transform 0.42s var(--ease);
+    box-shadow:
+        0 0 0 1px rgba(23, 23, 26, 0.06),
+        0 2px 4px rgba(23, 23, 26, 0.04),
+        0 24px 48px -12px rgba(23, 23, 26, 0.24);
 }
 #safely-panel.safely-visible {
     opacity: 1;
-    transform: translateY(0) scale(1);
+    transform: none;
     pointer-events: all;
 }
+
+/* ── Header ── */
 .safely-panel-header {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    margin-bottom: 18px;
+    gap: 9px;
+    padding: 14px 14px 12px 16px;
+}
+.safely-panel-logo {
+    width: 24px;
+    height: 24px;
+    border-radius: 7px;
+    flex-shrink: 0;
+    display: block;
 }
 .safely-panel-title {
-    font-family: var(--disp);
-    font-size: 17px;
-    font-weight: 900;
-    color: var(--text);
-    letter-spacing: -0.4px;
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: -0.15px;
+    color: var(--ink);
+}
+.safely-usage-line {
+    font-size: 12px;
+    color: var(--mute);
+    white-space: nowrap;
+}
+.safely-lang-btn {
+    margin-left: auto;
+    padding: 4px 8px;
+    border: none;
+    border-radius: 7px;
+    background: var(--surface);
+    color: var(--ink-2);
+    font-size: 11.5px;
+    font-weight: 600;
+    line-height: 1.4;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+.safely-lang-btn:hover {
+    background: var(--line);
 }
 .safely-close-btn {
-    width: 30px;
-    height: 30px;
+    width: 26px;
+    height: 26px;
     display: flex;
     align-items: center;
     justify-content: center;
-    border: var(--bd);
-    border-radius: 9px;
-    background: var(--surface-2);
-    color: var(--muted);
-    font-size: 18px;
+    border-radius: 8px;
+    color: var(--mute);
     cursor: pointer;
+    flex-shrink: 0;
     transition:
         background 0.15s,
         color 0.15s;
-    flex-shrink: 0;
-    line-height: 1;
 }
 .safely-close-btn:hover {
-    background: var(--surface-3);
-    color: var(--text);
+    background: var(--surface);
+    color: var(--ink);
 }
+
+/* ── Risk / Details switch ── */
+.safely-panel-tabs {
+    display: flex;
+    margin: 0 16px;
+    padding: 3px;
+    border-radius: 10px;
+    background: var(--surface);
+}
+.safely-panel-tab {
+    flex: 1;
+    padding: 7px 0;
+    border: none;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--mute);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition:
+        background 0.2s var(--ease),
+        color 0.2s var(--ease),
+        box-shadow 0.2s var(--ease);
+}
+.safely-panel-tab:hover {
+    color: var(--ink);
+}
+.safely-panel-tab.safely-active {
+    background: var(--bg);
+    color: var(--ink);
+    box-shadow:
+        0 1px 2px rgba(23, 23, 26, 0.08),
+        0 0 0 1px rgba(23, 23, 26, 0.04);
+}
+
+/* ── Scrolling body ── */
 .safely-tabs-area {
-    position: relative;
-    max-height: 480px;
+    /* Fits short laptop screens: never taller than the window allows. */
+    max-height: min(500px, calc(100vh - 230px));
+    padding: 14px 16px 16px;
     overflow-y: auto;
     overflow-x: hidden;
+    overscroll-behavior: contain;
     scrollbar-width: none;
-    -ms-overflow-style: none;
 }
 .safely-tabs-area::-webkit-scrollbar {
     display: none;
 }
-.safely-section-label {
-    font-size: 11px;
-    font-weight: 800;
-    color: var(--muted);
-    text-transform: uppercase;
-    letter-spacing: 0.6px;
-    margin-bottom: 14px;
+.safely-tab-content.safely-enter {
+    animation: safely-enter 0.32s var(--ease) both;
+}
+@keyframes safely-enter {
+    from {
+        opacity: 0;
+        transform: translateY(6px);
+    }
+}
+.safely-heading {
+    display: flex;
+    align-items: baseline;
+    margin: 20px 0 8px;
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--ink);
 }
 
+/* ── Rows that open on click (both tabs) ── */
+.safely-rows {
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    overflow: hidden;
+}
+.safely-row {
+    border-top: 1px solid var(--line);
+}
+.safely-row:first-child {
+    border-top: none;
+}
+.safely-row-head {
+    display: flex;
+    align-items: flex-start;
+    gap: 11px;
+    width: 100%;
+    padding: 12px;
+    border: none;
+    background: none;
+    text-align: left;
+    color: var(--ink);
+    font-family: inherit;
+    cursor: default;
+}
+button.safely-row-head {
+    cursor: pointer;
+}
+button.safely-row-head:hover {
+    background: #fafafa;
+}
+.safely-mark {
+    width: 18px;
+    height: 18px;
+    border-radius: 6px;
+    flex-shrink: 0;
+    margin-top: 1px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 800;
+    line-height: 1;
+}
+.safely-mark-flag {
+    background: var(--accent);
+    color: var(--ink);
+}
+.safely-mark-ok {
+    background: var(--surface);
+    color: var(--ink-2);
+}
+.safely-row-title {
+    flex: 1;
+    min-width: 0;
+    font-size: 13.5px;
+    font-weight: 600;
+    line-height: 1.35;
+}
+.safely-row-value {
+    display: block;
+    margin-top: 2px;
+    font-size: 12.5px;
+    font-weight: 500;
+    color: var(--mute);
+}
+.safely-chev {
+    width: 14px;
+    height: 14px;
+    margin-top: 2px;
+    flex-shrink: 0;
+    color: var(--faint);
+    transition: transform 0.25s var(--ease);
+}
+.safely-open .safely-chev {
+    transform: rotate(180deg);
+}
+.safely-row-more {
+    display: grid;
+    grid-template-rows: 0fr;
+    transition: grid-template-rows 0.28s var(--ease);
+}
+.safely-open .safely-row-more {
+    grid-template-rows: 1fr;
+}
+.safely-row-more > div {
+    overflow: hidden;
+}
+.safely-row-text {
+    padding: 0 12px 12px 41px;
+    font-size: 12.5px;
+    line-height: 1.5;
+    color: var(--mute);
+}
+.safely-row-text ul {
+    margin: 6px 0 0;
+    padding: 0;
+    list-style: none;
+}
+.safely-row-text li {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    padding: 2px 0;
+    color: var(--ink-2);
+}
+.safely-li-mark {
+    width: 12px;
+    flex-shrink: 0;
+    text-align: center;
+    font-weight: 800;
+}
+.safely-has .safely-li-mark {
+    color: var(--ink);
+}
+.safely-missing .safely-li-mark {
+    color: var(--faint);
+}
+.safely-mark-none {
+    background: none;
+    box-shadow: inset 0 0 0 1px var(--line);
+    color: var(--faint);
+}
+.safely-row-quiet {
+    font-weight: 500;
+    color: var(--mute);
+}
+.safely-link-out {
+    display: block;
+    padding: 4px 0;
+    color: var(--ink-2);
+    text-decoration: underline;
+    text-decoration-color: #d4d4d8;
+    text-underline-offset: 3px;
+    word-break: break-word;
+}
+.safely-link-out:hover {
+    color: var(--ink);
+    text-decoration-color: var(--ink);
+}
+.safely-extra {
+    display: none;
+}
+.safely-show-all .safely-extra {
+    display: block;
+}
+.safely-more-btn {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    padding: 11px 12px;
+    border: none;
+    border-top: 1px solid var(--line);
+    background: none;
+    color: var(--ink-2);
+    font-family: inherit;
+    font-size: 12.5px;
+    font-weight: 600;
+    cursor: pointer;
+}
+.safely-more-btn .safely-chev {
+    margin: 0 0 0 auto;
+}
+.safely-show-all .safely-more-btn .safely-chev {
+    transform: rotate(180deg);
+}
+
+/* ── Waiting screen ── */
+.safely-checking {
+    display: none;
+    padding: 2px 16px 16px;
+}
+.safely-checking.safely-visible {
+    display: block;
+    animation: safely-enter 0.32s var(--ease) both;
+}
+.safely-wait-card {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 18px;
+    border-radius: 16px;
+    background: var(--ink);
+    color: var(--on-ink);
+}
+.safely-wait-spin {
+    width: 44px;
+    height: 44px;
+    flex-shrink: 0;
+    animation: safely-spin 1.1s linear infinite;
+}
+@keyframes safely-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+.safely-wait-now {
+    font-size: 16px;
+    font-weight: 700;
+    letter-spacing: -0.15px;
+}
+.safely-wait-sub {
+    margin-top: 3px;
+    font-size: 12.5px;
+    line-height: 1.4;
+    color: var(--faint);
+}
+.safely-steps {
+    margin-top: 14px;
+}
+.safely-step {
+    display: flex;
+    align-items: center;
+    gap: 11px;
+    padding: 8px 0;
+    font-size: 13.5px;
+    color: var(--faint);
+    transition: color 0.3s var(--ease);
+}
+.safely-step-dot {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: inset 0 0 0 1.5px var(--line);
+    font-size: 10px;
+    font-weight: 800;
+    transition:
+        background 0.3s var(--ease),
+        box-shadow 0.3s var(--ease);
+}
+.safely-step.safely-done {
+    color: var(--ink-2);
+}
+.safely-done .safely-step-dot {
+    background: var(--ink);
+    box-shadow: none;
+    color: var(--on-ink);
+}
+.safely-step.safely-now {
+    color: var(--ink);
+    font-weight: 600;
+}
+.safely-now .safely-step-dot {
+    box-shadow: inset 0 0 0 1.5px var(--accent);
+}
+.safely-now .safely-step-dot::after {
+    content: "";
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--accent);
+}
+
+/* ── Short wait while the language changes ── */
 .safely-tabs-area.safely-loading-blur {
-    filter: blur(4px);
+    filter: blur(3px);
     pointer-events: none;
     transition: filter 0.2s ease;
 }
@@ -94,14 +427,14 @@
 }
 .safely-loading-dots {
     display: flex;
-    gap: 7px;
+    gap: 6px;
 }
 .safely-loading-dots span {
-    width: 8px;
-    height: 8px;
+    width: 7px;
+    height: 7px;
     border-radius: 50%;
-    background: var(--sky);
-    animation: safely-dot-bounce 1.1s ease-in-out infinite;
+    background: var(--ink);
+    animation: safely-dot 1.1s ease-in-out infinite;
 }
 .safely-loading-dots span:nth-child(2) {
     animation-delay: 0.15s;
@@ -109,110 +442,98 @@
 .safely-loading-dots span:nth-child(3) {
     animation-delay: 0.3s;
 }
-@keyframes safely-dot-bounce {
+@keyframes safely-dot {
     0%,
     60%,
     100% {
-        transform: translateY(0);
-        opacity: 0.8;
+        opacity: 0.25;
     }
     30% {
-        transform: translateY(-7px);
         opacity: 1;
     }
 }
 
-/* ============================================================
-   Sub-tab toggle (Risk/Report, Orders/New Order/Seller) - lives
-   here rather than in any one tab's own CSS file, since both
-   risk.js and protect.js use this same toggle independently of
-   each other. Keeping it here means the Risk tab's toggle keeps
-   its correct design regardless of whether Protect is active,
-   commented out, or removed entirely.
-   ============================================================ */
-.safely-sub-tabs {
+/* ── Buttons ── */
+.safely-btn {
     display: flex;
-    gap: 4px;
-    margin-bottom: 18px;
-    background: var(--surface-2);
-    border: 1px solid var(--line);
-    border-radius: 11px;
-    padding: 3px;
-}
-.safely-sub-tab {
-    flex: 1;
-    background: transparent;
-    border: none;
-    border-radius: 8px;
-    color: var(--muted);
-    font-size: 12px;
-    font-weight: 700;
-    padding: 7px 4px;
-    cursor: pointer;
-    transition: all 0.15s;
-    text-align: center;
-}
-.safely-sub-tab.safely-active {
-    background: var(--surface-3);
-    color: var(--text);
-    box-shadow:
-        0 1px 2px rgba(0, 0, 0, 0.25),
-        var(--hi);
-}
-
-/* ============================================================
-   Sign-in-required notice - shown instead of the real tabs when
-   someone opens a real listing page but isn't signed in, since
-   actual analysis costs real AI API usage per request.
-   ============================================================ */
-.safely-signin-required-btn {
-    display: inline-block;
-    background: var(--sky);
-    color: var(--ink);
-    font-size: 13px;
-    font-weight: 700;
-    padding: 10px 20px;
-    border-radius: 10px;
-    text-decoration: none;
-    transition: filter 0.15s ease;
-}
-.safely-signin-required-btn:hover {
-    filter: brightness(1.08);
-}
-
-/* ============================================================
-   Analysis-failed message - shown when a real request failure
-   happens (rate-limited, network issue, server error), so the
-   person sees a clear reason instead of stale or blank data.
-   ============================================================ */
-.safely-failed-icon {
-    font-size: 28px;
-    color: var(--amber);
-    line-height: 1;
-}
-
-.safely-retry-btn {
-    display: none;
     align-items: center;
     justify-content: center;
-    gap: 7px;
-    margin-top: 14px;
-    margin-left: auto;
-    margin-right: auto;
-    padding: 9px 18px;
+    gap: 8px;
+    flex: 1;
+    height: 40px;
     border: none;
-    border-radius: 10px;
-    background: var(--sky);
-    color: var(--ink);
-    font-size: 13px;
-    font-weight: 700;
+    border-radius: 11px;
     font-family: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    text-decoration: none;
     cursor: pointer;
-    transition: filter 0.15s ease;
+    transition:
+        opacity 0.15s ease,
+        background 0.15s ease,
+        transform 0.15s var(--ease);
 }
-.safely-retry-btn:hover {
-    filter: brightness(1.08);
+.safely-btn:active {
+    transform: scale(0.98);
 }
-.safely-retry-btn svg {
-    flex-shrink: 0;
+.safely-btn-dark {
+    background: var(--ink);
+    color: var(--on-ink);
+}
+.safely-btn-dark:hover {
+    opacity: 0.88;
+}
+.safely-btn-line {
+    background: var(--bg);
+    color: var(--ink);
+    box-shadow: inset 0 0 0 1px var(--line);
+}
+.safely-btn-line:hover {
+    background: var(--surface);
+}
+.safely-btn:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+    transform: none;
+}
+.safely-btn-full {
+    flex: none;
+    width: 100%;
+    height: 42px;
+    font-size: 14px;
+}
+
+/* ── Sign in / limit / error / not a listing ── */
+.safely-state {
+    padding: 30px 22px 22px;
+    text-align: center;
+}
+.safely-state-icon {
+    width: 48px;
+    height: 48px;
+    margin: 0 auto 16px;
+    border-radius: 14px;
+    background: var(--ink);
+    color: var(--on-ink);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.safely-state-title {
+    font-size: 16px;
+    font-weight: 700;
+    letter-spacing: -0.15px;
+    color: var(--ink);
+}
+.safely-state-text {
+    margin: 6px 0 18px;
+    font-size: 13px;
+    line-height: 1.55;
+    color: var(--mute);
+}
+.safely-state-text:last-child {
+    margin-bottom: 0;
+}
+.safely-state .safely-retry-btn {
+    display: none;
 }

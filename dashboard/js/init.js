@@ -1,6 +1,7 @@
 "use strict";
 document.addEventListener("DOMContentLoaded", async () => {
     checkGoogleConnectResult();
+    initThemeSwitch();
     if (window.safelyAuth && window.safelyAuth.getToken()) {
         loadDashboardData();
     }
