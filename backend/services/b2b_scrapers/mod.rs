@@ -5,6 +5,7 @@ pub mod exporthub;
 pub mod kompass;
 pub mod thomasnet;
 pub mod tradewheel;
+pub mod wholesalecentral;
 
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -54,7 +55,8 @@ pub struct B2bListingProfile {
 /// numbers the platform keeps (Alibaba: orders, rating, checks) and
 /// what the company lists about itself (B2Brazil: other products,
 /// business types, certificates, the year it joined). Only Alibaba and
-/// B2Brazil fill this in; every other platform returns None (see
+/// B2Brazil (and Wholesale Central: years on the platform and its
+/// categories) fill this in; every other platform returns None (see
 /// B2bScraper::supplier_record), so nothing changes for them.
 /// Every field is optional: a missing value is simply not shown.
 #[derive(Debug, Default, Clone)]
@@ -157,6 +159,7 @@ pub fn get_scraper_for_platform(platform: &str) -> Option<Box<dyn B2bScraper>> {
         Box::new(thomasnet::ThomasnetScraper),
         Box::new(b2bmap::B2bmapScraper),
         Box::new(kompass::KompassScraper),
+        Box::new(wholesalecentral::WholesalecentralScraper),
     ];
     scrapers.into_iter().find(|s| s.matches_platform(platform))
 }
@@ -169,11 +172,14 @@ const MIN_PLAUSIBLE_HTML_BYTES: usize = 2000;
 /// - "punish-component", "sufei-punish": Alibaba's robot-check page.
 /// - "Please enable JS and disable any ad blocker": Kompass's robot-check
 ///   page (DataDome).
+/// - "AwsWafIntegration": the AWS WAF robot-check page (Wholesale
+///   Central).
 /// To add another site, add a piece of text only its robot-check page has.
 const BLOCK_PAGE_MARKERS: &[&str] = &[
     "punish-component",
     "sufei-punish",
     "Please enable JS and disable any ad blocker",
+    "AwsWafIntegration",
 ];
 
 /// true when the page is a robot-check page instead of the real page.
@@ -534,7 +540,10 @@ async fn enrich_from_profile_pages(
 
 /// Platforms whose scanned page is the company's own profile page
 /// (ThomasNet), so there is never a separate company page to fetch.
-const LISTING_IS_THE_COMPANY_PAGE: &[&str] = &["thomasnet"];
+/// Wholesale Central is listed because its supplier pages are scanned
+/// directly (its product pages always link to the supplier page, so
+/// the note would only ever print for supplier pages).
+const LISTING_IS_THE_COMPANY_PAGE: &[&str] = &["thomasnet", "wholesalecentral"];
 
 fn take_and_replace(
     supplier: &mut B2bSupplierProfile,
@@ -620,9 +629,242 @@ pub async fn b2b_page_from_browser(
     })
 }
 
+/// Platforms where the buyer's own browser is the FIRST source, and
+/// ScraperAPI only the backup. Wholesale Central sits behind an AWS WAF
+/// robot check: through ScraperAPI a page takes about a minute and is
+/// often blocked or comes back empty, while the buyer's browser has
+/// already passed the check. The extension sends the page the buyer is
+/// on (page_html) and, on a product page, the supplier's page loaded in
+/// the same browser (company_page_html). The buyer's own session is
+/// used - never a Safely account. Must match BROWSER_FIRST_PLATFORMS in
+/// the extension's api.ts. To go back to ScraperAPI first, remove the
+/// platform from both lists.
+pub const BROWSER_FIRST_PLATFORMS: &[&str] = &["wholesalecentral"];
+
+/// true when `html` is a real page and not the site's robot check.
+fn usable_browser_page(html: &str) -> bool {
+    looks_like_a_real_page(html) && !looks_like_a_block_page(html)
+}
+
+/// true when the company page the browser sent belongs to the same
+/// company as the listing (same company key). A page that gives no key
+/// is accepted only when the listing gives none either.
+fn company_page_matches(scraper: &dyn B2bScraper, listing_html: &str, company_html: &str) -> bool {
+    match (
+        scraper.company_key(listing_html),
+        scraper.company_key(company_html),
+    ) {
+        (Some(listing), Some(company)) => listing == company,
+        (None, None) => true,
+        _ => false,
+    }
+}
+
+/// Reads a B2B page from the buyer's browser FIRST (see
+/// BROWSER_FIRST_PLATFORMS). Returns None when the platform is not
+/// listed or the page is missing or unreadable - analyze.rs then
+/// fetches it through ScraperAPI as before. When the company page from
+/// the browser is missing or wrong, only that page is fetched through
+/// ScraperAPI. The pages are never saved or written to the log (they
+/// can contain the buyer's own account details); only sizes are logged.
+pub async fn b2b_page_from_browser_first(
+    platform: &str,
+    page_url: &str,
+    page_html: Option<&str>,
+    company_page_html: Option<&str>,
+) -> Option<B2bPageResult> {
+    if !BROWSER_FIRST_PLATFORMS.contains(&platform) {
+        return None;
+    }
+    if !scraperapi_key_usable() {
+        // Same rule as every other B2B scan: no usable key, no scan.
+        return None;
+    }
+    let scraper = get_scraper_for_platform(platform)?;
+    let Some(html) = page_html else {
+        eprintln!(
+            "Safely: no {} page from the browser - fetching it through ScraperAPI",
+            platform
+        );
+        return None;
+    };
+    if !usable_browser_page(html) {
+        eprintln!(
+            "Safely: the {} page from the browser could not be used ({} bytes) - fetching it through ScraperAPI",
+            platform,
+            html.len()
+        );
+        return None;
+    }
+
+    let mut supplier = scraper.parse_supplier(html, page_url);
+    let listing = scraper.parse_listing(html, page_url);
+    if supplier.company_name.is_none() && listing.title.is_none() {
+        eprintln!(
+            "Safely: nothing readable in the {} page from the browser ({} bytes) - fetching it through ScraperAPI",
+            platform,
+            html.len()
+        );
+        return None;
+    }
+    let company_key = scraper.company_key(html);
+    let company_url = scraper.extract_company_profile_url(html);
+    let mut record = scraper.supplier_record(html);
+
+    let company_page_missing = if company_url.is_none() {
+        // The page is the company's own page: nothing more to load.
+        false
+    } else {
+        match company_page_html {
+            Some(company_html)
+                if usable_browser_page(company_html)
+                    && company_page_matches(scraper.as_ref(), html, company_html) =>
+            {
+                take_and_replace(&mut supplier, |s| {
+                    scraper.enrich_from_company_profile(s, company_html)
+                });
+                record = scraper.enrich_record_from_company_profile(record.take(), company_html);
+                false
+            }
+            other => {
+                eprintln!(
+                    "Safely: the {} company page from the browser could not be used ({}) - fetching it through ScraperAPI",
+                    platform,
+                    match other {
+                        None => "not sent".to_string(),
+                        Some(c) => format!("{} bytes", c.len()),
+                    }
+                );
+                !enrich_from_profile_pages(
+                    scraper.as_ref(),
+                    platform,
+                    page_url,
+                    html,
+                    &mut supplier,
+                    &mut record,
+                )
+                .await
+            }
+        }
+    };
+
+    // Nothing is logged when it works - only when the browser copy could
+    // not be used and ScraperAPI is used instead (see above).
+    Some(B2bPageResult {
+        supplier,
+        listing,
+        company_key,
+        company_url,
+        company_page_missing,
+        record,
+    })
+}
+
 #[cfg(test)]
 mod browser_page_tests {
     use super::*;
+
+    /// A small Wholesale Central page: the data rows inside a
+    /// self.__next_f.push([1,"..."]) script.
+    fn wc_page(rows: &str) -> String {
+        let pushed = serde_json::to_string(&serde_json::json!([1, rows])).unwrap();
+        format!(
+            "<!DOCTYPE html><html><body>{}<script>self.__next_f.push({pushed})</script></body></html>",
+            "x".repeat(2500)
+        )
+    }
+
+    fn wc_product(supplier_id: u32) -> String {
+        wc_page(&format!(
+            "b:[\"$\",\"div\",null,{{\"product\":{{\"id\":1,\"name\":\"Earphones\",\"supplierName\":\"iPhoenix\",\"supplierId\":{supplier_id},\"subdirectory\":\"iphoenix\",\"productVariants\":[]}}}}]\n"
+        ))
+    }
+
+    fn wc_supplier(id: u32) -> String {
+        wc_page(&format!(
+            "2e:{{\"id\":{id},\"supplierBusinessName\":\"iPhoenix\",\"contactInfo\":[{{\"salesNumber\":[\"626-279-6899\"]}}],\"wholesaleLink\":\"https://shopiphoenix.com\"}}\n"
+        ))
+    }
+
+    #[tokio::test]
+    async fn browser_first_is_only_for_listed_platforms() {
+        let page = wc_product(63409);
+        assert!(
+            b2b_page_from_browser_first("alibaba", "u", Some(&page), None)
+                .await
+                .is_none(),
+            "Alibaba keeps ScraperAPI first"
+        );
+        assert!(
+            b2b_page_from_browser_first("wholesalecentral", "u", None, None)
+                .await
+                .is_none(),
+            "no page sent: fetched through ScraperAPI"
+        );
+    }
+
+    #[test]
+    fn a_company_page_from_another_supplier_is_not_used() {
+        let scraper = get_scraper_for_platform("wholesalecentral").unwrap();
+        let product = wc_product(63409);
+        assert!(company_page_matches(
+            scraper.as_ref(),
+            &product,
+            &wc_supplier(63409)
+        ));
+        assert!(!company_page_matches(
+            scraper.as_ref(),
+            &product,
+            &wc_supplier(40952)
+        ));
+    }
+
+    #[test]
+    fn the_robot_check_page_is_never_read_as_a_page() {
+        let robot = format!(
+            "<!DOCTYPE html><html><body><script>AwsWafIntegration.getToken()</script>{}</body></html>",
+            "x".repeat(3000)
+        );
+        assert!(!usable_browser_page(&robot));
+        assert!(usable_browser_page(&wc_supplier(1)));
+    }
+
+    #[tokio::test]
+    async fn product_and_supplier_pages_from_the_browser_make_one_result() {
+        unsafe {
+            std::env::set_var("SCRAPERAPI_KEY", "k");
+        }
+        let product = wc_product(63409);
+        let supplier_page = wc_supplier(63409);
+        let page = b2b_page_from_browser_first(
+            "wholesalecentral",
+            "https://www.wholesalecentral.com/products/1",
+            Some(&product),
+            Some(&supplier_page),
+        )
+        .await
+        .expect("read from the browser");
+        assert_eq!(page.listing.title.as_deref(), Some("Earphones"));
+        assert_eq!(page.supplier.contact_phone.as_deref(), Some("626-279-6899"));
+        assert_eq!(
+            page.supplier.website_url.as_deref(),
+            Some("https://shopiphoenix.com")
+        );
+        assert_eq!(page.company_key.as_deref(), Some("63409"));
+        assert!(!page.company_page_missing);
+
+        // A supplier page needs nothing more.
+        let page = b2b_page_from_browser_first(
+            "wholesalecentral",
+            "https://www.wholesalecentral.com/suppliers/iphoenix",
+            Some(&supplier_page),
+            None,
+        )
+        .await
+        .expect("read from the browser");
+        assert_eq!(page.listing.title, None);
+        assert!(!page.company_page_missing);
+    }
 
     #[test]
     fn alibaba_links_lose_tracking_extras_only() {

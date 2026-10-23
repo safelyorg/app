@@ -6,16 +6,20 @@ use crate::{
     },
     services::{
         analysis::{
-            BuildResponseData, authorize_request, build_all_signals, build_b2b_analysis_path,
-            build_requests, resolve_seller, run_claude_analysis, save_and_build_response,
+            BuildResponseData, authorize_request, authorize_scan, build_all_signals,
+            build_b2b_analysis_path, build_requests, resolve_seller, run_claude_analysis,
+            save_and_build_response,
         },
-        b2b_scrapers::{b2b_page_from_browser, fetch_b2b_page, get_scraper_for_platform},
+        b2b_scrapers::{
+            b2b_page_from_browser, b2b_page_from_browser_first, fetch_b2b_page,
+            get_scraper_for_platform,
+        },
         b2c_scrapers::{check_listing_page, requires_client_side_scraping},
         listings::{create_listing, update_listing_from_b2b},
         osint::{PlatformCheckResult, SellerIdentifiers, verify_social_link},
         scoring::calculate_risk_score,
         sellers::update_seller_from_b2b,
-        signals::sort_signals_by_table,
+        signals::{is_supplier_page_scan, sort_signals_by_table},
         translation::{AnalysisTranslation, get_or_create_translation, save_english_baseline},
     },
 };
@@ -65,7 +69,10 @@ pub async fn analyze(
     headers: HeaderMap,
     Json(request): Json<AnalyzeRequest>,
 ) -> Result<Json<AnalyzeResponse>, AnalyzeError> {
-    let user_id = authorize_request(&headers, &pool).await?;
+    // The scan is counted now and given back if it does not finish (an
+    // error below, or the buyer closed or refreshed the tab, which stops
+    // this request). It stays counted once the result is saved.
+    let (user_id, scan_hold) = authorize_scan(&headers, &pool).await?;
     let mut request = request;
     let reader_language = reader_language(request.language.as_deref());
     request.language = Some("en".to_string());
@@ -121,20 +128,33 @@ pub async fn analyze(
     // Platforms whose scraper implements company_key (Alibaba, B2Brazil, ExportHub)
     // get one seller record per company; the rest return None and keep
     // the old per-listing ID below, unchanged.
-    // ScraperAPI first. For platforms in BROWSER_PAGE_PLATFORMS
-    // (Alibaba), the page the buyer's browser sent is the backup, read
-    // only if ScraperAPI could not get the listing.
+    // For platforms in BROWSER_FIRST_PLATFORMS (Wholesale Central), the
+    // pages the buyer's browser sent are read first, and ScraperAPI is
+    // only the backup. Everywhere else ScraperAPI is first; for
+    // platforms in BROWSER_PAGE_PLATFORMS (Alibaba), the page the
+    // buyer's browser sent is the backup, read only if ScraperAPI could
+    // not get the listing.
     let b2b_page = if is_b2b {
-        let page = match fetch_b2b_page(&request.platform, &request.listing_url).await {
+        let from_browser = b2b_page_from_browser_first(
+            &request.platform,
+            &request.listing_url,
+            request.page_html.as_deref(),
+            request.company_page_html.as_deref(),
+        )
+        .await;
+        let page = match from_browser {
             Some(page) => Some(page),
-            None => {
-                b2b_page_from_browser(
-                    &request.platform,
-                    &request.listing_url,
-                    request.page_html.as_deref(),
-                )
-                .await
-            }
+            None => match fetch_b2b_page(&request.platform, &request.listing_url).await {
+                Some(page) => Some(page),
+                None => {
+                    b2b_page_from_browser(
+                        &request.platform,
+                        &request.listing_url,
+                        request.page_html.as_deref(),
+                    )
+                    .await
+                }
+            },
         };
         Some(page.ok_or_else(|| {
             AnalyzeError::ClaudeAnalysisFailed("Could not fetch B2B supplier page".to_string())
@@ -225,10 +245,18 @@ pub async fn analyze(
             Some(&seller_profile_url),
         )
         .await;
+        // A supplier's own page (Wholesale Central) has no product title,
+        // so the scan is saved under the supplier's name, which the
+        // dashboard then shows as its title.
+        let listing_title = listing_data.title.clone().or_else(|| {
+            is_supplier_page_scan(&listing_data)
+                .then(|| supplier.company_name.clone())
+                .flatten()
+        });
         let _ = update_listing_from_b2b(
             &pool,
             listing.id,
-            listing_data.title.as_deref(),
+            listing_title.as_deref(),
             listing_data.description.as_deref(),
         )
         .await;
@@ -302,6 +330,8 @@ pub async fn analyze(
     };
 
     let mut response = save_and_build_response(data).await?;
+    // The result is saved: this scan counts.
+    scan_hold.finish();
 
     // The English result is always saved first: it is the source every
     // translation is made from. The summary saved with it is the

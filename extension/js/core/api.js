@@ -11,6 +11,7 @@ function formatPlatformName(platform) {
         b2bmap: "B2BMap",
         thomasnet: "ThomasNet",
         kompass: "Kompass",
+        wholesalecentral: "Wholesale Central",
     };
     return names[platform] || platform;
 }
@@ -53,6 +54,18 @@ function formatPlatformName(platform) {
     // reads this copy only if that fails. Must match
     // BROWSER_PAGE_PLATFORMS in backend/src/services/b2b_scrapers/mod.rs.
     const BROWSER_PAGE_PLATFORMS = ["alibaba"];
+    // Platforms where this browser is the FIRST source: Safely reads the
+    // page sent from here, and uses ScraperAPI only if that fails.
+    // Wholesale Central's robot check blocks ScraperAPI, but this browser
+    // has already passed it. Must match BROWSER_FIRST_PLATFORMS in
+    // backend/services/b2b_scrapers/mod.rs.
+    const BROWSER_FIRST_PLATFORMS = ["wholesalecentral"];
+    // The most page text sent in one scan, so the request stays under the
+    // server's size limit (2 MB, and the page text grows a little when it
+    // is sent). A page over it is not sent, and Safely fetches it through
+    // ScraperAPI instead. A Wholesale Central product page plus its
+    // supplier page is about 1.1 million characters.
+    const MAX_PAGE_CHARS = 1300000;
     // A trimmed copy of the current page for Safely to read: styles,
     // icons, frames and scripts are removed (only Alibaba's own product
     // data script, window.detailData, is kept), so the copy is small and
@@ -274,6 +287,26 @@ function formatPlatformName(platform) {
                     scraped.seller_phone = phone;
                 }
             }
+            // Alibaba: the page copy exactly as before. Wholesale Central:
+            // only the page's data, plus the supplier's page on a product
+            // page, kept under MAX_PAGE_CHARS together.
+            let pageHtml = null;
+            let companyPageHtml = null;
+            const scrapers = window.__safelyScrapers;
+            if (BROWSER_FIRST_PLATFORMS.indexOf(platform) !== -1 && scrapers.wholesalecentralPageData) {
+                pageHtml = scrapers.wholesalecentralPageData();
+                if (pageHtml && pageHtml.length > MAX_PAGE_CHARS)
+                    pageHtml = null;
+                if (pageHtml && scrapers.fetchWholesalecentralSupplierPage) {
+                    companyPageHtml = await scrapers.fetchWholesalecentralSupplierPage();
+                    if (companyPageHtml && pageHtml.length + companyPageHtml.length > MAX_PAGE_CHARS) {
+                        companyPageHtml = null;
+                    }
+                }
+            }
+            else if (BROWSER_PAGE_PLATFORMS.indexOf(platform) !== -1) {
+                pageHtml = pageHtmlForSafely();
+            }
             const domainCheck = window.__safelyScrapers.checkDomain();
             const language = await scanLanguage();
             const payload = {
@@ -308,7 +341,8 @@ function formatPlatformName(platform) {
                     : null,
                 domain_check_current_html: domainCheck ? domainCheck.currentDomainHtml || null : null,
                 domain_check_real_html: domainCheck ? domainCheck.realDomainHtml || null : null,
-                page_html: BROWSER_PAGE_PLATFORMS.indexOf(platform) !== -1 ? pageHtmlForSafely() : null,
+                page_html: pageHtml,
+                company_page_html: companyPageHtml,
             };
             const data = await window.__safelyAPI.analyze(payload);
             if (!isStillCurrentPage()) {

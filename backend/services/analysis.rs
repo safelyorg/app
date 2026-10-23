@@ -10,7 +10,7 @@ use crate::{
         auth::extract_user_id,
         b2b_scrapers::{B2bListingProfile, B2bSupplierProfile, SupplierRecord},
         b2c_scrapers::check_store_page,
-        billing::{ScanLimitError, check_and_increment_scan_usage},
+        billing::{ScanCharge, ScanLimitError, give_back_scan, reserve_scan},
         claude::{
             CallB2bClaudeArguments, CallClaudeArguments, ClaudeAnalysis, call_b2b_claude,
             call_b2c_claude,
@@ -30,13 +30,13 @@ use crate::{
         },
         sellers::{create_seller, find_seller},
         signals::{
-            apply_found_website, apply_missing_price_note, apply_no_photos_note,
-            apply_risky_payment_note, apply_supplier_claims, apply_supplier_record,
-            build_b2b_claude_signals, build_b2b_company_age_signal,
-            build_b2b_listing_completeness_signal, build_b2b_transparency_signal,
-            build_b2b_verification_signal, build_domain_signal, build_seller_verification_signals,
-            build_signals, build_store_page_signal, build_whois_signal, soften_no_presence,
-            stated_founding_year,
+            PRICES_FOR_SIGNED_IN_PLATFORMS, apply_found_website, apply_missing_price_note,
+            apply_no_photos_note, apply_risky_payment_note, apply_supplier_claims,
+            apply_supplier_page_note, apply_supplier_record, build_b2b_claude_signals,
+            build_b2b_company_age_signal, build_b2b_listing_completeness_signal,
+            build_b2b_transparency_signal, build_b2b_verification_signal, build_domain_signal,
+            build_seller_verification_signals, build_signals, build_store_page_signal,
+            build_whois_signal, is_supplier_page_scan, soften_no_presence, stated_founding_year,
         },
         whois::check_domain_whois,
     },
@@ -105,6 +105,58 @@ pub async fn authorize_request(
     headers: &HeaderMap,
     pool: &Pool<Postgres>,
 ) -> Result<Uuid, AnalyzeError> {
+    let (user_id, hold) = authorize_scan(headers, pool).await?;
+    // Counted straight away, as before.
+    hold.finish();
+    Ok(user_id)
+}
+
+/// One scan held while /analyze works. The scan is counted when it
+/// starts (so the limit is checked and two scans at once can't both
+/// slip past it), and given back if it does not finish: an error, or
+/// the buyer closed or refreshed the tab, which stops the request. Call
+/// finish() once the result is saved to keep it counted.
+pub struct ScanHold {
+    pool: Pool<Postgres>,
+    charge: Option<ScanCharge>,
+}
+
+impl ScanHold {
+    pub fn new(pool: Pool<Postgres>, charge: ScanCharge) -> Self {
+        ScanHold {
+            pool,
+            charge: Some(charge),
+        }
+    }
+
+    /// The scan finished: it stays counted.
+    pub fn finish(mut self) {
+        self.charge = None;
+    }
+}
+
+impl Drop for ScanHold {
+    fn drop(&mut self) {
+        let Some(charge) = self.charge.take() else {
+            return;
+        };
+        let pool = self.pool.clone();
+        // Drop can't wait, so the scan is given back in the background.
+        match tokio::runtime::Handle::try_current() {
+            Ok(runtime) => {
+                runtime.spawn(async move { give_back_scan(&pool, charge).await });
+            }
+            Err(_) => eprintln!("Safely: could not give back an unfinished scan (no runtime)"),
+        }
+    }
+}
+
+/// The signed-in user, checked against the rate limit and their scan
+/// allowance, and the one scan held for them (see ScanHold).
+pub async fn authorize_scan(
+    headers: &HeaderMap,
+    pool: &Pool<Postgres>,
+) -> Result<(Uuid, ScanHold), AnalyzeError> {
     let user_id = extract_user_id(headers, pool)
         .await
         .map_err(|_| AnalyzeError::Unauthorized)?
@@ -112,19 +164,17 @@ pub async fn authorize_request(
 
     check_rate_limit(user_id)?;
 
-    check_and_increment_scan_usage(pool, user_id)
-        .await
-        .map_err(|e| match e {
-            ScanLimitError::LimitReached { limit } => AnalyzeError::ScanLimitReached(limit),
-            ScanLimitError::FreeLimitReached { limit, resets_on } => {
-                AnalyzeError::FreeScanLimitReached { limit, resets_on }
-            }
-            ScanLimitError::Unavailable => {
-                AnalyzeError::Database("Could not check your scan allowance".to_string())
-            }
-        })?;
+    let charge = reserve_scan(pool, user_id).await.map_err(|e| match e {
+        ScanLimitError::LimitReached { limit } => AnalyzeError::ScanLimitReached(limit),
+        ScanLimitError::FreeLimitReached { limit, resets_on } => {
+            AnalyzeError::FreeScanLimitReached { limit, resets_on }
+        }
+        ScanLimitError::Unavailable => {
+            AnalyzeError::Database("Could not check your scan allowance".to_string())
+        }
+    })?;
 
-    Ok(user_id)
+    Ok((user_id, ScanHold::new(pool.clone(), charge)))
 }
 
 /// Every time someone tries to use /analyze, this checks their notebook entry, lets them
@@ -737,7 +787,7 @@ fn serper_enabled() -> bool {
 }
 
 /// Clean-ups that apply to EVERY B2B platform (Alibaba, ExportHub,
-/// TradeWheel, B2Brazil, B2BMap, ThomasNet, Kompass and any added
+/// TradeWheel, B2Brazil, B2BMap, ThomasNet, Kompass, Wholesale Central and any added
 /// later), done once here instead of in each scraper:
 /// - a price with no number in it ("Depends", "Negotiable", "Contact
 ///   us") is not a price, so it is not counted as provided;
@@ -802,7 +852,7 @@ fn price_for_claude(listing: &B2bListingProfile) -> String {
     };
     // The delivery terms belong with the price, so Claude never says
     // "Incoterms are not stated" when the listing gives them.
-    match listing
+    let price = match listing
         .incoterms
         .as_deref()
         .map(str::trim)
@@ -810,8 +860,26 @@ fn price_for_claude(listing: &B2bListingProfile) -> String {
     {
         Some(terms) if !price.is_empty() => format!("{price} (Incoterms: {terms})"),
         _ => price,
+    };
+    // Wholesale Central shows prices only to signed-in buyers, and
+    // Safely does not use a hidden price - so Claude is told why there
+    // is none, instead of "Not provided".
+    if price.is_empty()
+        && PRICES_FOR_SIGNED_IN_PLATFORMS.contains(&listing.source_platform.as_str())
+    {
+        return PRICE_HIDDEN_FOR_CLAUDE.to_string();
     }
+    price
 }
+
+/// What Claude sees as the price on PRICES_FOR_SIGNED_IN_PLATFORMS.
+const PRICE_HIDDEN_FOR_CLAUDE: &str =
+    "Hidden - this platform shows prices only to signed-in buyers, so the price cannot be judged";
+
+/// What Claude sees as the product when the buyer scanned a supplier's
+/// own page (many products), so it does not judge a product that was
+/// never scanned.
+const SUPPLIER_PAGE_PRODUCT_FOR_CLAUDE: &str = "None - the buyer is on the supplier's own page, which lists many products, so no single product was scanned";
 
 /// The complete, separate B2B analysis path - takes the already-fetched
 /// supplier page (analyze.rs fetches it first, so it can pick the
@@ -871,6 +939,15 @@ pub async fn build_b2b_analysis_path(
     let supplier = resolve_supplier_year(supplier, known_join_date);
 
     let price_text = price_for_claude(&listing);
+    let supplier_page = is_supplier_page_scan(&listing);
+    let (no_title, no_description) = if supplier_page {
+        (
+            SUPPLIER_PAGE_PRODUCT_FOR_CLAUDE,
+            SUPPLIER_PAGE_PRODUCT_FOR_CLAUDE,
+        )
+    } else {
+        ("Unknown", "None provided")
+    };
 
     let claude_result = call_b2b_claude(CallB2bClaudeArguments {
         platform: &request.platform,
@@ -882,8 +959,8 @@ pub async fn build_b2b_analysis_path(
         contact_name: supplier.contact_name.as_deref().unwrap_or(""),
         contact_phone: supplier.contact_phone.as_deref().unwrap_or(""),
         website_url: supplier.website_url.as_deref().unwrap_or(""),
-        product_title: listing.title.as_deref().unwrap_or("Unknown"),
-        product_description: listing.description.as_deref().unwrap_or("None provided"),
+        product_title: listing.title.as_deref().unwrap_or(no_title),
+        product_description: listing.description.as_deref().unwrap_or(no_description),
         image_urls: &listing.image_urls,
         language: request.language.as_deref().unwrap_or("en"),
         unit_price: &price_text,
@@ -902,6 +979,9 @@ pub async fn build_b2b_analysis_path(
     // No photos on the listing: the photo card reads "Not provided", not
     // "Not verified" (there was nothing to check).
     apply_no_photos_note(&mut signals, &listing);
+    // A supplier's own page (Wholesale Central): no single product, so
+    // the product cards ask the buyer to open a product instead.
+    apply_supplier_page_note(&mut signals, &listing);
     signals.push(build_b2b_verification_signal(&supplier));
     signals.push(build_b2b_company_age_signal(&supplier));
     // The platform's own record (Alibaba: on-site check, paid
@@ -1116,6 +1196,7 @@ mod b2b_cleanup_tests {
             "b2bmap",
             "thomasnet",
             "kompass",
+            "wholesalecentral",
         ] {
             let listing = B2bListingProfile {
                 unit_price: Some("Negotiable".into()),
@@ -1130,6 +1211,22 @@ mod b2b_cleanup_tests {
                 Some("36 - 40 USD / Depends on the quantity")
             );
         }
+    }
+
+    #[test]
+    fn claude_is_told_why_a_wholesale_central_price_is_missing() {
+        let listing = |platform: &str| B2bListingProfile {
+            source_platform: platform.into(),
+            ..Default::default()
+        };
+        assert_eq!(
+            price_for_claude(&listing("wholesalecentral")),
+            PRICE_HIDDEN_FOR_CLAUDE
+        );
+        assert_eq!(price_for_claude(&listing("alibaba")), "");
+        let mut priced = listing("wholesalecentral");
+        priced.unit_price = Some("US$ 5".into());
+        assert_eq!(price_for_claude(&priced), "US$ 5");
     }
 
     #[test]

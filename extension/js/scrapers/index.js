@@ -165,6 +165,24 @@
             parts[0] === "hotsite" &&
             !B2BRAZIL_LIST_PAGES.includes(parts[2].toLowerCase()));
     }
+    /// A Wholesale Central page Safely scans: a product page
+    /// (/products/33417104) or a supplier page (/suppliers/luxiso0001).
+    /// Category, search and other list pages show many suppliers, so
+    /// they are not scanned.
+    function isWholesalecentralScanUrl(url) {
+        let parts;
+        try {
+            parts = new URL(url).pathname.split("/").filter(Boolean);
+        }
+        catch {
+            return false;
+        }
+        if (parts.length !== 2)
+            return false;
+        if (parts[0] === "products")
+            return /^\d+$/.test(parts[1]);
+        return parts[0] === "suppliers";
+    }
     const platformRegistry = [
         {
             name: "olx",
@@ -222,6 +240,13 @@
             requiresClientSideScraping: false,
             isListingUrl: (url) => url.includes("/company/") && url.includes("/profile"),
         },
+        {
+            name: "wholesalecentral",
+            matchesHostname: (hostname) => hostname.includes("wholesalecentral.com"),
+            requiresClientSideScraping: false,
+            isListingUrl: isWholesalecentralScanUrl,
+            nonListingMessage: "Safely checks a product page or a supplier page on Wholesale Central. Open one to scan it.",
+        },
     ];
     function detectPlatform() {
         const hostname = window.location.hostname;
@@ -257,6 +282,7 @@
     window.__safelyScrapers.highlightDiff = highlightDiff;
     window.__safelyScrapers.isGenuineDomain = isGenuineDomain;
     window.__safelyScrapers.isB2brazilListingUrl = isB2brazilListingUrl;
+    window.__safelyScrapers.isWholesalecentralScanUrl = isWholesalecentralScanUrl;
     /// Finds the real company profile link on a TradeWheel listing
     /// page, then fetches that page in the background, using the
     /// visiting user's own, real browser session (their cookies are
@@ -315,4 +341,48 @@
         return (texts.find((t) => !isMasked(t) && t.startsWith(visible) && t.length > visible.length) || null);
     }
     window.__safelyScrapers.extractB2bmapPhone = extractB2bmapPhone;
+    /// On a Wholesale Central product page: the supplier's page, loaded
+    /// in this browser (the buyer's own session, which has already passed
+    /// the site's robot check), as data only (see nextDataOnlyHtml). null
+    /// on a supplier page, or if the page could not be loaded.
+    /// Only a page's data scripts (Next.js self.__next_f), as a small page
+    /// for Safely to read. This is all the Wholesale Central scraper reads;
+    /// no text, styles, tracking or login scripts are sent. null if the
+    /// page has none.
+    function nextDataOnlyHtml(doc) {
+        const data = Array.from(doc.querySelectorAll("script"))
+            .map((el) => el.textContent || "")
+            .filter((text) => text.includes("self.__next_f.push"));
+        if (data.length === 0)
+            return null;
+        return ("<!DOCTYPE html><html><body>" +
+            data.map((text) => "<script>" + text + "</script>").join("") +
+            "</body></html>");
+    }
+    /// The Wholesale Central page the buyer is on, as data only.
+    function wholesalecentralPageData() {
+        return nextDataOnlyHtml(document);
+    }
+    async function fetchWholesalecentralSupplierPage() {
+        if (!window.location.pathname.startsWith("/products/"))
+            return null;
+        const link = document.querySelector('a[href^="/suppliers/"]');
+        if (!link)
+            return null;
+        try {
+            const response = await fetch(link.href, { credentials: "include" });
+            if (!response.ok)
+                return null;
+            const html = await response.text();
+            return nextDataOnlyHtml(new DOMParser().parseFromString(html, "text/html"));
+        }
+        catch (e) {
+            console.error("Safely: failed to load the Wholesale Central supplier page", e);
+            return null;
+        }
+    }
+    window.__safelyScrapers.fetchWholesalecentralSupplierPage =
+        fetchWholesalecentralSupplierPage;
+    window.__safelyScrapers.wholesalecentralPageData = wholesalecentralPageData;
+    window.__safelyScrapers.nextDataOnlyHtml = nextDataOnlyHtml;
 })();

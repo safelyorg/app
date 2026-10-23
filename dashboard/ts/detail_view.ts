@@ -362,6 +362,7 @@ const PLATFORM_NAMES: Record<string, string> = {
   b2bmap: "B2BMap",
   thomasnet: "ThomasNet",
   kompass: "Kompass",
+  wholesalecentral: "Wholesale Central",
 };
 
 function platformName(platform: string | null | undefined): string {

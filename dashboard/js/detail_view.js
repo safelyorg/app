@@ -283,6 +283,7 @@ const PLATFORM_NAMES = {
     b2bmap: "B2BMap",
     thomasnet: "ThomasNet",
     kompass: "Kompass",
+    wholesalecentral: "Wholesale Central",
 };
 function platformName(platform) {
     if (!platform)

@@ -100,6 +100,7 @@ async fn analyze_unauthorized_request() {
         domain_check_current_html: None,
         domain_check_real_html: None,
         page_html: None,
+        company_page_html: None,
         language: None,
     };
 
@@ -584,6 +585,7 @@ fn build_requests_correctly_splits_seller_and_listing_data() {
         domain_check_current_html: None,
         domain_check_real_html: None,
         page_html: None,
+        company_page_html: None,
         language: None,
     };
 
@@ -634,6 +636,7 @@ fn build_requests_none_values_stay_none() {
         domain_check_current_html: None,
         domain_check_real_html: None,
         page_html: None,
+        company_page_html: None,
         language: None,
     };
 
@@ -682,6 +685,7 @@ fn build_requests_seller_id_lands_only_on_listing_request() {
         domain_check_current_html: None,
         domain_check_real_html: None,
         page_html: None,
+        company_page_html: None,
         language: None,
     };
 
@@ -1985,6 +1989,7 @@ async fn build_all_signals_without_domain_check() {
         domain_check_current_html: None,
         domain_check_real_html: None,
         page_html: None,
+        company_page_html: None,
         language: None,
     };
 
@@ -2070,6 +2075,7 @@ async fn build_all_signals_with_domain_check() {
         domain_check_current_html: None,
         domain_check_real_html: None,
         page_html: None,
+        company_page_html: None,
         language: None,
     };
 
@@ -4059,6 +4065,7 @@ async fn build_all_signals_produces_correct_no_website_and_no_store_page_message
         domain_check_current_html: None,
         domain_check_real_html: None,
         page_html: None,
+        company_page_html: None,
         language: None,
     };
 
@@ -4165,6 +4172,7 @@ async fn build_all_signals_correctly_includes_real_verified_seller_data() {
         domain_check_current_html: None,
         domain_check_real_html: None,
         page_html: None,
+        company_page_html: None,
         language: None,
     };
 
@@ -4249,6 +4257,7 @@ async fn analyze_gracefully_continues_when_server_side_scraping_fails() {
         domain_check_current_html: None,
         domain_check_real_html: None,
         page_html: None,
+        company_page_html: None,
         language: None,
     };
 

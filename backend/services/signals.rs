@@ -348,6 +348,26 @@ pub fn build_b2b_verification_signal(supplier: &B2bSupplierProfile) -> Signal {
         };
     }
 
+    // Wholesale Central has no company verification at all, so every
+    // supplier there would otherwise get the same "Unverified" caution.
+    // A "Verified" in the company's own name ("Upsell Wholesale-
+    // Verified Distributor") is text the supplier typed, not a check.
+    if supplier.source_platform == "wholesalecentral" {
+        let name_claim = if name.to_lowercase().contains("verified") {
+            " The word \"Verified\" in this company's name was typed by the supplier itself. It is not a check by Wholesale Central."
+        } else {
+            ""
+        };
+        return Signal {
+            label: "Platform verification".to_string(),
+            sub: format!("Wholesale Central does not verify suppliers.{}", name_claim),
+            value: "Not offered".to_string(),
+            signal_type: "info".to_string(),
+            category: "identity".to_string(),
+            check_type: "existence".to_string(),
+        };
+    }
+
     // TradeWheel's badges (Gold, Platinum) are paid membership levels.
     // Shown for information only, never as verification and never as
     // a caution - a company without one has simply not paid for it.
@@ -939,6 +959,19 @@ pub const PRICE_NOT_LISTED: &str = "Not listed";
 /// Directory platforms that never show prices are left alone, and a
 /// price Claude flagged stays flagged.
 pub fn apply_missing_price_note(signals: &mut [Signal], listing: &B2bListingProfile) {
+    // Prices shown only to signed-in buyers: there was no price to
+    // judge, whatever Claude said, so the card says so.
+    if PRICES_FOR_SIGNED_IN_PLATFORMS.contains(&listing.source_platform.as_str())
+        && listing.unit_price.is_none()
+        && listing.fob_price.is_none()
+    {
+        for card in signals.iter_mut().filter(|s| s.label == "Price analysis") {
+            card.value = PRICE_HIDDEN.to_string();
+            card.signal_type = "info".to_string();
+            card.sub = "Wholesale Central shows prices only to signed-in buyers, so Safely could not check the price. Sign in to Wholesale Central to see it, and compare it with other suppliers before you order.".to_string();
+        }
+        return;
+    }
     if NO_ORDER_DETAILS_PLATFORMS.contains(&listing.source_platform.as_str())
         || listing.unit_price.is_some()
         || listing.fob_price.is_some()
@@ -1316,14 +1349,20 @@ pub fn build_b2b_transparency_signal(supplier: &B2bSupplierProfile) -> Signal {
     let filled_count = fields.iter().filter(|(_, present)| *present).count();
 
     // Kompass never shows sales or export figures, and shows the
-    // employee count only to its paying members. "0 of 3" there says
-    // nothing about the supplier, so it reads like the listing card.
+    // employee count only to its paying members. Wholesale Central has
+    // no place for any of the three. "0 of 3" there says nothing about
+    // the supplier, so it reads like the listing card.
     if filled_count == 0
         && HIDDEN_COMPANY_FIGURES_PLATFORMS.contains(&supplier.source_platform.as_str())
     {
+        let sub = if supplier.source_platform == "kompass" {
+            "This platform does not show sales or export figures, and shows the employee count only to its paying members, so this is not counted against the supplier."
+        } else {
+            "This platform does not show employee, sales or export figures for any supplier, so this is not counted against the supplier."
+        };
         return Signal {
             label: "Company profile completeness".to_string(),
-            sub: "This platform does not show sales or export figures, and shows the employee count only to its paying members, so this is not counted against the supplier.".to_string(),
+            sub: sub.to_string(),
             value: "Not shown on this platform".to_string(),
             signal_type: "info".to_string(),
             category: "company".to_string(),
@@ -1353,14 +1392,56 @@ pub fn build_b2b_transparency_signal(supplier: &B2bSupplierProfile) -> Signal {
 }
 
 /// Platforms that never show a company's sales or export figures and
-/// hide the employee count from free visitors.
-pub const HIDDEN_COMPANY_FIGURES_PLATFORMS: [&str; 1] = ["kompass"];
+/// hide the employee count from free visitors (Kompass), or have no
+/// place for any of them (Wholesale Central).
+pub const HIDDEN_COMPANY_FIGURES_PLATFORMS: [&str; 2] = ["kompass", "wholesalecentral"];
 
 /// Platforms that are supplier directories, not marketplaces: they
 /// never show price, MOQ, Incoterms, packaging or delivery details for
 /// any supplier. Add a platform here only when NO listing on it can
-/// ever have these fields.
-pub const NO_ORDER_DETAILS_PLATFORMS: [&str; 2] = ["thomasnet", "kompass"];
+/// ever have these fields. Wholesale Central shows a minimum order but
+/// none of the other details, and hides prices (see
+/// PRICES_FOR_SIGNED_IN_PLATFORMS).
+pub const NO_ORDER_DETAILS_PLATFORMS: [&str; 3] = ["thomasnet", "kompass", "wholesalecentral"];
+
+/// Platforms that show prices only to signed-in buyers ("Unlock
+/// wholesale price"). Safely never uses a price the platform hides, so
+/// the price card says it could not be checked instead of judging it.
+pub const PRICES_FOR_SIGNED_IN_PLATFORMS: [&str; 1] = ["wholesalecentral"];
+
+/// Value of the price card on PRICES_FOR_SIGNED_IN_PLATFORMS.
+pub const PRICE_HIDDEN: &str = "Not shown on this platform";
+
+/// Platforms where a buyer can scan the supplier's own page as well as
+/// a product page. A supplier page lists many products, so no product
+/// is read from it (the listing has no title).
+pub const SUPPLIER_PAGE_PLATFORMS: [&str; 1] = ["wholesalecentral"];
+
+/// Value of the product cards when the supplier's own page was scanned.
+pub const OPEN_A_PRODUCT: &str = "Open a product to check this";
+
+/// True when the scanned page was a supplier's own page with many
+/// products (see SUPPLIER_PAGE_PLATFORMS), not one product.
+pub fn is_supplier_page_scan(listing: &B2bListingProfile) -> bool {
+    SUPPLIER_PAGE_PLATFORMS.contains(&listing.source_platform.as_str()) && listing.title.is_none()
+}
+
+/// On a supplier's own page there is no single product, so the product
+/// cards (listing detail, photos) cannot be checked. They say so, and
+/// do not count as warnings. Every other scan is left alone.
+pub fn apply_supplier_page_note(signals: &mut [Signal], listing: &B2bListingProfile) {
+    if !is_supplier_page_scan(listing) {
+        return;
+    }
+    for card in signals
+        .iter_mut()
+        .filter(|s| s.label == "Listing detail" || s.label == "Image authenticity")
+    {
+        card.value = OPEN_A_PRODUCT.to_string();
+        card.signal_type = "info".to_string();
+        card.sub = "This is the supplier's own page, which lists many products, so no single product was checked. Open one of its products and scan it to check the product too.".to_string();
+    }
+}
 
 /// Checks how many of the real, listing-specific fields (price, MOQ,
 /// Incoterms, etc.) were genuinely filled in versus left as "Not
@@ -1390,9 +1471,14 @@ pub fn build_b2b_listing_completeness_signal(listing: &B2bListingProfile) -> Sig
     // never show price, MOQ, Incoterms etc., so on them an empty
     // listing is normal and stays information only.
     if NO_ORDER_DETAILS_PLATFORMS.contains(&listing.source_platform.as_str()) {
+        let sub = if listing.source_platform == "wholesalecentral" {
+            "Wholesale Central does not show Incoterms, ports, delivery or packaging details for any supplier, and shows prices only to signed-in buyers, so this is not counted against the supplier."
+        } else {
+            "This platform is a supplier directory and does not show price, minimum order or delivery details for any supplier, so this is not counted against them."
+        };
         return Signal {
             label: "Listing completeness".to_string(),
-            sub: "This platform is a supplier directory and does not show price, minimum order or delivery details for any supplier, so this is not counted against them.".to_string(),
+            sub: sub.to_string(),
             value: "Not shown on this platform".to_string(),
             signal_type: "info".to_string(),
             category: "listing".to_string(),
@@ -1857,7 +1943,7 @@ mod b2b_signal_tests {
 
     #[test]
     fn empty_listing_is_only_info_on_a_directory_platform() {
-        for platform in ["thomasnet", "kompass"] {
+        for platform in ["thomasnet", "kompass", "wholesalecentral"] {
             let s = build_b2b_listing_completeness_signal(&empty_listing(platform));
             assert_eq!(s.signal_type, "info");
             assert_eq!(s.value, "Not shown on this platform");
@@ -1908,6 +1994,109 @@ mod b2b_signal_tests {
             build_b2b_transparency_signal(&k).value,
             "1/3 fields provided"
         );
+    }
+
+    #[test]
+    fn wholesale_central_company_figures_are_not_counted_against_the_supplier() {
+        let s = build_b2b_transparency_signal(&B2bSupplierProfile {
+            source_platform: "wholesalecentral".into(),
+            ..Default::default()
+        });
+        assert_eq!(
+            (s.value.as_str(), s.signal_type.as_str()),
+            ("Not shown on this platform", "info")
+        );
+        assert!(s.sub.contains("for any supplier"));
+        assert!(!s.sub.contains("paying members"), "that is Kompass's note");
+    }
+
+    #[test]
+    fn wholesale_central_verifies_no_one_and_a_verified_name_is_only_a_claim() {
+        let supplier = |name: &str| B2bSupplierProfile {
+            company_name: Some(name.into()),
+            source_platform: "wholesalecentral".into(),
+            ..Default::default()
+        };
+        let s = build_b2b_verification_signal(&supplier("PrimePallet Wholesale LLC"));
+        assert_eq!(
+            (s.value.as_str(), s.signal_type.as_str()),
+            ("Not offered", "info")
+        );
+        assert_eq!(s.sub, "Wholesale Central does not verify suppliers.");
+        let s = build_b2b_verification_signal(&supplier("Upsell Wholesale- Verified Distributor"));
+        assert_eq!(s.value, "Not offered");
+        assert!(s.sub.contains("typed by the supplier itself"));
+    }
+
+    fn price_card(value: &str, signal_type: &str) -> Vec<Signal> {
+        vec![Signal {
+            label: "Price analysis".into(),
+            sub: "Claude's reasoning.".into(),
+            value: value.into(),
+            signal_type: signal_type.into(),
+            category: String::new(),
+            check_type: String::new(),
+        }]
+    }
+
+    #[test]
+    fn wholesale_central_hidden_price_is_never_judged() {
+        for (value, kind) in [("normal", "good"), ("suspiciously low", "caution")] {
+            let mut cards = price_card(value, kind);
+            apply_missing_price_note(&mut cards, &empty_listing("wholesalecentral"));
+            assert_eq!(
+                (cards[0].value.as_str(), cards[0].signal_type.as_str()),
+                (PRICE_HIDDEN, "info")
+            );
+            assert!(cards[0].sub.contains("signed-in buyers"));
+        }
+        // Other directories keep Claude's answer, as before.
+        let mut cards = price_card("normal", "good");
+        apply_missing_price_note(&mut cards, &empty_listing("thomasnet"));
+        assert_eq!(cards[0].value, "normal");
+    }
+
+    fn product_cards() -> Vec<Signal> {
+        ["Listing detail", "Image authenticity", "Contact info"]
+            .iter()
+            .map(|label| Signal {
+                label: label.to_string(),
+                sub: "x".into(),
+                value: "Vague".into(),
+                signal_type: "caution".into(),
+                category: String::new(),
+                check_type: String::new(),
+            })
+            .collect()
+    }
+
+    #[test]
+    fn a_supplier_page_scan_asks_for_a_product_instead_of_warning() {
+        let mut cards = product_cards();
+        let supplier_page = empty_listing("wholesalecentral");
+        assert!(is_supplier_page_scan(&supplier_page));
+        apply_supplier_page_note(&mut cards, &supplier_page);
+        for card in &cards[..2] {
+            assert_eq!(
+                (card.value.as_str(), card.signal_type.as_str()),
+                (OPEN_A_PRODUCT, "info")
+            );
+        }
+        assert_eq!(cards[2].value, "Vague", "supplier cards are left alone");
+    }
+
+    #[test]
+    fn a_product_page_scan_keeps_its_product_cards() {
+        let mut product_page = empty_listing("wholesalecentral");
+        product_page.title = Some("G102 earphones".into());
+        assert!(!is_supplier_page_scan(&product_page));
+        let mut cards = product_cards();
+        apply_supplier_page_note(&mut cards, &product_page);
+        assert_eq!(cards[0].value, "Vague");
+        // Other platforms are never treated as a supplier page.
+        let mut cards = product_cards();
+        apply_supplier_page_note(&mut cards, &empty_listing("thomasnet"));
+        assert_eq!(cards[0].value, "Vague");
     }
     use crate::services::claude::{ImageAssessment, PriceAssessment};
 

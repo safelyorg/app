@@ -911,6 +911,19 @@ macro_rules! yearly_month_rolled {
     };
 }
 
+/// Which allowance a scan was counted on, so it can be given back
+/// (give_back_scan) when the scan does not finish.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ScanCharge {
+    /// Counted on the user's Free scans.
+    Free { user_id: Uuid },
+    /// Counted on an active Team / Enterprise plan.
+    Paid { subscription_id: Uuid },
+    /// Allowed but not counted (an unlimited plan whose count could not
+    /// be written). Nothing to give back.
+    NotCounted,
+}
+
 /// Checks whether this user can run one more scan right now, and if
 /// so, counts it in the same query, so two scans at the same moment
 /// can never both slip past the limit.
@@ -923,6 +936,17 @@ pub async fn check_and_increment_scan_usage(
     pool: &Pool<Postgres>,
     user_id: Uuid,
 ) -> Result<(), ScanLimitError> {
+    reserve_scan(pool, user_id).await.map(|_| ())
+}
+
+/// The same check and count as check_and_increment_scan_usage, and
+/// also says which allowance the scan was counted on. /analyze uses it
+/// to hold one scan while it works, and gives the scan back
+/// (give_back_scan) when the scan does not finish.
+pub async fn reserve_scan(
+    pool: &Pool<Postgres>,
+    user_id: Uuid,
+) -> Result<ScanCharge, ScanLimitError> {
     let paid: Option<(Uuid, String)> = sqlx::query_as(
         "SELECT id, plan_name FROM subscriptions
          WHERE user_id = $1 AND status = 'active'
@@ -938,21 +962,62 @@ pub async fn check_and_increment_scan_usage(
 
     match paid {
         Some((subscription_id, plan_name)) => {
-            use_paid_scan(pool, subscription_id, &plan_name).await
+            let counted = use_paid_scan(pool, subscription_id, &plan_name).await?;
+            Ok(if counted {
+                ScanCharge::Paid { subscription_id }
+            } else {
+                ScanCharge::NotCounted
+            })
         }
-        None => use_free_scan(pool, user_id).await,
+        None => {
+            use_free_scan(pool, user_id).await?;
+            Ok(ScanCharge::Free { user_id })
+        }
+    }
+}
+
+/// Gives back one scan counted by reserve_scan, because the scan did
+/// not finish: it failed, or the buyer closed or refreshed the tab
+/// before the result came. Never goes below 0. A failure is only
+/// logged - the scan then stays counted, as before.
+pub async fn give_back_scan(pool: &Pool<Postgres>, charge: ScanCharge) {
+    let result = match charge {
+        ScanCharge::Free { user_id } => {
+            query(
+                "UPDATE free_scan_usage SET scans_used = scans_used - 1, updated_at = NOW()
+                 WHERE user_id = $1 AND scans_used > 0",
+            )
+            .bind(user_id)
+            .execute(pool)
+            .await
+        }
+        ScanCharge::Paid { subscription_id } => {
+            query(
+                "UPDATE subscriptions SET scans_used_this_period = scans_used_this_period - 1
+                 WHERE id = $1 AND scans_used_this_period > 0",
+            )
+            .bind(subscription_id)
+            .execute(pool)
+            .await
+        }
+        ScanCharge::NotCounted => return,
+    };
+    if let Err(e) = result {
+        eprintln!("Safely: could not give back an unfinished scan: {}", e);
     }
 }
 
 /// One scan on an active Team / Enterprise plan. A single UPDATE adds
 /// 1 - or, on a yearly plan that has reached a new scan month, starts
 /// the count again at 1 - but only while under the plan's limit. If the
-/// WHERE stops the update, the scan is refused.
+/// WHERE stops the update, the scan is refused. Ok(true) when the scan
+/// was counted, Ok(false) when it was allowed without being counted
+/// (unlimited plan).
 async fn use_paid_scan(
     pool: &Pool<Postgres>,
     subscription_id: Uuid,
     plan_name: &str,
-) -> Result<(), ScanLimitError> {
+) -> Result<bool, ScanLimitError> {
     let limit = scan_limit_for_plan(plan_name);
 
     let result = query(concat!(
@@ -986,9 +1051,9 @@ async fn use_paid_scan(
         // Unlimited: a failed count is logged, never a reason to refuse.
         (Err(e), None) => {
             eprintln!("Failed to record paid scan: {}", e);
-            Ok(())
+            Ok(false)
         }
-        _ => Ok(()),
+        (Ok(res), _) => Ok(res.rows_affected() > 0),
     }
 }
 

@@ -80,9 +80,14 @@ pub struct AnalyzeRequest {
     pub domain_check_current_html: Option<String>,
     #[serde(default)]
     pub domain_check_real_html: Option<String>,
-    /// Alibaba only: the listing page as the buyer's browser shows it.
+    /// The listing page as the buyer's browser shows it (Alibaba: the
+    /// backup; Wholesale Central: read first).
     #[serde(default)]
     pub page_html: Option<String>,
+    /// Wholesale Central only: the supplier's page, loaded in the
+    /// buyer's own browser while they are on a product page.
+    #[serde(default)]
+    pub company_page_html: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
