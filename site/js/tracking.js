@@ -5,7 +5,11 @@
 //    dashboard can save it with the account at sign-up.
 // 2. Sends a "Lead" event when someone clicks an "Add to Chrome" /
 //    "Adicionar ao Chrome" button or any link to the Chrome Web Store.
-// Does nothing when the Pixel is not loaded (blocked by the browser).
+// 3. Adds where the visitor came from to that Chrome Web Store link, so
+//    the store's own Google Analytics shows it: the Meta ad they came
+//    from, or else "website / button / <page>" (e.g. "homepage", "try").
+// Does nothing when the Pixel is not loaded (blocked by the browser),
+// except step 3, which never needs the Pixel.
 (function () {
     "use strict";
     // Same key the dashboard reads (same website, so same storage).
@@ -33,6 +37,47 @@
             // Storage blocked (private mode): nothing is remembered.
         }
     }
+    // The ad this visitor first came from (see rememberAdSource), or null.
+    function rememberedAdSource() {
+        try {
+            const saved = JSON.parse(localStorage.getItem(UTM_STORAGE_KEY) || "null");
+            return saved && saved.utm_source ? saved : null;
+        }
+        catch (e) {
+            return null;
+        }
+    }
+    // The page the button is on, as a short name: "/" -> "homepage",
+    // "/try" -> "try", "/tools/domain-age-checker" -> "tools_domain-age-checker".
+    function pageName() {
+        const path = window.location.pathname.replace(/^\/+|\/+$/g, "").replace(/\.html$/, "");
+        return path ? path.replace(/\//g, "_") : "homepage";
+    }
+    // The Chrome Web Store link with where the visitor came from added.
+    // A link that already says where it came from is left as it is.
+    function withSource(href) {
+        try {
+            const url = new URL(href, window.location.href);
+            if (url.searchParams.has("utm_source"))
+                return href;
+            const ad = rememberedAdSource();
+            if (ad) {
+                UTM_KEYS.forEach((key) => {
+                    if (ad[key])
+                        url.searchParams.set(key, ad[key]);
+                });
+            }
+            else {
+                url.searchParams.set("utm_source", "website");
+                url.searchParams.set("utm_medium", "button");
+                url.searchParams.set("utm_campaign", pageName());
+            }
+            return url.toString();
+        }
+        catch (e) {
+            return href;
+        }
+    }
     function track(event) {
         const fbq = window.fbq;
         if (typeof fbq === "function")
@@ -49,6 +94,9 @@
         const link = target ? target.closest("a") : null;
         if (!link || !isChromeStoreLink(link))
             return;
+        // Set before the browser follows the link, so both same-tab and
+        // new-tab clicks open the store with the source added.
+        link.href = withSource(link.href);
         track("Lead");
         // A link that opens in the same tab leaves the page at once; a short
         // wait lets the event reach Meta first. New-tab links need no wait.
