@@ -58,7 +58,7 @@
 use crate::models::blogs::BlogPost;
 use crate::models::tools::Tool;
 use crate::services::blogs::{blog_path, load_posts};
-use chrono::{Datelike, NaiveDate};
+use chrono::{Datelike, NaiveDate, Utc};
 use pulldown_cmark::{Options, Parser, html};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -72,6 +72,22 @@ pub const DEFAULT_LANG: &str = "en";
 pub const MORE_ITEMS: usize = 3;
 /// Each list shows 2 rows of 3 first, then 1 more row per click.
 pub const FIRST_CARDS: usize = 6;
+
+/// Tools that are planned but not built yet, shown as "Coming soon"
+/// cards (not links) under the tools on the list page, as (the slug the
+/// tool will have, the start of its text keys). A card goes away by
+/// itself once a tool with that slug is published. To add one, add a
+/// line here and its ".title" and ".desc" texts in ENGLISH and in every
+/// site/locales/<lang>.json.
+const COMING_SOON: &[(&str, &str)] = &[
+    ("lookalike-domain-checker", "tools.soon.lookalike"),
+    ("business-email-checker", "tools.soon.email"),
+    ("bank-details-checker", "tools.soon.bank"),
+];
+
+/// A tool or blog published this many days ago or less gets a "New" tag
+/// (only the newest one).
+const NEW_FOR_DAYS: i64 = 30;
 /// The address part that opens the "Blogs" side of the list: /tools#blogs
 pub const BLOGS_TAB: &str = "#blogs";
 
@@ -121,6 +137,33 @@ const ENGLISH: &[(&str, &str)] = &[
     ("tools.tabs_label", "Choose what to see"),
     ("tools.tab_tools", "Free Tools"),
     ("tools.tab_blogs", "Blogs"),
+    (
+        "tools.intro_tools",
+        "Free checks you can run in seconds, before you pay a supplier. No sign-up.",
+    ),
+    (
+        "tools.intro_blogs",
+        "Plain-language guides for B2B buyers. Read one before your next order.",
+    ),
+    ("tools.new", "New"),
+    // "Coming soon" cards (see COMING_SOON)
+    ("tools.soon_title", "Coming soon"),
+    ("tools.soon_badge", "Soon"),
+    ("tools.soon.lookalike.title", "Lookalike Domain Checker"),
+    (
+        "tools.soon.lookalike.desc",
+        "Spot fake websites that copy a real company's name with one letter changed.",
+    ),
+    ("tools.soon.email.title", "Business Email Checker"),
+    (
+        "tools.soon.email.desc",
+        "See if an email address really belongs to the company it claims to be from.",
+    ),
+    ("tools.soon.bank.title", "Bank Details Checker"),
+    (
+        "tools.soon.bank.desc",
+        "Check that a supplier's bank details match its country and company name.",
+    ),
     // Tools
     ("tools.empty", "The first free tools are on their way."),
     ("tools.show_more", "Show more tools"),
@@ -941,25 +984,109 @@ fn tool_cards(tools: &[&Tool], lang: &str, texts: &Texts, visible: usize) -> Str
 }
 
 /// Cards linking to blogs, with the date in the pill.
+/// The newest blog gets a "New" tag while it is recent (NEW_FOR_DAYS).
 pub fn blog_cards(posts: &[&BlogPost], lang: &str, texts: &Texts, visible: usize) -> String {
+    let today = Utc::now().date_naive();
     posts
         .iter()
         .enumerate()
         .map(|(i, p)| {
+            let new = if i == 0 && is_new(p.date, today) {
+                new_tag(texts)
+            } else {
+                String::new()
+            };
             format!(
-                "<li{hidden}><a href=\"{href}\"><span class=\"tool-card-badge\">{date}</span>\
+                "<li{hidden}><a href=\"{href}\"><span class=\"tool-badges\"><span class=\"tool-card-badge\">{date}</span>{new}</span>\
                  <span class=\"tool-card-title\">{title}</span>\
                  <span class=\"tool-card-desc\">{desc}</span>\
+                 <span class=\"tool-card-meta\">{minutes} {min_read}</span>\
                  <span class=\"tool-card-more\">{read}</span></a></li>",
                 hidden = if i >= visible { " hidden" } else { "" },
                 href = blog_path(lang, &p.slug),
                 date = escape_html(&texts.date(p.date)),
                 title = escape_html(&p.title),
                 desc = escape_html(&p.description),
+                minutes = p.reading_minutes,
+                min_read = texts.get("blogs.min_read"),
                 read = texts.get("blogs.read"),
             )
         })
         .collect()
+}
+
+/// true when `date` is today or up to NEW_FOR_DAYS days before it.
+pub fn is_new(date: NaiveDate, today: NaiveDate) -> bool {
+    let age = (today - date).num_days();
+    (0..=NEW_FOR_DAYS).contains(&age)
+}
+
+fn new_tag(texts: &Texts) -> String {
+    format!(
+        "<span class=\"tool-card-badge new\">{}</span>",
+        texts.get("tools.new")
+    )
+}
+
+/// The newest tool on the list page, as one wide card: the text and a
+/// "Use the tool" button on the left, its banner on the right (on top,
+/// on a phone).
+fn featured_tool(t: &Tool, lang: &str, texts: &Texts, today: NaiveDate) -> String {
+    let banner = t
+        .image
+        .as_deref()
+        .map(|src| {
+            format!(
+                "<span class=\"tool-card-img\"><img src=\"{}\" alt=\"\" width=\"640\" height=\"320\" /></span>",
+                escape_html(src)
+            )
+        })
+        .unwrap_or_default();
+    let new = if is_new(t.date, today) {
+        new_tag(texts)
+    } else {
+        String::new()
+    };
+    format!(
+        "<div class=\"tool-featured{no_img}\"><a href=\"{href}\"><span class=\"tool-card-text\">\
+         <span class=\"tool-badges\"><span class=\"tool-card-badge\">{badge}</span>{new}</span>\
+         <span class=\"tool-card-title\">{title}</span>\
+         <span class=\"tool-card-desc\">{desc}</span>\
+         <span class=\"tool-cta\">{use_it}</span></span>{banner}</a></div>",
+        no_img = if banner.is_empty() { " no-img" } else { "" },
+        href = tool_path(lang, &t.slug),
+        badge = texts.get("tools.card_badge"),
+        title = escape_html(&t.title),
+        desc = escape_html(&t.description),
+        use_it = texts.get("tools.use"),
+    )
+}
+
+/// The "Coming soon" row: the planned tools (COMING_SOON) that are not
+/// published yet. Plain cards, not links. Empty when all are live.
+fn coming_soon(tools: &[&Tool], texts: &Texts) -> String {
+    let cards: String = COMING_SOON
+        .iter()
+        .filter(|(slug, _)| !tools.iter().any(|t| t.slug == *slug))
+        .map(|(_, key)| {
+            format!(
+                "<li><div class=\"tool-soon-card\"><span class=\"tool-card-badge soon\">{badge}</span>\
+                 <span class=\"tool-card-title\">{title}</span>\
+                 <span class=\"tool-card-desc\">{desc}</span></div></li>",
+                badge = texts.get("tools.soon_badge"),
+                title = texts.get(&format!("{key}.title")),
+                desc = texts.get(&format!("{key}.desc")),
+            )
+        })
+        .collect();
+    if cards.is_empty() {
+        return String::new();
+    }
+    format!(
+        "<div class=\"tool-soon\"><div class=\"tool-soon-head\"><h3>{}</h3><span></span></div><ul class=\"tool-cards soon\">{}</ul></div>",
+        texts.get("tools.soon_title"),
+        cards
+    )
 }
 
 /// One side of the list page: the cards, and a "Show more" button
@@ -1052,13 +1179,27 @@ pub fn render_tool(
 pub fn render_tools(lang: &str, library: &Library, texts: &Texts) -> String {
     let tools: Vec<&Tool> = library.tools(lang).iter().collect();
     let blogs: Vec<&BlogPost> = library.blogs(lang).iter().collect();
-    let tool_list = card_list(
-        tool_cards(&tools, lang, texts, FIRST_CARDS),
-        tools.len(),
-        "tools.empty",
-        "tools.show_more",
-        texts,
-    );
+    let today = Utc::now().date_naive();
+    // The newest tool is one wide card; the others are cards under it,
+    // then the planned tools ("Coming soon").
+    let tool_list = match tools.split_first() {
+        None => card_list(String::new(), 0, "tools.empty", "tools.show_more", texts),
+        Some((newest, rest)) => {
+            let others = if rest.is_empty() {
+                String::new()
+            } else {
+                card_list(
+                    tool_cards(rest, lang, texts, FIRST_CARDS),
+                    rest.len(),
+                    "tools.empty",
+                    "tools.show_more",
+                    texts,
+                )
+            };
+            format!("{}{}", featured_tool(newest, lang, texts, today), others)
+        }
+    };
+    let tool_list = format!("{}{}", tool_list, coming_soon(&tools, texts));
     let blog_list = card_list(
         blog_cards(&blogs, lang, texts, FIRST_CARDS),
         blogs.len(),
@@ -1408,8 +1549,11 @@ mod tests {
             html.contains("id=\"blogs\""),
             "/tools#blogs opens the blogs side"
         );
-        // 8 tools: 6 shown, 2 waiting, one button. 5 blogs: all shown, no button.
-        assert_eq!(html.matches("<li hidden><a href=\"/tools/").count(), 2);
+        // 8 tools: the newest is the wide card, then 6 shown and 1
+        // waiting, one button. 5 blogs: all shown, no button.
+        assert!(html.contains("<a href=\"/tools/t8\"><span class=\"tool-card-text\">"));
+        assert_eq!(html.matches("class=\"tool-featured").count(), 1);
+        assert_eq!(html.matches("<li hidden><a href=\"/tools/").count(), 1);
         assert_eq!(html.matches("<li><a href=\"/tools/").count(), FIRST_CARDS);
         assert_eq!(html.matches("<li><a href=\"/blog/").count(), 5);
         assert_eq!(html.matches("data-more hidden>").count(), 1);
@@ -1418,6 +1562,68 @@ mod tests {
         // newest first
         assert!(html.find("/tools/t8").unwrap() < html.find("/tools/t1").unwrap());
         assert!(!html.contains("{{"));
+    }
+
+    #[test]
+    fn one_tool_is_the_wide_card_with_no_grid_and_no_button() {
+        let t = english();
+        let html = render_tools(
+            "en",
+            &library(vec![("en", vec![tool("only", 5)], vec![])]),
+            &t,
+        );
+        assert!(html.contains("<a href=\"/tools/only\"><span class=\"tool-card-text\">"));
+        assert_eq!(html.matches("class=\"tool-featured").count(), 1);
+        assert!(!html.contains("<li><a href=\"/tools/"));
+        assert!(!html.contains("data-more"));
+        assert!(html.contains("<span class=\"tool-cta\">Use the tool →</span>"));
+    }
+
+    #[test]
+    fn coming_soon_lists_planned_tools_until_they_are_published() {
+        let t = english();
+        let html = render_tools(
+            "en",
+            &library(vec![("en", vec![tool("only", 5)], vec![])]),
+            &t,
+        );
+        assert!(html.contains("Coming soon"));
+        assert!(html.contains("Lookalike Domain Checker"));
+        assert!(html.contains("Bank Details Checker"));
+        // "Coming soon" cards are not links.
+        assert!(!html.contains("href=\"/tools/lookalike-domain-checker\""));
+        // Once published, its "Coming soon" card goes away.
+        let live = vec![tool("lookalike-domain-checker", 6), tool("only", 5)];
+        let html = render_tools("en", &library(vec![("en", live, vec![])]), &t);
+        assert_eq!(
+            html.matches("tool-soon-card").count(),
+            COMING_SOON.len() - 1
+        );
+        // All published: no "Coming soon" row at all.
+        let all: Vec<Tool> = COMING_SOON.iter().map(|(slug, _)| tool(slug, 5)).collect();
+        let html = render_tools("en", &library(vec![("en", all, vec![])]), &t);
+        assert!(!html.contains("tool-soon"));
+    }
+
+    #[test]
+    fn new_tag_is_only_for_recent_dates() {
+        let d = |m: u32, day: u32| NaiveDate::from_ymd_opt(2026, m, day).unwrap();
+        let today = d(10, 25);
+        assert!(is_new(d(10, 25), today));
+        assert!(is_new(d(9, 25), today), "30 days ago is still new");
+        assert!(!is_new(d(9, 24), today));
+        assert!(!is_new(d(10, 26), today), "a future date is not new");
+    }
+
+    #[test]
+    fn blog_cards_show_the_reading_time() {
+        let t = english();
+        let p = post("b1", 5);
+        let html = blog_cards(&[&p], "en", &t, FIRST_CARDS);
+        assert!(html.contains(&format!(
+            "<span class=\"tool-card-meta\">{} min read</span>",
+            p.reading_minutes
+        )));
     }
 
     #[test]

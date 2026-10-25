@@ -42,7 +42,7 @@
         <link rel="stylesheet" href="/css/cta_footer.css?v=20261016e" />
         <link rel="stylesheet" href="/css/subscribe.css?v=20261016e" />
         <link rel="stylesheet" href="/css/compare.css?v=20261018b" />
-        <link rel="stylesheet" href="/css/tools.css?v=20261018b" />
+        <link rel="stylesheet" href="/css/tools.css?v=20261025a" />
         <link rel="stylesheet" href="/css/modals.css?v=20261016e" />
         <link rel="stylesheet" href="/css/responsive.css?v=20261016e" />
         <!-- Meta Pixel Code (Safely Pixel). Not loaded when this page is
@@ -124,13 +124,16 @@
         <section class="sec tool-sec" style="background: var(--cream-2)">
             <div class="wrap">
                 <div class="tool-tabs" role="tablist" aria-label="{{a:tools.tabs_label}}">
+                    <span class="tool-tab-slider" aria-hidden="true"></span>
                     <button type="button" class="tool-tab" role="tab" id="tab-tools" aria-controls="panel-tools" aria-selected="true" data-tab="tools">{{t:tools.tab_tools}}</button>
                     <button type="button" class="tool-tab" role="tab" id="tab-blogs" aria-controls="blogs" aria-selected="false" tabindex="-1" data-tab="blogs">{{t:tools.tab_blogs}}</button>
                 </div>
                 <div class="tool-list" id="panel-tools" role="tabpanel" aria-labelledby="tab-tools" data-panel="tools" data-list>
+                    <p class="tool-panel-intro">{{t:tools.intro_tools}}</p>
                     {{tool_list}}
                 </div>
                 <div class="tool-list" id="blogs" role="tabpanel" aria-labelledby="tab-blogs" data-panel="blogs" data-list hidden>
+                    <p class="tool-panel-intro">{{t:tools.intro_blogs}}</p>
                     {{blog_list}}
                 </div>
             </div>
@@ -816,6 +819,6 @@
         </div>
 
         <script src="/js/tracking.js"></script>
-        <script src="/js/tools.js?v=20261018b"></script>
+        <script src="/js/tools.js?v=20261025a"></script>
     </body>
 </html>

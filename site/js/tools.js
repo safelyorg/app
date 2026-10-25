@@ -11,7 +11,9 @@
  *    to the same page in that language, when it exists.
  * 3. "Free Tools / Blogs" switch on the list page: "Free Tools" is
  *    shown first. /tools#blogs opens the "Blogs" side, so that side
- *    can be linked to and the back button keeps it.
+ *    can be linked to and the back button keeps it. A yellow pill
+ *    slides between the two buttons, and the side shown fades in
+ *    (tools.css), so the switch feels smooth instead of jumping.
  * 4. "Show more": each list shows 6 cards, then 3 more (one row) per
  *    click. The button goes away when all are shown.
  *
@@ -81,6 +83,16 @@
         const tabs = Array.from(document.querySelectorAll("[data-tab]"));
         if (tabs.length === 0)
             return;
+        const track = tabs[0]?.closest(".tool-tabs") ?? null;
+        const slider = track?.querySelector(".tool-tab-slider") ?? null;
+        /** Puts the sliding yellow pill under the chosen button. */
+        function moveSlider() {
+            const on = tabs.find((tab) => tab.getAttribute("aria-selected") === "true");
+            if (!slider || !on)
+                return;
+            slider.style.width = on.offsetWidth + "px";
+            slider.style.transform = "translateX(" + on.offsetLeft + "px)";
+        }
         function show(name, focus) {
             tabs.forEach((tab) => {
                 const on = tab.dataset.tab === name;
@@ -92,6 +104,7 @@
             document.querySelectorAll("[data-panel]").forEach((panel) => {
                 panel.hidden = panel.dataset.panel !== name;
             });
+            moveSlider();
         }
         function sideFromAddress() {
             return window.location.hash === BLOGS_HASH ? "blogs" : "tools";
@@ -114,7 +127,17 @@
                 next?.focus();
             });
         });
+        // The pill starts under the chosen button without sliding there.
+        if (track && slider) {
+            track.classList.add("has-slider", "no-anim");
+        }
         show(sideFromAddress(), false);
+        if (track && slider) {
+            requestAnimationFrame(() => requestAnimationFrame(() => track.classList.remove("no-anim")));
+            // Button widths change when the font loads or the window resizes.
+            window.addEventListener("resize", moveSlider);
+            document.fonts?.ready.then(moveSlider).catch(() => { });
+        }
         window.addEventListener("hashchange", () => show(sideFromAddress(), false));
     }
     function setupShowMore() {

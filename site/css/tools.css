@@ -46,6 +46,7 @@
 
 /* ---------- sections ---------- */
 .sec.tool-sec {
+    padding-top: clamp(28px, 4vw, 48px);
     padding-bottom: clamp(90px, 10vw, 130px);
 }
 .tool-empty {
@@ -299,12 +300,15 @@
 
 /* ---------- "Free Tools / Blogs" switch on the list page ----------
    Two pill buttons in one white track, like a toggle. The chosen one
-   is filled yellow. Both lists are in the page; the switch shows one. */
+   is filled yellow. Both lists are in the page; the switch shows one.
+   With JavaScript, a yellow pill (.tool-tab-slider) slides between the
+   two buttons instead of jumping (tools.ts adds .has-slider). */
 .tool-tabs {
+    position: relative;
     display: flex;
     width: fit-content;
     max-width: 100%;
-    margin: 0 auto 40px;
+    margin: 0 auto 18px;
     padding: 6px;
     gap: 6px;
     background: var(--paper);
@@ -313,9 +317,11 @@
     box-shadow: var(--sh);
 }
 .tool-tab {
+    position: relative;
+    z-index: 1;
     flex: 1 1 0;
     min-width: 0;
-    padding: 12px 26px;
+    padding: 12px 28px;
     font: inherit;
     font-family: var(--disp);
     font-weight: 800;
@@ -339,8 +345,66 @@
     outline: 3px solid var(--ink);
     outline-offset: 2px;
 }
+.tool-tab-slider {
+    display: none;
+}
+.tool-tabs.has-slider .tool-tab-slider {
+    display: block;
+    position: absolute;
+    top: 6px;
+    bottom: 6px;
+    left: 0;
+    width: 0;
+    background: var(--sun);
+    border: 2px solid var(--ink);
+    border-radius: 999px;
+    transition:
+        transform 0.32s cubic-bezier(0.22, 0.61, 0.36, 1),
+        width 0.32s cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+.tool-tabs.has-slider .tool-tab[aria-selected="true"] {
+    background: transparent;
+    border-color: transparent;
+}
+.tool-tabs.has-slider .tool-tab:hover {
+    background: transparent;
+}
+.tool-tabs.no-anim .tool-tab-slider {
+    transition: none;
+}
 .tool-list[hidden] {
     display: none;
+}
+/* The side that is shown fades in, instead of appearing at once */
+.tool-list:not([hidden]) {
+    animation: tool-side-in 0.35s cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+@keyframes tool-side-in {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: none;
+    }
+}
+@media (prefers-reduced-motion: reduce) {
+    .tool-tabs.has-slider .tool-tab-slider {
+        transition: none;
+    }
+    .tool-list:not([hidden]) {
+        animation: none;
+    }
+}
+/* One line under the switch, about the side that is shown */
+.tool-panel-intro {
+    text-align: center;
+    margin: 0 auto 34px;
+    max-width: 640px;
+    font-size: 16.5px;
+    line-height: 1.55;
+    color: #3a3d36;
 }
 
 /* ---------- cards (list page, "More free tools", "More blogs") ----------
@@ -454,9 +518,167 @@ ul.tool-cards {
     display: none;
 }
 
+/* Pills at the top of a card: "Free" or the date, and "New" */
+.tool-badges {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+}
+.tool-card-badge.new {
+    background: var(--coral);
+    color: #fff;
+}
+/* A blog's reading time, under its description */
+.tool-card-meta {
+    font-size: 14px;
+    font-weight: 600;
+    color: #3a3d36;
+}
+/* Blogs fill the width evenly */
+.tool-list[data-panel="blogs"] ul.tool-cards {
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    max-width: 1060px;
+}
+
+/* ---------- the newest tool: one wide card ----------
+   Text and a "Use the tool" button on the left, the banner on the
+   right. On a phone the banner goes on top. */
+.tool-featured {
+    max-width: 1060px;
+    margin: 0 auto 30px;
+}
+.tool-featured a {
+    display: grid;
+    grid-template-columns: 1.05fr 1fr;
+    gap: 34px;
+    align-items: center;
+    padding: 34px 34px 34px 38px;
+    background: var(--sky-card);
+    border: var(--bd);
+    border-radius: var(--r-lg);
+    box-shadow: var(--sh);
+    color: var(--ink);
+    text-decoration: none;
+    transition:
+        transform 0.18s cubic-bezier(0.22, 0.61, 0.36, 1),
+        box-shadow 0.18s cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+.tool-featured.no-img a {
+    grid-template-columns: 1fr;
+}
+.tool-featured a:hover {
+    transform: translate(-3px, -3px);
+    box-shadow: var(--sh-lg);
+}
+.tool-featured .tool-card-text {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 14px;
+}
+.tool-featured .tool-card-title {
+    margin-top: 4px;
+    font-size: clamp(26px, 2.6vw, 34px);
+}
+.tool-featured .tool-card-desc {
+    flex: none;
+    font-size: 17px;
+}
+.tool-featured .tool-card-img {
+    margin: 0;
+    border: var(--bd);
+    box-shadow: var(--sh-sm);
+}
+.tool-cta {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 6px;
+    padding: 12px 22px;
+    font-family: var(--disp);
+    font-weight: 800;
+    font-size: 16px;
+    background: var(--sun);
+    border: var(--bd-thin);
+    border-radius: 999px;
+    box-shadow: var(--sh-sm);
+}
+/* With more tools, the other tools sit under the wide card */
+.tool-featured + ul.tool-cards {
+    max-width: 1060px;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+}
+
+/* ---------- "Coming soon": planned tools, not links ---------- */
+.tool-soon {
+    max-width: 1060px;
+    margin: 46px auto 0;
+}
+.tool-soon-head {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin-bottom: 20px;
+}
+.tool-soon-head h3 {
+    margin: 0;
+    font-family: var(--disp);
+    font-weight: 800;
+    font-size: 20px;
+}
+.tool-soon-head span {
+    flex: 1;
+    height: 2px;
+    background: var(--ink);
+    opacity: 0.18;
+}
+ul.tool-cards.soon {
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+}
+.tool-soon-card {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+    height: 100%;
+    padding: 22px 24px 24px;
+    background: rgba(255, 255, 255, 0.55);
+    border: 2.5px dashed rgba(25, 28, 34, 0.45);
+    border-radius: var(--r-lg);
+    color: var(--ink);
+}
+.tool-soon-card .tool-card-title {
+    margin-top: 2px;
+    font-size: 18px;
+}
+.tool-soon-card .tool-card-desc {
+    font-size: 15px;
+    color: #4b4e46;
+}
+.tool-card-badge.soon {
+    background: var(--cream-2);
+    box-shadow: none;
+}
+
+@media (max-width: 820px) {
+    .tool-featured a {
+        grid-template-columns: 1fr;
+        gap: 22px;
+        padding: 26px;
+    }
+    .tool-featured .tool-card-img {
+        order: -1;
+    }
+}
+
 @media (max-width: 640px) {
     .tool-tab {
-        padding: 10px 16px;
+        padding: 10px 18px;
+        font-size: 15.5px;
+    }
+    .tool-panel-intro {
+        margin-bottom: 26px;
         font-size: 15.5px;
     }
     .tool-body {
@@ -478,7 +700,8 @@ ul.tool-cards {
     }
 }
 @media (hover: none) {
-    .tool-cards a:hover {
+    .tool-cards a:hover,
+    .tool-featured a:hover {
         transform: none;
         box-shadow: var(--sh);
     }
