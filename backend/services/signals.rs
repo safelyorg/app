@@ -1,7 +1,12 @@
 use crate::{
     models::{analysis::Signal, helpers::format_account_age, sellers::Sellers},
     services::{
-        b2b_scrapers::{B2bListingProfile, B2bSupplierProfile, SupplierRecord},
+        b2b_scrapers::{
+            B2bListingProfile, B2bSupplierProfile, SupplierRecord,
+            madeinchina::{
+                AUDITED_PREFIX as MIC_AUDITED_PREFIX, LICENCE_CHECKED as MIC_LICENCE_CHECKED,
+            },
+        },
         b2c_scrapers::B2cProfileResult,
         claude::{
             B2bClaudeAnalysis, ClaudeAnalysis, Finding, IMAGE_ANALYSIS_ENABLED, ImageAssessment,
@@ -136,6 +141,26 @@ pub fn finding_to_signal(
 /// It matches on the domain check's status. If the domain is genuinely legitimate,
 /// if the domain is suspicious — the more involved case. If anything else,
 /// genuinely nothing to report.
+/// The platform's name as buyers know it ("wholesalecentral" ->
+/// "Wholesale Central"), for text the buyer reads. An unknown name is
+/// shown as it is.
+pub fn platform_display_name(platform: &str) -> String {
+    match platform {
+        "olx" => "OLX",
+        "b2brazil" => "B2Brazil",
+        "alibaba" => "Alibaba",
+        "tradewheel" => "TradeWheel",
+        "exporthub" => "ExportHub",
+        "b2bmap" => "B2BMap",
+        "thomasnet" => "ThomasNet",
+        "kompass" => "Kompass",
+        "wholesalecentral" => "Wholesale Central",
+        "madeinchina" => "Made-in-China",
+        other => other,
+    }
+    .to_string()
+}
+
 pub fn build_domain_signal(
     status: Option<&str>,
     real_name: Option<&str>,
@@ -149,7 +174,9 @@ pub fn build_domain_signal(
             label: "Domain check".to_string(),
             sub: format!(
                 "This matches {}'s real, verified domain.",
-                real_name.unwrap_or("the marketplace")
+                real_name
+                    .map(platform_display_name)
+                    .unwrap_or_else(|| "the marketplace".to_string())
             ),
             value: "Verified".to_string(),
             signal_type: "good".to_string(),
@@ -165,7 +192,9 @@ pub fn build_domain_signal(
                 label: "Domain check".to_string(),
                 sub: format!(
                     "This does not match {}'s real domain ({}). You're currently on {} instead.",
-                    real_name.unwrap_or("the marketplace"),
+                    real_name
+                        .map(platform_display_name)
+                        .unwrap_or_else(|| "the marketplace".to_string()),
                     real_display,
                     current_display,
                 ),
@@ -363,6 +392,54 @@ pub fn build_b2b_verification_signal(supplier: &B2bSupplierProfile) -> Signal {
             sub: format!("Wholesale Central does not verify suppliers.{}", name_claim),
             value: "Not offered".to_string(),
             signal_type: "info".to_string(),
+            category: "identity".to_string(),
+            check_type: "existence".to_string(),
+        };
+    }
+
+    // Made-in-China has no "Verified" badge. Its own checks are an
+    // on-site audit by an outside company (TÜV Rheinland, SGS...) and a
+    // check of the business licence; the scraper puts which one it found
+    // in badge_honorific. "Diamond Member" is a paid level and never
+    // counts here. "Checked by ..." makes soften_no_presence treat the
+    // company as proven, the same as on Alibaba.
+    if supplier.source_platform == "madeinchina" {
+        let badge = supplier.badge_honorific.as_deref().unwrap_or("");
+        let (value, signal_type, sub) = if let Some(rest) = badge.strip_prefix(MIC_AUDITED_PREFIX) {
+            // rest: " on site by SGS (report QIP-ASI269732)"
+            (
+                "Checked by Made-in-China",
+                "good",
+                format!(
+                    "Made-in-China had {} audited{}. You can look up the report on the auditor's website. An audit checks the company and its factory, not each order, so still check the goods before you pay in full.",
+                    name,
+                    rest.trim_end()
+                ),
+            )
+        } else if badge == MIC_LICENCE_CHECKED {
+            (
+                "Licence checked",
+                "info",
+                format!(
+                    "Made-in-China checked the business licence of {}, but the company has had no on-site audit. A licence shows the company is registered, not that it delivers.",
+                    name
+                ),
+            )
+        } else {
+            (
+                "Unverified",
+                "caution",
+                format!(
+                    "{} has no on-site audit and no business licence check on Made-in-China.",
+                    name
+                ),
+            )
+        };
+        return Signal {
+            label: "Platform verification".to_string(),
+            sub,
+            value: value.to_string(),
+            signal_type: signal_type.to_string(),
             category: "identity".to_string(),
             check_type: "existence".to_string(),
         };
@@ -1415,7 +1492,7 @@ pub const PRICE_HIDDEN: &str = "Not shown on this platform";
 /// Platforms where a buyer can scan the supplier's own page as well as
 /// a product page. A supplier page lists many products, so no product
 /// is read from it (the listing has no title).
-pub const SUPPLIER_PAGE_PLATFORMS: [&str; 1] = ["wholesalecentral"];
+pub const SUPPLIER_PAGE_PLATFORMS: [&str; 2] = ["wholesalecentral", "madeinchina"];
 
 /// Value of the product cards when the supplier's own page was scanned.
 pub const OPEN_A_PRODUCT: &str = "Open a product to check this";
@@ -1440,6 +1517,18 @@ pub fn apply_supplier_page_note(signals: &mut [Signal], listing: &B2bListingProf
         card.value = OPEN_A_PRODUCT.to_string();
         card.signal_type = "info".to_string();
         card.sub = "This is the supplier's own page, which lists many products, so no single product was checked. Open one of its products and scan it to check the product too.".to_string();
+    }
+    // No single price either (Made-in-China). Wholesale Central's card,
+    // which explains its hidden prices, is left as it is.
+    if listing.unit_price.is_none()
+        && listing.fob_price.is_none()
+        && !PRICES_FOR_SIGNED_IN_PLATFORMS.contains(&listing.source_platform.as_str())
+    {
+        for card in signals.iter_mut().filter(|s| s.label == "Price analysis") {
+            card.value = OPEN_A_PRODUCT.to_string();
+            card.signal_type = "info".to_string();
+            card.sub = "This is the supplier's own page, which lists many products, so no single price was checked. Open one of its products and scan it to check the price too.".to_string();
+        }
     }
 }
 
@@ -1480,6 +1569,19 @@ pub fn build_b2b_listing_completeness_signal(listing: &B2bListingProfile) -> Sig
             label: "Listing completeness".to_string(),
             sub: sub.to_string(),
             value: "Not shown on this platform".to_string(),
+            signal_type: "info".to_string(),
+            category: "listing".to_string(),
+            check_type: "pattern".to_string(),
+        };
+    }
+
+    // The supplier's own page (Made-in-China): no single listing, so
+    // there are no listing details to count.
+    if is_supplier_page_scan(listing) {
+        return Signal {
+            label: "Listing completeness".to_string(),
+            sub: "This is the supplier's own page, which lists many products, so no single listing was checked. Open one of its products and scan it to check its price, minimum order and delivery details.".to_string(),
+            value: OPEN_A_PRODUCT.to_string(),
             signal_type: "info".to_string(),
             category: "listing".to_string(),
             check_type: "pattern".to_string(),
@@ -2097,6 +2199,102 @@ mod b2b_signal_tests {
         let mut cards = product_cards();
         apply_supplier_page_note(&mut cards, &empty_listing("thomasnet"));
         assert_eq!(cards[0].value, "Vague");
+    }
+
+    #[test]
+    fn the_domain_card_uses_the_platform_name_buyers_know() {
+        let s = build_domain_signal(
+            Some("legitimate"),
+            Some("madeinchina"),
+            Some("made-in-china.com"),
+            None,
+            None,
+            None,
+        )
+        .unwrap();
+        assert_eq!(s.sub, "This matches Made-in-China's real, verified domain.");
+        let s = build_domain_signal(
+            Some("suspicious"),
+            Some("wholesalecentral"),
+            Some("wholesalecentral.com"),
+            Some("wholesalecentrall.com"),
+            None,
+            None,
+        )
+        .unwrap();
+        assert!(
+            s.sub
+                .starts_with("This does not match Wholesale Central's real domain")
+        );
+        assert_eq!(platform_display_name("newplatform"), "newplatform");
+    }
+
+    fn mic_supplier(badge: Option<&str>) -> B2bSupplierProfile {
+        B2bSupplierProfile {
+            company_name: Some("Changzhou Nanyi Bearing Co., Ltd.".into()),
+            source_platform: "madeinchina".into(),
+            badge_honorific: badge.map(str::to_string),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn made_in_china_audit_licence_and_nothing() {
+        let s = build_b2b_verification_signal(&mic_supplier(Some(
+            "Audited on site by TÜV Rheinland (report MIC-ASI254819)",
+        )));
+        assert_eq!(
+            (s.value.as_str(), s.signal_type.as_str()),
+            ("Checked by Made-in-China", "good")
+        );
+        assert!(
+            s.sub
+                .contains("audited on site by TÜV Rheinland (report MIC-ASI254819).")
+        );
+
+        let s = build_b2b_verification_signal(&mic_supplier(Some("Business licence checked")));
+        assert_eq!(
+            (s.value.as_str(), s.signal_type.as_str()),
+            ("Licence checked", "info")
+        );
+
+        let s = build_b2b_verification_signal(&mic_supplier(None));
+        assert_eq!(
+            (s.value.as_str(), s.signal_type.as_str()),
+            ("Unverified", "caution")
+        );
+        assert!(s.sub.contains("on Made-in-China"));
+    }
+
+    #[test]
+    fn made_in_china_supplier_page_does_not_judge_price_or_listing() {
+        let supplier_page = empty_listing("madeinchina");
+        assert!(is_supplier_page_scan(&supplier_page));
+        let mut cards = price_card("Not listed", "info");
+        apply_supplier_page_note(&mut cards, &supplier_page);
+        assert_eq!(
+            (cards[0].value.as_str(), cards[0].signal_type.as_str()),
+            (OPEN_A_PRODUCT, "info")
+        );
+        let s = build_b2b_listing_completeness_signal(&supplier_page);
+        assert_eq!(
+            (s.value.as_str(), s.signal_type.as_str()),
+            (OPEN_A_PRODUCT, "info")
+        );
+
+        // A product page is checked as on any marketplace.
+        let mut product_page = empty_listing("madeinchina");
+        product_page.title = Some("Excavator Pins".into());
+        let s = build_b2b_listing_completeness_signal(&product_page);
+        assert_eq!(s.value, "0/9 fields provided");
+        let mut cards = price_card("normal", "good");
+        apply_supplier_page_note(&mut cards, &product_page);
+        assert_eq!(cards[0].value, "normal");
+
+        // Wholesale Central's hidden-price card stays as it was.
+        let mut cards = price_card(PRICE_HIDDEN, "info");
+        apply_supplier_page_note(&mut cards, &empty_listing("wholesalecentral"));
+        assert_eq!(cards[0].value, PRICE_HIDDEN);
     }
     use crate::services::claude::{ImageAssessment, PriceAssessment};
 

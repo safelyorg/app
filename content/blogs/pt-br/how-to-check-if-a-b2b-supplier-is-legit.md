@@ -95,6 +95,6 @@ Se puder, peça uma referência: outro comprador para quem você possa ligar. Em
 
 ## Como o Safely ajuda
 
-Fazer tudo isso na mão leva tempo, muitas vezes horas para um só fornecedor. O Safely é uma extensão do Chrome que faz esse tipo de verificação por você. Quando você abre a página de um fornecedor no Alibaba, ThomasNet, Kompass, B2Brazil, TradeWheel, ExportHub ou B2BMap, ele verifica 15 sinais no anúncio, no vendedor e na empresa, e mostra uma pontuação de risco de 0 a 100 com os motivos em cerca de 10 segundos.
+Fazer tudo isso na mão leva tempo, muitas vezes horas para um só fornecedor. O Safely é uma extensão do Chrome que faz esse tipo de verificação por você. Quando você abre a página de um fornecedor no Alibaba, Made-in-China, ThomasNet, Wholesale Central, Kompass, B2Brazil, TradeWheel, ExportHub ou B2BMap, ele verifica 15 sinais no anúncio, no vendedor e na empresa, e mostra uma pontuação de risco de 0 a 100 com os motivos em cerca de 10 segundos.
 
 Ele não substitui o seu julgamento nem uma ligação, mas mostra quais fornecedores precisam de um olhar mais atento antes de você pagar.

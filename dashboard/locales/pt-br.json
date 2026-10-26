@@ -266,6 +266,7 @@
   "dash.detail.sub_one": "1 de {total} verificações precisa de atenção.",
   "dash.detail.sub_many": "{n} de {total} verificações precisam de atenção.",
   "dash.detail.on_platform_for": "No {platform} há",
+  "dash.detail.company_age": "Idade da empresa",
   "dash.detail.reports_on_safely": "Denúncias no Safely",
   "dash.detail.contact": "Contato",
   "dash.detail.visits_by_month": "Visitas no Safely por mês",

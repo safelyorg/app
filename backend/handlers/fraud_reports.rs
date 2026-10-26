@@ -18,12 +18,13 @@ use uuid::Uuid;
 /// the extension sends. The extension shows the platform with capitals
 /// ("ThomasNet", "B2BMap", "OLX") and has been sending that shown name,
 /// while sellers are saved under the lower-case name - so the seller was
-/// never found and every report failed. Spaces are removed too:
-/// "Wholesale Central" is saved as "wholesalecentral".
+/// never found and every report failed. Spaces and dashes are removed
+/// too: "Wholesale Central" is saved as "wholesalecentral" and
+/// "Made-in-China" as "madeinchina".
 fn platform_key(platform: &str) -> String {
     platform
         .chars()
-        .filter(|c| !c.is_whitespace())
+        .filter(|c| c.is_alphanumeric())
         .collect::<String>()
         .to_lowercase()
 }
@@ -366,6 +367,8 @@ mod tests {
             ("Kompass", "kompass"),
             ("Wholesale Central", "wholesalecentral"),
             (" wholesalecentral ", "wholesalecentral"),
+            ("Made-in-China", "madeinchina"),
+            ("madeinchina", "madeinchina"),
             ("Alibaba", "alibaba"),
             ("OLX", "olx"),
             ("olx", "olx"),

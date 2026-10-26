@@ -97,6 +97,7 @@
         "What we found": "O que encontramos",
         Supplier: "Fornecedor",
         "On {platform} for": "No {platform} há",
+        "Company age": "Idade da empresa",
         "Reports on Safely": "Denúncias no Safely",
         "Safely visits by month": "Visitas no Safely por mês",
         "I'll go ahead": "Vou seguir em frente",

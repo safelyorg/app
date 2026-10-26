@@ -363,6 +363,7 @@ const PLATFORM_NAMES: Record<string, string> = {
   thomasnet: "ThomasNet",
   kompass: "Kompass",
   wholesalecentral: "Wholesale Central",
+  madeinchina: "Made-in-China",
 };
 
 function platformName(platform: string | null | undefined): string {
@@ -632,6 +633,14 @@ function fact(label: string, value: string): string {
   );
 }
 
+// The age is either the company's age, from its founding year
+// ("Founded this year", "About 11 years"), or how long the account has
+// been on the platform ("2 years"). The label says which. Same rule as
+// the extension (extension/ts/tabs/risk.ts) - change both together.
+function isCompanyAge(value: string): boolean {
+  return value === "Founded this year" || /^About \d+ years?$/.test(value);
+}
+
 function buildFacts(data: DetailResponse): string {
   const seller = data.seller;
   const platform = platformName(data.platform);
@@ -639,9 +648,11 @@ function buildFacts(data: DetailResponse): string {
   if (hasValue(seller.account_age)) {
     facts.push(
       fact(
-        platform
-          ? t("dash.detail.on_platform_for", "On {platform} for").replace("{platform}", platform)
-          : t("dash.detail.account_age", "Account age"),
+        isCompanyAge(seller.account_age)
+          ? t("dash.detail.company_age", "Company age")
+          : platform
+            ? t("dash.detail.on_platform_for", "On {platform} for").replace("{platform}", platform)
+            : t("dash.detail.account_age", "Account age"),
         translateAccountAge(seller.account_age),
       ),
     );

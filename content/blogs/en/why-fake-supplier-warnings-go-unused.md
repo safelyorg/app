@@ -1,5 +1,5 @@
 ---
-title: Why fake supplier warnings go unused
+title: Why fake supplier warnings go unused (and what buyers can do about it)
 description: The warnings about fake sellers are already online, but they are scattered, under-reported and slow to lead to action. Here is the data, and a simple way to use it before you pay.
 date: 2026-10-25
 short_answer: The warning signs about most fake suppliers are already public, but they are spread across many places, most victims never report, and platforms earn money from the sellers being reported. Close the gap yourself by checking a supplier's name, website age, contact details and reviews before your first payment.
@@ -82,7 +82,7 @@ You can close part of the gap yourself with a short routine before the first pay
 
 ## 7. Where Safely fits
 
-Safely was built for the "at the moment of decision" problem. It is a Chrome extension that reads a supplier page and gives a 0 to 100 risk score in about 10 seconds, with the evidence behind it. It looks at 15 signals across the listing, the seller and the company, and works on supplier pages on eight B2B marketplaces. The free plan has 5 scans a month, and no card is needed.
+Safely was built for the "at the moment of decision" problem. It is a Chrome extension that reads a supplier page and gives a 0 to 100 risk score in about 10 seconds, with the evidence behind it. It looks at 15 signals across the listing, the seller and the company, and works on supplier pages on nine B2B marketplaces. The free plan has 5 scans a month, and no card is needed.
 
 A score is guidance, not a guarantee. It does not replace a phone call to the supplier. It simply puts scattered signals in one place, so checking is easy enough to actually do.
 

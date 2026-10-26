@@ -183,6 +183,31 @@
             return /^\d+$/.test(parts[1]);
         return parts[0] === "suppliers";
     }
+    /// A Made-in-China page Safely scans: a product page
+    /// ({shop}.en.made-in-china.com/product/cEvrzSKdrhpB/....html, or
+    /// www.made-in-china.com/product/....html) or the supplier's own page
+    /// (the home page of its shop, {shop}.en.made-in-china.com/). Search,
+    /// category and other pages show many suppliers, so they are not
+    /// scanned.
+    function isMadeinchinaScanUrl(url) {
+        let u;
+        try {
+            u = new URL(url);
+        }
+        catch {
+            return false;
+        }
+        const host = u.hostname.toLowerCase();
+        if (host !== "made-in-china.com" && !host.endsWith(".made-in-china.com"))
+            return false;
+        if (/^\/product\/.+\.html$/i.test(u.pathname))
+            return true;
+        return isMadeinchinaShopHost(host) && (u.pathname === "/" || u.pathname === "");
+    }
+    /// A supplier's shop: "{shop}.en.made-in-china.com" (not the main site).
+    function isMadeinchinaShopHost(host) {
+        return /^[a-z0-9-]+\.en\.made-in-china\.com$/.test(host) && !host.startsWith("www.");
+    }
     const platformRegistry = [
         {
             name: "olx",
@@ -247,6 +272,13 @@
             isListingUrl: isWholesalecentralScanUrl,
             nonListingMessage: "Safely checks a product page or a supplier page on Wholesale Central. Open one to scan it.",
         },
+        {
+            name: "madeinchina",
+            matchesHostname: (hostname) => hostname.includes("made-in-china.com"),
+            requiresClientSideScraping: false,
+            isListingUrl: isMadeinchinaScanUrl,
+            nonListingMessage: "Safely checks a product page or a supplier's own page on Made-in-China. Open one to scan it.",
+        },
     ];
     function detectPlatform() {
         const hostname = window.location.hostname;
@@ -283,6 +315,7 @@
     window.__safelyScrapers.isGenuineDomain = isGenuineDomain;
     window.__safelyScrapers.isB2brazilListingUrl = isB2brazilListingUrl;
     window.__safelyScrapers.isWholesalecentralScanUrl = isWholesalecentralScanUrl;
+    window.__safelyScrapers.isMadeinchinaScanUrl = isMadeinchinaScanUrl;
     /// Finds the real company profile link on a TradeWheel listing
     /// page, then fetches that page in the background, using the
     /// visiting user's own, real browser session (their cookies are
@@ -385,4 +418,99 @@
         fetchWholesalecentralSupplierPage;
     window.__safelyScrapers.wholesalecentralPageData = wholesalecentralPageData;
     window.__safelyScrapers.nextDataOnlyHtml = nextDataOnlyHtml;
+    /// A small copy of a Made-in-China page for Safely to read. Everything
+    /// Safely reads is in the page's own HTML, so it is kept, but scripts
+    /// (except the page's schema.org product and company data), styles,
+    /// icons and frames are removed: no tracking or login scripts are
+    /// sent. The canonical link is kept (it names the supplier's shop).
+    function madeinchinaTrimmed(doc) {
+        doc
+            .querySelectorAll('style, link:not([rel="canonical"]), svg, iframe, noscript, video, canvas, template')
+            .forEach((el) => el.remove());
+        doc.querySelectorAll("script").forEach((el) => {
+            if (el.getAttribute("type") !== "application/ld+json")
+                el.remove();
+        });
+        const ownPanel = doc.querySelector("#safely-root");
+        if (ownPanel)
+            ownPanel.remove();
+        return "<!DOCTYPE html>" + doc.documentElement.outerHTML;
+    }
+    /// The Made-in-China page the buyer is on, exactly as the site sends it
+    /// (loaded again in this browser, so it is the same HTML Safely was
+    /// tested on), trimmed. If that fails, the page as it is shown now.
+    /// null only if both fail.
+    async function madeinchinaPageHtml() {
+        try {
+            const response = await fetch(window.location.href, { credentials: "include" });
+            if (response.ok) {
+                const html = await response.text();
+                return madeinchinaTrimmed(new DOMParser().parseFromString(html, "text/html"));
+            }
+        }
+        catch (e) {
+            console.error("Safely: could not load the Made-in-China page again", e);
+        }
+        try {
+            return madeinchinaTrimmed(document.cloneNode(true));
+        }
+        catch (e) {
+            console.error("Safely: could not copy the Made-in-China page", e);
+            return null;
+        }
+    }
+    /// The supplier's shop ("https://{shop}.en.made-in-china.com") on a
+    /// product page: from the page's company data, the company link, or
+    /// the page's own address when it is on the shop. null if none.
+    function madeinchinaShopUrl(doc) {
+        for (const el of Array.from(doc.querySelectorAll('script[type="application/ld+json"]'))) {
+            try {
+                const data = JSON.parse(el.textContent || "");
+                if (data && data["@type"] === "Organization" && typeof data.url === "string") {
+                    return new URL(data.url, window.location.href).origin;
+                }
+            }
+            catch {
+                // Not valid JSON (some pages have an empty block): try the next one.
+            }
+        }
+        const link = doc.querySelector("a.sr-comInfo-title");
+        if (link && link.href) {
+            try {
+                return new URL(link.href, window.location.href).origin;
+            }
+            catch {
+                // A broken link: fall through.
+            }
+        }
+        return isMadeinchinaShopHost(window.location.hostname.toLowerCase())
+            ? window.location.origin
+            : null;
+    }
+    /// On a Made-in-China product page: the supplier's own page, loaded in
+    /// this browser, trimmed. Only when the product page is on the
+    /// supplier's shop - a page on the main site (www.made-in-china.com)
+    /// cannot load another address, so Safely's server loads that supplier
+    /// page instead. null on a supplier page, or if it could not be loaded.
+    async function fetchMadeinchinaSupplierPage() {
+        if (!window.location.pathname.startsWith("/product/"))
+            return null;
+        const shop = madeinchinaShopUrl(document);
+        if (!shop || shop !== window.location.origin)
+            return null;
+        try {
+            const response = await fetch(shop + "/", { credentials: "include" });
+            if (!response.ok)
+                return null;
+            const html = await response.text();
+            return madeinchinaTrimmed(new DOMParser().parseFromString(html, "text/html"));
+        }
+        catch (e) {
+            console.error("Safely: failed to load the Made-in-China supplier page", e);
+            return null;
+        }
+    }
+    window.__safelyScrapers.madeinchinaPageHtml = madeinchinaPageHtml;
+    window.__safelyScrapers.fetchMadeinchinaSupplierPage = fetchMadeinchinaSupplierPage;
+    window.__safelyScrapers.madeinchinaTrimmed = madeinchinaTrimmed;
 })();

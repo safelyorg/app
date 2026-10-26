@@ -197,12 +197,24 @@
             escapeHtml(value) +
             "</div></div>");
     }
+    // The age the backend sends is either the company's age, from its
+    // founding year ("Founded this year", "About 11 years"), or how long
+    // the account has been on the platform ("2 years"). The label says
+    // which, so "On Made-in-China for: Founded this year" never shows.
+    // Same rule as the dashboard (detail_view.ts) - change both together.
+    function isCompanyAge(value) {
+        return value === "Founded this year" || /^About \d+ years?$/.test(value);
+    }
     function buildSupplier(pageData) {
         const seller = pageData.seller || {};
         const platform = hasValue(seller.platform) ? String(seller.platform) : "";
         const facts = [];
         if (hasValue(seller.accountAge)) {
-            facts.push(fact(platform ? tr("On {platform} for", { platform }) : tr("Account age"), tr(String(seller.accountAge))));
+            facts.push(fact(isCompanyAge(String(seller.accountAge))
+                ? tr("Company age")
+                : platform
+                    ? tr("On {platform} for", { platform })
+                    : tr("Account age"), tr(String(seller.accountAge))));
         }
         facts.push(fact(tr("Reports on Safely"), String(pageData.fraudReportCount || 0)));
         if (hasValue(seller.phone))

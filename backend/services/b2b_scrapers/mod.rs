@@ -3,6 +3,7 @@ pub mod b2bmap;
 pub mod b2brazil;
 pub mod exporthub;
 pub mod kompass;
+pub mod madeinchina;
 pub mod thomasnet;
 pub mod tradewheel;
 pub mod wholesalecentral;
@@ -160,6 +161,7 @@ pub fn get_scraper_for_platform(platform: &str) -> Option<Box<dyn B2bScraper>> {
         Box::new(b2bmap::B2bmapScraper),
         Box::new(kompass::KompassScraper),
         Box::new(wholesalecentral::WholesalecentralScraper),
+        Box::new(madeinchina::MadeinchinaScraper),
     ];
     scrapers.into_iter().find(|s| s.matches_platform(platform))
 }
@@ -540,10 +542,11 @@ async fn enrich_from_profile_pages(
 
 /// Platforms whose scanned page is the company's own profile page
 /// (ThomasNet), so there is never a separate company page to fetch.
-/// Wholesale Central is listed because its supplier pages are scanned
-/// directly (its product pages always link to the supplier page, so
-/// the note would only ever print for supplier pages).
-const LISTING_IS_THE_COMPANY_PAGE: &[&str] = &["thomasnet", "wholesalecentral"];
+/// Wholesale Central and Made-in-China are listed because their
+/// supplier pages are scanned directly (their product pages always link
+/// to the supplier page, so the note would only ever print for supplier
+/// pages).
+const LISTING_IS_THE_COMPANY_PAGE: &[&str] = &["thomasnet", "wholesalecentral", "madeinchina"];
 
 fn take_and_replace(
     supplier: &mut B2bSupplierProfile,
@@ -639,7 +642,12 @@ pub async fn b2b_page_from_browser(
 /// used - never a Safely account. Must match BROWSER_FIRST_PLATFORMS in
 /// the extension's api.ts. To go back to ScraperAPI first, remove the
 /// platform from both lists.
-pub const BROWSER_FIRST_PLATFORMS: &[&str] = &["wholesalecentral"];
+/// Made-in-China: its pages are plain HTML the buyer's browser already
+/// has, so reading them there is faster than ScraperAPI and costs no
+/// credits. A product page on the main site (www.made-in-china.com)
+/// cannot load the supplier's page from the browser (another address),
+/// so that one page is fetched through ScraperAPI.
+pub const BROWSER_FIRST_PLATFORMS: &[&str] = &["wholesalecentral", "madeinchina"];
 
 /// true when `html` is a real page and not the site's robot check.
 fn usable_browser_page(html: &str) -> bool {

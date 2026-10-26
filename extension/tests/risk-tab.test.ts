@@ -141,12 +141,23 @@ describe("Risk tab - What we found", () => {
 });
 
 describe("Risk tab - supplier card", () => {
-  it("shows how long the supplier is on the platform and the report count", () => {
+  it("shows the company's age and the report count", () => {
     showResult(supplierData({ fraudReportCount: 2 }));
-    expect(text()).toContain("On ThomasNet for");
+    // "About 11 years" comes from the founding year: the company's age,
+    // not how long it has been on ThomasNet.
+    expect(text()).toContain("Company age");
+    expect(text()).not.toContain("On ThomasNet for");
     expect(text()).toContain("About 11 years");
     expect(text()).toContain("Reports on Safely");
     expect(risk().querySelector(".safely-facts")?.textContent).toContain("2");
+  });
+
+  it("shows years on the platform when no founding year is known", () => {
+    showResult(supplierData({ seller: { accountAge: "2 years" } }));
+    expect(text()).toContain("On ThomasNet for");
+    expect(text()).not.toContain("Company age");
+    showResult(supplierData({ seller: { accountAge: "Founded this year" } }));
+    expect(text()).toContain("Company age");
   });
 
   it("hides rows Safely doesn't know", () => {

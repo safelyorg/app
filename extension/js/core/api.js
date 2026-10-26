@@ -12,6 +12,7 @@ function formatPlatformName(platform) {
         thomasnet: "ThomasNet",
         kompass: "Kompass",
         wholesalecentral: "Wholesale Central",
+        madeinchina: "Made-in-China",
     };
     return names[platform] || platform;
 }
@@ -57,14 +58,17 @@ function formatPlatformName(platform) {
     // Platforms where this browser is the FIRST source: Safely reads the
     // page sent from here, and uses ScraperAPI only if that fails.
     // Wholesale Central's robot check blocks ScraperAPI, but this browser
-    // has already passed it. Must match BROWSER_FIRST_PLATFORMS in
+    // has already passed it. Made-in-China's pages are plain HTML this
+    // browser already has, which is faster and costs no ScraperAPI
+    // credits. Must match BROWSER_FIRST_PLATFORMS in
     // backend/services/b2b_scrapers/mod.rs.
-    const BROWSER_FIRST_PLATFORMS = ["wholesalecentral"];
+    const BROWSER_FIRST_PLATFORMS = ["wholesalecentral", "madeinchina"];
     // The most page text sent in one scan, so the request stays under the
     // server's size limit (2 MB, and the page text grows a little when it
     // is sent). A page over it is not sent, and Safely fetches it through
     // ScraperAPI instead. A Wholesale Central product page plus its
-    // supplier page is about 1.1 million characters.
+    // supplier page is about 1.1 million characters; a Made-in-China one
+    // about 0.8 million.
     const MAX_PAGE_CHARS = 1300000;
     // A trimmed copy of the current page for Safely to read: styles,
     // icons, frames and scripts are removed (only Alibaba's own product
@@ -289,16 +293,29 @@ function formatPlatformName(platform) {
             }
             // Alibaba: the page copy exactly as before. Wholesale Central:
             // only the page's data, plus the supplier's page on a product
-            // page, kept under MAX_PAGE_CHARS together.
+            // page. Made-in-China: the trimmed page, plus the supplier's page
+            // on a product page. Kept under MAX_PAGE_CHARS together.
             let pageHtml = null;
             let companyPageHtml = null;
             const scrapers = window.__safelyScrapers;
-            if (BROWSER_FIRST_PLATFORMS.indexOf(platform) !== -1 && scrapers.wholesalecentralPageData) {
+            const browserFirst = BROWSER_FIRST_PLATFORMS.indexOf(platform) !== -1;
+            if (browserFirst && platform === "wholesalecentral" && scrapers.wholesalecentralPageData) {
                 pageHtml = scrapers.wholesalecentralPageData();
                 if (pageHtml && pageHtml.length > MAX_PAGE_CHARS)
                     pageHtml = null;
                 if (pageHtml && scrapers.fetchWholesalecentralSupplierPage) {
                     companyPageHtml = await scrapers.fetchWholesalecentralSupplierPage();
+                    if (companyPageHtml && pageHtml.length + companyPageHtml.length > MAX_PAGE_CHARS) {
+                        companyPageHtml = null;
+                    }
+                }
+            }
+            else if (browserFirst && platform === "madeinchina" && scrapers.madeinchinaPageHtml) {
+                pageHtml = await scrapers.madeinchinaPageHtml();
+                if (pageHtml && pageHtml.length > MAX_PAGE_CHARS)
+                    pageHtml = null;
+                if (pageHtml && scrapers.fetchMadeinchinaSupplierPage) {
+                    companyPageHtml = await scrapers.fetchMadeinchinaSupplierPage();
                     if (companyPageHtml && pageHtml.length + companyPageHtml.length > MAX_PAGE_CHARS) {
                         companyPageHtml = null;
                     }

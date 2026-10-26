@@ -62,6 +62,7 @@ pub fn country_code_for_platform(platform: &str) -> Option<&'static str> {
         "thomasnet" => Some("us"),
         "kompass" => Some("us"),
         "wholesalecentral" => Some("us"),
+        "madeinchina" => Some("us"),
         "olx" => Some("pk"),
         _ => None,
     }
@@ -76,13 +77,16 @@ pub fn country_code_for_platform(platform: &str) -> Option<&'static str> {
 ///   scraper already reads). Rendering made ExportHub pages slow enough
 ///   that ScraperAPI gave up with "500" while ExportHub was slow.
 ///   Plain fetches are also cheaper in ScraperAPI credits.
+/// - madeinchina: everything the scraper reads is in the plain page
+///   (no JavaScript needed), so rendering would only be slower and cost
+///   more credits.
 /// To turn rendering back on for a platform, remove it from this list.
 ///
 /// Not wholesalecentral: it sits behind an AWS WAF robot check that
 /// needs JavaScript, so without render=true ScraperAPI only gets the
 /// 2 KB "verify that you're not a robot" page (tested 2026-10-23:
 /// render=true on plain premium loaded the real 1.7 MB page).
-const NO_RENDER_PLATFORMS: &[&str] = &["thomasnet", "kompass", "exporthub"];
+const NO_RENDER_PLATFORMS: &[&str] = &["thomasnet", "kompass", "exporthub", "madeinchina"];
 
 /// Platforms that ScraperAPI treats as "protected domains" and only
 /// fetches with ultra_premium=true. ScraperAPI's own error says so when
@@ -202,5 +206,16 @@ mod tests {
         );
         assert!(!wc.contains("ultra_premium=true"));
         assert!(wc.contains("premium=true") && wc.contains("country_code=us"));
+
+        let mic = wrap_scraper_url_for_platform(
+            "https://yongjie-bearing.en.made-in-china.com/product/cEvrzSKdrhpB/x.html",
+            "madeinchina",
+        );
+        assert!(
+            !mic.contains("render=true"),
+            "Made-in-China pages are plain HTML"
+        );
+        assert!(!mic.contains("ultra_premium=true"));
+        assert!(mic.contains("premium=true") && mic.contains("country_code=us"));
     }
 }

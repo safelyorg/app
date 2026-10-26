@@ -1,5 +1,5 @@
 ---
-title: Por que os alertas sobre fornecedores falsos são ignorados
+title: Por que os alertas sobre fornecedores falsos são ignorados (e o que o comprador pode fazer)
 description: Os alertas sobre vendedores falsos já estão na internet, mas estão espalhados, pouco denunciados e demoram a virar ação. Veja os dados e uma forma simples de usá-los antes de pagar.
 date: 2026-10-25
 short_answer: Os sinais de alerta sobre a maioria dos fornecedores falsos já são públicos, mas estão espalhados em muitos lugares, a maioria das vítimas não denuncia e as plataformas ganham dinheiro com os vendedores denunciados. Feche essa lacuna você mesmo conferindo o nome do fornecedor, a idade do site, os contatos e as avaliações antes do primeiro pagamento.
@@ -82,7 +82,7 @@ Você mesmo pode fechar parte dessa lacuna com uma rotina curta antes do primeir
 
 ## 7. Onde o Safely entra
 
-O Safely foi criado para o problema do "momento da decisão". É uma extensão do Chrome que lê a página do fornecedor e mostra uma pontuação de risco de 0 a 100 em cerca de 10 segundos, com as evidências por trás dela. Ela analisa 15 sinais no anúncio, no vendedor e na empresa, e funciona em páginas de fornecedores de oito marketplaces B2B. O plano gratuito tem 5 verificações por mês, sem cartão.
+O Safely foi criado para o problema do "momento da decisão". É uma extensão do Chrome que lê a página do fornecedor e mostra uma pontuação de risco de 0 a 100 em cerca de 10 segundos, com as evidências por trás dela. Ela analisa 15 sinais no anúncio, no vendedor e na empresa, e funciona em páginas de fornecedores de nove marketplaces B2B. O plano gratuito tem 5 verificações por mês, sem cartão.
 
 Uma pontuação é uma orientação, não uma garantia. Ela não substitui uma ligação para o fornecedor. Ela só reúne sinais espalhados em um só lugar, para que conferir seja fácil o bastante para ser feito de verdade.
 

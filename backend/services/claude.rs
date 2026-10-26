@@ -186,27 +186,29 @@ pub struct CallB2bClaudeArguments<'a> {
     pub payment_type: &'a str,
 }
 
-/// Platforms that hide a supplier's direct contact details from
-/// Safely's (anonymous) visitor - buyers are meant to contact suppliers
-/// through the platform itself. For these, a missing phone/website says
-/// nothing about the supplier. Returns the sentence Claude is given,
-/// describing exactly what that platform hides.
-fn platform_contact_policy(platform: &str) -> Option<&'static str> {
+/// Facts about a platform that Claude would not know, given as one
+/// sentence. None for platforms with nothing to add.
+///
+/// Contact details are NOT excused here on any platform: only a phone,
+/// email or website the supplier published itself counts as contact
+/// (see "For contact_verifiability" in the prompt). A platform's own
+/// message or inquiry form belongs to the platform, not the supplier.
+fn platform_facts(platform: &str) -> Option<&'static str> {
     match platform {
-        "alibaba" => Some(
-            "never publishes supplier phone numbers or websites; buyers contact suppliers through the platform's messaging",
-        ),
         "b2brazil" => Some(
-            "masks supplier contact names and phone numbers (e.g. \"Smith ********\") and does not show supplier websites to non-paying visitors; buyers contact suppliers through the platform. A contact name shown here may be only the part the platform leaves visible",
+            "masks supplier contact names (e.g. \"Smith ********\"), so a contact name shown here may be only the part the platform leaves visible",
         ),
-        "exporthub" => Some(
-            "does not show supplier websites, and hides phone numbers from non-paying visitors (a phone listed above was still published by the supplier and is usable); buyers contact suppliers through the platform's inquiry form. ExportHub also does not verify companies, so a missing verified badge is normal there",
-        ),
+        "exporthub" => {
+            Some("does not verify companies, so a missing verified badge is normal there")
+        }
         "b2bmap" => Some(
-            "shows the supplier's own phone number on product pages, but masks contact numbers on company pages for non-paying visitors (e.g. \"+848783xxxxx\"); a website is shown only if the supplier adds one; buyers can also contact suppliers through the platform's inquiry form. b2bmap does not verify companies: \"Free Member\", its paid plans and its paid \"B2BMAP Verified Seal\" are memberships, not a check on the company. \"Member of b2bmap since\" is when the company joined b2bmap, not when the company was founded",
+            "does not verify companies: \"Free Member\", its paid plans and its paid \"B2BMAP Verified Seal\" are memberships, not a check on the company. \"Member of b2bmap since\" is when the company joined b2bmap, not when the company was founded",
         ),
         "tradewheel" => Some(
-            "never shows supplier phone numbers, and shows supplier websites only to logged-in members (a website listed above came from the buyer's own logged-in view); buyers contact suppliers through the platform's inquiry form. A contact name with no phone is the normal level of detail there. TradeWheel's Gold and Platinum badges are paid membership levels, not company verification",
+            "uses Gold and Platinum badges, which are paid membership levels, not company verification",
+        ),
+        "madeinchina" => Some(
+            "uses \"Diamond Member\" and \"Gold Member\", which are paid membership levels, not a check on the company. Its own checks are an on-site audit by an outside company (TÜV Rheinland, SGS) and a check of the business licence",
         ),
         _ => None,
     }
@@ -630,24 +632,8 @@ fn b2b_content_with(arg: &CallB2bClaudeArguments, photos_blocked: bool) -> Strin
         )
     };
 
-    let contact_policy = platform_contact_policy(arg.platform);
-    let hides_contact = contact_policy.is_some();
-    let hidden_note = "Not published - this platform never shows it to buyers";
-    let contact_phone = if arg.contact_phone.trim().is_empty() && hides_contact {
-        hidden_note
-    } else {
-        or_not_provided(arg.contact_phone)
-    };
-    let website_url = if arg.website_url.trim().is_empty() && hides_contact {
-        hidden_note
-    } else {
-        or_not_provided(arg.website_url)
-    };
-    let platform_contact_rule = match contact_policy {
-        Some(policy) => format!(
-            "On {} the platform itself {}. A missing phone or website here is normal and must NOT count against the supplier. Judge contact_verifiability on what the platform does show (e.g. a named contact person).",
-            arg.platform, policy
-        ),
+    let platform_facts = match platform_facts(arg.platform) {
+        Some(facts) => format!("Platform facts: {} {}.", arg.platform, facts),
         None => String::new(),
     };
 
@@ -693,7 +679,7 @@ fn b2b_content_with(arg: &CallB2bClaudeArguments, photos_blocked: bool) -> Strin
         Minimum order quantity: {moq}
         Accepted payment methods: {payment_type}
 
-        {platform_contact_rule}
+        {platform_facts}
 
         MEANING OF "found" - read carefully, it differs by field:
         - For business_legitimacy, registration_consistency,
@@ -807,17 +793,22 @@ fn b2b_content_with(arg: &CallB2bClaudeArguments, photos_blocked: bool) -> Strin
         a price is provided, say in the reasoning what it is and whether it
         is plausible - do not claim pricing is missing when it is provided.
 
-        For contact_verifiability: judge ONLY the contact details
-        themselves - can a buyer actually reach and check this company?
-        Set found to true if a named contact person and at least one
-        direct channel (phone, email or website) are given, or if the
-        details shown are all this platform publishes. Set found to false
-        only if contact details are missing in a way that is unusual for
-        this platform, look fake, or contradict the company (e.g. a phone
-        country code that does not match the company's country). Do NOT
-        use the verified badge, founding year, employee count or company
-        size here - those are judged by other checks, and counting them
-        again here would double-count them.
+        For contact_verifiability: judge ONLY the contact details the
+        SUPPLIER itself published - can a buyer reach and check this
+        company outside the platform? Set found to true only if at least
+        one direct channel is given: a phone number, an email address or
+        a website. The platform's own message, chat or inquiry form is NOT
+        a contact channel - it belongs to the platform, not the supplier -
+        so never count it, and do NOT excuse missing details because the
+        platform hides them or because they are "normal for this
+        platform". A contact person's name alone is not enough. Set found
+        to false when no direct channel is given, and also when the
+        details look fake or contradict the company (e.g. a phone country
+        code that does not match the company's country). In the evidence,
+        say which channels are missing and that the buyer should ask the
+        supplier for them. Do NOT use the verified badge, founding year,
+        employee count or company size here - those are judged by other
+        checks, and counting them again here would double-count them.
 
         For urgency_language: set found to true only if the listing or
         company description uses artificial pressure tactics inconsistent
@@ -904,15 +895,15 @@ fn b2b_content_with(arg: &CallB2bClaudeArguments, photos_blocked: bool) -> Strin
         platform_verified = arg.platform_verified,
         employee_count = or_not_provided(arg.employee_count),
         contact_name = or_not_provided(arg.contact_name),
-        contact_phone = contact_phone,
-        website_url = website_url,
+        contact_phone = or_not_provided(arg.contact_phone),
+        website_url = or_not_provided(arg.website_url),
         company_description = or_not_provided(arg.company_description),
         product_title = arg.product_title,
         product_description = or_not_provided(arg.product_description),
         unit_price = or_not_provided(arg.unit_price),
         moq = or_not_provided(arg.minimum_order_quantity),
         payment_type = or_not_provided(arg.payment_type),
-        platform_contact_rule = platform_contact_rule,
+        platform_facts = platform_facts,
         image_context = image_context,
         language = language_instruction(arg.language),
     )
@@ -1005,26 +996,49 @@ mod b2b_prompt_tests {
     }
 
     #[test]
-    fn alibaba_missing_contact_is_marked_as_platform_policy() {
+    fn a_missing_phone_is_never_excused_on_any_platform() {
+        for platform in [
+            "alibaba",
+            "madeinchina",
+            "b2brazil",
+            "exporthub",
+            "b2bmap",
+            "tradewheel",
+            "kompass",
+        ] {
+            let p = b2b_content(&args(platform, "", ""));
+            assert!(p.contains("Contact phone: Not provided"), "{platform}");
+            assert!(p.contains("Website: Not provided"), "{platform}");
+            assert!(
+                !p.contains("must NOT count against the supplier"),
+                "{platform}"
+            );
+            assert!(!p.contains("Not published"), "{platform}");
+        }
+    }
+
+    #[test]
+    fn the_platform_form_is_not_a_contact_channel() {
         let p = b2b_content(&args("alibaba", "", ""));
-        assert!(p.contains("Contact phone: Not published - this platform never shows it"));
-        assert!(p.contains("Website: Not published - this platform never shows it"));
-        assert!(p.contains("must NOT count against the supplier"));
+        let flat = p.split_whitespace().collect::<Vec<_>>().join(" ");
+        assert!(flat.contains("details the SUPPLIER itself published"));
+        assert!(
+            flat.contains(
+                "The platform's own message, chat or inquiry form is NOT a contact channel"
+            )
+        );
+        assert!(flat.contains("A contact person's name alone is not enough"));
+        assert!(!flat.contains("all this platform publishes"));
     }
 
     #[test]
-    fn other_platforms_keep_plain_not_provided() {
-        let p = b2b_content(&args("kompass", "", ""));
-        assert!(p.contains("Contact phone: Not provided"));
-        assert!(!p.contains("must NOT count against the supplier"));
-    }
-
-    #[test]
-    fn b2brazil_masked_contact_is_marked_as_platform_policy() {
+    fn platform_facts_stay_for_badges_and_masked_names() {
         let p = b2b_content(&args("b2brazil", "", ""));
-        assert!(p.contains("Contact phone: Not published - this platform never shows it"));
-        assert!(p.contains("masks supplier contact names and phone numbers"));
-        assert!(p.contains("must NOT count against the supplier"));
+        assert!(p.contains("Platform facts: b2brazil masks supplier contact names"));
+        let p = b2b_content(&args("madeinchina", "", ""));
+        assert!(p.contains("Platform facts: madeinchina uses \"Diamond Member\""));
+        let p = b2b_content(&args("alibaba", "", ""));
+        assert!(!p.contains("Platform facts:"));
     }
 
     #[test]
@@ -1081,8 +1095,9 @@ mod b2b_prompt_tests {
     #[test]
     fn contact_check_does_not_reuse_badge_or_company_size() {
         let p = b2b_content(&args("exporthub", "+8617728195735", ""));
-        assert!(p.contains("judge ONLY the contact details"));
-        assert!(p.contains("Do NOT\n        use the verified badge"));
+        let flat = p.split_whitespace().collect::<Vec<_>>().join(" ");
+        assert!(flat.contains("judge ONLY the contact details"));
+        assert!(flat.contains("Do NOT use the verified badge"));
         assert!(!p.contains("structured data"));
     }
 
@@ -1092,7 +1107,6 @@ mod b2b_prompt_tests {
         let flat = p.split_whitespace().collect::<Vec<_>>().join(" ");
         assert!(flat.contains("b2bmap does not verify companies"));
         assert!(flat.contains("not when the company was founded"));
-        assert!(flat.contains("must NOT count against the supplier"));
         assert!(p.contains("Contact phone: +84878369911"));
     }
 
