@@ -1,6 +1,39 @@
 "use strict";
 (function () {
     "use strict";
+    /// Calls Safely's own server (safely.sh, or localhost when testing)
+    /// through the extension's background script, so the website the buyer
+    /// is on cannot block the call (some sites, like Global Sources, block
+    /// a page's requests to other servers). Works like fetch(). If the
+    /// background script does not answer, the call is made from here.
+    async function safelyFetch(url, init = {}) {
+        const message = {
+            type: "SAFELY_API_REQUEST",
+            url,
+            method: init.method || "GET",
+            headers: init.headers || {},
+            body: typeof init.body === "string" ? init.body : null,
+        };
+        const reply = await new Promise((resolve) => {
+            try {
+                chrome.runtime.sendMessage(message, (response) => {
+                    // Reading lastError stops Chrome from logging "no receiver".
+                    void chrome.runtime.lastError;
+                    resolve(response ?? null);
+                });
+            }
+            catch {
+                resolve(null);
+            }
+        });
+        if (!reply)
+            return fetch(url, init);
+        if (reply.networkError)
+            throw new TypeError("Failed to fetch (" + reply.networkError + ")");
+        const noBody = [101, 204, 205, 304].indexOf(reply.status) !== -1;
+        return new Response(noBody ? null : reply.text, { status: reply.status });
+    }
+    window.__safelyFetch = safelyFetch;
     let PROTECTED_DOMAINS = [];
     const DOMAINS_CACHE_KEY = "safely_protected_domains_cache";
     const DOMAINS_CACHE_TIMESTAMP_KEY = "safely_protected_domains_cached_at";
@@ -18,7 +51,7 @@
                 return;
             }
             const apiBase = window.__safelyAPI?.SITE_BASE || "http://localhost:3000";
-            const response = await fetch(apiBase + "/api/v1/platform-domains");
+            const response = await safelyFetch(apiBase + "/api/v1/platform-domains");
             const data = await response.json();
             PROTECTED_DOMAINS = Object.entries(data).map(([name, domain]) => ({
                 name,
@@ -208,6 +241,32 @@
     function isMadeinchinaShopHost(host) {
         return /^[a-z0-9-]+\.en\.made-in-china\.com$/.test(host) && !host.startsWith("www.");
     }
+    /// A Global Sources product page Safely scans
+    /// (www.globalsources.com/TWS-earbud/tws-earbud-1231057850p.htm).
+    /// Supplier pages are not scanned on their own: the scan of a product
+    /// page also reads its supplier's page. Trade-show pages
+    /// (/products/HK/..., /exhibitors/...) are a different site and are
+    /// not scanned.
+    function isGlobalsourcesScanUrl(url) {
+        let u;
+        try {
+            u = new URL(url);
+        }
+        catch {
+            return false;
+        }
+        const host = u.hostname.toLowerCase();
+        if (host !== "www.globalsources.com" && host !== "globalsources.com")
+            return false;
+        if (/^\/(products|exhibitors)\//i.test(u.pathname))
+            return false;
+        return /^\/[^/]+\/[^/]+-\d+p\.htm$/i.test(u.pathname);
+    }
+    /// A Global Sources supplier's page:
+    /// "https://{shop}.manufacturer.globalsources.com/homepage_{id}.htm".
+    /// The only kind of page the background script loads for a scan.
+    /// Must match GLOBALSOURCES_SUPPLIER_PAGE in background.ts.
+    const GLOBALSOURCES_SUPPLIER_PAGE = /^https:\/\/[a-z0-9-]+\.[a-z]+\.globalsources\.com\/homepage_\d+\.htm$/;
     const platformRegistry = [
         {
             name: "olx",
@@ -279,6 +338,13 @@
             isListingUrl: isMadeinchinaScanUrl,
             nonListingMessage: "Safely checks a product page or a supplier's own page on Made-in-China. Open one to scan it.",
         },
+        {
+            name: "globalsources",
+            matchesHostname: (hostname) => hostname === "globalsources.com" || hostname.endsWith(".globalsources.com"),
+            requiresClientSideScraping: false,
+            isListingUrl: isGlobalsourcesScanUrl,
+            nonListingMessage: "Safely checks product pages on Global Sources. Open a product to scan it - Safely also reads the supplier's page for you.",
+        },
     ];
     function detectPlatform() {
         const hostname = window.location.hostname;
@@ -316,6 +382,7 @@
     window.__safelyScrapers.isB2brazilListingUrl = isB2brazilListingUrl;
     window.__safelyScrapers.isWholesalecentralScanUrl = isWholesalecentralScanUrl;
     window.__safelyScrapers.isMadeinchinaScanUrl = isMadeinchinaScanUrl;
+    window.__safelyScrapers.isGlobalsourcesScanUrl = isGlobalsourcesScanUrl;
     /// Finds the real company profile link on a TradeWheel listing
     /// page, then fetches that page in the background, using the
     /// visiting user's own, real browser session (their cookies are
@@ -513,4 +580,119 @@
     window.__safelyScrapers.madeinchinaPageHtml = madeinchinaPageHtml;
     window.__safelyScrapers.fetchMadeinchinaSupplierPage = fetchMadeinchinaSupplierPage;
     window.__safelyScrapers.madeinchinaTrimmed = madeinchinaTrimmed;
+    /// The supplier's contact and registration details that Global Sources
+    /// keeps in its page data ("contactUsInfo": address, own website,
+    /// official registration), which the trimming would remove with the
+    /// scripts. Only that one small block is kept - no other script.
+    function globalsourcesContactData(rawHtml) {
+        const match = rawHtml.match(/contactUsInfo:\{[^{}]*\}/);
+        if (!match)
+            return "";
+        const safe = match[0].replace(/<\//g, "<\\/");
+        return '<script type="text/x-safely-data">' + safe + "</script>";
+    }
+    /// A trimmed Global Sources page plus its contact data block.
+    function globalsourcesTrimmed(rawHtml, doc) {
+        const trimmed = madeinchinaTrimmed(doc);
+        const data = globalsourcesContactData(rawHtml);
+        if (!data)
+            return trimmed;
+        const end = trimmed.lastIndexOf("</body>");
+        return end === -1 ? trimmed + data : trimmed.slice(0, end) + data + trimmed.slice(end);
+    }
+    /// The Global Sources product page the buyer is on, exactly as the site
+    /// sends it (loaded again in this browser), trimmed the same way as a
+    /// Made-in-China page (no scripts except the page's schema.org data,
+    /// no styles). If that fails, the page as it is shown now. null only if
+    /// both fail.
+    async function globalsourcesPageHtml() {
+        try {
+            const response = await fetch(window.location.href, { credentials: "include" });
+            if (response.ok) {
+                const html = await response.text();
+                return globalsourcesTrimmed(html, new DOMParser().parseFromString(html, "text/html"));
+            }
+        }
+        catch (e) {
+            console.error("Safely: could not load the Global Sources page again", e);
+        }
+        try {
+            return globalsourcesTrimmed(document.documentElement.outerHTML, document.cloneNode(true));
+        }
+        catch (e) {
+            console.error("Safely: could not copy the Global Sources page", e);
+            return null;
+        }
+    }
+    /// The supplier's page linked from a Global Sources product page
+    /// ("//boxinltd.manufacturer.globalsources.com/homepage_6008846289828.htm"
+    /// -> "https://boxinltd.manufacturer.globalsources.com/homepage_6008846289828.htm").
+    /// The link in the supplier box first, then any link to a supplier
+    /// page. null if none.
+    function globalsourcesSupplierUrl(doc) {
+        const links = [
+            ...Array.from(doc.querySelectorAll('.company-info a[href*="/homepage_"]')),
+            ...Array.from(doc.querySelectorAll('a[href*="/homepage_"]')),
+        ];
+        for (const link of links) {
+            const href = (link.getAttribute("href") || "").trim();
+            let url;
+            try {
+                url = new URL(href.startsWith("//") ? "https:" + href : href, "https://www.globalsources.com/").href;
+            }
+            catch {
+                continue;
+            }
+            url = url.split(/[?#]/)[0];
+            if (GLOBALSOURCES_SUPPLIER_PAGE.test(url))
+                return url;
+        }
+        return null;
+    }
+    /// Waits for the background script's answer, but not forever.
+    function askBackground(message, timeoutMs) {
+        return new Promise((resolve) => {
+            const timer = setTimeout(() => resolve(null), timeoutMs);
+            try {
+                chrome.runtime.sendMessage(message, (response) => {
+                    clearTimeout(timer);
+                    // Reading lastError stops Chrome from logging "no receiver".
+                    void chrome.runtime.lastError;
+                    resolve(response ?? null);
+                });
+            }
+            catch {
+                clearTimeout(timer);
+                resolve(null);
+            }
+        });
+    }
+    /// On a Global Sources product page: the supplier's page, trimmed.
+    /// It is on another address ({shop}.manufacturer.globalsources.com),
+    /// which this page cannot load itself, so the background script loads
+    /// it (only that kind of page - see background.ts). null if it could
+    /// not be loaded; then Safely's server loads it instead.
+    async function fetchGlobalsourcesSupplierPage() {
+        if (!isGlobalsourcesScanUrl(window.location.href))
+            return null;
+        const url = globalsourcesSupplierUrl(document);
+        if (!url)
+            return null;
+        const response = await askBackground({ type: "SAFELY_FETCH_SUPPLIER_PAGE", url }, 20000);
+        if (!response || typeof response.html !== "string" || response.html.length === 0) {
+            console.error("Safely: the Global Sources supplier page could not be loaded in the browser");
+            return null;
+        }
+        try {
+            return globalsourcesTrimmed(response.html, new DOMParser().parseFromString(response.html, "text/html"));
+        }
+        catch (e) {
+            console.error("Safely: could not read the Global Sources supplier page", e);
+            return null;
+        }
+    }
+    window.__safelyScrapers.globalsourcesPageHtml = globalsourcesPageHtml;
+    window.__safelyScrapers.globalsourcesSupplierUrl = globalsourcesSupplierUrl;
+    window.__safelyScrapers.globalsourcesTrimmed = globalsourcesTrimmed;
+    window.__safelyScrapers.fetchGlobalsourcesSupplierPage = fetchGlobalsourcesSupplierPage;
 })();

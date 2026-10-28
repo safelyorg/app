@@ -63,6 +63,11 @@ const SIGNAL_VALUE_TRANSLATIONS = {
     "Scam mentions found": "dash.value.scam_mentions_found",
     "No presence found": "dash.value.no_presence_found",
     "Checked by Alibaba": "dash.value.checked_by_alibaba",
+    "Checked by Made-in-China": "dash.value.checked_by_madeinchina",
+    "Licence checked": "dash.value.licence_checked",
+    "Checked by Global Sources": "dash.value.checked_by_globalsources",
+    "Trade show exhibitor": "dash.value.trade_show_exhibitor",
+    "Open a product to check this": "dash.value.open_a_product",
     "Paid membership": "dash.value.paid_membership",
     "No recent orders": "dash.value.no_recent_orders",
     "Risky option listed": "dash.value.risky_option_listed",
@@ -285,6 +290,7 @@ const PLATFORM_NAMES = {
     kompass: "Kompass",
     wholesalecentral: "Wholesale Central",
     madeinchina: "Made-in-China",
+    globalsources: "Global Sources",
 };
 function platformName(platform) {
     if (!platform)
@@ -498,10 +504,11 @@ function fact(label, value) {
         escapeHtml(value) +
         "</div></div>");
 }
-// The age is either the company's age, from its founding year
-// ("Founded this year", "About 11 years"), or how long the account has
-// been on the platform ("2 years"). The label says which. Same rule as
-// the extension (extension/ts/tabs/risk.ts) - change both together.
+// B2B suppliers show the company's age ("About 21 years", from the
+// founding year), not how long they have been on the platform, so the
+// label says which - "On Global Sources for: About 21 years" was wrong.
+// Same rule as the extension (extension/ts/tabs/risk.ts) - change both
+// together.
 function isCompanyAge(value) {
     return value === "Founded this year" || /^About \d+ years?$/.test(value);
 }

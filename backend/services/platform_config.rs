@@ -1,6 +1,6 @@
 use once_cell::sync::Lazy;
-use std::collections::HashMap;
 use serde_json::from_str;
+use std::collections::HashMap;
 
 static PLATFORM_DOMAINS: Lazy<HashMap<String, String>> = Lazy::new(|| {
     let raw = include_str!("../config/platform_domains.json");

@@ -3,7 +3,7 @@ use backend::services::platform_config::get_all_platform_domains;
 #[test]
 fn returns_the_real_known_platforms_with_correct_domains() {
     let domains = get_all_platform_domains();
-    let expected: [(&str, &str); 10] = [
+    let expected: [(&str, &str); 11] = [
         ("olx", "olx.com.pk"),
         ("b2brazil", "b2brazil.com"),
         ("alibaba", "alibaba.com"),
@@ -14,6 +14,7 @@ fn returns_the_real_known_platforms_with_correct_domains() {
         ("kompass", "kompass.com"),
         ("wholesalecentral", "wholesalecentral.com"),
         ("madeinchina", "made-in-china.com"),
+        ("globalsources", "globalsources.com"),
     ];
     for (platform, domain) in expected {
         assert_eq!(
@@ -31,7 +32,7 @@ fn returns_exactly_the_platforms_currently_configured_no_more_no_less() {
     let domains = get_all_platform_domains();
     assert_eq!(
         domains.len(),
-        10,
+        11,
         "expected exactly the platforms currently in platform_domains.json - \
          update this test if a new platform is genuinely added"
     );
@@ -62,7 +63,7 @@ fn returns_a_genuine_clone_not_a_shared_mutable_reference() {
         None,
         "expected the static, real data to remain genuinely unaffected by mutating a returned clone"
     );
-    assert_eq!(second_call.len(), 10);
+    assert_eq!(second_call.len(), 11);
 }
 
 #[test]

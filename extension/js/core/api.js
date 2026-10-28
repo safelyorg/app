@@ -13,6 +13,7 @@ function formatPlatformName(platform) {
         kompass: "Kompass",
         wholesalecentral: "Wholesale Central",
         madeinchina: "Made-in-China",
+        globalsources: "Global Sources",
     };
     return names[platform] || platform;
 }
@@ -23,6 +24,9 @@ function formatPlatformName(platform) {
     // Same toggle, but for the actual website (not the /api/v1 path) -
     // kept as one source of truth alongside API_BASE.
     const SITE_BASE = SAFELY_ENV === "local" ? "http://localhost:3000" : "https://safely.sh";
+    // Calls to Safely's server go through the background script (see
+    // safelyFetch in scrapers/index.ts), so the website cannot block them.
+    const safelyFetch = (url, init) => (window.__safelyFetch || fetch)(url, init);
     // Reads the session token auth-bridge.js relayed from the website.
     // Returns an empty object if the person isn't logged in.
     async function getAuthHeaders() {
@@ -53,16 +57,17 @@ function formatPlatformName(platform) {
     // Platforms whose listing page is also sent from this browser, as a
     // BACKUP: Safely fetches the listing through ScraperAPI first and
     // reads this copy only if that fails. Must match
-    // BROWSER_PAGE_PLATFORMS in backend/src/services/b2b_scrapers/mod.rs.
+    // BROWSER_PAGE_PLATFORMS in backend/services/b2b_scrapers/mod.rs.
     const BROWSER_PAGE_PLATFORMS = ["alibaba"];
     // Platforms where this browser is the FIRST source: Safely reads the
     // page sent from here, and uses ScraperAPI only if that fails.
     // Wholesale Central's robot check blocks ScraperAPI, but this browser
     // has already passed it. Made-in-China's pages are plain HTML this
     // browser already has, which is faster and costs no ScraperAPI
-    // credits. Must match BROWSER_FIRST_PLATFORMS in
+    // credits. Global Sources: the same, and its supplier page is loaded
+    // by the background script. Must match BROWSER_FIRST_PLATFORMS in
     // backend/services/b2b_scrapers/mod.rs.
-    const BROWSER_FIRST_PLATFORMS = ["wholesalecentral", "madeinchina"];
+    const BROWSER_FIRST_PLATFORMS = ["wholesalecentral", "madeinchina", "globalsources"];
     // The most page text sent in one scan, so the request stays under the
     // server's size limit (2 MB, and the page text grows a little when it
     // is sent). A page over it is not sent, and Safely fetches it through
@@ -100,7 +105,7 @@ function formatPlatformName(platform) {
         analyze: async function (scrapedData) {
             try {
                 const authHeaders = await getAuthHeaders();
-                const response = await fetch(API_BASE + "/analyze", {
+                const response = await safelyFetch(API_BASE + "/analyze", {
                     method: "POST",
                     headers: Object.assign({ "Content-Type": "application/json" }, authHeaders),
                     body: JSON.stringify(scrapedData),
@@ -149,7 +154,7 @@ function formatPlatformName(platform) {
         getScanUsage: async function () {
             try {
                 const authHeaders = await getAuthHeaders();
-                const response = await fetch(API_BASE + "/billing/subscription-status", {
+                const response = await safelyFetch(API_BASE + "/billing/subscription-status", {
                     headers: authHeaders,
                 });
                 if (!response.ok)
@@ -169,7 +174,7 @@ function formatPlatformName(platform) {
         getResultTexts: async function (analysisId, language) {
             try {
                 const authHeaders = await getAuthHeaders();
-                const response = await fetch(API_BASE +
+                const response = await safelyFetch(API_BASE +
                     "/history/" +
                     encodeURIComponent(analysisId) +
                     "?language=" +
@@ -192,7 +197,7 @@ function formatPlatformName(platform) {
         submitOutcome: async function (analysisId, action) {
             try {
                 const authHeaders = await getAuthHeaders();
-                const response = await fetch(API_BASE + "/outcomes", {
+                const response = await safelyFetch(API_BASE + "/outcomes", {
                     method: "POST",
                     headers: Object.assign({ "Content-Type": "application/json" }, authHeaders),
                     body: JSON.stringify({ analysis_id: analysisId, action }),
@@ -214,7 +219,7 @@ function formatPlatformName(platform) {
         // ): Promise<{ matched: boolean; matched_identifiers: string[]; confidence: string; message: string } | null> {
         //   try {
         //     const authHeaders = await getAuthHeaders();
-        //     const response = await fetch(API_BASE + "/verify-social-link", {
+        //     const response = await safelyFetch(API_BASE + "/verify-social-link", {
         //       method: "POST",
         //       headers: Object.assign({ "Content-Type": "application/json" }, authHeaders),
         //       body: JSON.stringify({ seller_id: sellerId, url }),
@@ -229,7 +234,7 @@ function formatPlatformName(platform) {
         submitReport: async function (reportData) {
             try {
                 const authHeaders = await getAuthHeaders();
-                const response = await fetch(API_BASE + "/report", {
+                const response = await safelyFetch(API_BASE + "/report", {
                     method: "POST",
                     headers: Object.assign({ "Content-Type": "application/json" }, authHeaders),
                     body: JSON.stringify(reportData),
@@ -293,8 +298,9 @@ function formatPlatformName(platform) {
             }
             // Alibaba: the page copy exactly as before. Wholesale Central:
             // only the page's data, plus the supplier's page on a product
-            // page. Made-in-China: the trimmed page, plus the supplier's page
-            // on a product page. Kept under MAX_PAGE_CHARS together.
+            // page. Made-in-China and Global Sources: the trimmed page, plus
+            // the supplier's page on a product page. Kept under MAX_PAGE_CHARS
+            // together.
             let pageHtml = null;
             let companyPageHtml = null;
             const scrapers = window.__safelyScrapers;
@@ -316,6 +322,17 @@ function formatPlatformName(platform) {
                     pageHtml = null;
                 if (pageHtml && scrapers.fetchMadeinchinaSupplierPage) {
                     companyPageHtml = await scrapers.fetchMadeinchinaSupplierPage();
+                    if (companyPageHtml && pageHtml.length + companyPageHtml.length > MAX_PAGE_CHARS) {
+                        companyPageHtml = null;
+                    }
+                }
+            }
+            else if (browserFirst && platform === "globalsources" && scrapers.globalsourcesPageHtml) {
+                pageHtml = await scrapers.globalsourcesPageHtml();
+                if (pageHtml && pageHtml.length > MAX_PAGE_CHARS)
+                    pageHtml = null;
+                if (pageHtml && scrapers.fetchGlobalsourcesSupplierPage) {
+                    companyPageHtml = await scrapers.fetchGlobalsourcesSupplierPage();
                     if (companyPageHtml && pageHtml.length + companyPageHtml.length > MAX_PAGE_CHARS) {
                         companyPageHtml = null;
                     }

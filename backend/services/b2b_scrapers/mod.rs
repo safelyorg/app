@@ -2,6 +2,7 @@ pub mod alibaba;
 pub mod b2bmap;
 pub mod b2brazil;
 pub mod exporthub;
+pub mod globalsources;
 pub mod kompass;
 pub mod madeinchina;
 pub mod thomasnet;
@@ -162,6 +163,7 @@ pub fn get_scraper_for_platform(platform: &str) -> Option<Box<dyn B2bScraper>> {
         Box::new(kompass::KompassScraper),
         Box::new(wholesalecentral::WholesalecentralScraper),
         Box::new(madeinchina::MadeinchinaScraper),
+        Box::new(globalsources::GlobalsourcesScraper),
     ];
     scrapers.into_iter().find(|s| s.matches_platform(platform))
 }
@@ -647,7 +649,10 @@ pub async fn b2b_page_from_browser(
 /// credits. A product page on the main site (www.made-in-china.com)
 /// cannot load the supplier's page from the browser (another address),
 /// so that one page is fetched through ScraperAPI.
-pub const BROWSER_FIRST_PLATFORMS: &[&str] = &["wholesalecentral", "madeinchina"];
+/// Global Sources: the same plain HTML. Its supplier pages are on
+/// another address ({shop}.manufacturer.globalsources.com), so the
+/// extension loads them through its background script.
+pub const BROWSER_FIRST_PLATFORMS: &[&str] = &["wholesalecentral", "madeinchina", "globalsources"];
 
 /// true when `html` is a real page and not the site's robot check.
 fn usable_browser_page(html: &str) -> bool {

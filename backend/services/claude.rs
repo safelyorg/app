@@ -210,6 +210,9 @@ fn platform_facts(platform: &str) -> Option<&'static str> {
         "madeinchina" => Some(
             "uses \"Diamond Member\" and \"Gold Member\", which are paid membership levels, not a check on the company. Its own checks are an on-site audit by an outside company (TÜV Rheinland, SGS) and a check of the business licence",
         ),
+        "globalsources" => Some(
+            "shows \"Verified Supplier\" or \"Verified Manufacturer\" when an outside company (such as D&B or TÜV SÜD) checked the business registration. Its rankings (\"Super Supplier\", \"Premier Supplier\") are membership levels, not a check on the company. \"Years with Global Sources\" is how long the company has been on Global Sources, not when it was founded",
+        ),
         _ => None,
     }
 }
@@ -747,6 +750,13 @@ fn b2b_content_with(arg: &CallB2bClaudeArguments, photos_blocked: bool) -> Strin
         self-contradicting details, or a random mix of unrelated
         industries). If you cannot, set it to true and list the missing
         or unusual details in the evidence.
+        CLAIMED CLIENTS: well-known brands the supplier says it works with
+        (e.g. "Samsung, Walmart") are the supplier's own claim - you
+        cannot check them. Call them "claimed clients" in the evidence,
+        never "verified" or "verifiable" clients. They are not a red flag
+        on their own and not proof of legitimacy. The same for any number
+        or certificate on the page: say it "is shown", never that it is
+        "verifiable" or "verified" - you did not look it up.
 
         For registration_consistency: set found to true if the company's
         stated information (name, founding year, scale) hangs together
@@ -785,6 +795,20 @@ fn b2b_content_with(arg: &CallB2bClaudeArguments, photos_blocked: bool) -> Strin
         supplier's own text. Judge only the details the supplier added.
         If either description gives real, specific details, the text is
         not generic.
+        SPEC MISMATCHES: two values for the same spec (e.g. the title says
+        "Bluetooth 5.3" and the text says "V5.0", or a list where every
+        version is ticked) are common copy mistakes on B2B listings. They
+        do NOT make a listing vague: when concrete specs are given, set
+        listing_specificity to true and name the mismatch in the evidence
+        as something to ask the supplier about. Only call two features a
+        contradiction when they cannot both be true (a feature that is
+        simply not explained is not a contradiction).
+        NO MISMATCH, NO NOTE: a mismatch exists only when the listing gives
+        two different values for the same spec. A title that does not
+        repeat a spec (e.g. no Bluetooth version in the title) is NOT a
+        mismatch. When there is no real mismatch, do not add any "point
+        to clarify" or "buyer should confirm" sentence to the
+        listing_specificity evidence.
 
         For pricing_transparency: assess ONLY whether the unit price and
         MOQ above (if provided) seem plausible for this product type.
@@ -1000,6 +1024,7 @@ mod b2b_prompt_tests {
         for platform in [
             "alibaba",
             "madeinchina",
+            "globalsources",
             "b2brazil",
             "exporthub",
             "b2bmap",
@@ -1037,6 +1062,8 @@ mod b2b_prompt_tests {
         assert!(p.contains("Platform facts: b2brazil masks supplier contact names"));
         let p = b2b_content(&args("madeinchina", "", ""));
         assert!(p.contains("Platform facts: madeinchina uses \"Diamond Member\""));
+        let p = b2b_content(&args("globalsources", "", ""));
+        assert!(p.contains("Platform facts: globalsources shows \"Verified Supplier\""));
         let p = b2b_content(&args("alibaba", "", ""));
         assert!(!p.contains("Platform facts:"));
     }
@@ -1145,6 +1172,12 @@ mod b2b_prompt_tests {
         let p = b2b_content(&args("alibaba", "", ""));
         let flat = p.split_whitespace().collect::<Vec<_>>().join(" ");
         assert!(flat.contains("GENERIC TEXT: also set listing_specificity to false when BOTH"));
+        assert!(flat.contains("SPEC MISMATCHES: two values for the same spec"));
+        assert!(flat.contains("They do NOT make a listing vague"));
+        assert!(flat.contains("NO MISMATCH, NO NOTE"));
+        assert!(flat.contains("A title that does not repeat a spec"));
+        assert!(flat.contains("say it \"is shown\", never that it is \"verifiable\""));
+        assert!(flat.contains("Call them \"claimed clients\" in the evidence"));
         assert!(flat.contains("could belong to any supplier"));
         assert!(flat.contains("Quote one generic phrase in the evidence"));
         assert!(

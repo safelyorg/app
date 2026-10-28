@@ -3,6 +3,9 @@ use crate::{
     services::{
         b2b_scrapers::{
             B2bListingProfile, B2bSupplierProfile, SupplierRecord,
+            globalsources::{
+                TRADE_SHOW_ONLY as GS_TRADE_SHOW_ONLY, VERIFIED_PREFIX as GS_VERIFIED_PREFIX,
+            },
             madeinchina::{
                 AUDITED_PREFIX as MIC_AUDITED_PREFIX, LICENCE_CHECKED as MIC_LICENCE_CHECKED,
             },
@@ -15,6 +18,8 @@ use crate::{
     },
 };
 use chrono::{Datelike, Utc};
+use regex::Regex;
+use std::sync::LazyLock;
 
 /// It takes Claude's raw analysis and turns it into a real, ordered list of
 /// 7 separate signal cards each one representing one specific thing that was checked.
@@ -156,6 +161,7 @@ pub fn platform_display_name(platform: &str) -> String {
         "kompass" => "Kompass",
         "wholesalecentral" => "Wholesale Central",
         "madeinchina" => "Made-in-China",
+        "globalsources" => "Global Sources",
         other => other,
     }
     .to_string()
@@ -431,6 +437,57 @@ pub fn build_b2b_verification_signal(supplier: &B2bSupplierProfile) -> Signal {
                 "caution",
                 format!(
                     "{} has no on-site audit and no business licence check on Made-in-China.",
+                    name
+                ),
+            )
+        };
+        return Signal {
+            label: "Platform verification".to_string(),
+            sub,
+            value: value.to_string(),
+            signal_type: signal_type.to_string(),
+            category: "identity".to_string(),
+            check_type: "existence".to_string(),
+        };
+    }
+
+    // Global Sources: "Verified Supplier" / "Verified Manufacturer" mean
+    // the business registration was checked by an outside company (D&B,
+    // Experian, TÜV SÜD); "Manufacturer" also means the registration
+    // allows manufacturing. Trade-show exhibitors are met face to face
+    // but not checked. The ranking ("Super Supplier") is a membership
+    // level and never counts here.
+    if supplier.source_platform == "globalsources" {
+        let badge = supplier.badge_honorific.as_deref().unwrap_or("");
+        let (value, signal_type, sub) = if badge.starts_with(GS_VERIFIED_PREFIX) {
+            let maker = if badge.to_lowercase().contains("manufacturer") {
+                ", and the registration allows it to manufacture"
+            } else {
+                ""
+            };
+            (
+                "Checked by Global Sources",
+                "good",
+                format!(
+                    "{} is a {} on Global Sources: its business registration was checked by an outside company (such as D&B or TÜV SÜD){}. This shows the company is registered, not that each order is safe, so still check the goods before you pay in full.",
+                    name, badge, maker
+                ),
+            )
+        } else if badge == GS_TRADE_SHOW_ONLY {
+            (
+                GS_TRADE_SHOW_ONLY,
+                "info",
+                format!(
+                    "{} exhibits at Global Sources trade shows, where Global Sources staff meet suppliers face to face, but its business registration has not been checked.",
+                    name
+                ),
+            )
+        } else {
+            (
+                "Unverified",
+                "caution",
+                format!(
+                    "{} has no Verified badge on Global Sources: its business registration has not been checked.",
                     name
                 ),
             )
@@ -1863,6 +1920,102 @@ fn join_names(names: &[&str]) -> String {
 /// A card Claude already flagged (full prepayment / untraceable) stays
 /// as it is.
 pub fn apply_risky_payment_note(signals: &mut [Signal], payment_methods: Option<&str>) {
+    risky_payment_note(signals, payment_methods);
+    apply_full_prepayment_terms(signals, payment_methods);
+}
+
+/// "30% deposit" / "30% in advance" / "30% T/T advance".
+static DEPOSIT_PART: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r"(\d{1,3})\s*%[^%.;\n]{0,40}?\b(?:deposit|advance|upfront|up front|down payment|prepay)",
+    )
+    .unwrap()
+});
+/// "70% balance before the shipment" / "100% before delivery".
+static BEFORE_SHIPMENT_PART: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r"(\d{1,3})\s*%[^%.;\n]{0,40}?\bbefore\s+(?:the\s+)?(?:shipment|shipping|delivery|loading|dispatch)",
+    )
+    .unwrap()
+});
+
+/// Ways to pay where the buyer keeps a hold on the money until the goods
+/// are shipped. When one is offered, the AI decides (the buyer can pick
+/// it), so the card is left as it is.
+const HOLD_METHODS: &[&str] = &[
+    "l/c",
+    "letter of credit",
+    "escrow",
+    "trade assurance",
+    "d/p",
+    "d/a",
+];
+
+/// The supplier's own terms that add up to the full price before
+/// shipment ("30% deposit, 70% balance before the shipment", "100% in
+/// advance"), as written. None when the terms leave part of the price
+/// until after shipment.
+fn full_prepayment_terms(text: &str) -> Option<String> {
+    let lower = text.to_lowercase();
+    let percent = |c: &regex::Captures| c[1].parse::<u32>().unwrap_or(0);
+    let before = BEFORE_SHIPMENT_PART.captures(&lower);
+    let deposit = DEPOSIT_PART.captures(&lower);
+    let found = match (&deposit, &before) {
+        (Some(d), Some(b)) if d.get(0)?.start() != b.get(0)?.start() => {
+            percent(d) + percent(b) == 100
+        }
+        (Some(only), _) | (None, Some(only)) => percent(only) == 100,
+        (None, None) => false,
+    };
+    if !found {
+        return None;
+    }
+    // The supplier's sentence, as it is shown on the page.
+    let start = [&deposit, &before]
+        .iter()
+        .filter_map(|c| c.as_ref().and_then(|c| c.get(0)).map(|m| m.start()))
+        .min()?;
+    let end = [&deposit, &before]
+        .iter()
+        .filter_map(|c| c.as_ref().and_then(|c| c.get(0)).map(|m| m.end()))
+        .max()?;
+    text.get(start..end).map(|t| t.trim().to_string())
+}
+
+/// The AI sometimes reads "30% deposit, 70% balance before the shipment"
+/// as normal and sometimes as full prepayment, so the same listing could
+/// score differently on two scans. The rule (see claude.rs) is that
+/// terms adding up to 100% before shipment are full prepayment, so when
+/// the supplier's own terms say so and no way to pay with a hold on the
+/// money (L/C, escrow...) is offered, the card always says so.
+pub fn apply_full_prepayment_terms(signals: &mut [Signal], payment_methods: Option<&str>) {
+    let Some(text) = payment_methods else {
+        return;
+    };
+    let lower = text.to_lowercase();
+    if HOLD_METHODS.iter().any(|m| lower.contains(m)) {
+        return;
+    }
+    let Some(terms) = full_prepayment_terms(text) else {
+        return;
+    };
+    let Some(card) = signals
+        .iter_mut()
+        .find(|s| s.label == "Advance payment request")
+    else {
+        return;
+    };
+    if card.value != "None found" {
+        return;
+    }
+    card.value = FULL_PREPAYMENT.to_string();
+    card.signal_type = "caution".to_string();
+    card.sub = format!(
+        "The supplier's terms are \"{terms}\": the full price is paid before the goods are shipped, so you have nothing held back if the goods are wrong. Ask to pay the balance against a copy of the bill of lading (B/L), or use a letter of credit (L/C) or escrow."
+    );
+}
+
+fn risky_payment_note(signals: &mut [Signal], payment_methods: Option<&str>) {
     let Some(text) = payment_methods else {
         return;
     };
@@ -2229,6 +2382,31 @@ mod b2b_signal_tests {
         assert_eq!(platform_display_name("newplatform"), "newplatform");
     }
 
+    #[test]
+    fn global_sources_verified_exhibitor_and_nothing() {
+        let gs = |badge: Option<&str>| B2bSupplierProfile {
+            company_name: Some("Huizhou Boxin Electronics Co., Ltd".into()),
+            source_platform: "globalsources".into(),
+            badge_honorific: badge.map(str::to_string),
+            ..Default::default()
+        };
+        let s = build_b2b_verification_signal(&gs(Some("Verified Manufacturer")));
+        assert_eq!(
+            (s.value.as_str(), s.signal_type.as_str()),
+            ("Checked by Global Sources", "good")
+        );
+        assert!(s.sub.contains("allows it to manufacture"));
+        let s = build_b2b_verification_signal(&gs(Some("Verified Supplier")));
+        assert!(!s.sub.contains("manufacture"));
+        let s = build_b2b_verification_signal(&gs(Some("Trade show exhibitor")));
+        assert_eq!(s.signal_type, "info");
+        let s = build_b2b_verification_signal(&gs(None));
+        assert_eq!(
+            (s.value.as_str(), s.signal_type.as_str()),
+            ("Unverified", "caution")
+        );
+    }
+
     fn mic_supplier(badge: Option<&str>) -> B2bSupplierProfile {
         B2bSupplierProfile {
             company_name: Some("Changzhou Nanyi Bearing Co., Ltd.".into()),
@@ -2452,6 +2630,44 @@ mod b2b_signal_tests {
         let mut s = none_found_card();
         apply_risky_payment_note(&mut s, None);
         assert_eq!(s[0].value, "None found");
+    }
+
+    #[test]
+    fn deposit_and_balance_before_shipment_is_always_full_prepayment() {
+        let terms = "Payment, in the supplier's own words: 1: we can accept T/T and Paypal , you can choose yourself. 2: 30% deposit, 70% balance before the shipment.";
+        let mut s = none_found_card();
+        apply_risky_payment_note(&mut s, Some(terms));
+        assert_eq!(
+            (s[0].value.as_str(), s[0].signal_type.as_str()),
+            (FULL_PREPAYMENT, "caution")
+        );
+        assert!(s[0].sub.starts_with(
+            "The supplier's terms are \"30% deposit, 70% balance before the shipment\""
+        ));
+        for full in [
+            "T/T 100% in advance",
+            "40% advance, 60% before shipment",
+            "100% before delivery",
+        ] {
+            let mut s = none_found_card();
+            apply_risky_payment_note(&mut s, Some(full));
+            assert_eq!(s[0].value, FULL_PREPAYMENT, "{full}");
+        }
+    }
+
+    #[test]
+    fn terms_that_keep_part_until_after_shipment_are_left_to_the_ai() {
+        for safe in [
+            "30% deposit, 70% against copy of B/L",
+            "30% deposit, 60% before shipment, 10% after arrival",
+            "T/T, PayPal",
+            "30% deposit, 70% balance before shipment, or L/C at sight",
+            "30% deposit, 70% before shipment; Trade Assurance",
+        ] {
+            let mut s = none_found_card();
+            apply_risky_payment_note(&mut s, Some(safe));
+            assert_eq!(s[0].value, "None found", "{safe}");
+        }
     }
 
     #[test]

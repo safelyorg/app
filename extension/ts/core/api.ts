@@ -33,8 +33,8 @@ interface AnalyzePayload {
   // The listing page as this browser shows it (see
   // BROWSER_PAGE_PLATFORMS and BROWSER_FIRST_PLATFORMS below).
   page_html?: string | null;
-  // Wholesale Central and Made-in-China: the supplier's page, loaded in
-  // this browser.
+  // Wholesale Central, Made-in-China and Global Sources: the supplier's
+  // page, loaded in this browser.
   company_page_html?: string | null;
 }
 interface SocialCandidateLink {
@@ -112,6 +112,7 @@ function formatPlatformName(platform: string | null | undefined): string {
     kompass: "Kompass",
     wholesalecentral: "Wholesale Central",
     madeinchina: "Made-in-China",
+    globalsources: "Global Sources",
   };
   return names[platform] || platform;
 }
@@ -125,6 +126,11 @@ function formatPlatformName(platform: string | null | undefined): string {
   // Same toggle, but for the actual website (not the /api/v1 path) -
   // kept as one source of truth alongside API_BASE.
   const SITE_BASE = SAFELY_ENV === "local" ? "http://localhost:3000" : "https://safely.sh";
+
+  // Calls to Safely's server go through the background script (see
+  // safelyFetch in scrapers/index.ts), so the website cannot block them.
+  const safelyFetch = (url: string, init?: RequestInit): Promise<Response> =>
+    ((window as any).__safelyFetch || fetch)(url, init);
 
   // Reads the session token auth-bridge.js relayed from the website.
   // Returns an empty object if the person isn't logged in.
@@ -155,7 +161,7 @@ function formatPlatformName(platform: string | null | undefined): string {
   // Platforms whose listing page is also sent from this browser, as a
   // BACKUP: Safely fetches the listing through ScraperAPI first and
   // reads this copy only if that fails. Must match
-  // BROWSER_PAGE_PLATFORMS in backend/src/services/b2b_scrapers/mod.rs.
+  // BROWSER_PAGE_PLATFORMS in backend/services/b2b_scrapers/mod.rs.
   const BROWSER_PAGE_PLATFORMS = ["alibaba"];
 
   // Platforms where this browser is the FIRST source: Safely reads the
@@ -163,9 +169,10 @@ function formatPlatformName(platform: string | null | undefined): string {
   // Wholesale Central's robot check blocks ScraperAPI, but this browser
   // has already passed it. Made-in-China's pages are plain HTML this
   // browser already has, which is faster and costs no ScraperAPI
-  // credits. Must match BROWSER_FIRST_PLATFORMS in
+  // credits. Global Sources: the same, and its supplier page is loaded
+  // by the background script. Must match BROWSER_FIRST_PLATFORMS in
   // backend/services/b2b_scrapers/mod.rs.
-  const BROWSER_FIRST_PLATFORMS = ["wholesalecentral", "madeinchina"];
+  const BROWSER_FIRST_PLATFORMS = ["wholesalecentral", "madeinchina", "globalsources"];
 
   // The most page text sent in one scan, so the request stays under the
   // server's size limit (2 MB, and the page text grows a little when it
@@ -203,7 +210,7 @@ function formatPlatformName(platform: string | null | undefined): string {
     analyze: async function (scrapedData: AnalyzePayload): Promise<AnalyzeResponse | null> {
       try {
         const authHeaders = await getAuthHeaders();
-        const response = await fetch(API_BASE + "/analyze", {
+        const response = await safelyFetch(API_BASE + "/analyze", {
           method: "POST",
           headers: Object.assign({ "Content-Type": "application/json" }, authHeaders),
           body: JSON.stringify(scrapedData),
@@ -251,7 +258,7 @@ function formatPlatformName(platform: string | null | undefined): string {
     getScanUsage: async function (): Promise<ScanUsage | null> {
       try {
         const authHeaders = await getAuthHeaders();
-        const response = await fetch(API_BASE + "/billing/subscription-status", {
+        const response = await safelyFetch(API_BASE + "/billing/subscription-status", {
           headers: authHeaders,
         });
         if (!response.ok) return null;
@@ -272,7 +279,7 @@ function formatPlatformName(platform: string | null | undefined): string {
     ): Promise<{ subs: string[]; descriptions: string[] } | null> {
       try {
         const authHeaders = await getAuthHeaders();
-        const response = await fetch(
+        const response = await safelyFetch(
           API_BASE +
             "/history/" +
             encodeURIComponent(analysisId) +
@@ -299,7 +306,7 @@ function formatPlatformName(platform: string | null | undefined): string {
     ): Promise<true | false | "unauthorized"> {
       try {
         const authHeaders = await getAuthHeaders();
-        const response = await fetch(API_BASE + "/outcomes", {
+        const response = await safelyFetch(API_BASE + "/outcomes", {
           method: "POST",
           headers: Object.assign({ "Content-Type": "application/json" }, authHeaders),
           body: JSON.stringify({ analysis_id: analysisId, action }),
@@ -320,7 +327,7 @@ function formatPlatformName(platform: string | null | undefined): string {
     // ): Promise<{ matched: boolean; matched_identifiers: string[]; confidence: string; message: string } | null> {
     //   try {
     //     const authHeaders = await getAuthHeaders();
-    //     const response = await fetch(API_BASE + "/verify-social-link", {
+    //     const response = await safelyFetch(API_BASE + "/verify-social-link", {
     //       method: "POST",
     //       headers: Object.assign({ "Content-Type": "application/json" }, authHeaders),
     //       body: JSON.stringify({ seller_id: sellerId, url }),
@@ -335,7 +342,7 @@ function formatPlatformName(platform: string | null | undefined): string {
     submitReport: async function (reportData: Record<string, unknown>): Promise<any> {
       try {
         const authHeaders = await getAuthHeaders();
-        const response = await fetch(API_BASE + "/report", {
+        const response = await safelyFetch(API_BASE + "/report", {
           method: "POST",
           headers: Object.assign({ "Content-Type": "application/json" }, authHeaders),
           body: JSON.stringify(reportData),
@@ -402,8 +409,9 @@ function formatPlatformName(platform: string | null | undefined): string {
       }
       // Alibaba: the page copy exactly as before. Wholesale Central:
       // only the page's data, plus the supplier's page on a product
-      // page. Made-in-China: the trimmed page, plus the supplier's page
-      // on a product page. Kept under MAX_PAGE_CHARS together.
+      // page. Made-in-China and Global Sources: the trimmed page, plus
+      // the supplier's page on a product page. Kept under MAX_PAGE_CHARS
+      // together.
       let pageHtml: string | null = null;
       let companyPageHtml: string | null = null;
       const scrapers = (window as any).__safelyScrapers;
@@ -422,6 +430,15 @@ function formatPlatformName(platform: string | null | undefined): string {
         if (pageHtml && pageHtml.length > MAX_PAGE_CHARS) pageHtml = null;
         if (pageHtml && scrapers.fetchMadeinchinaSupplierPage) {
           companyPageHtml = await scrapers.fetchMadeinchinaSupplierPage();
+          if (companyPageHtml && pageHtml.length + companyPageHtml.length > MAX_PAGE_CHARS) {
+            companyPageHtml = null;
+          }
+        }
+      } else if (browserFirst && platform === "globalsources" && scrapers.globalsourcesPageHtml) {
+        pageHtml = await scrapers.globalsourcesPageHtml();
+        if (pageHtml && pageHtml.length > MAX_PAGE_CHARS) pageHtml = null;
+        if (pageHtml && scrapers.fetchGlobalsourcesSupplierPage) {
+          companyPageHtml = await scrapers.fetchGlobalsourcesSupplierPage();
           if (companyPageHtml && pageHtml.length + companyPageHtml.length > MAX_PAGE_CHARS) {
             companyPageHtml = null;
           }
