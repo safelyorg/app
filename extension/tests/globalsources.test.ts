@@ -42,9 +42,28 @@ describe("Global Sources pages", () => {
     ).toBe(true);
   });
 
-  it("does not scan supplier, trade-show, list pages or other sites", () => {
+  it("scans a trade-show product page", () => {
+    expect(
+      scrapers.isGlobalsourcesScanUrl(
+        "https://www.globalsources.com/products/HK/angle-rock-0-40-degrees-and-2-heights-adjustable_1213293180/",
+      ),
+    ).toBe(true);
+    expect(
+      scrapers.isGlobalsourcesScanUrl(
+        "https://www.globalsources.com/products/hk/angle-rock-0-40-degrees-and-2-heights-adjustable_1213293180",
+      ),
+    ).toBe(true);
+  });
+
+  it("does not scan supplier, exhibitor, list pages or other sites", () => {
     expect(scrapers.isGlobalsourcesScanUrl(SUPPLIER)).toBe(false);
     expect(scrapers.isGlobalsourcesScanUrl("https://www.globalsources.com/")).toBe(false);
+    expect(
+      scrapers.isGlobalsourcesScanUrl(
+        "https://www.globalsources.com/exhibitors/HK/anhui-dujia-office-supplies-manufacturing-co-ltd_2008801135123/",
+      ),
+    ).toBe(false);
+    expect(scrapers.isGlobalsourcesScanUrl("https://www.globalsources.com/products/HK/")).toBe(false);
     expect(
       scrapers.isGlobalsourcesScanUrl("https://www.globalsources.com/products/HK/earbuds-1231057850p.htm"),
     ).toBe(false);
@@ -94,6 +113,47 @@ describe("Global Sources page copy", () => {
     const copy = scrapers.globalsourcesTrimmed(raw, new DOMParser().parseFromString(raw, "text/html"));
     expect(copy).not.toContain("x-safely-data");
     expect(copy).not.toContain("track()");
+  });
+});
+
+describe("Global Sources trade-show pages", () => {
+  // Nuxt's page data: index 0 wraps 1; every field is the number of
+  // another entry.
+  const nuxt = JSON.stringify([
+    ["ShallowReactive", 1],
+    { data: 2, state: 9 },
+    ["ShallowReactive", 3],
+    { exhibitorProductDetail: 4 },
+    { data: 5 },
+    { supplierInfo: 6 },
+    { supplierId: 7, companyName: 8 },
+    2008801135123,
+    "Anhui Dujia Office Supplies Manufacturing Co.,Ltd",
+    { userEmail: 10 },
+    "buyer@example.com",
+  ]);
+  const raw =
+    '<html><body><h1>Angle rock</h1><script>track()</script>' +
+    '<script type="application/json" id="__NUXT_DATA__">' + nuxt + "</script></body></html>";
+  const PRODUCT = "https://www.globalsources.com/products/HK/angle-rock_1213293180/";
+
+  it("finds the supplier's exhibitor page", () => {
+    const doc = new DOMParser().parseFromString(raw, "text/html");
+    expect(scrapers.globalsourcesExhibitorUrl(doc, PRODUCT)).toBe(
+      "https://www.globalsources.com/exhibitors/HK/anhui-dujia-office-supplies-manufacturing-co-ltd_2008801135123/",
+    );
+  });
+
+  it("keeps only the product and supplier data, not the visitor's own data", () => {
+    const copy = scrapers.globalsourcesTrimmed(raw, new DOMParser().parseFromString(raw, "text/html"));
+    expect(copy).toContain('id="__NUXT_DATA__"');
+    expect(copy).toContain("Anhui Dujia Office Supplies Manufacturing Co.,Ltd");
+    expect(copy).toContain("2008801135123");
+    expect(copy).not.toContain("buyer@example.com");
+    expect(copy).not.toContain("track()");
+    // The copy can be read back the same way.
+    const again = new DOMParser().parseFromString(copy, "text/html");
+    expect(scrapers.globalsourcesExhibitorUrl(again, PRODUCT)).toContain("_2008801135123/");
   });
 });
 

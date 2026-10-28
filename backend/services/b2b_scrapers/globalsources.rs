@@ -1,11 +1,18 @@
 //! Global Sources (globalsources.com): Asian suppliers, many US buyers.
 //!
-//! Only product pages are scanned:
+//! Two sites, both read here (the trade-show one in
+//! globalsources_show.rs):
+//! - the marketplace (below);
+//! - the Hong Kong trade-show site: product pages
+//!   (/products/HK/{name}_{id}/) are scanned and the supplier's
+//!   exhibitor page (/exhibitors/HK/{company}_{id}/) is read with them.
+//!
+//! Marketplace: only product pages are scanned:
 //! https://www.globalsources.com/{category}/{name}-{id}p.htm
 //! The supplier's own page (https://{shop}.manufacturer.globalsources.com/
 //! homepage_{id}.htm) is read as well, for its founding year, ranking
 //! and profile, but is never scanned on its own. The trade-show pages
-//! (/products/HK/..., /exhibitors/HK/...) are not scanned.
+//! (/products/HK/..., /exhibitors/HK/...) are read by globalsources_show.rs.
 //!
 //! Everything is in the page's plain HTML:
 //! - the product: the schema.org "Product" data (name, price range),
@@ -26,6 +33,10 @@
 //! - "O2O Supported": exhibits at Global Sources trade shows;
 //! - the ranking ("Super Supplier", "Premier Supplier"...): the
 //!   supplier's level with Global Sources, not a check on the company.
+
+// The trade-show reader, in globalsources_show.rs next to this file.
+#[path = "globalsources_show.rs"]
+mod show;
 
 use super::{B2bListingProfile, B2bScraper, B2bSupplierProfile, SupplierRecord};
 use regex::Regex;
@@ -825,16 +836,59 @@ fn payment_notes(own_text: &[String]) -> Vec<String> {
     notes
 }
 
+/// Adds what the exhibitor page gives and the product page did not
+/// (it usually repeats the same supplier record): only missing fields
+/// and new description lines.
+fn enrich_from_exhibitor_page(
+    mut supplier: B2bSupplierProfile,
+    page: &show::ShowPage,
+) -> B2bSupplierProfile {
+    let more = page.supplier_profile(&supplier.profile_url);
+    if supplier.company_name.is_none() {
+        supplier.company_name = more.company_name;
+    }
+    if supplier.year_established.is_none() {
+        supplier.year_established = more.year_established;
+    }
+    if supplier.country.is_none() {
+        supplier.country = more.country;
+    }
+    if supplier.logo_url.is_none() {
+        supplier.logo_url = more.logo_url;
+    }
+    supplier.platform_verified_badge |= more.platform_verified_badge;
+    if supplier.badge_honorific.is_none() {
+        supplier.badge_honorific = more.badge_honorific;
+    }
+    let mut description = supplier.company_description.take().unwrap_or_default();
+    for line in more.company_description.unwrap_or_default().lines() {
+        if !description.lines().any(|l| l == line) {
+            if !description.is_empty() {
+                description.push('\n');
+            }
+            description.push_str(line);
+        }
+    }
+    supplier.company_description = (!description.is_empty()).then_some(description);
+    supplier
+}
+
 impl B2bScraper for GlobalsourcesScraper {
     fn matches_platform(&self, platform: &str) -> bool {
         platform == PLATFORM
     }
 
     fn parse_supplier(&self, html: &str, profile_url: &str) -> B2bSupplierProfile {
+        if let Some(page) = show::read(html) {
+            return page.supplier_profile(profile_url);
+        }
         supplier_from(&read_page(html), profile_url)
     }
 
     fn parse_listing(&self, html: &str, listing_url: &str) -> B2bListingProfile {
+        if let Some(page) = show::read(html) {
+            return page.listing(listing_url);
+        }
         let facts = read_page(html);
         let document = Html::parse_document(html);
         let data = page_data(&document);
@@ -972,6 +1026,12 @@ impl B2bScraper for GlobalsourcesScraper {
 
     /// The supplier's page, linked from the product page.
     fn extract_company_profile_url(&self, listing_html: &str) -> Option<String> {
+        if let Some(page) = show::read(listing_html) {
+            return page
+                .is_product_page()
+                .then(|| page.exhibitor_url())
+                .flatten();
+        }
         let facts = read_page(listing_html);
         if facts.is_product_page {
             facts.company_url
@@ -983,6 +1043,9 @@ impl B2bScraper for GlobalsourcesScraper {
     /// The supplier's site, e.g. "yongfang.manufacturer.globalsources.com":
     /// the same on its own page and on every product it sells.
     fn company_key(&self, listing_html: &str) -> Option<String> {
+        if let Some(page) = show::read(listing_html) {
+            return page.company_key();
+        }
         read_page(listing_html)
             .company_url
             .as_deref()
@@ -990,6 +1053,9 @@ impl B2bScraper for GlobalsourcesScraper {
     }
 
     fn supplier_record(&self, listing_html: &str) -> Option<SupplierRecord> {
+        if let Some(page) = show::read(listing_html) {
+            return page.record();
+        }
         record_from(&read_page(listing_html))
     }
 
@@ -1001,6 +1067,9 @@ impl B2bScraper for GlobalsourcesScraper {
         mut supplier: B2bSupplierProfile,
         profile_html: &str,
     ) -> B2bSupplierProfile {
+        if let Some(page) = show::read(profile_html) {
+            return enrich_from_exhibitor_page(supplier, &page);
+        }
         let f = read_page(profile_html);
         if supplier.company_name.is_none() {
             supplier.company_name = f.company_name.clone();
@@ -1056,12 +1125,28 @@ impl B2bScraper for GlobalsourcesScraper {
         supplier
     }
 
+    /// Trade-show product pages show no price: it comes from the
+    /// exhibitor page's product list.
+    fn enrich_listing_from_company_profile(
+        &self,
+        mut listing: B2bListingProfile,
+        profile_html: &str,
+    ) -> B2bListingProfile {
+        if let Some(page) = show::read(profile_html) {
+            page.add_price(&mut listing);
+        }
+        listing
+    }
+
     fn enrich_record_from_company_profile(
         &self,
         record: Option<SupplierRecord>,
         profile_html: &str,
     ) -> Option<SupplierRecord> {
-        let page = record_from(&read_page(profile_html));
+        let page = match show::read(profile_html) {
+            Some(show_page) => show_page.record(),
+            None => record_from(&read_page(profile_html)),
+        };
         match (record, page) {
             (None, page) => page,
             (Some(r), None) => Some(r),

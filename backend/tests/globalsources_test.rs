@@ -318,3 +318,188 @@ fn the_supplier_page_data_fills_a_missing_website() {
         1
     );
 }
+
+// ---- Hong Kong trade-show pages ----------------------------------------
+
+/// Nuxt's page data format: a flat list where each object field and
+/// list item is the number of another entry.
+fn nuxt_data(value: &serde_json::Value) -> String {
+    use serde_json::Value;
+    fn add(items: &mut Vec<Value>, v: &Value) -> usize {
+        let at = items.len();
+        items.push(Value::Null);
+        let item = match v {
+            Value::Object(fields) => {
+                let mut out = serde_json::Map::new();
+                for (k, child) in fields {
+                    let i = add(items, child);
+                    out.insert(k.clone(), Value::from(i));
+                }
+                Value::Object(out)
+            }
+            Value::Array(list) => Value::Array(
+                list.iter()
+                    .map(|child| Value::from(add(items, child)))
+                    .collect(),
+            ),
+            other => other.clone(),
+        };
+        items[at] = item;
+        at
+    }
+    let mut items = vec![serde_json::json!(["ShallowReactive", 1])];
+    add(&mut items, &serde_json::json!({ "data": value }));
+    serde_json::to_string(&items).unwrap()
+}
+
+fn show_page(data: serde_json::Value) -> String {
+    page(
+        "<title>Global Sources Hong Kong Shows</title>",
+        &format!(
+            r#"<a href="https://www.globalsources.com/products/HK/">Product List</a>
+            <script type="application/json" data-nuxt-data="nuxt-app" id="__NUXT_DATA__">{}</script>"#,
+            nuxt_data(&data)
+        ),
+    )
+}
+
+fn dujia(checked: bool) -> serde_json::Value {
+    serde_json::json!({
+        "supplierId": 2008801135123u64,
+        "companyName": "Anhui Dujia Office Supplies Manufacturing Co.,Ltd",
+        "country": "China",
+        "logoImageUrl": "https://s.globalsources.com/IMAGES/SPL/LOGO/123/L8801135123.jpg",
+        "orgDesc": "<p><strong>Years of experience</strong><br/>Anhui Dujia Office Supplies Manufacturing Co.,Ltd., established in 2021, is the new production base of Cixi Dujia.</p>",
+        "obmFlag": true, "odmFlag": true, "oemFlag": true,
+        "businessTypes": ["Exporter", "Manufacturer"],
+        "tradeShowList": [{"tsName": "Global Sources Consumer Electronics", "boothNum": "10T37",
+            "showVenue": "AsiaWorld-Expo, Hong Kong", "hall": "10", "showDate": "11-14 October, 2026"}],
+        "categoryNames": ["Computer footrests"],
+        "businessTypeList": [
+            {"businessType": "Exporter", "verifiedFlag": checked, "vendorName": "Addcredit"},
+            {"businessType": "Manufacturer", "verifiedFlag": checked, "vendorName": "Addcredit"}
+        ]
+    })
+}
+
+const SHOW_PRODUCT_URL: &str = "https://www.globalsources.com/products/HK/angle-rock-0-40-degrees-and-2-heights-adjustable_1213293180/";
+
+fn show_product(checked: bool) -> String {
+    show_page(serde_json::json!({
+        "exhibitorProductDetail": {"code": 200, "data": {
+            "productInfo": {
+                "productId": 1213293180u64, "supplierId": 2008801135123u64,
+                "productName": "Angle rock 0-40 degrees and 2 heights adjustable",
+                "modelNumber": "F8039", "brandName": "", "smallOrderAcceptFlag": true,
+                "productOutline": "<p>Angle adjustable footrest</p><p>Ergonomically designed.</p>",
+                "productPrimaryImage": {"largeImageUrl": "https://p.globalsources.com/IMAGES/PDT/L1213293180/a.jpg"},
+                "productAddlImageList": []
+            },
+            "supplierInfo": dujia(checked)
+        }}
+    }))
+}
+
+fn show_exhibitor() -> String {
+    show_page(serde_json::json!({
+        "ExhibitorDetail": [
+            {"status": "fulfilled", "value": {"code": 200, "data": dujia(true)}},
+            {"status": "fulfilled", "value": {"code": 200, "data": [
+                {"productId": 1213293193u64, "productFOBMin": "5.00", "productFOBMax": "5.00",
+                 "minOrderQuantity": 1000, "minOrderUnit": "Pieces"},
+                {"productId": 1213293180u64, "productFOBMin": "3.90", "productFOBMax": "3.90",
+                 "minOrderQuantity": 1000, "minOrderUnit": "Pieces"}
+            ]}},
+            {"status": "fulfilled", "value": null}
+        ]
+    }))
+}
+
+#[test]
+fn a_trade_show_product_page_gives_the_product_and_the_supplier() {
+    let scraper = get_scraper_for_platform("globalsources").unwrap();
+    let l = scraper.parse_listing(&show_product(true), SHOW_PRODUCT_URL);
+    assert_eq!(
+        l.title.as_deref(),
+        Some("Angle rock 0-40 degrees and 2 heights adjustable")
+    );
+    assert_eq!(l.reference.as_deref(), Some("F8039"));
+    assert_eq!(l.image_urls.len(), 1);
+    assert_eq!(l.unit_price, None, "the price is on the exhibitor page");
+    let d = l.description.unwrap();
+    assert!(d.contains("Model Number: F8039; Small Orders: Accepted."));
+    assert!(d.contains("Angle adjustable footrest Ergonomically designed."));
+
+    let s = scraper.parse_supplier(&show_product(true), SHOW_PRODUCT_URL);
+    assert_eq!(
+        s.company_name.as_deref(),
+        Some("Anhui Dujia Office Supplies Manufacturing Co.,Ltd")
+    );
+    assert_eq!(s.year_established.as_deref(), Some("2021"));
+    assert_eq!(s.badge_honorific.as_deref(), Some("Verified Manufacturer"));
+    assert!(s.platform_verified_badge);
+    assert_eq!(s.website_url, None);
+    let d = s.company_description.unwrap();
+    assert!(d.contains(
+        "Business type: Exporter, Manufacturer (each checked by Addcredit, an outside company used by Global Sources)."
+    ));
+    assert!(d.contains("Hall 10, Booth 10T37, 11-14 October, 2026"));
+    assert!(d.contains("Services: OEM, ODM, OBM."));
+}
+
+#[test]
+fn the_exhibitor_page_is_found_and_gives_the_price() {
+    let scraper = get_scraper_for_platform("globalsources").unwrap();
+    assert_eq!(
+        scraper
+            .extract_company_profile_url(&show_product(true))
+            .as_deref(),
+        Some(
+            "https://www.globalsources.com/exhibitors/HK/anhui-dujia-office-supplies-manufacturing-co-ltd_2008801135123/"
+        )
+    );
+    assert_eq!(scraper.extract_company_profile_url(&show_exhibitor()), None);
+    assert_eq!(
+        scraper.company_key(&show_product(true)),
+        scraper.company_key(&show_exhibitor())
+    );
+    let l = scraper.enrich_listing_from_company_profile(
+        scraper.parse_listing(&show_product(true), SHOW_PRODUCT_URL),
+        &show_exhibitor(),
+    );
+    assert_eq!(l.unit_price.as_deref(), Some("US$ 3.90"));
+    assert_eq!(l.minimum_order_quantity.as_deref(), Some("1000 Pieces"));
+    assert_eq!(l.incoterms.as_deref(), Some("FOB"));
+    assert_eq!(scraper.parse_listing(&show_exhibitor(), "u").title, None);
+}
+
+#[test]
+fn an_unchecked_exhibitor_has_no_verified_badge() {
+    let scraper = get_scraper_for_platform("globalsources").unwrap();
+    let s = scraper.parse_supplier(&show_product(false), SHOW_PRODUCT_URL);
+    assert!(!s.platform_verified_badge);
+    assert_eq!(s.badge_honorific, None);
+    assert!(!s.company_description.unwrap().contains("Addcredit"));
+}
+
+#[tokio::test]
+async fn a_trade_show_scan_reads_both_pages_from_the_browser() {
+    unsafe {
+        std::env::set_var("SCRAPERAPI_KEY", "k");
+    }
+    let page = b2b_page_from_browser_first(
+        "globalsources",
+        SHOW_PRODUCT_URL,
+        Some(&show_product(true)),
+        Some(&show_exhibitor()),
+    )
+    .await
+    .expect("read from the browser");
+    assert!(!page.company_page_missing);
+    assert_eq!(page.listing.unit_price.as_deref(), Some("US$ 3.90"));
+    assert_eq!(
+        page.company_key.as_deref(),
+        Some("globalsources-exhibitor-2008801135123")
+    );
+    assert!(page.record.unwrap().checked_by_platform);
+}

@@ -211,7 +211,7 @@ fn platform_facts(platform: &str) -> Option<&'static str> {
             "uses \"Diamond Member\" and \"Gold Member\", which are paid membership levels, not a check on the company. Its own checks are an on-site audit by an outside company (TÜV Rheinland, SGS) and a check of the business licence",
         ),
         "globalsources" => Some(
-            "shows \"Verified Supplier\" or \"Verified Manufacturer\" when an outside company (such as D&B or TÜV SÜD) checked the business registration. Its rankings (\"Super Supplier\", \"Premier Supplier\") are membership levels, not a check on the company. \"Years with Global Sources\" is how long the company has been on Global Sources, not when it was founded",
+            "shows \"Verified Supplier\" or \"Verified Manufacturer\" when an outside company (such as D&B or TÜV SÜD) checked the business registration. Its rankings (\"Super Supplier\", \"Premier Supplier\") are membership levels, not a check on the company. \"Years with Global Sources\" is how long the company has been on Global Sources, not when it was founded. On its Hong Kong trade-show pages, a business type marked as checked was checked by Addcredit, an outside company, and \"exhibitor\" means the supplier rents a booth at Global Sources' fairs in Hong Kong",
         ),
         _ => None,
     }

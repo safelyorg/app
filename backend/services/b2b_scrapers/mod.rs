@@ -141,6 +141,16 @@ pub trait B2bScraper: Send + Sync {
     fn supplier_record(&self, _listing_html: &str) -> Option<SupplierRecord> {
         None
     }
+    /// Adds what only the company's own page shows about the listing
+    /// (Global Sources trade-show pages: the price and minimum order).
+    /// Default: unchanged.
+    fn enrich_listing_from_company_profile(
+        &self,
+        listing: B2bListingProfile,
+        _profile_html: &str,
+    ) -> B2bListingProfile {
+        listing
+    }
     /// Adds what the company's own page shows (certificates, products)
     /// to the record from supplier_record. Default: unchanged.
     fn enrich_record_from_company_profile(
@@ -375,7 +385,7 @@ pub async fn fetch_b2b_page(platform: &str, page_url: &str) -> Option<B2bPageRes
     }
 
     let mut supplier = scraper.parse_supplier(&html, page_url);
-    let listing = scraper.parse_listing(&html, page_url);
+    let mut listing = scraper.parse_listing(&html, page_url);
     let company_key = scraper.company_key(&html);
     let company_url = scraper.extract_company_profile_url(&html);
     let mut record = scraper.supplier_record(&html);
@@ -396,6 +406,7 @@ pub async fn fetch_b2b_page(platform: &str, page_url: &str) -> Option<B2bPageRes
         page_url,
         &html,
         &mut supplier,
+        &mut listing,
         &mut record,
     )
     .await;
@@ -472,6 +483,7 @@ async fn enrich_from_profile_pages(
     listing_url: &str,
     listing_html: &str,
     supplier: &mut B2bSupplierProfile,
+    listing: &mut B2bListingProfile,
     record: &mut Option<SupplierRecord>,
 ) -> bool {
     let mut all_loaded = true;
@@ -485,6 +497,8 @@ async fn enrich_from_profile_pages(
                 take_and_replace(supplier, |s| {
                     scraper.enrich_from_company_profile(s, &profile_html)
                 });
+                let current = std::mem::take(listing);
+                *listing = scraper.enrich_listing_from_company_profile(current, &profile_html);
                 *record = scraper.enrich_record_from_company_profile(record.take(), &profile_html);
             }
             CompanyPage::Blocked => {
@@ -596,7 +610,7 @@ pub async fn b2b_page_from_browser(
     }
 
     let mut supplier = scraper.parse_supplier(html, page_url);
-    let listing = scraper.parse_listing(html, page_url);
+    let mut listing = scraper.parse_listing(html, page_url);
     if supplier.company_name.is_none() && listing.title.is_none() {
         eprintln!(
             "Safely: nothing readable in the {} page from the browser ({} bytes)",
@@ -615,6 +629,7 @@ pub async fn b2b_page_from_browser(
         page_url,
         html,
         &mut supplier,
+        &mut listing,
         &mut record,
     )
     .await;
@@ -711,7 +726,7 @@ pub async fn b2b_page_from_browser_first(
     }
 
     let mut supplier = scraper.parse_supplier(html, page_url);
-    let listing = scraper.parse_listing(html, page_url);
+    let mut listing = scraper.parse_listing(html, page_url);
     if supplier.company_name.is_none() && listing.title.is_none() {
         eprintln!(
             "Safely: nothing readable in the {} page from the browser ({} bytes) - fetching it through ScraperAPI",
@@ -736,6 +751,7 @@ pub async fn b2b_page_from_browser_first(
                 take_and_replace(&mut supplier, |s| {
                     scraper.enrich_from_company_profile(s, company_html)
                 });
+                listing = scraper.enrich_listing_from_company_profile(listing, company_html);
                 record = scraper.enrich_record_from_company_profile(record.take(), company_html);
                 false
             }
@@ -754,6 +770,7 @@ pub async fn b2b_page_from_browser_first(
                     page_url,
                     html,
                     &mut supplier,
+                    &mut listing,
                     &mut record,
                 )
                 .await

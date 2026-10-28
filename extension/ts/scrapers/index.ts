@@ -286,12 +286,12 @@ type DomainCheckResult = LegitimateDomainResult | SuspiciousDomainResult | null;
     return /^[a-z0-9-]+\.en\.made-in-china\.com$/.test(host) && !host.startsWith("www.");
   }
 
-  /// A Global Sources product page Safely scans
-  /// (www.globalsources.com/TWS-earbud/tws-earbud-1231057850p.htm).
-  /// Supplier pages are not scanned on their own: the scan of a product
-  /// page also reads its supplier's page. Trade-show pages
-  /// (/products/HK/..., /exhibitors/...) are a different site and are
-  /// not scanned.
+  /// A Global Sources product page Safely scans:
+  /// - marketplace: www.globalsources.com/TWS-earbud/tws-earbud-1231057850p.htm
+  /// - Hong Kong trade show: www.globalsources.com/products/HK/angle-rock-..._1213293180/
+  /// Supplier pages (the marketplace supplier page, the trade-show
+  /// exhibitor page /exhibitors/HK/...) are not scanned on their own:
+  /// the scan of a product page also reads its supplier's page.
   function isGlobalsourcesScanUrl(url: string): boolean {
     let u: URL;
     try {
@@ -301,8 +301,14 @@ type DomainCheckResult = LegitimateDomainResult | SuspiciousDomainResult | null;
     }
     const host = u.hostname.toLowerCase();
     if (host !== "www.globalsources.com" && host !== "globalsources.com") return false;
+    if (isGlobalsourcesShowProductPath(u.pathname)) return true;
     if (/^\/(products|exhibitors)\//i.test(u.pathname)) return false;
     return /^\/[^/]+\/[^/]+-\d+p\.htm$/i.test(u.pathname);
+  }
+
+  /// A trade-show product page: /products/HK/{name}_{id}/.
+  function isGlobalsourcesShowProductPath(path: string): boolean {
+    return /^\/products\/[a-z]{2}\/[^/]+_\d+\/?$/i.test(path);
   }
 
   /// A Global Sources supplier's page:
@@ -392,7 +398,7 @@ type DomainCheckResult = LegitimateDomainResult | SuspiciousDomainResult | null;
       requiresClientSideScraping: false,
       isListingUrl: isGlobalsourcesScanUrl,
       nonListingMessage:
-        "Safely checks product pages on Global Sources. Open a product to scan it - Safely also reads the supplier's page for you.",
+        "Safely checks product pages on Global Sources, on the marketplace and on its trade-show pages. Open a product to scan it - Safely also reads the supplier's page for you.",
     },
   ];
 
@@ -646,13 +652,101 @@ type DomainCheckResult = LegitimateDomainResult | SuspiciousDomainResult | null;
     return '<script type="text/x-safely-data">' + safe + "</script>";
   }
 
-  /// A trimmed Global Sources page plus its contact data block.
+  /// One value from Nuxt's page data (the "__NUXT_DATA__" script of the
+  /// trade-show pages): a flat list where every object field and list
+  /// item is the number of another entry; ["Reactive", n] and the like
+  /// wrap a value.
+  function nuxtValue(items: any[], index: any, depth: number): any {
+    if (typeof index !== "number" || index < 0 || depth > 60) return index ?? null;
+    const item = items[index];
+    if (Array.isArray(item)) {
+      if (typeof item[0] === "string") return item.length > 1 ? nuxtValue(items, item[1], depth + 1) : null;
+      return item.map((v) => nuxtValue(items, v, depth + 1));
+    }
+    if (item && typeof item === "object") {
+      const out: Record<string, any> = {};
+      for (const key of Object.keys(item)) out[key] = nuxtValue(items, item[key], depth + 1);
+      return out;
+    }
+    return item;
+  }
+
+  /// The trade-show page's own data: the product and supplier
+  /// ("exhibitorProductDetail") or the supplier and its products with
+  /// prices ("ExhibitorDetail"). null on other pages.
+  function globalsourcesShowData(doc: Document): Record<string, any> | null {
+    const script = doc.querySelector("script#__NUXT_DATA__");
+    if (!script) return null;
+    try {
+      const items = JSON.parse(script.textContent || "");
+      const data = nuxtValue(items, 0, 0)?.data || {};
+      const out: Record<string, any> = {};
+      if (data.exhibitorProductDetail) out.exhibitorProductDetail = data.exhibitorProductDetail;
+      if (data.ExhibitorDetail) out.ExhibitorDetail = data.ExhibitorDetail;
+      return Object.keys(out).length ? out : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /// Nuxt's page data format again, for only the parts Safely reads, so
+  /// nothing else from the page data (the visitor's own account, for
+  /// example) is sent.
+  function nuxtDataScript(data: Record<string, any>): string {
+    const items: any[] = [["ShallowReactive", 1]];
+    const add = (v: any): number => {
+      const at = items.length;
+      items.push(null);
+      if (Array.isArray(v)) items[at] = v.map(add);
+      else if (v && typeof v === "object") {
+        const fields: Record<string, number> = {};
+        for (const key of Object.keys(v)) fields[key] = add(v[key]);
+        items[at] = fields;
+      } else items[at] = v ?? null;
+      return at;
+    };
+    add({ data });
+    const json = JSON.stringify(items).replace(/</g, "\\u003c");
+    return '<script type="application/json" id="__NUXT_DATA__">' + json + "</script>";
+  }
+
+  /// A trimmed Global Sources page plus the small data blocks Safely
+  /// reads: the contact block (marketplace) or the product and supplier
+  /// data (trade show).
   function globalsourcesTrimmed(rawHtml: string, doc: Document): string {
+    const show = globalsourcesShowData(doc);
     const trimmed = madeinchinaTrimmed(doc);
-    const data = globalsourcesContactData(rawHtml);
+    const data = globalsourcesContactData(rawHtml) + (show ? nuxtDataScript(show) : "");
     if (!data) return trimmed;
     const end = trimmed.lastIndexOf("</body>");
     return end === -1 ? trimmed + data : trimmed.slice(0, end) + data + trimmed.slice(end);
+  }
+
+  /// "Anhui Dujia Office Supplies Manufacturing Co.,Ltd" ->
+  /// "anhui-dujia-office-supplies-manufacturing-co-ltd". Must match slug
+  /// in backend globalsources/show.rs.
+  function globalsourcesSlug(name: string): string {
+    return name
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "");
+  }
+
+  /// On a trade-show product page: the supplier's exhibitor page,
+  /// "https://www.globalsources.com/exhibitors/HK/{company}_{supplier id}/".
+  function globalsourcesExhibitorUrl(doc: Document, pageUrl: string): string | null {
+    const supplier = globalsourcesShowData(doc)?.exhibitorProductDetail?.data?.supplierInfo;
+    if (!supplier || !supplier.supplierId || !supplier.companyName) return null;
+    const show = (new URL(pageUrl).pathname.match(/^\/products\/([a-z]{2})\//i) || [])[1] || "HK";
+    return (
+      "https://www.globalsources.com/exhibitors/" +
+      show.toUpperCase() +
+      "/" +
+      globalsourcesSlug(String(supplier.companyName)) +
+      "_" +
+      String(supplier.supplierId) +
+      "/"
+    );
   }
 
   /// The Global Sources product page the buyer is on, exactly as the site
@@ -730,6 +824,21 @@ type DomainCheckResult = LegitimateDomainResult | SuspiciousDomainResult | null;
   /// not be loaded; then Safely's server loads it instead.
   async function fetchGlobalsourcesSupplierPage(): Promise<string | null> {
     if (!isGlobalsourcesScanUrl(window.location.href)) return null;
+    // Trade show: the exhibitor page is on this same address, so it is
+    // loaded from here.
+    if (isGlobalsourcesShowProductPath(window.location.pathname)) {
+      const exhibitor = globalsourcesExhibitorUrl(document, window.location.href);
+      if (!exhibitor) return null;
+      try {
+        const response = await fetch(exhibitor, { credentials: "include" });
+        if (!response.ok) return null;
+        const html = await response.text();
+        return globalsourcesTrimmed(html, new DOMParser().parseFromString(html, "text/html"));
+      } catch (e) {
+        console.error("Safely: failed to load the Global Sources exhibitor page", e);
+        return null;
+      }
+    }
     const url = globalsourcesSupplierUrl(document);
     if (!url) return null;
     const response = await askBackground({ type: "SAFELY_FETCH_SUPPLIER_PAGE", url }, 20000);
@@ -751,5 +860,6 @@ type DomainCheckResult = LegitimateDomainResult | SuspiciousDomainResult | null;
   (window as any).__safelyScrapers.globalsourcesPageHtml = globalsourcesPageHtml;
   (window as any).__safelyScrapers.globalsourcesSupplierUrl = globalsourcesSupplierUrl;
   (window as any).__safelyScrapers.globalsourcesTrimmed = globalsourcesTrimmed;
+  (window as any).__safelyScrapers.globalsourcesExhibitorUrl = globalsourcesExhibitorUrl;
   (window as any).__safelyScrapers.fetchGlobalsourcesSupplierPage = fetchGlobalsourcesSupplierPage;
 })();

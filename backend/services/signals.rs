@@ -469,7 +469,7 @@ pub fn build_b2b_verification_signal(supplier: &B2bSupplierProfile) -> Signal {
                 "Checked by Global Sources",
                 "good",
                 format!(
-                    "{} is a {} on Global Sources: its business registration was checked by an outside company (such as D&B or TÜV SÜD){}. This shows the company is registered, not that each order is safe, so still check the goods before you pay in full.",
+                    "{} is a {} on Global Sources: its business registration was checked by an outside company (such as D&B, TÜV SÜD or Addcredit){}. This shows the company is registered, not that each order is safe, so still check the goods before you pay in full.",
                     name, badge, maker
                 ),
             )
