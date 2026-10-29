@@ -81,9 +81,18 @@ function formatPlatformName(platform) {
     // by the background script. Alibaba: ScraperAPI took close to a minute
     // and was often shown "Product Not Available"; the product page is
     // sent from here, and the company page is loaded by the background
-    // script. Must match BROWSER_FIRST_PLATFORMS in
+    // script. Kompass: its robot check blocks ScraperAPI and any page
+    // loaded again without cookies, but this tab has passed it; the
+    // product page is copied from the tab and the company page is loaded
+    // with the buyer's cookies. Must match BROWSER_FIRST_PLATFORMS in
     // backend/services/b2b_scrapers/mod.rs.
-    const BROWSER_FIRST_PLATFORMS = ["wholesalecentral", "madeinchina", "globalsources", "alibaba"];
+    const BROWSER_FIRST_PLATFORMS = [
+        "wholesalecentral",
+        "madeinchina",
+        "globalsources",
+        "alibaba",
+        "kompass",
+    ];
     // The most page text sent in one scan, so the request stays under the
     // server's size limit (2 MB, and the page text grows a little when it
     // is sent). A page over it is not sent, and Safely fetches it through
@@ -358,6 +367,17 @@ function formatPlatformName(platform) {
                 pageHtml = pageHtmlForSafely();
                 if (pageHtml && scrapers.fetchAlibabaCompanyPage) {
                     companyPageHtml = await scrapers.fetchAlibabaCompanyPage();
+                    if (companyPageHtml && pageHtml.length + companyPageHtml.length > MAX_PAGE_CHARS) {
+                        companyPageHtml = null;
+                    }
+                }
+            }
+            else if (browserFirst && platform === "kompass" && scrapers.kompassPageHtml) {
+                pageHtml = scrapers.kompassPageHtml();
+                if (pageHtml && pageHtml.length > MAX_PAGE_CHARS)
+                    pageHtml = null;
+                if (pageHtml && scrapers.fetchKompassCompanyPage) {
+                    companyPageHtml = await scrapers.fetchKompassCompanyPage();
                     if (companyPageHtml && pageHtml.length + companyPageHtml.length > MAX_PAGE_CHARS) {
                         companyPageHtml = null;
                     }

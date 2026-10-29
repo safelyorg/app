@@ -919,6 +919,73 @@ type DomainCheckResult = LegitimateDomainResult | SuspiciousDomainResult | null;
     }
   }
 
+  /// A Kompass company page: "https://www.kompass.com/c/{name}/{id}/"
+  /// (other country sites like fr.kompass.com too).
+  const KOMPASS_COMPANY_PAGE = /^https:\/\/[a-z]+\.kompass\.com\/c\/[^/?#]+\/[a-z0-9]+\/$/;
+
+  /// Kompass's robot check (DataDome). Must match the Kompass entry in
+  /// BLOCK_PAGE_MARKERS in backend/services/b2b_scrapers/mod.rs.
+  const KOMPASS_ROBOT_CHECK = "Please enable JS and disable any ad blocker";
+
+  /// On a Kompass product page: the page as it is shown in this tab,
+  /// trimmed. It is copied, not loaded again: Kompass shows its robot
+  /// check to a page loaded again without the buyer's cookies (tested
+  /// 2026-10-29), but this tab has already passed it. null if the tab
+  /// shows the robot check itself.
+  function kompassPageHtml(): string | null {
+    try {
+      const copy = document.cloneNode(true) as Document;
+      const html = madeinchinaTrimmed(copy);
+      return html.includes(KOMPASS_ROBOT_CHECK) ? null : html;
+    } catch (e) {
+      console.error("Safely: could not copy the Kompass page", e);
+      return null;
+    }
+  }
+
+  /// The company page linked from a Kompass product page ("See the
+  /// company", the same link Safely's server reads). null if none.
+  function kompassCompanyUrl(doc: Document): string | null {
+    const link = doc.querySelector<HTMLAnchorElement>("nav#productNav a[title='See the company']");
+    const href = link ? (link.getAttribute("href") || "").trim() : "";
+    if (!href) return null;
+    let url: string;
+    try {
+      url = new URL(href, "https://www.kompass.com/").href.split(/[?#]/)[0];
+    } catch {
+      return null;
+    }
+    return KOMPASS_COMPANY_PAGE.test(url) ? url : null;
+  }
+
+  /// On a Kompass product page: the company page, trimmed. It is on the
+  /// same site, so it is loaded from here with the buyer's cookies -
+  /// the one that says this browser passed the robot check is needed
+  /// (without cookies Kompass shows the robot check, tested 2026-10-29).
+  /// null if it could not be loaded or shows the robot check; then
+  /// Safely's server loads it through ScraperAPI.
+  async function fetchKompassCompanyPage(): Promise<string | null> {
+    if (!window.location.pathname.startsWith("/p/")) return null;
+    const url = kompassCompanyUrl(document);
+    if (!url) return null;
+    try {
+      const response = await fetch(url, { credentials: "include" });
+      if (!response.ok) return null;
+      const html = await response.text();
+      if (html.includes(KOMPASS_ROBOT_CHECK)) {
+        console.error("Safely: Kompass showed its robot check for the company page");
+        return null;
+      }
+      return madeinchinaTrimmed(new DOMParser().parseFromString(html, "text/html"));
+    } catch (e) {
+      console.error("Safely: failed to load the Kompass company page", e);
+      return null;
+    }
+  }
+
+  (window as any).__safelyScrapers.kompassPageHtml = kompassPageHtml;
+  (window as any).__safelyScrapers.kompassCompanyUrl = kompassCompanyUrl;
+  (window as any).__safelyScrapers.fetchKompassCompanyPage = fetchKompassCompanyPage;
   (window as any).__safelyScrapers.alibabaCompanyUrl = alibabaCompanyUrl;
   (window as any).__safelyScrapers.fetchAlibabaCompanyPage = fetchAlibabaCompanyPage;
   (window as any).__safelyScrapers.globalsourcesPageHtml = globalsourcesPageHtml;

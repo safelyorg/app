@@ -671,13 +671,20 @@ pub async fn b2b_page_from_browser(
 /// the company page after it, a scan went over the 100 seconds nginx and
 /// Cloudflare wait, and the extension showed "Reload". The extension
 /// already sends the page the buyer is on, so it is read first now. The
-/// company page (on {shop}.en.alibaba.com) is not sent by the extension,
-/// so that one page is still fetched through ScraperAPI.
+/// company page (on {shop}.en.alibaba.com) is loaded by the extension's
+/// background script; if it is missing or wrong, that one page is
+/// fetched through ScraperAPI.
+/// Kompass: its robot check (DataDome) blocks ScraperAPI often (it needs
+/// ultra premium, the most expensive mode) and blocks any page loaded
+/// again without cookies (tested 2026-10-29). The extension copies the
+/// product page from the open tab, which already passed the check, and
+/// loads the company page with the buyer's cookies.
 pub const BROWSER_FIRST_PLATFORMS: &[&str] = &[
     "wholesalecentral",
     "madeinchina",
     "globalsources",
     "alibaba",
+    "kompass",
 ];
 
 /// true when `html` is a real page and not the site's robot check.
@@ -841,6 +848,10 @@ mod browser_page_tests {
             "Alibaba is read from the browser first"
         );
         assert!(
+            BROWSER_FIRST_PLATFORMS.contains(&"kompass"),
+            "Kompass is read from the browser first"
+        );
+        assert!(
             b2b_page_from_browser_first("wholesalecentral", "u", None, None)
                 .await
                 .is_none(),
@@ -862,6 +873,16 @@ mod browser_page_tests {
             &product,
             &wc_supplier(40952)
         ));
+    }
+
+    #[test]
+    fn kompass_robot_check_page_is_never_read_as_a_page() {
+        // What Kompass sends to a page loaded without cookies (2026-10-29).
+        let robot = format!(
+            "<html lang=\"en\"><head><title>kompass.com</title></head><body><p id=\"cmsg\">Please enable JS and disable any ad blocker</p><script src=\"https://ct.captcha-delivery.com/i.js\"></script>{}</body></html>",
+            "x".repeat(2500)
+        );
+        assert!(!usable_browser_page(&robot));
     }
 
     #[test]
