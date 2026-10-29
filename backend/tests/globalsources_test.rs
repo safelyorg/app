@@ -232,6 +232,7 @@ async fn product_and_supplier_pages_from_the_browser_make_one_result() {
         PRODUCT_URL,
         Some(&product_page()),
         Some(&supplier_page()),
+        None,
     )
     .await
     .expect("read from the browser");
@@ -492,6 +493,7 @@ async fn a_trade_show_scan_reads_both_pages_from_the_browser() {
         SHOW_PRODUCT_URL,
         Some(&show_product(true)),
         Some(&show_exhibitor()),
+        None,
     )
     .await
     .expect("read from the browser");

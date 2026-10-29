@@ -679,12 +679,18 @@ pub async fn b2b_page_from_browser(
 /// again without cookies (tested 2026-10-29). The extension copies the
 /// product page from the open tab, which already passed the check, and
 /// loads the company page with the buyer's cookies.
+/// ExportHub: ScraperAPI needs ultra premium there (2026-10-01). Its
+/// pages load fine in the buyer's browser, even again without cookies
+/// (tested 2026-10-29). The extension copies the product page from the
+/// tab and loads both company pages (the company page and its
+/// "profile.html" tab, sent as extended_page_html).
 pub const BROWSER_FIRST_PLATFORMS: &[&str] = &[
     "wholesalecentral",
     "madeinchina",
     "globalsources",
     "alibaba",
     "kompass",
+    "exporthub",
 ];
 
 /// true when `html` is a real page and not the site's robot check.
@@ -711,13 +717,15 @@ fn company_page_matches(scraper: &dyn B2bScraper, listing_html: &str, company_ht
 /// listed or the page is missing or unreadable - analyze.rs then
 /// fetches it through ScraperAPI as before. When the company page from
 /// the browser is missing or wrong, only that page is fetched through
-/// ScraperAPI. The pages are never saved or written to the log (they
+/// ScraperAPI. The same for the second company page (ExportHub's
+/// profile.html, extended_page_html). The pages are never saved or written to the log (they
 /// can contain the buyer's own account details); only sizes are logged.
 pub async fn b2b_page_from_browser_first(
     platform: &str,
     page_url: &str,
     page_html: Option<&str>,
     company_page_html: Option<&str>,
+    extended_page_html: Option<&str>,
 ) -> Option<B2bPageResult> {
     if !BROWSER_FIRST_PLATFORMS.contains(&platform) {
         return None;
@@ -771,7 +779,38 @@ pub async fn b2b_page_from_browser_first(
                 });
                 listing = scraper.enrich_listing_from_company_profile(listing, company_html);
                 record = scraper.enrich_record_from_company_profile(record.take(), company_html);
-                false
+                // The second company page (only ExportHub has one).
+                match company_url
+                    .as_deref()
+                    .and_then(|url| scraper.build_extended_profile_url(url))
+                {
+                    None => false,
+                    Some(extended_url) => match extended_page_html {
+                        Some(extended_html) if usable_browser_page(extended_html) => {
+                            take_and_replace(&mut supplier, |s| {
+                                scraper.enrich_from_extended_profile(s, extended_html)
+                            });
+                            false
+                        }
+                        other => {
+                            eprintln!(
+                                "Safely: the {} second company page from the browser could not be used ({}) - fetching it through ScraperAPI",
+                                platform,
+                                match other {
+                                    None => "not sent".to_string(),
+                                    Some(e) => format!("{} bytes", e.len()),
+                                }
+                            );
+                            !enrich_from_extended_page(
+                                scraper.as_ref(),
+                                platform,
+                                &extended_url,
+                                &mut supplier,
+                            )
+                            .await
+                        }
+                    },
+                }
             }
             other => {
                 eprintln!(
@@ -808,6 +847,42 @@ pub async fn b2b_page_from_browser_first(
     })
 }
 
+/// Fetches only the second company page (ExportHub's "profile.html")
+/// through ScraperAPI, when the browser's copy could not be used.
+/// Returns true when it loaded.
+async fn enrich_from_extended_page(
+    scraper: &dyn B2bScraper,
+    platform: &str,
+    extended_url: &str,
+    supplier: &mut B2bSupplierProfile,
+) -> bool {
+    let client = build_scraper_client();
+    let fetch_url = wrap_scraper_url_for_platform(extended_url, platform);
+    match fetch_company_page(&client, &fetch_url, extended_url).await {
+        CompanyPage::Loaded(extended_html) => {
+            take_and_replace(supplier, |s| {
+                scraper.enrich_from_extended_profile(s, &extended_html)
+            });
+            true
+        }
+        CompanyPage::Blocked => {
+            eprintln!(
+                "Safely: extended company page {} was a robot-check page, not the real page - those details skipped",
+                extended_url
+            );
+            false
+        }
+        CompanyPage::NotAPage(len) => {
+            eprintln!(
+                "Safely: DEPENDENCY DOWN: B2B extended-profile fetch for {} returned {} bytes that don't look like a real page - skipping",
+                extended_url, len
+            );
+            false
+        }
+        CompanyPage::Failed => false,
+    }
+}
+
 #[cfg(test)]
 mod browser_page_tests {
     use super::*;
@@ -838,10 +913,10 @@ mod browser_page_tests {
     async fn browser_first_is_only_for_listed_platforms() {
         let page = wc_product(63409);
         assert!(
-            b2b_page_from_browser_first("exporthub", "u", Some(&page), None)
+            b2b_page_from_browser_first("tradewheel", "u", Some(&page), None, None)
                 .await
                 .is_none(),
-            "ExportHub keeps ScraperAPI first"
+            "TradeWheel keeps ScraperAPI first"
         );
         assert!(
             BROWSER_FIRST_PLATFORMS.contains(&"alibaba"),
@@ -852,7 +927,11 @@ mod browser_page_tests {
             "Kompass is read from the browser first"
         );
         assert!(
-            b2b_page_from_browser_first("wholesalecentral", "u", None, None)
+            BROWSER_FIRST_PLATFORMS.contains(&"exporthub"),
+            "ExportHub is read from the browser first"
+        );
+        assert!(
+            b2b_page_from_browser_first("wholesalecentral", "u", None, None, None)
                 .await
                 .is_none(),
             "no page sent: fetched through ScraperAPI"
@@ -907,6 +986,7 @@ mod browser_page_tests {
             "https://www.wholesalecentral.com/products/1",
             Some(&product),
             Some(&supplier_page),
+            None,
         )
         .await
         .expect("read from the browser");
@@ -924,6 +1004,7 @@ mod browser_page_tests {
             "wholesalecentral",
             "https://www.wholesalecentral.com/suppliers/iphoenix",
             Some(&supplier_page),
+            None,
             None,
         )
         .await

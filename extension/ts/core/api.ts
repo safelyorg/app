@@ -30,9 +30,11 @@ interface AnalyzePayload {
   // The listing page as this browser shows it (see
   // BROWSER_PAGE_PLATFORMS and BROWSER_FIRST_PLATFORMS below).
   page_html?: string | null;
-  // Wholesale Central, Made-in-China and Global Sources: the supplier's
-  // page, loaded in this browser.
+  // Platforms in BROWSER_FIRST_PLATFORMS: the supplier's page, loaded
+  // in this browser.
   company_page_html?: string | null;
+  // ExportHub only: the supplier's second page ("profile.html").
+  extended_page_html?: string | null;
 }
 interface SocialCandidateLink {
   platform: string;
@@ -185,7 +187,10 @@ function formatPlatformName(platform: string | null | undefined): string {
   // script. Kompass: its robot check blocks ScraperAPI and any page
   // loaded again without cookies, but this tab has passed it; the
   // product page is copied from the tab and the company page is loaded
-  // with the buyer's cookies. Must match BROWSER_FIRST_PLATFORMS in
+  // with the buyer's cookies. ExportHub: ScraperAPI needs its most
+  // expensive mode there; the product page is copied from the tab and
+  // both company pages are loaded from here. Must match
+  // BROWSER_FIRST_PLATFORMS in
   // backend/services/b2b_scrapers/mod.rs.
   const BROWSER_FIRST_PLATFORMS = [
     "wholesalecentral",
@@ -193,6 +198,7 @@ function formatPlatformName(platform: string | null | undefined): string {
     "globalsources",
     "alibaba",
     "kompass",
+    "exporthub",
   ];
 
   // The most page text sent in one scan, so the request stays under the
@@ -435,6 +441,8 @@ function formatPlatformName(platform: string | null | undefined): string {
       // together.
       let pageHtml: string | null = null;
       let companyPageHtml: string | null = null;
+      // Only ExportHub: the company's second page ("profile.html").
+      let extendedPageHtml: string | null = null;
       const scrapers = (window as any).__safelyScrapers;
       const browserFirst = BROWSER_FIRST_PLATFORMS.indexOf(platform) !== -1;
       if (browserFirst && platform === "wholesalecentral" && scrapers.wholesalecentralPageData) {
@@ -481,6 +489,21 @@ function formatPlatformName(platform: string | null | undefined): string {
             companyPageHtml = null;
           }
         }
+      } else if (browserFirst && platform === "exporthub" && scrapers.exporthubPageHtml) {
+        pageHtml = scrapers.exporthubPageHtml();
+        if (pageHtml && pageHtml.length > MAX_PAGE_CHARS) pageHtml = null;
+        if (pageHtml && scrapers.fetchExporthubCompanyPages) {
+          const pages = await scrapers.fetchExporthubCompanyPages();
+          companyPageHtml = pages.company;
+          extendedPageHtml = pages.extended;
+          if (companyPageHtml && pageHtml.length + companyPageHtml.length > MAX_PAGE_CHARS) {
+            companyPageHtml = null;
+          }
+          const sent = pageHtml.length + (companyPageHtml ? companyPageHtml.length : 0);
+          if (!companyPageHtml || (extendedPageHtml && sent + extendedPageHtml.length > MAX_PAGE_CHARS)) {
+            extendedPageHtml = null;
+          }
+        }
       } else if (BROWSER_PAGE_PLATFORMS.indexOf(platform) !== -1) {
         pageHtml = pageHtmlForSafely();
       }
@@ -517,6 +540,7 @@ function formatPlatformName(platform: string | null | undefined): string {
         domain_check_real_html: domainCheck ? domainCheck.realDomainHtml || null : null,
         page_html: pageHtml,
         company_page_html: companyPageHtml,
+        extended_page_html: extendedPageHtml,
       };
 
       const data = await (window as any).__safelyAPI.analyze(payload);

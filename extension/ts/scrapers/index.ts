@@ -983,6 +983,74 @@ type DomainCheckResult = LegitimateDomainResult | SuspiciousDomainResult | null;
     }
   }
 
+  /// An ExportHub company page: "https://www.exporthub.com/{company}/".
+  /// Its second page is the same address + "profile.html".
+  const EXPORTHUB_COMPANY_PAGE = /^https:\/\/www\.exporthub\.com\/[a-z0-9-]+\/$/;
+
+  /// On an ExportHub product page: the page as it is shown in this tab,
+  /// trimmed. ExportHub pages also load fine again without cookies
+  /// (tested 2026-10-29), but copying needs no request at all.
+  function exporthubPageHtml(): string | null {
+    try {
+      return madeinchinaTrimmed(document.cloneNode(true) as Document);
+    } catch (e) {
+      console.error("Safely: could not copy the ExportHub page", e);
+      return null;
+    }
+  }
+
+  /// The company page linked from an ExportHub product page (the
+  /// company box in the sidebar, the same link Safely's server reads).
+  /// null if none.
+  function exporthubCompanyUrl(doc: Document): string | null {
+    const link = doc.querySelector<HTMLAnchorElement>(".product-del_sidebar__comp-nm a");
+    const href = link ? (link.getAttribute("href") || "").trim() : "";
+    if (!href) return null;
+    let url: string;
+    try {
+      url = new URL(href, "https://www.exporthub.com/").href.split(/[?#]/)[0];
+    } catch {
+      return null;
+    }
+    if (!url.endsWith("/")) url += "/";
+    return EXPORTHUB_COMPANY_PAGE.test(url) ? url : null;
+  }
+
+  /// Loads one ExportHub page from this same site, trimmed. null if it
+  /// could not be loaded.
+  async function loadExporthubPage(url: string): Promise<string | null> {
+    try {
+      const response = await fetch(url, { credentials: "include" });
+      if (!response.ok) return null;
+      const html = await response.text();
+      return madeinchinaTrimmed(new DOMParser().parseFromString(html, "text/html"));
+    } catch (e) {
+      console.error("Safely: failed to load the ExportHub page " + url, e);
+      return null;
+    }
+  }
+
+  /// On an ExportHub product page: the company page and its second page
+  /// ("profile.html"), both trimmed. Either is null if it could not be
+  /// loaded; then Safely's server loads that one through ScraperAPI.
+  async function fetchExporthubCompanyPages(): Promise<{
+    company: string | null;
+    extended: string | null;
+  }> {
+    const none = { company: null, extended: null };
+    if (!window.location.pathname.startsWith("/product/")) return none;
+    const url = exporthubCompanyUrl(document);
+    if (!url) return none;
+    const [company, extended] = await Promise.all([
+      loadExporthubPage(url),
+      loadExporthubPage(url + "profile.html"),
+    ]);
+    return { company, extended };
+  }
+
+  (window as any).__safelyScrapers.exporthubPageHtml = exporthubPageHtml;
+  (window as any).__safelyScrapers.exporthubCompanyUrl = exporthubCompanyUrl;
+  (window as any).__safelyScrapers.fetchExporthubCompanyPages = fetchExporthubCompanyPages;
   (window as any).__safelyScrapers.kompassPageHtml = kompassPageHtml;
   (window as any).__safelyScrapers.kompassCompanyUrl = kompassCompanyUrl;
   (window as any).__safelyScrapers.fetchKompassCompanyPage = fetchKompassCompanyPage;

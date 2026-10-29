@@ -352,6 +352,7 @@ async fn product_and_supplier_pages_from_the_browser_make_one_result() {
         PRODUCT_URL,
         Some(&product_page()),
         Some(&supplier_page()),
+        None,
     )
     .await
     .expect("read from the browser");
@@ -365,9 +366,10 @@ async fn product_and_supplier_pages_from_the_browser_make_one_result() {
     assert!(page.listing.title.is_some());
 
     // A supplier page needs nothing more.
-    let page = b2b_page_from_browser_first("madeinchina", SHOP_URL, Some(&supplier_page()), None)
-        .await
-        .expect("read from the browser");
+    let page =
+        b2b_page_from_browser_first("madeinchina", SHOP_URL, Some(&supplier_page()), None, None)
+            .await
+            .expect("read from the browser");
     assert_eq!(page.listing.title, None);
     assert!(!page.company_page_missing);
 }

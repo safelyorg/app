@@ -78,10 +78,16 @@ pub struct AnalyzeRequest {
     /// backup; Wholesale Central: read first).
     #[serde(default)]
     pub page_html: Option<String>,
-    /// Wholesale Central only: the supplier's page, loaded in the
-    /// buyer's own browser while they are on a product page.
+    /// The supplier's page, loaded in the buyer's own browser while they
+    /// are on a product page (platforms in BROWSER_FIRST_PLATFORMS).
     #[serde(default)]
     pub company_page_html: Option<String>,
+    /// The supplier's second company page, loaded in the buyer's own
+    /// browser too. Only ExportHub has one (its "profile.html" tab, see
+    /// build_extended_profile_url). Missing from older extensions; the
+    /// page is then fetched through ScraperAPI as before.
+    #[serde(default)]
+    pub extended_page_html: Option<String>,
 }
 
 #[derive(Debug, Serialize)]

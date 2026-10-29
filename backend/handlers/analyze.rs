@@ -98,6 +98,7 @@ pub async fn analyze(
         &request.listing_url,
         request.page_html.as_deref(),
         request.company_page_html.as_deref(),
+        request.extended_page_html.as_deref(),
     )
     .await;
     let page = match from_browser {

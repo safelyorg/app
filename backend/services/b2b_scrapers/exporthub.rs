@@ -322,9 +322,21 @@ impl B2bScraper for ExporthubScraper {
     /// e.g. "https://www.exporthub.com/nutridiet-lda-10772764/" ->
     /// "nutridiet-lda-10772764". Every product from that company links
     /// to the same page, so every scan lands on the same record.
+    /// On the company page itself (which has no link to itself), the
+    /// slug comes from the page's own address: the canonical link, then
+    /// og:url. That is how Safely checks that a company page sent by the
+    /// browser belongs to the same company as the product.
     fn company_key(&self, listing_html: &str) -> Option<String> {
-        let url = self.extract_company_profile_url(listing_html)?;
-        company_slug(&url)
+        if let Some(url) = self.extract_company_profile_url(listing_html) {
+            return company_slug(&url);
+        }
+        let document = Html::parse_document(listing_html);
+        select_attr(&document, r#"link[rel="canonical"]"#, "href")
+            .and_then(|u| company_slug(&u))
+            .or_else(|| {
+                select_attr(&document, r#"meta[property="og:url"]"#, "content")
+                    .and_then(|u| company_slug(&u))
+            })
     }
 
     /// When the company joined ExportHub ("Member Since: 2024"). With no
@@ -940,6 +952,25 @@ mod tests {
         );
         assert_eq!(extract_structured_phone(r#""telephone": "" "#), None);
         assert_eq!(extract_structured_phone("<html>no phone</html>"), None);
+    }
+
+    #[test]
+    fn company_page_gives_the_same_key_from_its_own_address() {
+        // Like the real Nanpi Xinchengweiye company page (Oct 2026): no
+        // link to itself, only its own address in the head.
+        let company = r#"<html><head><link rel="canonical" href="https://www.exporthub.com/nanpixinchengweiyehardwareproducts/"><meta property="og:url" content="https://www.exporthub.com/nanpixinchengweiyehardwareproducts/"></head><body></body></html>"#;
+        assert_eq!(
+            ExporthubScraper.company_key(company).as_deref(),
+            Some("nanpixinchengweiyehardwareproducts")
+        );
+        let og_only = r#"<html><head><meta property="og:url" content="https://www.exporthub.com/hym-textile-11125866/"></head></html>"#;
+        assert_eq!(
+            ExporthubScraper.company_key(og_only).as_deref(),
+            Some("hym-textile-11125866")
+        );
+        // A product page's own address is never a company slug.
+        let product = r#"<html><head><link rel="canonical" href="https://www.exporthub.com/product/x-24647395.html"></head></html>"#;
+        assert_eq!(ExporthubScraper.company_key(product), None);
     }
 
     #[test]

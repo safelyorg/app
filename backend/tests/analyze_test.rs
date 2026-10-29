@@ -91,6 +91,7 @@ async fn analyze_unauthorized_request() {
         domain_check_real_html: None,
         page_html: None,
         company_page_html: None,
+        extended_page_html: None,
         language: None,
     };
 
@@ -384,6 +385,7 @@ fn build_requests_correctly_splits_seller_and_listing_data() {
         domain_check_real_html: None,
         page_html: None,
         company_page_html: None,
+        extended_page_html: None,
         language: None,
     };
 
@@ -432,6 +434,7 @@ fn build_requests_none_values_stay_none() {
         domain_check_real_html: None,
         page_html: None,
         company_page_html: None,
+        extended_page_html: None,
         language: None,
     };
 
@@ -478,6 +481,7 @@ fn build_requests_seller_id_lands_only_on_listing_request() {
         domain_check_real_html: None,
         page_html: None,
         company_page_html: None,
+        extended_page_html: None,
         language: None,
     };
 
