@@ -24,7 +24,7 @@ chrome.runtime.onInstalled.addListener((details) => {
 
 // Sent by auth-bridge.js, which runs only on Safely's own site.
 // This is the one place chrome.storage.local gets written for the
-// session token - every other content script (on OLX, Facebook,
+// session token - every other content script (on Alibaba, Global Sources,
 // etc.) only ever READS this value, never writes it, since they
 // have no access to the website's localStorage where the real
 // login state lives.

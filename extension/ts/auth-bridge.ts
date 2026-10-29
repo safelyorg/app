@@ -1,11 +1,11 @@
 // auth-bridge.js
 //
-// This content script is special: it does NOT run on OLX or Facebook. It
+// This content script is special: it does NOT run on the marketplaces. It
 // only runs on Safely's own website (the dashboard/landing page). Its one
 // job is to peek at this page's localStorage, grab the login token if one
 // exists, and hand it to the extension's background script.
 //
-// Why this is needed: content scripts on OLX cannot see localStorage that
+// Why this is needed: content scripts on marketplaces cannot see localStorage that
 // belongs to a completely different website (localhost:3000). Storage is
 // locked to whichever origin created it. This script is the only piece of
 // the extension that is ever "inside" the website's own origin, so it is

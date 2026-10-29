@@ -320,12 +320,6 @@ type DomainCheckResult = LegitimateDomainResult | SuspiciousDomainResult | null;
 
   const platformRegistry: PlatformConfig[] = [
     {
-      name: "olx",
-      matchesHostname: (hostname) => hostname.includes("olx.com"),
-      requiresClientSideScraping: false,
-      isListingUrl: (url) => url.includes("iid-"),
-    },
-    {
       name: "b2brazil",
       matchesHostname: (hostname) => hostname.includes("b2brazil.com"),
       requiresClientSideScraping: false,

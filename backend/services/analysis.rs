@@ -2,21 +2,15 @@ use crate::{
     errors::analyze::AnalyzeError,
     models::{
         analysis::{Analysis, AnalyzeRequest, AnalyzeResponse, RiskLevel, Signal},
-        helpers::format_account_age,
-        listings::{Listings, ListingsRequest},
+        listings::ListingsRequest,
         sellers::{SellerVerification, Sellers, SellersRequest, SellersResponse},
     },
     services::{
         auth::extract_user_id,
         b2b_scrapers::{B2bListingProfile, B2bSupplierProfile, SupplierRecord},
-        b2c_scrapers::check_store_page,
         billing::{ScanCharge, ScanLimitError, give_back_scan, reserve_scan},
-        claude::{
-            CallB2bClaudeArguments, CallClaudeArguments, ClaudeAnalysis, call_b2b_claude,
-            call_b2c_claude,
-        },
+        claude::{CallB2bClaudeArguments, call_b2b_claude},
         confidence::calculate_confidence,
-        entity_detection::classify_entity,
         evidence::{record_evidence, record_risk_factors},
         fraud_reports::{
             already_reported, build_network_summary, count_fraud_reports, report_floor,
@@ -35,10 +29,8 @@ use crate::{
             apply_supplier_page_note, apply_supplier_record, build_b2b_claude_signals,
             build_b2b_company_age_signal, build_b2b_listing_completeness_signal,
             build_b2b_transparency_signal, build_b2b_verification_signal, build_domain_signal,
-            build_seller_verification_signals, build_signals, build_store_page_signal,
-            build_whois_signal, is_supplier_page_scan, soften_no_presence, stated_founding_year,
+            is_supplier_page_scan, soften_no_presence, stated_founding_year,
         },
-        whois::check_domain_whois,
     },
 };
 use axum::{Json, http::HeaderMap};
@@ -90,7 +82,6 @@ pub struct BuildResponseData<'a> {
     pub seller: Sellers,
     pub fraud_count: i64,
     pub network_summary: String,
-    pub is_b2b: bool,
     pub social_candidates: Vec<PlatformCheckResult>,
 }
 
@@ -292,127 +283,6 @@ pub async fn resolve_seller(
     })
 }
 
-/// It sends the listing's real details to Claude, asking it to analyze
-/// whether this looks like a genuine or fraudulent listing by filling in
-/// sensible defaults for anything that's missing, so Claude always gets
-/// something usable, even if the original listing had gaps.
-///
-/// It calculates the seller's account age, from their real join date, gets
-/// the listing's images, or an empty list if there are none, actually calls
-/// Claude, with everything it needs and it waits for Claude's response,
-/// and handles failure clearly
-pub async fn run_claude_analysis(
-    listing: &Listings,
-    seller: &Sellers,
-    language: &str,
-) -> Result<ClaudeAnalysis, AnalyzeError> {
-    let account_age = seller
-        .join_date
-        .map(format_account_age)
-        .unwrap_or_else(|| "Unknown".to_string());
-
-    let image_urls = listing.image_urls.as_deref().unwrap_or(&[]);
-
-    call_b2c_claude(CallClaudeArguments {
-        platform: &listing.platform,
-        seller_name: seller.name.as_deref().unwrap_or("Unknown"),
-        seller_account_age: &account_age,
-        title: listing.title.as_deref().unwrap_or("Untitled"),
-        price: listing.price.unwrap_or(0),
-        description: listing.description.as_deref().unwrap_or("No Description"),
-        image_urls,
-        language,
-    })
-    .await
-    .map_err(|e| AnalyzeError::ClaudeAnalysisFailed(e.to_string()))
-}
-
-/// It builds the complete list of warning signals shown on the dashboard
-/// starting with everything Claude's analysis found, then adding a domain-mismatch
-/// check at the very top, if one was detected.
-///
-/// It builds the main signal list from Claude's analysis, checks if a domain
-/// mismatch was detected and returns the complete list.
-pub async fn build_all_signals(
-    pool: &Pool<Postgres>,
-    claude_analysis: &ClaudeAnalysis,
-    seller: &Sellers,
-    request: &AnalyzeRequest,
-) -> Vec<Signal> {
-    let mut signals = build_signals(claude_analysis, seller);
-
-    if let Some(domain_signal) = build_domain_signal(
-        request.domain_check_status.as_deref(),
-        request.domain_check_real_name.as_deref(),
-        request.domain_check_real_domain.as_deref(),
-        request.domain_check_current_domain.as_deref(),
-        request.domain_check_current_html.as_deref(),
-        request.domain_check_real_html.as_deref(),
-    ) {
-        signals.insert(0, domain_signal);
-    }
-
-    if let Some(memory_signal) = build_network_memory_signal(pool, seller.id).await {
-        signals.push(memory_signal);
-    }
-
-    // Layer 3, Active collection - if the seller mentioned a real
-    // website, check its genuine registration via WHOIS. Most
-    // listings won't have one at all, so this only fires when Tier
-    // 1's extraction actually found something real.
-    if let Some(website) = request.seller_website.as_deref() {
-        let whois_result = check_domain_whois(website).await;
-        if let Some(whois_signal) = build_whois_signal(whois_result.as_ref()) {
-            signals.push(whois_signal);
-        }
-    } else {
-        signals.push(Signal {
-            label: "Seller website check".to_string(),
-            sub: "No website was mentioned or claimed by this seller.".to_string(),
-            value: "No website found".to_string(),
-            signal_type: "info".to_string(),
-            category: "website".to_string(),
-            check_type: "existence".to_string(),
-        });
-    }
-
-    // Genuinely free, real trust data for OLX's verified-seller
-    // accounts - member duration, listing count, real rating -
-    // already present on the listing page for these sellers.
-    signals.extend(build_seller_verification_signals(
-        request.seller_verified.unwrap_or(false),
-        request.seller_rating,
-        request.seller_total_products,
-    ));
-
-    // Tier 2 - visits the seller's own, separate store/profile page,
-    // confirming whether their real name genuinely appears there, and
-    // checking for any self-referenced website mentioned on that page.
-    if let Some(profile_url) = request.seller_profile_url.as_deref() {
-        let seller_name = request.seller_name.as_deref().unwrap_or("");
-        if let Some(store_result) =
-            check_store_page(&request.platform, profile_url, seller_name).await
-        {
-            if let Some(store_signal) =
-                build_store_page_signal(&store_result, request.seller_website.as_deref())
-            {
-                signals.push(store_signal);
-            }
-        }
-    } else {
-        signals.push(Signal {
-            label: "Store page check".to_string(),
-            sub: "No separate store or profile page was found for this seller.".to_string(),
-            value: "No store page found".to_string(),
-            signal_type: "info".to_string(),
-            category: "identity".to_string(),
-            check_type: "consistency".to_string(),
-        });
-    }
-
-    signals
-}
-
 /// It saves the complete analysis result to the database, fetches the seller's
 /// real visit-history chart, and packages everything together into the final
 /// response the extension actually receives.
@@ -427,24 +297,15 @@ pub async fn save_and_build_response(
     let signals_json =
         to_value(&data.signals).map_err(|e| AnalyzeError::SerializationFailed(e.to_string()))?;
 
-    let entity_type = if data.is_b2b {
-        "business".to_string()
-    } else {
-        let website_fully_confirmed = data
-            .signals
-            .iter()
-            .any(|s| s.label == "Store page check" && s.value == "Fully confirmed");
-        classify_entity(data.seller.name.as_deref(), website_fully_confirmed)
-    };
+    // Every scan is a supplier on a B2B marketplace: always a business.
+    let entity_type = "business".to_string();
     let (confidence_level, confidence_reasoning) = calculate_confidence(&data.signals);
 
     let mut risk_factors = derive_risk_factors(&data.signals);
-    // B2B: when Safely could check too little, say so (the score was
+    // When Safely could check too little, say so (the score was
     // already lifted to Moderate in build_b2b_analysis_path).
-    if data.is_b2b {
-        if let Some(note) = not_enough_information_factor(&data.signals) {
-            risk_factors.push(note);
-        }
+    if let Some(note) = not_enough_information_factor(&data.signals) {
+        risk_factors.push(note);
     }
     let risk_factors_json =
         to_value(&risk_factors).map_err(|e| AnalyzeError::SerializationFailed(e.to_string()))?;
@@ -493,10 +354,8 @@ pub async fn save_and_build_response(
     // B2B: show the same company age as the "Account age" check
     // ("About 11 years"), not one counted in months from 1 January -
     // only the founding year is known.
-    if data.is_b2b {
-        if let Some(age) = b2b_company_age(&data.signals) {
-            seller_response.account_age = age;
-        }
+    if let Some(age) = b2b_company_age(&data.signals) {
+        seller_response.account_age = age;
     }
     seller_response.network_summary = data.network_summary;
     seller_response.monthly_activity = monthly_activity;
@@ -745,7 +604,7 @@ const NOT_ENOUGH_INFORMATION_FLOOR: i16 = 34;
 /// - Too little information lifts a low score to Moderate.
 pub fn b2b_score_from_signals(signals: &[Signal], fraud_count: i64) -> i16 {
     let warning_score: i16 = signals.iter().map(warning_points).sum::<i16>() + info_points(signals);
-    let base_score = warning_score.min(100) + report_points(fraud_count, true);
+    let base_score = warning_score.min(100) + report_points(fraud_count);
     let factors = derive_risk_factors(signals);
     let count = |severity: &str| {
         factors
@@ -881,13 +740,10 @@ const PRICE_HIDDEN_FOR_CLAUDE: &str =
 /// never scanned.
 const SUPPLIER_PAGE_PRODUCT_FOR_CLAUDE: &str = "None - the buyer is on the supplier's own page, which lists many products, so no single product was scanned";
 
-/// The complete, separate B2B analysis path - takes the already-fetched
-/// supplier page (analyze.rs fetches it first, so it can pick the
-/// seller record by company), calls Claude with B2B-specific due-diligence
-/// questions, and builds an entirely separate set of signals. This
-/// never touches build_signals or ClaudeAnalysis at all, since B2B
-/// due diligence asks fundamentally different questions than
-/// consumer-marketplace fraud detection.
+/// The scan - takes the already-fetched supplier page (analyze.rs
+/// fetches it first, so it can pick the seller record by company),
+/// calls Claude with B2B due-diligence questions, and builds the
+/// signals and the score.
 pub async fn build_b2b_analysis_path(
     pool: &Pool<Postgres>,
     request: &AnalyzeRequest,

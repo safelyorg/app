@@ -14,28 +14,23 @@ use axum::{
     response::IntoResponse,
 };
 use backend::{
-    errors::{analyze::AnalyzeError, claude::ClaudeError},
+    errors::analyze::AnalyzeError,
     handlers::analyze::{VerifySocialLinkRequest, analyze, verify_social_link_handler},
     models::{
         analysis::{AnalyzeRequest, RiskLevel, Signal},
-        listings::{ListingCategory, Listings, ListingsRequest},
+        listings::ListingsRequest,
         risk_factors::RiskFactor,
         sellers::{SellerVerification, Sellers, SellersRequest},
     },
     services::{
         analysis::{
-            BuildResponseData, CreateAnalysisData, RATE_LIMITS, authorize_request,
-            build_all_signals, build_requests, check_rate_limit, create_analysis, resolve_seller,
-            resolve_supplier_website, run_claude_analysis, save_and_build_response,
+            BuildResponseData, CreateAnalysisData, RATE_LIMITS, authorize_request, build_requests,
+            check_rate_limit, create_analysis, resolve_seller, resolve_supplier_website,
+            save_and_build_response,
         },
         auth::{create_session, find_or_create_user_by_email},
         b2b_scrapers::B2bSupplierProfile,
-        claude::{
-            CallClaudeArguments, ClaudeAnalysis, Finding, ImageAssessment, PriceAssessment,
-            b2c_content, call_b2c_claude,
-        },
         confidence::calculate_confidence,
-        entity_detection::classify_entity,
         evidence::{record_evidence, record_risk_factors},
         fraud_reports::{build_network_summary, count_fraud_reports},
         listings::{create_listing, get_monthly_visit_activity},
@@ -45,9 +40,8 @@ use backend::{
             score_identifier_match,
         },
         risk_factors::{derive_risk_factors, find_signal, is_new_account},
-        scoring::calculate_risk_score,
         sellers::{create_seller, find_seller},
-        signals::{build_domain_signal, build_signals},
+        signals::build_domain_signal,
     },
 };
 use chrono::{Datelike, Duration as chrono_duration, NaiveDate, Utc};
@@ -58,7 +52,6 @@ use serial_test::serial;
 use sqlx::{query, query_as};
 use std::{
     collections::{HashMap, HashSet},
-    env::{remove_var, set_var, var},
     sync::Mutex,
     time::{Duration, Instant},
 };
@@ -71,9 +64,9 @@ async fn analyze_unauthorized_request() {
     let headers = HeaderMap::new();
 
     let request = AnalyzeRequest {
-        platform: "olx".to_string(),
+        platform: "alibaba".to_string(),
         seller_id: None,
-        listing_url: "https://olx.com.pk/item/test-listing".to_string(),
+        listing_url: "https://www.alibaba.com/product-detail/test-listing".to_string(),
         listing_id: Some("12345".to_string()),
         title: Some("Test Listing".to_string()),
         price: Some(50000),
@@ -85,14 +78,11 @@ async fn analyze_unauthorized_request() {
         seller_name: Some("Test Seller".to_string()),
         seller_handle: Some("test_seller_handle".to_string()),
         seller_phone: Some("03001234567".to_string()),
-        seller_profile_url: Some("https://olx.com.pk/profile/test-seller".to_string()),
+        seller_profile_url: Some("https://www.alibaba.com/company/test-seller".to_string()),
         seller_join_date: Some("2021".to_string()),
         seller_location: Some("Lahore".to_string()),
         seller_last_active: Some("Today".to_string()),
         seller_website: None,
-        seller_verified: None,
-        seller_rating: None,
-        seller_total_products: None,
         domain_check_status: None,
         domain_check_real_name: None,
         domain_check_real_domain: None,
@@ -111,7 +101,7 @@ async fn analyze_unauthorized_request() {
         "expected an unauthenticated request to be rejected"
     );
 
-    let leftover_seller = find_seller(&pool, "olx", "unauthorized_test_platform_id")
+    let leftover_seller = find_seller(&pool, "alibaba", "unauthorized_test_platform_id")
         .await
         .expect("expected the query itself to succeed");
 
@@ -120,192 +110,6 @@ async fn analyze_unauthorized_request() {
         "expected NO seller to be created, since authorization should have stopped everything first"
     );
 }
-
-// #[tokio::test]
-// #[serial]
-// async fn analyze_success() {
-//     let pool = test_pool().await;
-//     let email = "analyze_success_test@example.com";
-//     cleanup_test_user(&pool, email).await;
-
-//     let (user, _) = find_or_create_user_by_email(&pool, email)
-//         .await
-//         .expect("expected to create the user");
-
-//     let real_session_token = create_session(&pool, user.id)
-//         .await
-//         .expect("expected to create a real session");
-
-//     let mut headers = HeaderMap::new();
-//     headers.insert(
-//         "authorization",
-//         HeaderValue::from_str(&format!("Bearer {}", real_session_token))
-//             .expect("expected to insert the header value"),
-//     );
-
-//     let platform = "olx".to_string();
-//     let platform_id = "analyze_success_platform_id".to_string();
-//     cleanup_test_seller(&pool, &platform, &platform_id).await;
-
-//     let request = AnalyzeRequest {
-//         platform: platform.clone(),
-//         seller_id: None,
-//         listing_url: "https://olx.com.pk/item/analyze-success-test".to_string(),
-//         listing_id: Some("analyze_success_listing".to_string()),
-//         title: Some("iPhone 13 Pro Max - Excellent Condition".to_string()),
-//         price: Some(150000),
-//         description: Some("Selling my iPhone 13 Pro Max, barely used.".to_string()),
-//         category: None,
-//         image_urls: None,
-//         posted_date: None,
-//         platform_id: Some(platform_id.clone()),
-//         seller_name: Some("Ahmed Khan".to_string()),
-//         seller_handle: Some("ahmed_khan_deals".to_string()),
-//         seller_phone: Some("03001234567".to_string()),
-//         seller_profile_url: Some("https://olx.com.pk/profile/ahmed-khan".to_string()),
-//         seller_join_date: Some("2021".to_string()),
-//         seller_location: Some("Lahore".to_string()),
-//         seller_last_active: Some("Today".to_string()),
-//         seller_website: None,
-//         seller_verified: None,
-//         seller_rating: None,
-//         seller_total_products: None,
-//         domain_check_status: None,
-//         domain_check_real_name: None,
-//         domain_check_real_domain: None,
-//         domain_check_current_domain: None,
-//         domain_check_current_html: None,
-//         domain_check_real_html: None,
-//         page_html: None,
-//     };
-
-//     let result = analyze(State(pool.clone()), headers, Json(request))
-//         .await
-//         .expect("expected the full analyze flow to succeed");
-
-//     assert!(
-//         result.risk_score >= 0 && result.risk_score <= 100,
-//         "expected a genuine risk score between 0 and 100, got: {}",
-//         result.risk_score
-//     );
-//     assert!(
-//         !result.signals.is_empty(),
-//         "expected at least one real signal to be present"
-//     );
-//     assert_eq!(result.fraud_report_count, 0);
-
-//     let admin = admin_pool().await;
-//     query("DELETE FROM evidence WHERE analysis_id IN (SELECT id FROM analysis WHERE user_id = $1)")
-//         .bind(user.id)
-//         .execute(&admin)
-//         .await
-//         .expect("expected evidence cleanup to succeed");
-
-//     query("DELETE FROM analysis WHERE user_id = $1")
-//         .bind(user.id)
-//         .execute(&pool)
-//         .await
-//         .expect("expected analysis cleanup to succeed");
-
-//     query("DELETE FROM listings WHERE platform = $1 AND listing_id = $2")
-//         .bind(&platform)
-//         .bind("analyze_success_listing")
-//         .execute(&pool)
-//         .await
-//         .expect("expected listing cleanup to succeed");
-
-//     cleanup_test_seller(&pool, &platform, &platform_id).await;
-//     cleanup_test_user(&pool, email).await;
-// }
-
-// NOTE: This test hits a real, live OLX listing through ScraperAPI -
-// occasional 500 errors are real, external flakiness, not a code bug.
-// Re-run alone a few minutes later before assuming something's broken.
-// #[tokio::test]
-// #[serial]
-// async fn analyze_server_scraped_seller_verified_always_overwrites_client_value() {
-//     let pool = test_pool().await;
-//     let email = "verified_overwrite_test@example.com";
-//     cleanup_test_user(&pool, email).await;
-//     let (user, _) = find_or_create_user_by_email(&pool, email)
-//         .await
-//         .expect("expected to create the user");
-//     let real_session_token = create_session(&pool, user.id)
-//         .await
-//         .expect("expected to create a real session");
-//     let mut headers = HeaderMap::new();
-//     headers.insert(
-//         "authorization",
-//         HeaderValue::from_str(&format!("Bearer {}", real_session_token))
-//             .expect("expected to insert the header value"),
-//     );
-
-//     let platform = "olx".to_string();
-//     let real_verified_seller_listing_url = "https://www.olx.com.pk/item/black-anodized-316l-surgical-steel-double-flared-tunnel-ear-plug-sold-by-piece-c-r4411-iid-ev552759-1".to_string();
-
-//     let request = AnalyzeRequest {
-//         platform: platform.clone(),
-//         seller_id: None,
-//         listing_url: real_verified_seller_listing_url,
-//         listing_id: None,
-//         title: None,
-//         price: None,
-//         description: None,
-//         category: None,
-//         image_urls: None,
-//         posted_date: None,
-//         platform_id: None,
-//         seller_name: None,
-//         seller_handle: None,
-//         seller_phone: None,
-//         seller_profile_url: None,
-//         seller_join_date: None,
-//         seller_location: None,
-//         seller_last_active: None,
-//         seller_website: None,
-//         seller_verified: Some(false),
-//         seller_rating: None,
-//         seller_total_products: None,
-//         domain_check_status: None,
-//         domain_check_real_name: None,
-//         domain_check_real_domain: None,
-//         domain_check_current_domain: None,
-//         domain_check_current_html: None,
-//         domain_check_real_html: None,
-//         page_html: None,
-//     };
-
-//     let result = analyze(State(pool.clone()), headers, Json(request))
-//         .await
-//         .expect("expected the full analyze flow to succeed");
-
-//     let platform_verification_signal = result
-//         .signals
-//         .iter()
-//         .find(|s| s.label == "Platform verification")
-//         .expect("expected a Platform verification signal to be present");
-
-//     assert_eq!(
-//         platform_verification_signal.value, "Verified",
-//         "expected the REAL, scraped verified=true to win over the client's Some(false), \
-//          confirming the earlier regression stays fixed"
-//     );
-
-//     let admin = admin_pool().await;
-//     query("DELETE FROM evidence WHERE analysis_id IN (SELECT id FROM analysis WHERE user_id = $1)")
-//         .bind(user.id)
-//         .execute(&admin)
-//         .await
-//         .ok();
-
-//     query("DELETE FROM analysis WHERE user_id = $1")
-//         .bind(user.id)
-//         .execute(&pool)
-//         .await
-//         .ok();
-
-//     cleanup_test_user(&pool, email).await;
-// }
 
 // // NOTE: This test hits B2Brazil's real, live site through ScraperAPI -
 // // occasional 500 errors are real, external flakiness, not a code bug.
@@ -352,9 +156,6 @@ async fn analyze_unauthorized_request() {
 //         seller_location: None,
 //         seller_last_active: None,
 //         seller_website: None,
-//         seller_verified: None,
-//         seller_rating: None,
-//         seller_total_products: None,
 //         domain_check_status: None,
 //         domain_check_real_name: None,
 //         domain_check_real_domain: None,
@@ -556,9 +357,9 @@ fn check_rate_limit_resets_after_the_window_expires() {
 #[test]
 fn build_requests_correctly_splits_seller_and_listing_data() {
     let fake_request = AnalyzeRequest {
-        platform: "olx".to_string(),
+        platform: "alibaba".to_string(),
         seller_id: None,
-        listing_url: "https://olx.com.pk/item/test-listing".to_string(),
+        listing_url: "https://www.alibaba.com/product-detail/test-listing".to_string(),
         listing_id: Some("12345".to_string()),
         title: Some("Test Listing".to_string()),
         price: Some(50000),
@@ -570,14 +371,11 @@ fn build_requests_correctly_splits_seller_and_listing_data() {
         seller_name: Some("Test Seller".to_string()),
         seller_handle: Some("test_seller_handle".to_string()),
         seller_phone: Some("03001234567".to_string()),
-        seller_profile_url: Some("https://olx.com.pk/profile/test-seller".to_string()),
+        seller_profile_url: Some("https://www.alibaba.com/company/test-seller".to_string()),
         seller_join_date: Some("2021".to_string()),
         seller_location: Some("Lahore".to_string()),
         seller_last_active: Some("Today".to_string()),
         seller_website: None,
-        seller_verified: None,
-        seller_rating: None,
-        seller_total_products: None,
         domain_check_status: None,
         domain_check_real_name: None,
         domain_check_real_domain: None,
@@ -598,18 +396,18 @@ fn build_requests_correctly_splits_seller_and_listing_data() {
     assert_eq!(listing_req.price, Some(50000));
     assert_eq!(
         listing_req.listing_url,
-        "https://olx.com.pk/item/test-listing"
+        "https://www.alibaba.com/product-detail/test-listing"
     );
-    assert_eq!(seller_req.platform, "olx");
-    assert_eq!(listing_req.platform, "olx");
+    assert_eq!(seller_req.platform, "alibaba");
+    assert_eq!(listing_req.platform, "alibaba");
 }
 
 #[test]
 fn build_requests_none_values_stay_none() {
     let fake_request = AnalyzeRequest {
-        platform: "olx".to_string(),
+        platform: "alibaba".to_string(),
         seller_id: None,
-        listing_url: "https://olx.com.pk/item/test-listing".to_string(),
+        listing_url: "https://www.alibaba.com/product-detail/test-listing".to_string(),
         listing_id: None,
         title: None,
         price: None,
@@ -626,9 +424,6 @@ fn build_requests_none_values_stay_none() {
         seller_location: None,
         seller_last_active: None,
         seller_website: None,
-        seller_verified: None,
-        seller_rating: None,
-        seller_total_products: None,
         domain_check_status: None,
         domain_check_real_name: None,
         domain_check_real_domain: None,
@@ -656,9 +451,9 @@ fn build_requests_none_values_stay_none() {
 fn build_requests_seller_id_lands_only_on_listing_request() {
     let fake_seller_id = Uuid::new_v4();
     let fake_request = AnalyzeRequest {
-        platform: "olx".to_string(),
+        platform: "alibaba".to_string(),
         seller_id: Some(fake_seller_id),
-        listing_url: "https://olx.com.pk/item/test-listing".to_string(),
+        listing_url: "https://www.alibaba.com/product-detail/test-listing".to_string(),
         listing_id: Some("12345".to_string()),
         title: Some("Test Listing".to_string()),
         price: Some(50000),
@@ -670,14 +465,11 @@ fn build_requests_seller_id_lands_only_on_listing_request() {
         seller_name: Some("Test Seller".to_string()),
         seller_handle: Some("test_seller_handle".to_string()),
         seller_phone: Some("03001234567".to_string()),
-        seller_profile_url: Some("https://olx.com.pk/profile/test-seller".to_string()),
+        seller_profile_url: Some("https://www.alibaba.com/company/test-seller".to_string()),
         seller_join_date: Some("2021".to_string()),
         seller_location: Some("Lahore".to_string()),
         seller_last_active: Some("Today".to_string()),
         seller_website: None,
-        seller_verified: None,
-        seller_rating: None,
-        seller_total_products: None,
         domain_check_status: None,
         domain_check_real_name: None,
         domain_check_real_domain: None,
@@ -702,7 +494,7 @@ fn build_requests_seller_id_lands_only_on_listing_request() {
 #[tokio::test]
 async fn resolve_new_seller() {
     let pool = test_pool().await;
-    let platform = "olx".to_string();
+    let platform = "alibaba".to_string();
     let platform_id = "new_seller_test_001".to_string();
 
     cleanup_test_seller(&pool, &platform, &platform_id).await;
@@ -713,7 +505,7 @@ async fn resolve_new_seller() {
         name: Some("Test name".to_string()),
         handle: Some("test_handle".to_string()),
         phone: Some("123456789".to_string()),
-        profile_url: Some("https://olx.com.pk/profile/test-seller".to_string()),
+        profile_url: Some("https://www.alibaba.com/company/test-seller".to_string()),
         join_date: Some("2021".to_string()),
         location: Some("Lahore".to_string()),
         last_active: Some("Today".to_string()),
@@ -732,7 +524,7 @@ async fn resolve_new_seller() {
 #[tokio::test]
 async fn resolve_existing_seller_have_no_reports() {
     let pool = test_pool().await;
-    let platform = "olx".to_string();
+    let platform = "alibaba".to_string();
     let platform_id = "sellers_have_no_report_test_001".to_string();
     cleanup_test_seller(&pool, &platform, &platform_id).await;
 
@@ -742,7 +534,7 @@ async fn resolve_existing_seller_have_no_reports() {
         name: Some("Test name".to_string()),
         handle: Some("test_handle".to_string()),
         phone: Some("123456789".to_string()),
-        profile_url: Some("https://olx.com.pk/profile/test-seller".to_string()),
+        profile_url: Some("https://www.alibaba.com/company/test-seller".to_string()),
         join_date: Some("2021".to_string()),
         location: Some("Lahore".to_string()),
         last_active: Some("Today".to_string()),
@@ -765,7 +557,7 @@ async fn resolve_existing_seller_have_no_reports() {
 #[tokio::test]
 async fn resolve_existing_seller_with_real_fraud_report() {
     let pool = test_pool().await;
-    let platform = "olx".to_string();
+    let platform = "alibaba".to_string();
     let platform_id = "seller_have_reports_test_001".to_string();
 
     cleanup_test_seller(&pool, &platform, &platform_id).await;
@@ -776,7 +568,7 @@ async fn resolve_existing_seller_with_real_fraud_report() {
         name: Some("Test name".to_string()),
         handle: Some("test_handle".to_string()),
         phone: Some("123456789".to_string()),
-        profile_url: Some("https://olx.com.pk/profile/test-seller".to_string()),
+        profile_url: Some("https://www.alibaba.com/company/test-seller".to_string()),
         join_date: Some("2021".to_string()),
         location: Some("Lahore".to_string()),
         last_active: Some("Today".to_string()),
@@ -810,7 +602,7 @@ async fn resolve_existing_seller_with_real_fraud_report() {
 #[tokio::test]
 async fn find_seller_exists() {
     let pool = test_pool().await;
-    let platform = "olx";
+    let platform = "alibaba";
     let platform_id = "find_seller_exists_001";
     cleanup_test_seller(&pool, platform, platform_id).await;
 
@@ -820,7 +612,7 @@ async fn find_seller_exists() {
         name: Some("Findable Seller".to_string()),
         handle: Some("findable_handle".to_string()),
         phone: Some("03001234567".to_string()),
-        profile_url: Some("https://olx.com.pk/profile/findable".to_string()),
+        profile_url: Some("https://www.alibaba.com/company/findable".to_string()),
         join_date: None,
         location: Some("Lahore".to_string()),
         last_active: Some("Today".to_string()),
@@ -845,7 +637,7 @@ async fn find_seller_database_error() {
     let pool = test_pool().await;
     pool.close().await;
 
-    let result = find_seller(&pool, "olx", "doesnt_matter").await;
+    let result = find_seller(&pool, "alibaba", "doesnt_matter").await;
     assert!(
         result.is_err(),
         "expected a genuine database error when the connection pool is closed"
@@ -855,7 +647,7 @@ async fn find_seller_database_error() {
 #[tokio::test]
 async fn find_seller_not_exists() {
     let pool = test_pool().await;
-    let platform = "olx".to_string();
+    let platform = "alibaba".to_string();
     let platform_id = "find_seller_not_exists".to_string();
     cleanup_test_seller(&pool, &platform, &platform_id).await;
 
@@ -882,7 +674,7 @@ async fn zero_fraud_reports() {
 #[tokio::test]
 async fn having_fraud_reports() {
     let pool = test_pool().await;
-    let platform = "olx".to_string();
+    let platform = "alibaba".to_string();
     let platform_id = "sellers_have_reports_test_001".to_string();
     cleanup_test_seller(&pool, &platform, &platform_id).await;
 
@@ -892,7 +684,7 @@ async fn having_fraud_reports() {
         name: Some("Test name".to_string()),
         handle: Some("test_handle".to_string()),
         phone: Some("123456789".to_string()),
-        profile_url: Some("https://olx.com.pk/profile/test-seller".to_string()),
+        profile_url: Some("https://www.alibaba.com/company/test-seller".to_string()),
         join_date: Some("2021".to_string()),
         location: Some("Lahore".to_string()),
         last_active: Some("Today".to_string()),
@@ -927,7 +719,7 @@ async fn having_fraud_reports() {
 #[tokio::test]
 async fn create_seller_creates_brand_new() {
     let pool = test_pool().await;
-    let platform = "olx";
+    let platform = "alibaba";
     let platform_id = "create_seller_new_001";
     cleanup_test_seller(&pool, platform, platform_id).await;
 
@@ -937,7 +729,7 @@ async fn create_seller_creates_brand_new() {
         name: Some("Brand New Seller".to_string()),
         handle: Some("new_seller_handle".to_string()),
         phone: Some("03001234567".to_string()),
-        profile_url: Some("https://olx.com.pk/profile/new-seller".to_string()),
+        profile_url: Some("https://www.alibaba.com/company/new-seller".to_string()),
         join_date: None,
         location: Some("Lahore".to_string()),
         last_active: Some("Today".to_string()),
@@ -960,7 +752,7 @@ async fn create_seller_creates_brand_new() {
 #[tokio::test]
 async fn create_seller_updates_and_fills_in_new_data() {
     let pool = test_pool().await;
-    let platform = "olx";
+    let platform = "alibaba";
     let platform_id = "create_seller_fill_in_001";
     cleanup_test_seller(&pool, platform, platform_id).await;
 
@@ -970,7 +762,7 @@ async fn create_seller_updates_and_fills_in_new_data() {
         name: Some("Seller Name".to_string()),
         handle: Some("seller_handle".to_string()),
         phone: Some("03001234567".to_string()),
-        profile_url: Some("https://olx.com.pk/profile/seller".to_string()),
+        profile_url: Some("https://www.alibaba.com/company/seller".to_string()),
         join_date: None,
         location: None,
         last_active: Some("Today".to_string()),
@@ -991,7 +783,7 @@ async fn create_seller_updates_and_fills_in_new_data() {
         name: Some("Seller Name".to_string()),
         handle: Some("seller_handle".to_string()),
         phone: Some("03001234567".to_string()),
-        profile_url: Some("https://olx.com.pk/profile/seller".to_string()),
+        profile_url: Some("https://www.alibaba.com/company/seller".to_string()),
         join_date: None,
         location: Some("Karachi".to_string()),
         last_active: Some("Today".to_string()),
@@ -1017,7 +809,7 @@ async fn create_seller_updates_and_fills_in_new_data() {
 #[tokio::test]
 async fn create_seller_never_overwrites_good_data_with_blanks() {
     let pool = test_pool().await;
-    let platform = "olx";
+    let platform = "alibaba";
     let platform_id = "create_seller_preserve_001";
     cleanup_test_seller(&pool, platform, platform_id).await;
 
@@ -1027,7 +819,7 @@ async fn create_seller_never_overwrites_good_data_with_blanks() {
         name: Some("Genuinely Real Seller Name".to_string()),
         handle: Some("seller_handle".to_string()),
         phone: Some("03001234567".to_string()),
-        profile_url: Some("https://olx.com.pk/profile/seller".to_string()),
+        profile_url: Some("https://www.alibaba.com/company/seller".to_string()),
         join_date: None,
         location: Some("Lahore".to_string()),
         last_active: Some("Today".to_string()),
@@ -1047,7 +839,7 @@ async fn create_seller_never_overwrites_good_data_with_blanks() {
         name: None,
         handle: Some("seller_handle".to_string()),
         phone: Some("03001234567".to_string()),
-        profile_url: Some("https://olx.com.pk/profile/seller".to_string()),
+        profile_url: Some("https://www.alibaba.com/company/seller".to_string()),
         join_date: None,
         location: Some("Lahore".to_string()),
         last_active: Some("Today".to_string()),
@@ -1073,7 +865,7 @@ async fn create_seller_never_overwrites_good_data_with_blanks() {
 #[tokio::test]
 async fn create_seller_verification_always_updates() {
     let pool = test_pool().await;
-    let platform = "olx";
+    let platform = "alibaba";
     let platform_id = "create_seller_verification_001";
     cleanup_test_seller(&pool, platform, platform_id).await;
 
@@ -1083,7 +875,7 @@ async fn create_seller_verification_always_updates() {
         name: Some("Verification Test Seller".to_string()),
         handle: Some("seller_handle".to_string()),
         phone: Some("03001234567".to_string()),
-        profile_url: Some("https://olx.com.pk/profile/seller".to_string()),
+        profile_url: Some("https://www.alibaba.com/company/seller".to_string()),
         join_date: None,
         location: Some("Lahore".to_string()),
         last_active: Some("Today".to_string()),
@@ -1119,7 +911,7 @@ async fn create_seller_verification_always_updates() {
 #[tokio::test]
 async fn create_seller_join_date_parses_successfully() {
     let pool = test_pool().await;
-    let platform = "olx";
+    let platform = "alibaba";
     let platform_id = "create_seller_join_date_success_001";
     cleanup_test_seller(&pool, platform, platform_id).await;
 
@@ -1129,7 +921,7 @@ async fn create_seller_join_date_parses_successfully() {
         name: Some("Join Date Test Seller".to_string()),
         handle: Some("seller_handle".to_string()),
         phone: Some("03001234567".to_string()),
-        profile_url: Some("https://olx.com.pk/profile/seller".to_string()),
+        profile_url: Some("https://www.alibaba.com/company/seller".to_string()),
         join_date: Some("Member since 2021".to_string()),
         location: Some("Lahore".to_string()),
         last_active: Some("Today".to_string()),
@@ -1151,7 +943,7 @@ async fn create_seller_join_date_parses_successfully() {
 #[tokio::test]
 async fn create_seller_join_date_malformed_becomes_none() {
     let pool = test_pool().await;
-    let platform = "olx";
+    let platform = "alibaba";
     let platform_id = "create_seller_join_date_malformed_001";
     cleanup_test_seller(&pool, platform, platform_id).await;
 
@@ -1161,7 +953,7 @@ async fn create_seller_join_date_malformed_becomes_none() {
         name: Some("Malformed Join Date Seller".to_string()),
         handle: Some("seller_handle".to_string()),
         phone: Some("03001234567".to_string()),
-        profile_url: Some("https://olx.com.pk/profile/seller".to_string()),
+        profile_url: Some("https://www.alibaba.com/company/seller".to_string()),
         join_date: Some("Member since forever".to_string()),
         location: Some("Lahore".to_string()),
         last_active: Some("Today".to_string()),
@@ -1185,7 +977,7 @@ async fn create_seller_database_error() {
     pool.close().await;
 
     let request = SellersRequest {
-        platform: "olx".to_string(),
+        platform: "alibaba".to_string(),
         platform_id: Some("create_seller_db_error_001".to_string()),
         name: Some("Doesn't Matter".to_string()),
         handle: None,
@@ -1240,7 +1032,7 @@ fn build_network_third_summary() {
 #[tokio::test]
 async fn create_listing_creates_brand_new() {
     let pool = test_pool().await;
-    let platform = "olx";
+    let platform = "alibaba";
     let platform_id = "create_listing_new_seller_001";
     cleanup_test_seller(&pool, platform, platform_id).await;
 
@@ -1260,7 +1052,7 @@ async fn create_listing_creates_brand_new() {
         .await
         .expect("expected the seller to be created");
 
-    let listing_url = "https://olx.com.pk/item/create-listing-new-001";
+    let listing_url = "https://www.alibaba.com/product-detail/create-listing-new-001";
     query("DELETE FROM listings WHERE listing_url = $1")
         .bind(listing_url)
         .execute(&pool)
@@ -1305,7 +1097,7 @@ async fn create_listing_creates_brand_new() {
 #[tokio::test]
 async fn create_listing_updates_and_fills_in_new_data() {
     let pool = test_pool().await;
-    let platform = "olx";
+    let platform = "alibaba";
     let platform_id = "create_listing_fill_in_seller_001";
     cleanup_test_seller(&pool, platform, platform_id).await;
 
@@ -1325,7 +1117,7 @@ async fn create_listing_updates_and_fills_in_new_data() {
         .await
         .expect("expected the seller to be created");
 
-    let listing_url = "https://olx.com.pk/item/create-listing-fill-in-001";
+    let listing_url = "https://www.alibaba.com/product-detail/create-listing-fill-in-001";
     query("DELETE FROM listings WHERE listing_url = $1")
         .bind(listing_url)
         .execute(&pool)
@@ -1391,7 +1183,7 @@ async fn create_listing_updates_and_fills_in_new_data() {
 #[tokio::test]
 async fn create_listing_never_overwrites_good_data_with_blanks() {
     let pool = test_pool().await;
-    let platform = "olx";
+    let platform = "alibaba";
     let platform_id = "create_listing_preserve_seller_001";
     cleanup_test_seller(&pool, platform, platform_id).await;
 
@@ -1411,7 +1203,7 @@ async fn create_listing_never_overwrites_good_data_with_blanks() {
         .await
         .expect("expected the seller to be created");
 
-    let listing_url = "https://olx.com.pk/item/create-listing-preserve-001";
+    let listing_url = "https://www.alibaba.com/product-detail/create-listing-preserve-001";
     query("DELETE FROM listings WHERE listing_url = $1")
         .bind(listing_url)
         .execute(&pool)
@@ -1483,7 +1275,7 @@ async fn create_listing_never_overwrites_good_data_with_blanks() {
 #[tokio::test]
 async fn create_listing_last_analyzed_at_set_on_update() {
     let pool = test_pool().await;
-    let platform = "olx";
+    let platform = "alibaba";
     let platform_id = "create_listing_last_analyzed_seller_001";
     cleanup_test_seller(&pool, platform, platform_id).await;
 
@@ -1502,7 +1294,7 @@ async fn create_listing_last_analyzed_at_set_on_update() {
         .await
         .expect("expected the seller to be created");
 
-    let listing_url = "https://olx.com.pk/item/create-listing-last-analyzed-001";
+    let listing_url = "https://www.alibaba.com/product-detail/create-listing-last-analyzed-001";
     query("DELETE FROM listings WHERE listing_url = $1")
         .bind(listing_url)
         .execute(&pool)
@@ -1566,8 +1358,8 @@ async fn create_listing_database_error() {
     let fake_seller_id = Uuid::new_v4();
     let request = ListingsRequest {
         seller_id: Some(fake_seller_id),
-        platform: "olx".to_string(),
-        listing_url: "https://olx.com.pk/item/db-error-test".to_string(),
+        platform: "alibaba".to_string(),
+        listing_url: "https://www.alibaba.com/product-detail/db-error-test".to_string(),
         listing_id: Some("db_error_test_001".to_string()),
         title: Some("Doesn't Matter".to_string()),
         price: None,
@@ -1582,509 +1374,6 @@ async fn create_listing_database_error() {
         result.is_err(),
         "expected a genuine database error when the connection pool is closed"
     );
-}
-
-// Run Claude Analysis Test
-// #[tokio::test]
-// #[serial]
-// async fn claude_analysis_success() {
-//     dotenvy::dotenv().ok();
-
-//     let listing = Listings {
-//         id: Uuid::now_v7(),
-//         seller_id: None,
-//         platform: "olx".to_string(),
-//         listing_url: "https://olx.com.pk/item/test-listing".to_string(),
-//         listing_id: Some("12345".to_string()),
-//         title: Some("iPhone 13 Pro Max - Excellent Condition".to_string()),
-//         price: Some(150000),
-//         description: Some("Selling my iPhone 13 Pro Max, barely used, no scratches.".to_string()),
-//         category: Some(ListingCategory::MobilePhones),
-//         image_urls: Some(vec![
-//             "https://example.com/image1.jpg".to_string(),
-//             "https://example.com/image2.jpg".to_string(),
-//         ]),
-//         posted_date: Some(NaiveDate::from_ymd_opt(2026, 1, 10).unwrap()),
-//         first_seen_at: Utc::now(),
-//         last_analyzed_at: None,
-//         updated_at: Utc::now(),
-//     };
-
-//     let seller = Sellers {
-//         id: Uuid::now_v7(),
-//         platform: "olx".to_string(),
-//         platform_id: "seller_test_001".to_string(),
-//         name: Some("Ahmed Khan".to_string()),
-//         handle: Some("ahmed_khan_deals".to_string()),
-//         phone: Some("03001234567".to_string()),
-//         profile_url: Some("https://olx.com.pk/profile/ahmed-khan".to_string()),
-//         join_date: Some(NaiveDate::from_ymd_opt(2021, 1, 1).unwrap()),
-//         verification: SellerVerification::Unknown,
-//         location: Some("Lahore".to_string()),
-//         last_active_text: Some("Today".to_string()),
-//         created_at: Utc::now(),
-//         updated_at: Utc::now(),
-//     };
-
-//     let result = run_claude_analysis(&listing, &seller)
-//         .await
-//         .expect("expected to run the claude analysis");
-
-//     assert!(
-//         !result.overall_risk_notes.is_empty(),
-//         "expected Claude to return real risk notes, not an empty response"
-//     );
-// }
-
-#[tokio::test]
-#[serial]
-async fn claude_analysis_with_missing_fields_uses_defaults() {
-    dotenvy::dotenv().ok();
-
-    let listing = Listings {
-        id: Uuid::now_v7(),
-        seller_id: None,
-        platform: "olx".to_string(),
-        listing_url: "https://olx.com.pk/item/test-listing".to_string(),
-        listing_id: Some("12345".to_string()),
-        title: None,
-        price: None,
-        description: Some("Selling my iPhone 13 Pro Max, barely used, no scratches.".to_string()),
-        category: Some(ListingCategory::MobilePhones),
-        image_urls: None,
-        posted_date: Some(NaiveDate::from_ymd_opt(2026, 1, 10).unwrap()),
-        first_seen_at: Utc::now(),
-        last_analyzed_at: None,
-        updated_at: Utc::now(),
-    };
-
-    let seller = Sellers {
-        id: Uuid::now_v7(),
-        platform: "olx".to_string(),
-        platform_id: "seller_test_001".to_string(),
-        name: Some("Ahmed Khan".to_string()),
-        handle: Some("ahmed_khan_deals".to_string()),
-        phone: Some("03001234567".to_string()),
-        profile_url: Some("https://olx.com.pk/profile/ahmed-khan".to_string()),
-        join_date: None,
-        verification: SellerVerification::Unknown,
-        location: Some("Lahore".to_string()),
-        last_active_text: Some("Today".to_string()),
-        created_at: Utc::now(),
-        updated_at: Utc::now(),
-    };
-
-    let result = run_claude_analysis(&listing, &seller, "en")
-        .await
-        .expect("expected the analysis to succeed even with missing fields");
-
-    assert!(
-        !result.overall_risk_notes.is_empty(),
-        "expected Claude to still return real risk notes despite the missing fields"
-    );
-}
-
-#[tokio::test]
-#[serial]
-async fn claude_analysis_failure() {
-    dotenvy::dotenv().ok();
-
-    let original_key = var("ANTHROPIC_API_KEY").ok();
-    unsafe {
-        remove_var("ANTHROPIC_API_KEY");
-    }
-
-    let listing = Listings {
-        id: Uuid::now_v7(),
-        seller_id: None,
-        platform: "olx".to_string(),
-        listing_url: "https://olx.com.pk/item/test-listing".to_string(),
-        listing_id: Some("12345".to_string()),
-        title: Some("iPhone 13 Pro Max - Excellent Condition".to_string()),
-        price: Some(150000),
-        description: Some("Selling my iPhone 13 Pro Max, barely used, no scratches.".to_string()),
-        category: Some(ListingCategory::MobilePhones),
-        image_urls: Some(vec![
-            "https://example.com/image1.jpg".to_string(),
-            "https://example.com/image2.jpg".to_string(),
-        ]),
-        posted_date: Some(NaiveDate::from_ymd_opt(2026, 1, 10).unwrap()),
-        first_seen_at: Utc::now(),
-        last_analyzed_at: None,
-        updated_at: Utc::now(),
-    };
-
-    let seller = Sellers {
-        id: Uuid::now_v7(),
-        platform: "olx".to_string(),
-        platform_id: "seller_test_001".to_string(),
-        name: Some("Ahmed Khan".to_string()),
-        handle: Some("ahmed_khan_deals".to_string()),
-        phone: Some("03001234567".to_string()),
-        profile_url: Some("https://olx.com.pk/profile/ahmed-khan".to_string()),
-        join_date: Some(NaiveDate::from_ymd_opt(2021, 1, 1).unwrap()),
-        verification: SellerVerification::Unknown,
-        location: Some("Lahore".to_string()),
-        last_active_text: Some("Today".to_string()),
-        created_at: Utc::now(),
-        updated_at: Utc::now(),
-    };
-
-    let result = run_claude_analysis(&listing, &seller, "en").await;
-    assert!(
-        result.is_err(),
-        "expected the analysis to fail when the API key is genuinely missing"
-    );
-
-    unsafe {
-        if let Some(key) = original_key {
-            set_var("ANTHROPIC_API_KEY", key);
-        }
-    }
-}
-
-// Call Claude Test
-#[tokio::test]
-#[serial]
-async fn call_b2c_claude_missing_api_key() {
-    dotenvy::dotenv().ok();
-    let original_key = var("ANTHROPIC_API_KEY").ok();
-    unsafe {
-        remove_var("ANTHROPIC_API_KEY");
-    }
-
-    let image_urls: Vec<String> = vec![];
-    let args = CallClaudeArguments {
-        platform: "olx",
-        seller_name: "Test Seller",
-        seller_account_age: "3 years",
-        title: "Test Listing",
-        price: 50000,
-        description: "A genuine test description",
-        image_urls: &image_urls,
-        language: "en",
-    };
-
-    let result = call_b2c_claude(args).await;
-
-    match result {
-        Err(ClaudeError::MissingApiKey) => {}
-        Err(other) => panic!("expected MissingApiKey, got a different error: {:?}", other),
-        Ok(_) => panic!("expected the call to fail without a real API key, but it succeeded"),
-    }
-
-    unsafe {
-        if let Some(key) = original_key {
-            set_var("ANTHROPIC_API_KEY", key);
-        }
-    }
-}
-
-#[tokio::test]
-#[serial]
-async fn call_b2c_claude_success_complete_data() {
-    dotenvy::dotenv().ok();
-
-    let image_urls: Vec<String> = vec![];
-    let args = CallClaudeArguments {
-        platform: "olx",
-        seller_name: "Ahmed Khan",
-        seller_account_age: "3 years",
-        title: "iPhone 13 Pro Max - Excellent Condition",
-        price: 150000,
-        description: "Selling my iPhone 13 Pro Max, barely used, no scratches.",
-        image_urls: &image_urls,
-        language: "en",
-    };
-
-    let result = call_b2c_claude(args)
-        .await
-        .expect("expected the call to genuinely succeed");
-
-    assert!(
-        !result.overall_risk_notes.is_empty(),
-        "expected Claude to return real, non-empty risk notes"
-    );
-}
-
-#[tokio::test]
-#[serial]
-async fn call_b2c_claude_success_with_minimal_data() {
-    dotenvy::dotenv().ok();
-
-    let image_urls: Vec<String> = vec![];
-    let args = CallClaudeArguments {
-        platform: "olx",
-        seller_name: "Unknown",
-        seller_account_age: "Unknown",
-        title: "Untitled",
-        price: 0,
-        description: "No Description",
-        image_urls: &image_urls,
-        language: "en",
-    };
-
-    let result = call_b2c_claude(args)
-        .await
-        .expect("expected the call to still succeed, even with minimal/default data");
-
-    assert!(
-        !result.overall_risk_notes.is_empty(),
-        "expected Claude to still return real risk notes despite the sparse input"
-    );
-}
-
-#[tokio::test]
-#[serial]
-async fn call_b2c_claude_request_failed() {
-    dotenvy::dotenv().ok();
-
-    // Genuinely unreachable
-    let response = reqwest::Client::new()
-        .post("http://this-domain-genuinely-does-not-exist-12345.invalid")
-        .send()
-        .await;
-    assert!(
-        response.is_err(),
-        "sanity check: this host should genuinely be unreachable"
-    );
-}
-
-// Content Test
-#[test]
-fn content_includes_all_real_values() {
-    let image_urls: Vec<String> = vec![];
-    let args = CallClaudeArguments {
-        platform: "olx",
-        seller_name: "Ahmed Khan",
-        seller_account_age: "3 years",
-        title: "iPhone 13 Pro Max",
-        price: 150000,
-        description: "Barely used, no scratches",
-        image_urls: &image_urls,
-        language: "en",
-    };
-
-    let result = b2c_content(&args);
-
-    assert!(
-        result.contains("olx"),
-        "expected the platform to appear in the prompt"
-    );
-    assert!(
-        result.contains("Ahmed Khan"),
-        "expected the seller name to appear"
-    );
-    assert!(
-        result.contains("3 years"),
-        "expected the account age to appear"
-    );
-    assert!(
-        result.contains("iPhone 13 Pro Max"),
-        "expected the title to appear"
-    );
-    assert!(result.contains("150000"), "expected the price to appear");
-    assert!(
-        result.contains("Barely used, no scratches"),
-        "expected the description to appear"
-    );
-}
-
-#[test]
-fn content_never_includes_image_urls() {
-    let image_urls: Vec<String> =
-        vec!["https://example.com/genuinely-distinctive-image-url-marker.jpg".to_string()];
-    let args = CallClaudeArguments {
-        platform: "olx",
-        seller_name: "Test Seller",
-        seller_account_age: "1 year",
-        title: "Test Listing",
-        price: 1000,
-        description: "Test description",
-        image_urls: &image_urls,
-        language: "en",
-    };
-
-    let result = b2c_content(&args);
-
-    assert!(
-        !result.contains("genuinely-distinctive-image-url-marker"),
-        "expected image_urls to be genuinely absent from the prompt, since this field is deliberately unused"
-    );
-}
-
-// Build All Signals Tests
-#[tokio::test]
-async fn build_all_signals_without_domain_check() {
-    let finding = Finding {
-        found: true,
-        evidence: "evidence".to_string(),
-    };
-
-    let image_assessment = ImageAssessment {
-        verdict: "original".to_string(),
-        reasoning: "reasoning".to_string(),
-    };
-
-    let price_assessment = PriceAssessment {
-        verdict: "normal".to_string(),
-        reasoning: "reasoning".to_string(),
-    };
-
-    let claude_analysis = ClaudeAnalysis {
-        urgency_language: finding.clone(),
-        advance_payment_request: finding.clone(),
-        duplicate_listing: finding.clone(),
-        image_authenticity: image_assessment,
-        fraud_pattern_match: finding.clone(),
-        contact_info_in_listing: finding.clone(),
-        price_assessment,
-        extracted_phone_number: None,
-        overall_risk_notes: "risk notes".to_string(),
-    };
-
-    let seller = Sellers {
-        id: Uuid::now_v7(),
-        platform: "olx".to_string(),
-        platform_id: "seller_test_001".to_string(),
-        name: Some("Ahmed Khan".to_string()),
-        handle: Some("ahmed_khan_deals".to_string()),
-        phone: Some("03001234567".to_string()),
-        profile_url: Some("https://olx.com.pk/profile/ahmed-khan".to_string()),
-        join_date: Some(NaiveDate::from_ymd_opt(2021, 1, 1).unwrap()),
-        verification: SellerVerification::Unknown,
-        location: Some("Lahore".to_string()),
-        last_active_text: Some("Today".to_string()),
-        created_at: Utc::now(),
-        updated_at: Utc::now(),
-    };
-
-    let analyze_request = AnalyzeRequest {
-        platform: "olx".to_string(),
-        seller_id: None,
-        listing_url: "https://olx.com.pk/item/test-listing".to_string(),
-        listing_id: Some("12345".to_string()),
-        title: Some("Test Listing".to_string()),
-        price: Some(50000),
-        description: Some("Test description".to_string()),
-        category: None,
-        image_urls: None,
-        posted_date: None,
-        platform_id: Some("platform_id_123".to_string()),
-        seller_name: Some("Test Seller".to_string()),
-        seller_handle: Some("test_handle".to_string()),
-        seller_phone: Some("123456789".to_string()),
-        seller_profile_url: Some("https://olx.com.pk/profile/test".to_string()),
-        seller_join_date: Some("2021".to_string()),
-        seller_location: Some("Lahore".to_string()),
-        seller_last_active: Some("Today".to_string()),
-        seller_website: None,
-        seller_verified: None,
-        seller_rating: None,
-        seller_total_products: None,
-        domain_check_status: None,
-        domain_check_real_name: None,
-        domain_check_real_domain: None,
-        domain_check_current_domain: None,
-        domain_check_current_html: None,
-        domain_check_real_html: None,
-        page_html: None,
-        company_page_html: None,
-        language: None,
-    };
-
-    let pool = test_pool().await;
-    let signals_without_domain = build_signals(&claude_analysis, &seller);
-    let all_signals = build_all_signals(&pool, &claude_analysis, &seller, &analyze_request).await;
-
-    assert_eq!(all_signals.len(), signals_without_domain.len() + 3);
-}
-
-#[tokio::test]
-async fn build_all_signals_with_domain_check() {
-    let finding = Finding {
-        found: true,
-        evidence: "evidence".to_string(),
-    };
-
-    let image_assessment = ImageAssessment {
-        verdict: "original".to_string(),
-        reasoning: "reasoning".to_string(),
-    };
-
-    let price_assessment = PriceAssessment {
-        verdict: "normal".to_string(),
-        reasoning: "reasoning".to_string(),
-    };
-
-    let claude_analysis = ClaudeAnalysis {
-        urgency_language: finding.clone(),
-        advance_payment_request: finding.clone(),
-        duplicate_listing: finding.clone(),
-        image_authenticity: image_assessment,
-        fraud_pattern_match: finding.clone(),
-        contact_info_in_listing: finding.clone(),
-        price_assessment,
-        extracted_phone_number: None,
-        overall_risk_notes: "risk notes".to_string(),
-    };
-
-    let seller = Sellers {
-        id: Uuid::now_v7(),
-        platform: "olx".to_string(),
-        platform_id: "seller_test_001".to_string(),
-        name: Some("Ahmed Khan".to_string()),
-        handle: Some("ahmed_khan_deals".to_string()),
-        phone: Some("03001234567".to_string()),
-        profile_url: Some("https://olx.com.pk/profile/ahmed-khan".to_string()),
-        join_date: Some(NaiveDate::from_ymd_opt(2021, 1, 1).unwrap()),
-        verification: SellerVerification::Unknown,
-        location: Some("Lahore".to_string()),
-        last_active_text: Some("Today".to_string()),
-        created_at: Utc::now(),
-        updated_at: Utc::now(),
-    };
-
-    let analyze_request = AnalyzeRequest {
-        platform: "olx".to_string(),
-        seller_id: None,
-        listing_url: "https://olx.com.pk/item/test-listing".to_string(),
-        listing_id: Some("12345".to_string()),
-        title: Some("Test Listing".to_string()),
-        price: Some(50000),
-        description: Some("Test description".to_string()),
-        category: None,
-        image_urls: None,
-        posted_date: None,
-        platform_id: Some("platform_id_123".to_string()),
-        seller_name: Some("Test Seller".to_string()),
-        seller_handle: Some("test_handle".to_string()),
-        seller_phone: Some("123456789".to_string()),
-        seller_profile_url: Some("https://olx.com.pk/profile/test".to_string()),
-        seller_join_date: Some("2021".to_string()),
-        seller_location: Some("Lahore".to_string()),
-        seller_last_active: Some("Today".to_string()),
-        seller_website: None,
-        seller_verified: None,
-        seller_rating: None,
-        seller_total_products: None,
-        domain_check_status: Some("suspicious".to_string()),
-        domain_check_real_name: None,
-        domain_check_real_domain: None,
-        domain_check_current_domain: None,
-        domain_check_current_html: None,
-        domain_check_real_html: None,
-        page_html: None,
-        company_page_html: None,
-        language: None,
-    };
-
-    let pool = test_pool().await;
-    let signals_without_domain = build_signals(&claude_analysis, &seller);
-    let all_signals = build_all_signals(&pool, &claude_analysis, &seller, &analyze_request).await;
-
-    assert_eq!(all_signals.len(), signals_without_domain.len() + 4);
-    assert_eq!(all_signals[0].label, "Domain check");
 }
 
 // Build Network Memory Signal Tests
@@ -2104,7 +1393,7 @@ async fn fresh_seller_and_analysis(
 ) -> (Uuid, Uuid) {
     let _ = query(
         "DELETE FROM fraud_reports WHERE seller_id IN
-            (SELECT id FROM sellers WHERE platform = 'olx' AND platform_id = $1)",
+            (SELECT id FROM sellers WHERE platform = 'alibaba' AND platform_id = $1)",
     )
     .bind(platform_id)
     .execute(pool)
@@ -2117,7 +1406,7 @@ async fn fresh_seller_and_analysis(
 async fn insert_scam_report(pool: &sqlx::Pool<sqlx::Postgres>, seller_id: Uuid, platform_id: &str) {
     query(
         "INSERT INTO fraud_reports (seller_id, platform, platform_id, report_type, description)
-         VALUES ($1, 'olx', $2, 'scam'::report_types, 'Test scam report')",
+         VALUES ($1, 'alibaba', $2, 'scam'::report_types, 'Test scam report')",
     )
     .bind(seller_id)
     .bind(platform_id)
@@ -2330,11 +1619,11 @@ fn build_domain_signal_with_something_else_status() {
 #[test]
 fn build_domain_signal_prefers_highlighted_html_over_plain_text() {
     let status = Some("suspicious");
-    let real_name = Some("OLX");
-    let real_domain = Some("olx.com.pk");
-    let real_domain_html = Some("olx.com.pk");
-    let current_domain = Some("0lx.com.pk");
-    let current_domain_html = Some("<b>0</b>lx.com.pk");
+    let real_name = Some("Alibaba");
+    let real_domain = Some("alibaba.com");
+    let real_domain_html = Some("alibaba.com");
+    let current_domain = Some("a1ibaba.com");
+    let current_domain_html = Some("a<b>1</b>ibaba.com");
 
     let result = build_domain_signal(
         status,
@@ -2348,361 +1637,14 @@ fn build_domain_signal_prefers_highlighted_html_over_plain_text() {
     let signal = result.expect("expected a signal for a suspicious domain");
 
     assert!(
-        signal.sub.contains("<b>0</b>lx.com.pk"),
+        signal.sub.contains("a<b>1</b>ibaba.com"),
         "expected the highlighted version to be used, got: {}",
         signal.sub
     );
 
     assert!(
-        !signal.sub.contains("0lx.com.pk\""),
+        !signal.sub.contains("a1ibaba.com\""),
         "expected the plain version NOT to be used when the highlighted one was available"
-    );
-}
-
-// Calculate Risk Score Test
-#[test]
-fn calculate_risk_score_baseline_zero() {
-    let analysis = ClaudeAnalysis {
-        urgency_language: Finding {
-            found: false,
-            evidence: "".to_string(),
-        },
-        advance_payment_request: Finding {
-            found: false,
-            evidence: "".to_string(),
-        },
-        duplicate_listing: Finding {
-            found: false,
-            evidence: "".to_string(),
-        },
-        image_authenticity: ImageAssessment {
-            verdict: "original".to_string(),
-            reasoning: "".to_string(),
-        },
-        fraud_pattern_match: Finding {
-            found: false,
-            evidence: "".to_string(),
-        },
-        contact_info_in_listing: Finding {
-            found: false,
-            evidence: "".to_string(),
-        },
-        price_assessment: PriceAssessment {
-            verdict: "normal".to_string(),
-            reasoning: "".to_string(),
-        },
-        extracted_phone_number: None,
-        overall_risk_notes: "".to_string(),
-    };
-
-    let score = calculate_risk_score(&analysis, 0);
-
-    assert_eq!(score, 0, "expected a genuinely clean listing to score 0");
-}
-
-#[test]
-fn calculate_risk_score_urgency_language() {
-    let mut analysis = ClaudeAnalysis {
-        urgency_language: Finding {
-            found: false,
-            evidence: "".to_string(),
-        },
-        advance_payment_request: Finding {
-            found: false,
-            evidence: "".to_string(),
-        },
-        duplicate_listing: Finding {
-            found: false,
-            evidence: "".to_string(),
-        },
-        image_authenticity: ImageAssessment {
-            verdict: "original".to_string(),
-            reasoning: "".to_string(),
-        },
-        fraud_pattern_match: Finding {
-            found: false,
-            evidence: "".to_string(),
-        },
-        contact_info_in_listing: Finding {
-            found: false,
-            evidence: "".to_string(),
-        },
-        price_assessment: PriceAssessment {
-            verdict: "normal".to_string(),
-            reasoning: "".to_string(),
-        },
-        extracted_phone_number: None,
-        overall_risk_notes: "".to_string(),
-    };
-    analysis.urgency_language.found = true;
-
-    let score = calculate_risk_score(&analysis, 0);
-
-    assert_eq!(
-        score, 15,
-        "expected urgency_language alone to add exactly 15 points"
-    );
-}
-
-#[test]
-fn calculate_risk_score_advance_payment_request() {
-    let mut analysis = ClaudeAnalysis {
-        urgency_language: Finding {
-            found: false,
-            evidence: "".to_string(),
-        },
-        advance_payment_request: Finding {
-            found: false,
-            evidence: "".to_string(),
-        },
-        duplicate_listing: Finding {
-            found: false,
-            evidence: "".to_string(),
-        },
-        image_authenticity: ImageAssessment {
-            verdict: "original".to_string(),
-            reasoning: "".to_string(),
-        },
-        fraud_pattern_match: Finding {
-            found: false,
-            evidence: "".to_string(),
-        },
-        contact_info_in_listing: Finding {
-            found: false,
-            evidence: "".to_string(),
-        },
-        price_assessment: PriceAssessment {
-            verdict: "normal".to_string(),
-            reasoning: "".to_string(),
-        },
-        extracted_phone_number: None,
-        overall_risk_notes: "".to_string(),
-    };
-    analysis.advance_payment_request.found = true;
-
-    let score = calculate_risk_score(&analysis, 0);
-
-    assert_eq!(
-        score, 20,
-        "expected advance_payment_request alone to add exactly 20 points"
-    );
-}
-
-#[test]
-fn calculate_risk_score_duplicate_listing() {
-    let mut analysis = ClaudeAnalysis {
-        urgency_language: Finding {
-            found: false,
-            evidence: "".to_string(),
-        },
-        advance_payment_request: Finding {
-            found: false,
-            evidence: "".to_string(),
-        },
-        duplicate_listing: Finding {
-            found: false,
-            evidence: "".to_string(),
-        },
-        image_authenticity: ImageAssessment {
-            verdict: "original".to_string(),
-            reasoning: "".to_string(),
-        },
-        fraud_pattern_match: Finding {
-            found: false,
-            evidence: "".to_string(),
-        },
-        contact_info_in_listing: Finding {
-            found: false,
-            evidence: "".to_string(),
-        },
-        price_assessment: PriceAssessment {
-            verdict: "normal".to_string(),
-            reasoning: "".to_string(),
-        },
-        extracted_phone_number: None,
-        overall_risk_notes: "".to_string(),
-    };
-    analysis.duplicate_listing.found = true;
-
-    let score = calculate_risk_score(&analysis, 0);
-
-    assert_eq!(
-        score, 15,
-        "expected duplicate_listing alone to add exactly 15 points"
-    );
-}
-
-#[test]
-fn calculate_risk_score_fraud_pattern_match() {
-    let mut analysis = ClaudeAnalysis {
-        urgency_language: Finding {
-            found: false,
-            evidence: "".to_string(),
-        },
-        advance_payment_request: Finding {
-            found: false,
-            evidence: "".to_string(),
-        },
-        duplicate_listing: Finding {
-            found: false,
-            evidence: "".to_string(),
-        },
-        image_authenticity: ImageAssessment {
-            verdict: "original".to_string(),
-            reasoning: "".to_string(),
-        },
-        fraud_pattern_match: Finding {
-            found: false,
-            evidence: "".to_string(),
-        },
-        contact_info_in_listing: Finding {
-            found: false,
-            evidence: "".to_string(),
-        },
-        price_assessment: PriceAssessment {
-            verdict: "normal".to_string(),
-            reasoning: "".to_string(),
-        },
-        extracted_phone_number: None,
-        overall_risk_notes: "".to_string(),
-    };
-    analysis.fraud_pattern_match.found = true;
-
-    let score = calculate_risk_score(&analysis, 0);
-
-    assert_eq!(
-        score, 30,
-        "expected fraud_pattern_match alone to add exactly 30 points"
-    );
-}
-
-#[test]
-fn calculate_risk_score_contact_info_in_listing() {
-    let mut analysis = ClaudeAnalysis {
-        urgency_language: Finding {
-            found: false,
-            evidence: "".to_string(),
-        },
-        advance_payment_request: Finding {
-            found: false,
-            evidence: "".to_string(),
-        },
-        duplicate_listing: Finding {
-            found: false,
-            evidence: "".to_string(),
-        },
-        image_authenticity: ImageAssessment {
-            verdict: "original".to_string(),
-            reasoning: "".to_string(),
-        },
-        fraud_pattern_match: Finding {
-            found: false,
-            evidence: "".to_string(),
-        },
-        contact_info_in_listing: Finding {
-            found: false,
-            evidence: "".to_string(),
-        },
-        price_assessment: PriceAssessment {
-            verdict: "normal".to_string(),
-            reasoning: "".to_string(),
-        },
-        extracted_phone_number: None,
-        overall_risk_notes: "".to_string(),
-    };
-    analysis.contact_info_in_listing.found = true;
-
-    let score = calculate_risk_score(&analysis, 0);
-
-    assert_eq!(
-        score, 10,
-        "expected contact_info_in_listing alone to add exactly 10 points"
-    );
-}
-
-#[test]
-fn calculate_risk_score_price_assessment_not_normal() {
-    let analysis = ClaudeAnalysis {
-        urgency_language: Finding {
-            found: false,
-            evidence: "".to_string(),
-        },
-        advance_payment_request: Finding {
-            found: false,
-            evidence: "".to_string(),
-        },
-        duplicate_listing: Finding {
-            found: false,
-            evidence: "".to_string(),
-        },
-        image_authenticity: ImageAssessment {
-            verdict: "original".to_string(),
-            reasoning: "".to_string(),
-        },
-        fraud_pattern_match: Finding {
-            found: false,
-            evidence: "".to_string(),
-        },
-        contact_info_in_listing: Finding {
-            found: false,
-            evidence: "".to_string(),
-        },
-        price_assessment: PriceAssessment {
-            verdict: "suspiciously_low".to_string(),
-            reasoning: "".to_string(),
-        },
-        extracted_phone_number: None,
-        overall_risk_notes: "".to_string(),
-    };
-
-    let score = calculate_risk_score(&analysis, 0);
-
-    assert_eq!(
-        score, 20,
-        "expected a non-'normal' price verdict alone to add exactly 20 points"
-    );
-}
-
-#[test]
-fn calculate_risk_score_image_authenticity_not_original() {
-    let analysis = ClaudeAnalysis {
-        urgency_language: Finding {
-            found: false,
-            evidence: "".to_string(),
-        },
-        advance_payment_request: Finding {
-            found: false,
-            evidence: "".to_string(),
-        },
-        duplicate_listing: Finding {
-            found: false,
-            evidence: "".to_string(),
-        },
-        image_authenticity: ImageAssessment {
-            verdict: "stolen".to_string(),
-            reasoning: "".to_string(),
-        },
-        fraud_pattern_match: Finding {
-            found: false,
-            evidence: "".to_string(),
-        },
-        contact_info_in_listing: Finding {
-            found: false,
-            evidence: "".to_string(),
-        },
-        price_assessment: PriceAssessment {
-            verdict: "normal".to_string(),
-            reasoning: "".to_string(),
-        },
-        extracted_phone_number: None,
-        overall_risk_notes: "".to_string(),
-    };
-
-    let score = calculate_risk_score(&analysis, 0);
-
-    assert_eq!(
-        score, 10,
-        "expected a non-'original' image verdict alone to add exactly 10 points"
     );
 }
 
@@ -2718,12 +1660,12 @@ async fn save_and_build_response_success() {
         .expect("expected to create the user");
 
     let seller_request = SellersRequest {
-        platform: "olx".to_string(),
+        platform: "alibaba".to_string(),
         platform_id: Some("save_response_seller_001".to_string()),
         name: Some("Test Seller".to_string()),
         handle: Some("test_handle".to_string()),
         phone: Some("123456789".to_string()),
-        profile_url: Some("https://olx.com.pk/profile/test".to_string()),
+        profile_url: Some("https://www.alibaba.com/company/test".to_string()),
         join_date: Some("2021".to_string()),
         location: Some("Lahore".to_string()),
         last_active: Some("Today".to_string()),
@@ -2734,8 +1676,8 @@ async fn save_and_build_response_success() {
 
     let listing_request = ListingsRequest {
         seller_id: Some(seller.id),
-        platform: "olx".to_string(),
-        listing_url: "https://olx.com.pk/item/save-response-test".to_string(),
+        platform: "alibaba".to_string(),
+        listing_url: "https://www.alibaba.com/product-detail/save-response-test".to_string(),
         listing_id: Some("save_response_listing_001".to_string()),
         title: Some("Test Listing".to_string()),
         price: Some(50000),
@@ -2768,7 +1710,6 @@ async fn save_and_build_response_success() {
         seller,
         fraud_count: 0,
         network_summary: "Clean record on Safely network. No fraud reports found.".to_string(),
-        is_b2b: false,
         social_candidates: Vec::new(),
     };
 
@@ -2780,7 +1721,7 @@ async fn save_and_build_response_success() {
     assert_eq!(result.risk_level, RiskLevel::Low);
     assert_eq!(result.fraud_report_count, 0);
     assert_eq!(result.signals.len(), 1);
-    assert_eq!(result.entity_type, "individual");
+    assert_eq!(result.entity_type, "business");
 
     cleanup_test_user(&pool, email).await;
 }
@@ -2794,12 +1735,12 @@ async fn save_and_build_response_database_failure() {
 
     let seller = Sellers {
         id: Uuid::now_v7(),
-        platform: "olx".to_string(),
+        platform: "alibaba".to_string(),
         platform_id: "fake_seller_for_failure_test".to_string(),
         name: Some("Test Seller".to_string()),
         handle: Some("test_handle".to_string()),
         phone: Some("123456789".to_string()),
-        profile_url: Some("https://olx.com.pk/profile/test".to_string()),
+        profile_url: Some("https://www.alibaba.com/company/test".to_string()),
         join_date: Some(NaiveDate::from_ymd_opt(2021, 1, 1).unwrap()),
         verification: SellerVerification::Unknown,
         location: Some("Lahore".to_string()),
@@ -2828,7 +1769,6 @@ async fn save_and_build_response_database_failure() {
         seller,
         fraud_count: 0,
         network_summary: "Clean record on Safely network. No fraud reports found.".to_string(),
-        is_b2b: false,
         social_candidates: Vec::new(),
     };
 
@@ -2837,67 +1777,6 @@ async fn save_and_build_response_database_failure() {
         result.is_err(),
         "expected save_and_build_response to fail when listing_id and user_id don't genuinely exist"
     );
-}
-
-// Classify Entity Tests
-#[test]
-fn name_containing_a_business_keyword_is_classified_as_business() {
-    assert_eq!(classify_entity(Some("Ahmed Motors"), false), "business");
-    assert_eq!(classify_entity(Some("Sunshine Traders"), false), "business");
-    assert_eq!(classify_entity(Some("Tech Enterprises"), false), "business");
-    assert_eq!(classify_entity(Some("Downtown Store"), false), "business");
-    assert_eq!(classify_entity(Some("Khan & Co."), false), "business");
-}
-
-#[test]
-fn keyword_matching_is_genuinely_case_insensitive() {
-    assert_eq!(classify_entity(Some("AHMED MOTORS"), false), "business");
-    assert_eq!(classify_entity(Some("ahmed motors"), false), "business");
-    assert_eq!(classify_entity(Some("AhMeD MoToRs"), false), "business");
-}
-
-#[test]
-fn keyword_matches_anywhere_in_the_name_not_just_as_a_whole_word() {
-    assert_eq!(
-        classify_entity(Some("Storefront Cleaners"), false),
-        "business"
-    );
-}
-
-#[test]
-fn ordinary_individual_name_with_no_keywords_is_classified_as_individual() {
-    assert_eq!(classify_entity(Some("Ali Khan"), false), "individual");
-    assert_eq!(classify_entity(Some("M Usman"), false), "individual");
-}
-
-#[test]
-fn no_seller_name_at_all_is_classified_as_unknown() {
-    assert_eq!(classify_entity(None, false), "unknown");
-}
-
-#[test]
-fn no_name_but_a_fully_confirmed_website_still_returns_business() {
-    assert_eq!(classify_entity(None, true), "business");
-}
-
-#[test]
-fn fully_confirmed_website_alone_is_enough_for_an_otherwise_ordinary_name() {
-    assert_eq!(classify_entity(Some("Ali Khan"), true), "business");
-}
-
-#[test]
-fn both_name_keyword_and_confirmed_website_together_still_returns_business() {
-    assert_eq!(classify_entity(Some("Ahmed Motors"), true), "business");
-}
-
-#[test]
-fn the_real_security_case_an_unconfirmed_website_never_triggers_business_on_its_own() {
-    assert_eq!(classify_entity(Some("Ali Khan"), false), "individual");
-}
-
-#[test]
-fn empty_string_name_is_treated_the_same_as_an_ordinary_individual_name() {
-    assert_eq!(classify_entity(Some(""), false), "individual");
 }
 
 // Calculate Confidence Tests
@@ -3073,9 +1952,9 @@ fn derive_risk_factors_does_not_flag_safely_history_when_it_is_not_bad() {
 }
 
 #[test]
-fn derive_risk_factors_flags_duplicate_plus_unverifiable_images_as_compound() {
+fn derive_risk_factors_flags_vague_listing_plus_unverifiable_images_as_compound() {
     let signals = vec![
-        make_signals("Duplicate listing", "Detected", "caution"),
+        make_signals("Listing detail", "Detected", "caution"),
         make_signals("Image authenticity", "Unverifiable", "caution"),
     ];
     let factors = derive_risk_factors(&signals);
@@ -3136,7 +2015,7 @@ fn derive_risk_factors_treats_an_uncovered_caution_signal_as_soft() {
 #[test]
 fn derive_risk_factors_does_not_double_count_signals_already_claimed_by_a_compound_factor() {
     let signals = vec![
-        make_signals("Duplicate listing", "Detected", "caution"),
+        make_signals("Listing detail", "Detected", "caution"),
         make_signals("Image authenticity", "Unverifiable", "caution"),
     ];
     let factors = derive_risk_factors(&signals);
@@ -3171,7 +2050,7 @@ async fn create_analysis_success() {
         .await
         .expect("expected to create the user");
 
-    let platform = "olx".to_string();
+    let platform = "alibaba".to_string();
     let platform_id = "create_analysis_seller_001".to_string();
 
     cleanup_test_seller(&pool, &platform, &platform_id).await;
@@ -3182,7 +2061,7 @@ async fn create_analysis_success() {
         name: Some("Test Seller".to_string()),
         handle: Some("test_handle".to_string()),
         phone: Some("123456789".to_string()),
-        profile_url: Some("https://olx.com.pk/profile/test".to_string()),
+        profile_url: Some("https://www.alibaba.com/company/test".to_string()),
         join_date: Some("2021".to_string()),
         location: Some("Lahore".to_string()),
         last_active: Some("Today".to_string()),
@@ -3195,7 +2074,7 @@ async fn create_analysis_success() {
     let listing_request = ListingsRequest {
         seller_id: Some(seller.id),
         platform: platform.clone(),
-        listing_url: "https://olx.com.pk/item/create-analysis-test".to_string(),
+        listing_url: "https://www.alibaba.com/product-detail/create-analysis-test".to_string(),
         listing_id: Some("create_analysis_listing_001".to_string()),
         title: Some("Test Listing".to_string()),
         price: Some(50000),
@@ -3300,7 +2179,7 @@ async fn record_evidence_writes_one_row_per_signal_plus_one_for_the_score() {
     cleanup_test_user(&pool, email).await;
     let (user, _) = create_test_user(&pool, email).await;
 
-    let platform = "olx";
+    let platform = "alibaba";
     let platform_id = "record_evidence_seller_001";
     cleanup_test_seller_chain(&pool, platform, platform_id).await;
     let analysis_id =
@@ -3386,7 +2265,7 @@ async fn record_evidence_with_zero_signals_still_writes_the_score_row() {
     cleanup_test_user(&pool, email).await;
     let (user, _) = create_test_user(&pool, email).await;
 
-    let platform = "olx";
+    let platform = "alibaba";
     let platform_id = "record_evidence_empty_seller_001";
     cleanup_test_seller_chain(&pool, platform, platform_id).await;
     let analysis_id =
@@ -3450,7 +2329,7 @@ async fn record_risk_factors_writes_one_row_per_factor() {
     cleanup_test_user(&pool, email).await;
     let (user, _) = create_test_user(&pool, email).await;
 
-    let platform = "olx";
+    let platform = "alibaba";
     let platform_id = "record_risk_factors_seller_001";
     cleanup_test_seller_chain(&pool, platform, platform_id).await;
     let analysis_id =
@@ -3502,7 +2381,7 @@ async fn record_risk_factors_with_zero_factors_writes_nothing() {
     cleanup_test_user(&pool, email).await;
     let (user, _) = create_test_user(&pool, email).await;
 
-    let platform = "olx";
+    let platform = "alibaba";
     let platform_id = "record_risk_factors_empty_seller_001";
     cleanup_test_seller_chain(&pool, platform, platform_id).await;
     let analysis_id =
@@ -3569,7 +2448,7 @@ async fn get_monthly_visit_activity_database_error() {
 #[tokio::test]
 async fn get_monthly_visit_activity_no_activity() {
     let pool = test_pool().await;
-    let platform = "olx";
+    let platform = "alibaba";
     let platform_id = "monthly_activity_no_activity_001";
     cleanup_test_seller(&pool, platform, platform_id).await;
 
@@ -3605,7 +2484,7 @@ async fn get_monthly_visit_activity_no_activity() {
 #[tokio::test]
 async fn get_monthly_visit_activity_single_month_correctly_placed() {
     let pool = test_pool().await;
-    let platform = "olx";
+    let platform = "alibaba";
     let platform_id = "monthly_activity_single_001";
     cleanup_test_seller_chain(&pool, platform, platform_id).await;
 
@@ -3641,11 +2520,11 @@ async fn get_monthly_visit_activity_single_month_correctly_placed() {
 #[tokio::test]
 async fn get_monthly_visit_activity_multiple_in_same_month() {
     let pool = test_pool().await;
-    let platform = "olx";
+    let platform = "alibaba";
     let platform_id = "monthly_activity_multiple_001";
     cleanup_test_seller_chain(&pool, platform, platform_id).await;
 
-    let email = "monthly_activity_single_user@example.com";
+    let email = "monthly_activity_multiple_user@example.com";
     let (user, _) = create_test_user(&pool, email).await;
     let (listing_id, _seller_id) = insert_test_history_chain(
         &pool,
@@ -3685,11 +2564,11 @@ async fn get_monthly_visit_activity_multiple_in_same_month() {
 #[tokio::test]
 async fn get_monthly_visit_activity_excludes_old_activity() {
     let pool = test_pool().await;
-    let platform = "olx";
+    let platform = "alibaba";
     let platform_id = "monthly_activity_old_001";
     cleanup_test_seller_chain(&pool, platform, platform_id).await;
 
-    let email = "monthly_activity_single_user@example.com";
+    let email = "monthly_activity_old_user@example.com";
     let (user, _) = create_test_user(&pool, email).await;
     let (listing_id, _seller_id) = insert_test_history_chain(
         &pool,
@@ -3720,7 +2599,7 @@ async fn get_monthly_visit_activity_isolated_between_sellers() {
     let email = "monthly_activity_isolation_user@example.com";
     let (user, _) = create_test_user(&pool, email).await;
 
-    let platform = "olx";
+    let platform = "alibaba";
     let platform_id_a = "monthly_activity_isolation_a_001";
     let platform_id_b = "monthly_activity_isolation_b_001";
     cleanup_test_seller_chain(&pool, platform, platform_id_a).await;
@@ -3861,9 +2740,9 @@ fn empty_string_identifiers_are_treated_as_genuinely_absent() {
     assert_eq!(result.confidence, "none");
 }
 
-// Is B2b Tests
+// Entity Type Tests
 #[tokio::test]
-async fn save_and_build_response_forces_business_entity_type_when_is_b2b_is_true() {
+async fn save_and_build_response_always_sets_business_entity_type() {
     let pool = test_pool().await;
     let email = "b2b_entity_type_test@example.com";
     cleanup_test_user(&pool, email).await;
@@ -3913,7 +2792,6 @@ async fn save_and_build_response_forces_business_entity_type_when_is_b2b_is_true
         seller,
         fraud_count: 0,
         network_summary: "test".to_string(),
-        is_b2b: true,
         social_candidates: Vec::new(),
     };
 
@@ -3923,377 +2801,6 @@ async fn save_and_build_response_forces_business_entity_type_when_is_b2b_is_true
 
     assert_eq!(result.entity_type, "business");
 
-    cleanup_test_user(&pool, email).await;
-}
-
-#[tokio::test]
-async fn save_and_build_response_runs_normal_name_logic_when_is_b2b_is_false() {
-    let pool = test_pool().await;
-    let email = "b2c_entity_type_test@example.com";
-    cleanup_test_user(&pool, email).await;
-    let (user, _) = find_or_create_user_by_email(&pool, email)
-        .await
-        .expect("expected to create the user");
-
-    let seller_request = SellersRequest {
-        platform: "olx".to_string(),
-        platform_id: Some("b2c_entity_type_seller".to_string()),
-        name: Some("Ordinary Individual".to_string()),
-        handle: None,
-        phone: None,
-        profile_url: None,
-        join_date: None,
-        location: None,
-        last_active: None,
-    };
-    let seller = create_seller(&pool, &seller_request, SellerVerification::Unknown)
-        .await
-        .expect("expected to create the seller");
-
-    let listing_request = ListingsRequest {
-        seller_id: Some(seller.id),
-        platform: "olx".to_string(),
-        listing_url: "https://olx.com.pk/item/entity-type-test".to_string(),
-        listing_id: Some("b2c_entity_type_listing".to_string()),
-        title: None,
-        price: None,
-        description: None,
-        category: None,
-        image_urls: None,
-        posted_date: None,
-    };
-    let listing = create_listing(&pool, &listing_request, seller.id)
-        .await
-        .expect("expected to create the listing");
-
-    let data = BuildResponseData {
-        pool: &pool,
-        listing_id: listing.id,
-        risk_score: 10,
-        risk_level: RiskLevel::Low,
-        signals: vec![],
-        overall_risk_notes: "test".to_string(),
-        user_id: user.id,
-        seller,
-        fraud_count: 0,
-        network_summary: "test".to_string(),
-        is_b2b: false,
-        social_candidates: Vec::new(),
-    };
-
-    let result = save_and_build_response(data)
-        .await
-        .expect("expected the response to be built successfully");
-
-    assert_eq!(result.entity_type, "individual");
-
-    cleanup_test_user(&pool, email).await;
-}
-
-#[tokio::test]
-async fn build_all_signals_produces_correct_no_website_and_no_store_page_messages() {
-    let finding = Finding {
-        found: true,
-        evidence: "evidence".to_string(),
-    };
-
-    let image_assessment = ImageAssessment {
-        verdict: "original".to_string(),
-        reasoning: "reasoning".to_string(),
-    };
-
-    let price_assessment = PriceAssessment {
-        verdict: "normal".to_string(),
-        reasoning: "reasoning".to_string(),
-    };
-
-    let claude_analysis = ClaudeAnalysis {
-        urgency_language: finding.clone(),
-        advance_payment_request: finding.clone(),
-        duplicate_listing: finding.clone(),
-        image_authenticity: image_assessment,
-        fraud_pattern_match: finding.clone(),
-        contact_info_in_listing: finding.clone(),
-        price_assessment,
-        extracted_phone_number: None,
-        overall_risk_notes: "risk notes".to_string(),
-    };
-
-    let seller = Sellers {
-        id: Uuid::now_v7(),
-        platform: "olx".to_string(),
-        platform_id: "no_website_test_001".to_string(),
-        name: Some("Test Seller".to_string()),
-        handle: None,
-        phone: None,
-        profile_url: None,
-        join_date: Some(NaiveDate::from_ymd_opt(2021, 1, 1).unwrap()),
-        verification: SellerVerification::Unknown,
-        location: Some("Lahore".to_string()),
-        last_active_text: None,
-        created_at: Utc::now(),
-        updated_at: Utc::now(),
-    };
-
-    let analyze_request = AnalyzeRequest {
-        platform: "olx".to_string(),
-        seller_id: None,
-        listing_url: "https://olx.com.pk/item/no-website-test".to_string(),
-        listing_id: None,
-        title: None,
-        price: None,
-        description: None,
-        category: None,
-        image_urls: None,
-        posted_date: None,
-        platform_id: None,
-        seller_name: None,
-        seller_handle: None,
-        seller_phone: None,
-        seller_profile_url: None,
-        seller_join_date: None,
-        seller_location: None,
-        seller_last_active: None,
-        seller_website: None,
-        seller_verified: None,
-        seller_rating: None,
-        seller_total_products: None,
-        domain_check_status: None,
-        domain_check_real_name: None,
-        domain_check_real_domain: None,
-        domain_check_current_domain: None,
-        domain_check_current_html: None,
-        domain_check_real_html: None,
-        page_html: None,
-        company_page_html: None,
-        language: None,
-    };
-
-    let pool = test_pool().await;
-    let all_signals = build_all_signals(&pool, &claude_analysis, &seller, &analyze_request).await;
-
-    let website_signal = all_signals
-        .iter()
-        .find(|s| s.label == "Seller website check")
-        .expect("expected a Seller website check signal to always be present");
-
-    assert_eq!(website_signal.value, "No website found");
-    assert_eq!(
-        website_signal.sub,
-        "No website was mentioned or claimed by this seller."
-    );
-    assert_eq!(website_signal.signal_type, "info");
-
-    let store_page_signal = all_signals
-        .iter()
-        .find(|s| s.label == "Store page check")
-        .expect("expected a Store page check signal to always be present");
-
-    assert_eq!(store_page_signal.value, "No store page found");
-    assert_eq!(
-        store_page_signal.sub,
-        "No separate store or profile page was found for this seller."
-    );
-    assert_eq!(store_page_signal.signal_type, "info");
-}
-
-#[tokio::test]
-async fn build_all_signals_correctly_includes_real_verified_seller_data() {
-    let finding = Finding {
-        found: true,
-        evidence: "evidence".to_string(),
-    };
-
-    let image_assessment = ImageAssessment {
-        verdict: "original".to_string(),
-        reasoning: "reasoning".to_string(),
-    };
-
-    let price_assessment = PriceAssessment {
-        verdict: "normal".to_string(),
-        reasoning: "reasoning".to_string(),
-    };
-
-    let claude_analysis = ClaudeAnalysis {
-        urgency_language: finding.clone(),
-        advance_payment_request: finding.clone(),
-        duplicate_listing: finding.clone(),
-        image_authenticity: image_assessment,
-        fraud_pattern_match: finding.clone(),
-        contact_info_in_listing: finding.clone(),
-        price_assessment,
-        extracted_phone_number: None,
-        overall_risk_notes: "risk notes".to_string(),
-    };
-
-    let seller = Sellers {
-        id: Uuid::now_v7(),
-        platform: "olx".to_string(),
-        platform_id: "verified_seller_data_test_001".to_string(),
-        name: Some("Verified Shop".to_string()),
-        handle: None,
-        phone: None,
-        profile_url: None,
-        join_date: Some(NaiveDate::from_ymd_opt(2021, 1, 1).unwrap()),
-        verification: SellerVerification::Unknown,
-        location: Some("Lahore".to_string()),
-        last_active_text: None,
-        created_at: Utc::now(),
-        updated_at: Utc::now(),
-    };
-
-    let analyze_request = AnalyzeRequest {
-        platform: "olx".to_string(),
-        seller_id: None,
-        listing_url: "https://olx.com.pk/item/verified-seller-data-test".to_string(),
-        listing_id: None,
-        title: None,
-        price: None,
-        description: None,
-        category: None,
-        image_urls: None,
-        posted_date: None,
-        platform_id: None,
-        seller_name: None,
-        seller_handle: None,
-        seller_phone: None,
-        seller_profile_url: None,
-        seller_join_date: None,
-        seller_location: None,
-        seller_last_active: None,
-        seller_website: None,
-        seller_verified: Some(true),
-        seller_rating: Some(4.7),
-        seller_total_products: Some(197),
-        domain_check_status: None,
-        domain_check_real_name: None,
-        domain_check_real_domain: None,
-        domain_check_current_domain: None,
-        domain_check_current_html: None,
-        domain_check_real_html: None,
-        page_html: None,
-        company_page_html: None,
-        language: None,
-    };
-
-    let pool = test_pool().await;
-    let all_signals = build_all_signals(&pool, &claude_analysis, &seller, &analyze_request).await;
-
-    let platform_verification_signal = all_signals
-        .iter()
-        .find(|s| s.label == "Platform verification")
-        .expect("expected a Platform verification signal to be present");
-
-    assert_eq!(platform_verification_signal.value, "Verified");
-    assert_eq!(platform_verification_signal.signal_type, "good");
-
-    let track_record_signal = all_signals
-        .iter()
-        .find(|s| s.label == "Seller track record")
-        .expect("expected a Seller track record signal to be present, given real rating and product count were provided");
-
-    assert!(track_record_signal.sub.contains("197"));
-    assert!(track_record_signal.sub.contains("4.7"));
-    assert_eq!(track_record_signal.signal_type, "good");
-}
-
-#[tokio::test]
-#[serial]
-async fn analyze_gracefully_continues_when_server_side_scraping_fails() {
-    let pool = test_pool().await;
-    let email = "scraping_failure_fallback_test@example.com";
-    cleanup_test_user(&pool, email).await;
-
-    let (user, _) = find_or_create_user_by_email(&pool, email)
-        .await
-        .expect("expected to create the user");
-
-    let real_session_token = create_session(&pool, user.id)
-        .await
-        .expect("expected to create a real session");
-
-    insert_active_subscription(&pool, user.id, "Team").await;
-
-    let mut headers = HeaderMap::new();
-    headers.insert(
-        "authorization",
-        HeaderValue::from_str(&format!("Bearer {}", real_session_token))
-            .expect("expected to insert the header value"),
-    );
-
-    let platform = "olx".to_string();
-    let platform_id = "scraping_failure_fallback_platform_id".to_string();
-    cleanup_test_seller(&pool, &platform, &platform_id).await;
-
-    let request = AnalyzeRequest {
-        platform: platform.clone(),
-        seller_id: None,
-        listing_url:
-            "https://www.olx.com.pk/item/this-genuinely-does-not-exist-xyz999-iid-000000000"
-                .to_string(),
-        listing_id: Some("scraping_failure_listing".to_string()),
-        title: Some("Client-Provided Fallback Title".to_string()),
-        price: Some(25000),
-        description: Some("Client-provided fallback description.".to_string()),
-        category: None,
-        image_urls: None,
-        posted_date: None,
-        platform_id: Some(platform_id.clone()),
-        seller_name: Some("Client Fallback Seller".to_string()),
-        seller_handle: None,
-        seller_phone: None,
-        seller_profile_url: None,
-        seller_join_date: Some("2020".to_string()),
-        seller_location: Some("Karachi".to_string()),
-        seller_last_active: Some("Today".to_string()),
-        seller_website: None,
-        seller_verified: Some(false),
-        seller_rating: None,
-        seller_total_products: None,
-        domain_check_status: None,
-        domain_check_real_name: None,
-        domain_check_real_domain: None,
-        domain_check_current_domain: None,
-        domain_check_current_html: None,
-        domain_check_real_html: None,
-        page_html: None,
-        company_page_html: None,
-        language: None,
-    };
-
-    let result = analyze(State(pool.clone()), headers, Json(request))
-        .await
-        .expect("expected analyze() to succeed using client-provided data, even though server-side scraping genuinely failed");
-
-    assert!(
-        result.risk_score >= 0 && result.risk_score <= 100,
-        "expected a genuine risk score, confirming the whole flow completed"
-    );
-    assert_eq!(
-        result.seller.name,
-        Some("Client Fallback Seller".to_string()),
-        "expected the client-provided seller name to be used, since server-side scraping failed"
-    );
-    assert_eq!(
-        result.seller.location,
-        Some("Karachi".to_string()),
-        "expected the client-provided location to be used, since server-side scraping failed"
-    );
-
-    let admin = admin_pool().await;
-    query("DELETE FROM evidence WHERE analysis_id IN (SELECT id FROM analysis WHERE user_id = $1)")
-        .bind(user.id)
-        .execute(&admin)
-        .await
-        .ok();
-
-    query("DELETE FROM analysis WHERE user_id = $1")
-        .bind(user.id)
-        .execute(&pool)
-        .await
-        .ok();
-
-    cleanup_test_seller(&pool, &platform, &platform_id).await;
     cleanup_test_user(&pool, email).await;
 }
 

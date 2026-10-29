@@ -64,7 +64,6 @@ pub fn country_code_for_platform(platform: &str) -> Option<&'static str> {
         "wholesalecentral" => Some("us"),
         "madeinchina" => Some("us"),
         "globalsources" => Some("us"),
-        "olx" => Some("pk"),
         _ => None,
     }
 }

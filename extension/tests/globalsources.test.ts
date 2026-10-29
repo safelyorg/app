@@ -1,4 +1,6 @@
 import { describe, it, expect, beforeAll, vi } from "vitest";
+// Sets up the fake chrome object the background script needs.
+import "./setup-chrome";
 
 // Which Global Sources pages Safely scans (product pages only), how it
 // finds the supplier's page, and the background script that loads that

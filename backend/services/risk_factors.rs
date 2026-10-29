@@ -96,9 +96,8 @@ fn evidence_or(signal: &Signal, fallback: &str) -> String {
 /// top of the raw "what did we find" signals.
 ///
 /// Uses signal_type ("good"/"caution"/"bad") rather than exact value
-/// text to decide severity - this is what makes these rules genuinely
-/// platform-agnostic, since OLX and B2B use different literal words
-/// ("Detected" vs "Not confirmed") for the same underlying bad outcome.
+/// text to decide severity, so cards that word a bad outcome
+/// differently ("Detected", "Not confirmed") are treated the same.
 ///
 /// On B2B scans the severity decides the lowest score (b2b_risk_score
 /// in analysis.rs): any Serious factor -> at least 67 (High), any
@@ -177,10 +176,8 @@ pub fn derive_risk_factors(signals: &[Signal]) -> Vec<RiskFactor> {
     }
 
     // Compound factors
-    // B2C calls this card "Duplicate listing"; B2B calls it "Listing
-    // detail" (vague / templated description).
-    let duplicate = find_signal(signals, "Duplicate listing")
-        .or_else(|| find_signal(signals, "Listing detail"));
+    // "Listing detail": a vague / templated description.
+    let duplicate = find_signal(signals, "Listing detail");
     let image_auth = find_signal(signals, "Image authenticity");
     if let (Some(d), Some(i)) = (duplicate, image_auth) {
         // The listing must be flagged, and the photos must be ones
@@ -190,14 +187,10 @@ pub fn derive_risk_factors(signals: &[Signal]) -> Vec<RiskFactor> {
         // saved results, where "not verified" was a caution, working.
         let photos_unconfirmed = i.value.eq_ignore_ascii_case("not verified") || is_flagged(i);
         if is_flagged(d) && photos_unconfirmed {
-            // B2B "Listing detail" only means the description is vague -
-            // no copy of the listing was searched for, so the text must
-            // not say "duplicate".
-            let description = if d.label == "Listing detail" {
-                "The listing is vague and its photos can't be confirmed as the supplier's own, so the product may not really exist or may not be what is shown."
-            } else {
-                "A templated, duplicate-style listing combined with unverifiable images suggests the product itself may not genuinely exist or be authentic."
-            };
+            // "Listing detail" only means the description is vague - no
+            // copy of the listing was searched for, so the text must not
+            // say "duplicate".
+            let description = "The listing is vague and its photos can't be confirmed as the supplier's own, so the product may not really exist or may not be what is shown.";
             factors.push(RiskFactor {
                 severity: "compound".to_string(),
                 name: "likely_counterfeit_or_nonexistent_product".to_string(),
@@ -676,7 +669,7 @@ mod tests {
 
     #[test]
     fn urgency_plus_older_detected_payment_stays_one_compound_factor() {
-        // Consumer scans (OLX) write "Detected" for a payment request.
+        // Older saved scans wrote "Detected" for a payment request.
         let s = vec![
             sig("Urgency language", "Detected", "caution", ""),
             sig("Advance payment request", "Detected", "caution", ""),
@@ -693,13 +686,13 @@ mod tests {
     #[test]
     fn unchecked_image_never_triggers_counterfeit() {
         let s = vec![
-            sig("Duplicate listing", "Detected", "caution", "d"),
+            sig("Listing detail", "Vague", "caution", "d"),
             sig("Image authenticity", "Not checked", "info", "off"),
         ];
         let f = derive_risk_factors(&s);
         assert!(find(&f, "likely_counterfeit_or_nonexistent_product").is_none());
-        // the duplicate listing is still reported on its own
-        assert!(find(&f, "duplicate_listing_flagged").is_some());
+        // the vague listing is still reported on its own
+        assert!(find(&f, "listing_detail_flagged").is_some());
         assert_eq!(f.len(), 1);
     }
 
@@ -844,12 +837,6 @@ mod tests {
         let c = find(&b2b, "likely_counterfeit_or_nonexistent_product").unwrap();
         assert!(c.description.starts_with("The listing is vague"));
         assert!(!c.description.contains("duplicate"));
-        let b2c = derive_risk_factors(&[
-            sig("Duplicate listing", "Detected", "caution", "d"),
-            sig("Image authenticity", "not verified", "info", "i"),
-        ]);
-        let c = find(&b2c, "likely_counterfeit_or_nonexistent_product").unwrap();
-        assert!(c.description.contains("duplicate-style"));
     }
 
     #[test]

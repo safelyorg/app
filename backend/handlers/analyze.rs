@@ -6,18 +6,15 @@ use crate::{
     },
     services::{
         analysis::{
-            BuildResponseData, authorize_request, authorize_scan, build_all_signals,
-            build_b2b_analysis_path, build_requests, resolve_seller, run_claude_analysis,
-            save_and_build_response,
+            BuildResponseData, authorize_request, authorize_scan, build_b2b_analysis_path,
+            build_requests, resolve_seller, save_and_build_response,
         },
         b2b_scrapers::{
             b2b_page_from_browser, b2b_page_from_browser_first, fetch_b2b_page,
             get_scraper_for_platform,
         },
-        b2c_scrapers::{check_listing_page, requires_client_side_scraping},
         listings::{create_listing, update_listing_from_b2b},
-        osint::{PlatformCheckResult, SellerIdentifiers, verify_social_link},
-        scoring::calculate_risk_score,
+        osint::{SellerIdentifiers, verify_social_link},
         sellers::update_seller_from_b2b,
         signals::{is_supplier_page_scan, sort_signals_by_table},
         translation::{AnalysisTranslation, get_or_create_translation, save_english_baseline},
@@ -26,7 +23,7 @@ use crate::{
 use axum::{Json, extract::State, http::HeaderMap};
 use chrono::NaiveDate;
 use serde_json::{Value, to_value};
-use sqlx::{Pool, Postgres, query};
+use sqlx::{Pool, Postgres};
 use uuid::Uuid;
 
 #[derive(Debug, serde::Deserialize)]
@@ -76,98 +73,53 @@ pub async fn analyze(
     let mut request = request;
     let reader_language = reader_language(request.language.as_deref());
     request.language = Some("en".to_string());
-    if !requires_client_side_scraping(&request.platform) {
-        if let Some(scraped) = check_listing_page(&request.platform, &request.listing_url).await {
-            if request.title.is_none() {
-                request.title = scraped.title;
-            }
-            if request.price.is_none() {
-                request.price = scraped.price;
-            }
-            if request.description.is_none() {
-                request.description = scraped.description;
-            }
-            if request.seller_name.is_none() {
-                request.seller_name = scraped.seller_name;
-            }
-            if request.seller_location.is_none() {
-                request.seller_location = scraped.location;
-            }
-            if request.platform_id.is_none() {
-                request.platform_id = scraped.platform_id;
-            }
-            if request.seller_profile_url.is_none() {
-                request.seller_profile_url = scraped.seller_profile_url;
-            }
-            if request.seller_last_active.is_none() {
-                request.seller_last_active = scraped.last_active;
-            }
-            request.seller_verified = Some(scraped.seller_verified);
-            if request.seller_rating.is_none() {
-                request.seller_rating = scraped.seller_rating;
-            }
-            if request.seller_total_products.is_none() {
-                request.seller_total_products = scraped.seller_total_products;
-            }
-            if request.seller_join_date.is_none() {
-                request.seller_join_date = scraped.seller_join_date;
-            }
-            if request.image_urls.is_none() && !scraped.image_urls.is_empty() {
-                request.image_urls = Some(scraped.image_urls);
-            }
-            if request.seller_website.is_none() {
-                request.seller_website = scraped.seller_website;
-            }
-        }
+    // Only the supported B2B marketplaces (b2b_scrapers) are scanned.
+    // Anything else is refused before a page is fetched; the scan held
+    // above is given back.
+    if get_scraper_for_platform(&request.platform).is_none() {
+        return Err(AnalyzeError::ClaudeAnalysisFailed(format!(
+            "Unsupported platform: {}",
+            request.platform
+        )));
     }
 
-    let is_b2b = get_scraper_for_platform(&request.platform).is_some();
-
-    // B2B: fetch the supplier page BEFORE choosing the seller record, so
-    // the record can be picked by company rather than by product link.
-    // Platforms whose scraper implements company_key (Alibaba, B2Brazil, ExportHub)
-    // get one seller record per company; the rest return None and keep
-    // the old per-listing ID below, unchanged.
-    // For platforms in BROWSER_FIRST_PLATFORMS (Wholesale Central), the
-    // pages the buyer's browser sent are read first, and ScraperAPI is
-    // only the backup. Everywhere else ScraperAPI is first; for
-    // platforms in BROWSER_PAGE_PLATFORMS (Alibaba), the page the
-    // buyer's browser sent is the backup, read only if ScraperAPI could
-    // not get the listing.
-    let b2b_page = if is_b2b {
-        let from_browser = b2b_page_from_browser_first(
-            &request.platform,
-            &request.listing_url,
-            request.page_html.as_deref(),
-            request.company_page_html.as_deref(),
-        )
-        .await;
-        let page = match from_browser {
+    // Fetch the supplier page BEFORE choosing the seller record, so the
+    // record can be picked by company rather than by product link.
+    // Platforms whose scraper implements company_key get one seller
+    // record per company; the rest keep the per-listing ID below.
+    // For platforms in BROWSER_FIRST_PLATFORMS (Wholesale Central,
+    // Made-in-China, Global Sources), the pages the buyer's browser sent
+    // are read first, and ScraperAPI is only the backup. Everywhere else
+    // ScraperAPI is first; for platforms in BROWSER_PAGE_PLATFORMS
+    // (Alibaba), the page the buyer's browser sent is the backup, read
+    // only if ScraperAPI could not get the listing.
+    let from_browser = b2b_page_from_browser_first(
+        &request.platform,
+        &request.listing_url,
+        request.page_html.as_deref(),
+        request.company_page_html.as_deref(),
+    )
+    .await;
+    let page = match from_browser {
+        Some(page) => Some(page),
+        None => match fetch_b2b_page(&request.platform, &request.listing_url).await {
             Some(page) => Some(page),
-            None => match fetch_b2b_page(&request.platform, &request.listing_url).await {
-                Some(page) => Some(page),
-                None => {
-                    b2b_page_from_browser(
-                        &request.platform,
-                        &request.listing_url,
-                        request.page_html.as_deref(),
-                    )
-                    .await
-                }
-            },
-        };
-        Some(page.ok_or_else(|| {
-            AnalyzeError::ClaudeAnalysisFailed("Could not fetch B2B supplier page".to_string())
-        })?)
-    } else {
-        None
+            None => {
+                b2b_page_from_browser(
+                    &request.platform,
+                    &request.listing_url,
+                    request.page_html.as_deref(),
+                )
+                .await
+            }
+        },
     };
-    let company_key = b2b_page.as_ref().and_then(|p| p.company_key.clone());
-    let company_page_missing = b2b_page
-        .as_ref()
-        .map(|p| p.company_page_missing)
-        .unwrap_or(false);
-    let company_url = b2b_page.as_ref().and_then(|p| p.company_url.clone());
+    let page = page.ok_or_else(|| {
+        AnalyzeError::ClaudeAnalysisFailed("Could not fetch B2B supplier page".to_string())
+    })?;
+    let company_key = page.company_key.clone();
+    let company_page_missing = page.company_page_missing;
+    let company_url = page.company_url.clone();
 
     let (mut seller_req, listing_req) = build_requests(&request);
     if seller_req.platform_id.is_none() {
@@ -193,8 +145,7 @@ pub async fn analyze(
 
     let mut resolved = resolved;
 
-    let mut social_candidates: Vec<PlatformCheckResult> = Vec::new();
-    let (signals, risk_score, overall_risk_notes) = if let Some(page) = b2b_page {
+    let (signals, risk_score, overall_risk_notes, social_candidates) = {
         let (signals, risk_score, notes, supplier, listing_data, candidates_from_b2b) =
             build_b2b_analysis_path(
                 &pool,
@@ -279,23 +230,7 @@ pub async fn analyze(
         if let Some(phone) = &supplier.contact_phone {
             resolved.seller.phone = Some(phone.clone());
         }
-        social_candidates = candidates_from_b2b;
-        (signals, risk_score, notes)
-    } else {
-        let language = request.language.as_deref().unwrap_or("en");
-        let claude_analysis = run_claude_analysis(&listing, &resolved.seller, language).await?;
-        if let Some(phone) = &claude_analysis.extracted_phone_number {
-            resolved.seller.phone = Some(phone.clone());
-            let _ = query("UPDATE sellers SET phone = $1, updated_at = NOW() WHERE id = $2")
-                .bind(phone)
-                .bind(resolved.seller.id)
-                .execute(&pool)
-                .await;
-        }
-        let signals = build_all_signals(&pool, &claude_analysis, &resolved.seller, &request).await;
-        let risk_score = calculate_risk_score(&claude_analysis, resolved.fraud_count);
-        let notes = claude_analysis.overall_risk_notes.clone();
-        (signals, risk_score, notes)
+        (signals, risk_score, notes, candidates_from_b2b)
     };
 
     let mut signals = signals;
@@ -325,7 +260,6 @@ pub async fn analyze(
         seller: resolved.seller,
         fraud_count: resolved.fraud_count,
         network_summary: resolved.network_summary,
-        is_b2b,
         social_candidates,
     };
 

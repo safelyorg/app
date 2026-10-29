@@ -21,9 +21,6 @@ interface AnalyzePayload {
   seller_location: string | null;
   seller_last_active: string | null;
   seller_website: string | null;
-  seller_verified: boolean;
-  seller_rating: number | null;
-  seller_total_products: number | null;
   domain_check_status: string | null;
   domain_check_real_name: string | null;
   domain_check_real_domain: string | null;
@@ -102,7 +99,6 @@ interface AnalyzeResponse {
 function formatPlatformName(platform: string | null | undefined): string {
   if (!platform) return "Not found";
   const names: Record<string, string> = {
-    olx: "OLX",
     b2brazil: "B2Brazil",
     alibaba: "Alibaba",
     tradewheel: "TradeWheel",
@@ -469,9 +465,6 @@ function formatPlatformName(platform: string | null | undefined): string {
         seller_location: scraped.seller_location || null,
         seller_last_active: scraped.seller_last_active || null,
         seller_website: scraped.seller_website || null,
-        seller_verified: scraped.seller_verified || false,
-        seller_rating: scraped.seller_rating || null,
-        seller_total_products: scraped.seller_total_products || null,
         domain_check_status: domainCheck ? domainCheck.status : null,
         domain_check_real_name: domainCheck ? domainCheck.realName : null,
         domain_check_real_domain: domainCheck ? domainCheck.realDomain : null,

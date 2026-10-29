@@ -3,8 +3,7 @@ use backend::services::platform_config::get_all_platform_domains;
 #[test]
 fn returns_the_real_known_platforms_with_correct_domains() {
     let domains = get_all_platform_domains();
-    let expected: [(&str, &str); 11] = [
-        ("olx", "olx.com.pk"),
+    let expected: [(&str, &str); 10] = [
         ("b2brazil", "b2brazil.com"),
         ("alibaba", "alibaba.com"),
         ("tradewheel", "tradewheel.com"),
@@ -32,7 +31,7 @@ fn returns_exactly_the_platforms_currently_configured_no_more_no_less() {
     let domains = get_all_platform_domains();
     assert_eq!(
         domains.len(),
-        11,
+        10,
         "expected exactly the platforms currently in platform_domains.json - \
          update this test if a new platform is genuinely added"
     );
@@ -42,6 +41,7 @@ fn returns_exactly_the_platforms_currently_configured_no_more_no_less() {
 fn does_not_contain_a_genuinely_unconfigured_platform() {
     let domains = get_all_platform_domains();
     assert_eq!(domains.get("sap_ariba"), None);
+    assert_eq!(domains.get("olx"), None, "OLX is no longer supported");
     assert_eq!(domains.get("some_random_platform"), None);
 }
 
@@ -63,7 +63,7 @@ fn returns_a_genuine_clone_not_a_shared_mutable_reference() {
         None,
         "expected the static, real data to remain genuinely unaffected by mutating a returned clone"
     );
-    assert_eq!(second_call.len(), 11);
+    assert_eq!(second_call.len(), 10);
 }
 
 #[test]

@@ -5,17 +5,17 @@ const scrapers = (window as any).__safelyScrapers;
 
 describe("normalize", () => {
   it("converts common lookalike characters to their real equivalent", () => {
-    expect(scrapers.normalize("0lx.com")).toBe("olx.com");
+    expect(scrapers.normalize("a1ibaba.com")).toBe("alibaba.com");
     expect(scrapers.normalize("faceb00k.com")).toBe("facebook.com");
   });
 });
 
 describe("editDistance", () => {
   it("returns 0 for identical strings", () => {
-    expect(scrapers.editDistance("olx.com.pk", "olx.com.pk")).toBe(0);
+    expect(scrapers.editDistance("alibaba.com", "alibaba.com")).toBe(0);
   });
   it("returns the correct distance for a single character change", () => {
-    expect(scrapers.editDistance("olx.com.pk", "0lx.com.pk")).toBe(1);
+    expect(scrapers.editDistance("alibaba.com", "a1ibaba.com")).toBe(1);
   });
   it("returns the correct distance for genuinely different strings", () => {
     expect(scrapers.editDistance("cat", "dog")).toBe(3);
@@ -33,7 +33,7 @@ describe("checkDomain", () => {
         local: {
           get: vi.fn().mockResolvedValue({
             safely_protected_domains_cache: [
-              { name: "OLX Pakistan", domain: "olx.com.pk" },
+              { name: "Alibaba", domain: "alibaba.com" },
             ],
             safely_protected_domains_cached_at: Date.now(),
           }),
@@ -54,7 +54,7 @@ describe("checkDomain", () => {
 
   it("returns legitimate for the real, exact protected domain", () => {
     Object.defineProperty(window, "location", {
-      value: { hostname: "olx.com.pk" },
+      value: { hostname: "alibaba.com" },
       writable: true,
     });
     const result = scrapers.checkDomain();
@@ -64,7 +64,7 @@ describe("checkDomain", () => {
 
   it("returns suspicious for a homoglyph lookalike domain", () => {
     Object.defineProperty(window, "location", {
-      value: { hostname: "0lx.com.pk" },
+      value: { hostname: "a1ibaba.com" },
       writable: true,
     });
     const result = scrapers.checkDomain();
@@ -76,39 +76,39 @@ describe("checkDomain", () => {
 
 describe("isGenuineDomain", () => {
   it("returns true for an exact match", () => {
-    expect(scrapers.isGenuineDomain("olx.com.pk", "olx.com.pk")).toBe(true);
+    expect(scrapers.isGenuineDomain("alibaba.com", "alibaba.com")).toBe(true);
   });
   it("returns true for a genuine subdomain", () => {
-    expect(scrapers.isGenuineDomain("m.olx.com.pk", "olx.com.pk")).toBe(true);
+    expect(scrapers.isGenuineDomain("m.alibaba.com", "alibaba.com")).toBe(true);
   });
   it("returns false for an unrelated domain", () => {
-    expect(scrapers.isGenuineDomain("notolx.com", "olx.com.pk")).toBe(false);
+    expect(scrapers.isGenuineDomain("notalibaba.com", "alibaba.com")).toBe(false);
   });
 });
 
 describe("highlightDiff", () => {
   it("marks the exact differing character on both sides of a substitution", () => {
-    const result = scrapers.highlightDiff("0lx.com.pk", "olx.com.pk");
+    const result = scrapers.highlightDiff("a1ibaba.com", "alibaba.com");
     expect(result.currentHtml).toContain("<mark");
     expect(result.realHtml).toContain("<mark");
   });
   it("marks nothing when both strings are identical", () => {
-    const result = scrapers.highlightDiff("olx.com.pk", "olx.com.pk");
+    const result = scrapers.highlightDiff("alibaba.com", "alibaba.com");
     expect(result.currentHtml).not.toContain("<mark");
     expect(result.realHtml).not.toContain("<mark");
   });
 });
 
 describe("detectPlatform", () => {
-  it("returns 'olx' for a real olx.com.pk URL", () => {
+  it("returns 'alibaba' for a real alibaba.com URL", () => {
     Object.defineProperty(window, "location", {
       value: {
-        href: "https://www.olx.com.pk/item/some-listing-iid-123",
-        hostname: "www.olx.com.pk",
+        href: "https://www.alibaba.com/product-detail/some-product_123.html",
+        hostname: "www.alibaba.com",
       },
       writable: true,
     });
-    expect(scrapers.detectPlatform()).toBe("olx");
+    expect(scrapers.detectPlatform()).toBe("alibaba");
   });
 
   it("returns 'unknown' for any other URL", () => {
@@ -124,29 +124,29 @@ describe("detectPlatform", () => {
 });
 
 describe("isListingPage", () => {
-  it("returns true for a real OLX listing URL containing iid-", () => {
+  it("returns true for a real Alibaba product page", () => {
     Object.defineProperty(window, "location", {
       value: {
-        href: "https://www.olx.com.pk/item/some-listing-iid-123",
-        hostname: "www.olx.com.pk",
+        href: "https://www.alibaba.com/product-detail/some-product_123.html",
+        hostname: "www.alibaba.com",
       },
       writable: true,
     });
     expect(scrapers.isListingPage()).toBe(true);
   });
 
-  it("returns false for an OLX URL that is not a specific listing", () => {
+  it("returns false for an Alibaba URL that is not a product page", () => {
     Object.defineProperty(window, "location", {
       value: {
-        href: "https://www.olx.com.pk/",
-        hostname: "www.olx.com.pk",
+        href: "https://www.alibaba.com/",
+        hostname: "www.alibaba.com",
       },
       writable: true,
     });
     expect(scrapers.isListingPage()).toBe(false);
   });
 
-  it("returns false for a non-OLX URL", () => {
+  it("returns false for a URL on no supported platform", () => {
     Object.defineProperty(window, "location", {
       value: {
         href: "https://www.facebook.com/",

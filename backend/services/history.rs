@@ -10,7 +10,7 @@ use uuid::Uuid;
 /// Gets every listing this person has ever analyzed, newest first.
 ///
 /// Each listing only appears once, even if it was analyzed several
-/// times - matched by its real scraped ID (like OLX's "iid-..." number),
+/// times - matched by its real scraped ID,
 /// or its full URL if that ID wasn't captured. This is NOT the same as
 /// the listing's internal database row ID, since the same real ad could
 /// technically end up with more than one row over time.

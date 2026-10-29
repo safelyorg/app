@@ -12,10 +12,10 @@ interface PlatformConfig {
 
 const platformRegistry: PlatformConfig[] = [
   {
-    name: "olx",
-    matchesHostname: (hostname) => hostname.includes("olx.com"),
+    name: "tradewheel",
+    matchesHostname: (hostname) => hostname.includes("tradewheel.com"),
     requiresClientSideScraping: true,
-    isListingUrl: (url) => url.includes("iid-"),
+    isListingUrl: (url) => url.includes("/p/"),
   },
   {
     name: "b2brazil",
@@ -40,8 +40,8 @@ function isListingPage(platform: string, url: string): boolean {
 }
 
 describe("platform registry - detectPlatform", () => {
-  it("correctly detects olx", () => {
-    expect(detectPlatform("www.olx.com.pk")).toBe("olx");
+  it("correctly detects tradewheel", () => {
+    expect(detectPlatform("www.tradewheel.com")).toBe("tradewheel");
   });
 
   it("correctly detects b2brazil", () => {
@@ -54,8 +54,8 @@ describe("platform registry - detectPlatform", () => {
 });
 
 describe("platform registry - requiresClientSideScraping", () => {
-  it("returns true for olx", () => {
-    expect(requiresClientSideScraping("olx")).toBe(true);
+  it("returns true for tradewheel", () => {
+    expect(requiresClientSideScraping("tradewheel")).toBe(true);
   });
 
   it("returns false for b2brazil", () => {
@@ -69,12 +69,12 @@ describe("platform registry - requiresClientSideScraping", () => {
 });
 
 describe("platform registry - isListingPage", () => {
-  it("correctly identifies a real olx listing URL", () => {
-    expect(isListingPage("olx", "https://olx.com.pk/item/test-iid-123456")).toBe(true);
+  it("correctly identifies a real tradewheel listing URL", () => {
+    expect(isListingPage("tradewheel", "https://www.tradewheel.com/p/test-product-123456/")).toBe(true);
   });
 
-  it("correctly rejects an olx non-listing URL", () => {
-    expect(isListingPage("olx", "https://olx.com.pk/")).toBe(false);
+  it("correctly rejects a tradewheel non-listing URL", () => {
+    expect(isListingPage("tradewheel", "https://www.tradewheel.com/")).toBe(false);
   });
 
   it("correctly identifies a real b2brazil listing URL", () => {

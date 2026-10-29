@@ -280,7 +280,6 @@ const FIRST_PLATFORMS = 3;
 const MAX_FINDINGS = 3;
 const NOT_ENOUGH_INFORMATION = "not_enough_information";
 const PLATFORM_NAMES = {
-    olx: "OLX",
     b2brazil: "B2Brazil",
     alibaba: "Alibaba",
     tradewheel: "TradeWheel",

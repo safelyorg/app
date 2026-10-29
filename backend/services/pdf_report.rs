@@ -602,33 +602,24 @@ pub fn capitalize(s: &str) -> String {
     }
 }
 
-/// On a B2B report only the founding YEAR is known, so the age is taken
-/// from the "Account age" check ("About 11 years", "Founded this year")
-/// instead of being counted in months from 1 January. Other reports
-/// (OLX) keep the seller's normal account age.
+/// Only the founding YEAR is known, so the age is taken from the
+/// "Account age" check ("About 11 years", "Founded this year") instead
+/// of being counted in months from 1 January. Without that check, the
+/// seller's saved account age is used.
 fn report_account_age(detail: &HistoryDetailResponse) -> String {
-    let signals = detail.signals.as_array();
-    let is_b2b = signals.map_or(false, |s| {
-        s.iter().any(|x| {
-            matches!(
-                x.get("label").and_then(|v| v.as_str()),
-                Some("Listing completeness") | Some("Company profile completeness")
-            )
+    let check_value = detail
+        .signals
+        .as_array()
+        .and_then(|s| {
+            s.iter()
+                .find(|x| x.get("label").and_then(|v| v.as_str()) == Some("Account age"))
         })
-    });
-    if is_b2b {
-        let check_value = signals
-            .and_then(|s| {
-                s.iter()
-                    .find(|x| x.get("label").and_then(|v| v.as_str()) == Some("Account age"))
-            })
-            .and_then(|x| x.get("value").and_then(|v| v.as_str()))
-            .filter(|v| *v != "Not provided" && *v != "Invalid date");
-        if let Some(age) = check_value {
-            return age.to_string();
-        }
+        .and_then(|x| x.get("value").and_then(|v| v.as_str()))
+        .filter(|v| *v != "Not provided" && *v != "Invalid date");
+    match check_value {
+        Some(age) => age.to_string(),
+        None => detail.seller.account_age.clone(),
     }
-    detail.seller.account_age.clone()
 }
 
 #[cfg(test)]

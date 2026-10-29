@@ -1,7 +1,6 @@
 use crate::models::analysis::{RiskLevel, Signal};
 use crate::services::analysis::b2b_score_from_signals;
 use crate::services::auth::extract_user_id;
-use crate::services::b2b_scrapers::get_scraper_for_platform;
 use crate::services::fraud_reports::{
     already_reported, count_fraud_reports, report_floor, report_points,
 };
@@ -14,13 +13,14 @@ use serde_json::{Value, from_value, json, to_value};
 use sqlx::{Pool, Postgres, query, query_as};
 use uuid::Uuid;
 
-/// The platform's stored name ("thomasnet", "b2bmap", "olx") from what
-/// the extension sends. The extension shows the platform with capitals
-/// ("ThomasNet", "B2BMap", "OLX") and has been sending that shown name,
+/// The platform's stored name ("thomasnet", "b2bmap") from what the
+/// extension sends. The extension shows the platform with capitals
+/// ("ThomasNet", "B2BMap") and has been sending that shown name,
 /// while sellers are saved under the lower-case name - so the seller was
 /// never found and every report failed. Spaces and dashes are removed
 /// too: "Wholesale Central" is saved as "wholesalecentral" and
-/// "Made-in-China" as "madeinchina".
+/// "Made-in-China" as "madeinchina", "Global Sources" as
+/// "globalsources".
 fn platform_key(platform: &str) -> String {
     platform
         .chars()
@@ -59,15 +59,13 @@ fn is_company_page_note(signal: &Signal) -> bool {
     signal.label == "Company details" && signal.value == "Couldn't be loaded"
 }
 
-/// A saved scan's new score after a report.
-/// - Supplier listings: scored again from the saved check results with
-///   the new report count - exactly the score a new scan would give.
-/// - Consumer listings (OLX): the old score plus what this one report
-///   adds (the checks there come from the AI and aren't saved in a form
-///   that can be scored again).
-fn new_score(old_score: i16, signals: Option<&[Signal]>, total_reports: i64, is_b2b: bool) -> i16 {
+/// A saved scan's new score after a report: scored again from the saved
+/// check results with the new report count - exactly the score a new
+/// scan would give. A scan whose checks can't be read gets the old score
+/// plus what this one report adds, and at least the report minimum.
+fn new_score(old_score: i16, signals: Option<&[Signal]>, total_reports: i64) -> i16 {
     match signals {
-        Some(signals) if is_b2b => {
+        Some(signals) => {
             let scored: Vec<Signal> = signals
                 .iter()
                 .filter(|s| !is_company_page_note(s))
@@ -75,15 +73,11 @@ fn new_score(old_score: i16, signals: Option<&[Signal]>, total_reports: i64, is_
                 .collect();
             b2b_score_from_signals(&scored, total_reports)
         }
-        _ => {
-            let added =
-                report_points(total_reports, is_b2b) - report_points(total_reports - 1, is_b2b);
-            let floor = if is_b2b {
-                report_floor(total_reports)
-            } else {
-                0
-            };
-            (old_score + added).max(floor).clamp(0, 100)
+        None => {
+            let added = report_points(total_reports) - report_points(total_reports - 1);
+            (old_score + added)
+                .max(report_floor(total_reports))
+                .clamp(0, 100)
         }
     }
 }
@@ -99,7 +93,6 @@ async fn refresh_seller_scans(
     seller_id: Uuid,
     user_id: Uuid,
     total_reports: i64,
-    is_b2b: bool,
 ) -> Result<Option<(i16, RiskLevel)>, FraudReportError> {
     let internal = |e: String| FraudReportError::InternalError(e);
     let scans: Vec<(Uuid, Option<Uuid>, i16, Value)> = query_as(
@@ -124,15 +117,13 @@ async fn refresh_seller_scans(
         if let Some(signals) = parsed.as_mut() {
             refresh_report_history(signals, total_reports);
         }
-        let score = new_score(old_score, parsed.as_deref(), total_reports, is_b2b);
+        let score = new_score(old_score, parsed.as_deref(), total_reports);
         let level = risk_level_for(score);
 
         if let Some(signals) = parsed {
             let mut factors = derive_risk_factors(&signals);
-            if is_b2b {
-                if let Some(note) = not_enough_information_factor(&signals) {
-                    factors.push(note);
-                }
+            if let Some(note) = not_enough_information_factor(&signals) {
+                factors.push(note);
             }
             let signals_json = to_value(&signals).map_err(|e| internal(e.to_string()))?;
             let factors_json = to_value(&factors).map_err(|e| internal(e.to_string()))?;
@@ -254,8 +245,7 @@ pub async fn create_fraud_report(
     let total_reports = count_fraud_reports(&pool, seller.id)
         .await
         .map_err(|e| FraudReportError::InternalError(e.to_string()))?;
-    let is_b2b = get_scraper_for_platform(&platform).is_some();
-    let latest = refresh_seller_scans(&pool, seller.id, user_id, total_reports, is_b2b).await?;
+    let latest = refresh_seller_scans(&pool, seller.id, user_id, total_reports).await?;
 
     Ok(Json(match latest {
         Some((risk_score, risk_level)) => json!({
@@ -289,7 +279,7 @@ mod tests {
     fn supplier_scores_follow_the_report_table() {
         // A clean supplier with only the history line.
         let signals = vec![sig("Safely history", "No scam reports", "info")];
-        let score = |n| new_score(0, Some(&signals), n, true);
+        let score = |n| new_score(0, Some(&signals), n);
         // One report adds a little, never a jump.
         assert!(score(1) >= score(0) && score(1) <= score(0) + 5);
         // Then the minimum rises step by step.
@@ -302,8 +292,8 @@ mod tests {
             sig("Payment terms", "Western Union only", "bad"),
             sig("Safely history", "No scam reports", "info"),
         ];
-        let before = new_score(0, Some(&signals), 0, true);
-        assert!(new_score(0, Some(&signals), 2, true) >= before.max(35));
+        let before = new_score(0, Some(&signals), 0);
+        assert!(new_score(0, Some(&signals), 2) >= before.max(35));
     }
 
     #[test]
@@ -312,23 +302,15 @@ mod tests {
         let mut with_note = plain.clone();
         with_note.push(sig("Company details", "Couldn't be loaded", "info"));
         assert_eq!(
-            new_score(0, Some(&plain), 1, true),
-            new_score(0, Some(&with_note), 1, true)
+            new_score(0, Some(&plain), 1),
+            new_score(0, Some(&with_note), 1)
         );
     }
 
     #[test]
-    fn consumer_scores_add_only_this_reports_share() {
-        // OLX: 0 / 20 / 35 / 50 - the second report adds 15.
-        assert_eq!(new_score(40, None, 1, false), 60);
-        assert_eq!(new_score(60, None, 2, false), 75);
-        assert_eq!(new_score(90, None, 3, false), 100);
-    }
-
-    #[test]
     fn unreadable_supplier_checks_still_reach_the_minimum() {
-        assert_eq!(new_score(20, None, 2, true), 35);
-        assert_eq!(new_score(20, None, 1, true), 25);
+        assert_eq!(new_score(20, None, 2), 35);
+        assert_eq!(new_score(20, None, 1), 25);
     }
 
     #[test]
@@ -370,8 +352,7 @@ mod tests {
             ("Made-in-China", "madeinchina"),
             ("madeinchina", "madeinchina"),
             ("Alibaba", "alibaba"),
-            ("OLX", "olx"),
-            ("olx", "olx"),
+            ("Global Sources", "globalsources"),
         ] {
             assert_eq!(platform_key(shown), stored);
         }

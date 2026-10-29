@@ -516,8 +516,9 @@ pub async fn setup_real_seller_and_analysis(
     cleanup_test_user(pool, &email).await;
     let (user, _) = create_test_user(pool, &email).await;
 
-    cleanup_test_seller_chain(pool, "olx", platform_id).await;
-    let analysis_id = insert_test_analysis_for_outcomes(pool, user.id, "olx", platform_id).await;
+    cleanup_test_seller_chain(pool, "alibaba", platform_id).await;
+    let analysis_id =
+        insert_test_analysis_for_outcomes(pool, user.id, "alibaba", platform_id).await;
 
     let seller_row: (Uuid,) = query_as(
         "SELECT seller_id FROM listings WHERE id = (SELECT listing_id FROM analysis WHERE id = $1)",
@@ -538,7 +539,7 @@ pub async fn cleanup_seller_and_analysis(pool: &Pool<Postgres>, platform_id: &st
     .bind(platform_id)
     .execute(pool)
     .await;
-    cleanup_test_seller_chain(pool, "olx", platform_id).await;
+    cleanup_test_seller_chain(pool, "alibaba", platform_id).await;
 }
 
 #[allow(dead_code)]

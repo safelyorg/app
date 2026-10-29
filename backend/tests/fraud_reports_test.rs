@@ -25,11 +25,11 @@ async fn create_fraud_report_unauthorized() {
     let headers = HeaderMap::new();
 
     let request = FraudReportsRequest {
-        platform: "olx".to_string(),
+        platform: "alibaba".to_string(),
         platform_id: Some("doesnt_matter_001".to_string()),
         report_type: ReportTypes::Scam,
         description: Some("test description".to_string()),
-        listing_url: Some("https://olx.com/item/doesnt-matter".to_string()),
+        listing_url: Some("https://www.alibaba.com/product-detail/doesnt-matter".to_string()),
     };
 
     let result = create_fraud_report(State(pool), headers, Json(request)).await;
@@ -48,11 +48,11 @@ async fn create_fraud_report_not_found() {
     let headers = auth_headers_for(&pool, user.id).await;
 
     let request = FraudReportsRequest {
-        platform: "olx".to_string(),
+        platform: "alibaba".to_string(),
         platform_id: Some("definitely_does_not_exist_001".to_string()),
         report_type: ReportTypes::Scam,
         description: Some("test description".to_string()),
-        listing_url: Some("https://olx.com/item/nonexistent-seller".to_string()),
+        listing_url: Some("https://www.alibaba.com/product-detail/nonexistent-seller".to_string()),
     };
 
     let result = create_fraud_report(State(pool.clone()), headers, Json(request)).await;
@@ -72,7 +72,7 @@ async fn create_fraud_report_success() {
     let (user, _) = create_test_user(&pool, email).await;
     let headers = auth_headers_for(&pool, user.id).await;
 
-    let platform = "olx";
+    let platform = "alibaba";
     let platform_id = "create_fraud_report_seller_001";
     cleanup_test_seller_with_reports(&pool, platform, platform_id).await;
 
@@ -89,7 +89,7 @@ async fn create_fraud_report_success() {
     .await
     .expect("expected to create the seller");
 
-    let listing_url = "https://olx.com/item/create-fraud-report-test";
+    let listing_url = "https://www.alibaba.com/product-detail/create-fraud-report-test";
     let request = FraudReportsRequest {
         platform: platform.to_string(),
         platform_id: Some(platform_id.to_string()),
@@ -181,11 +181,11 @@ async fn create_fraud_report_database_error() {
     pool.close().await;
 
     let request = FraudReportsRequest {
-        platform: "olx".to_string(),
+        platform: "alibaba".to_string(),
         platform_id: Some("doesnt_matter_001".to_string()),
         report_type: ReportTypes::Scam,
         description: Some("test description".to_string()),
-        listing_url: Some("https://olx.com/item/doesnt-matter".to_string()),
+        listing_url: Some("https://www.alibaba.com/product-detail/doesnt-matter".to_string()),
     };
 
     let result = create_fraud_report(State(pool), headers, Json(request)).await;
@@ -448,50 +448,6 @@ async fn a_report_keeps_a_higher_supplier_score() {
 
     cleanup_report_test(&pool, platform, platform_id).await;
     cleanup_test_user(&pool, email).await;
-}
-
-#[tokio::test]
-async fn olx_reports_add_20_then_15_to_saved_scans() {
-    let pool = test_pool().await;
-    let email_a = "olx_report_points_a_test@example.com";
-    let email_b = "olx_report_points_b_test@example.com";
-    let (user_a, _) = create_test_user(&pool, email_a).await;
-    let (user_b, _) = create_test_user(&pool, email_b).await;
-    let headers_a = auth_headers_for(&pool, user_a.id).await;
-    let headers_b = auth_headers_for(&pool, user_b.id).await;
-
-    let platform = "olx";
-    let platform_id = "olx_report_points_001";
-    cleanup_report_test(&pool, platform, platform_id).await;
-    let (_, listing_id) = insert_seller_and_listing(&pool, platform, platform_id).await;
-    let scan = insert_scan(&pool, listing_id, user_a.id, 30, &[]).await;
-
-    // OLX keeps its own rule: 1 report 20, 2 reports 35.
-    let result = create_fraud_report(
-        State(pool.clone()),
-        headers_a,
-        Json(report_request(platform, platform_id)),
-    )
-    .await
-    .expect("expected the first report to be saved")
-    .0;
-    assert_eq!(result["risk_score"], json!(50));
-    assert_eq!(read_scan(&pool, scan).await.0, 50);
-
-    let _ = create_fraud_report(
-        State(pool.clone()),
-        headers_b,
-        Json(report_request(platform, platform_id)),
-    )
-    .await
-    .expect("expected the second report to be saved");
-    let (score, level, _) = read_scan(&pool, scan).await;
-    assert_eq!(score, 65);
-    assert_eq!(level, "caution");
-
-    cleanup_report_test(&pool, platform, platform_id).await;
-    cleanup_test_user(&pool, email_a).await;
-    cleanup_test_user(&pool, email_b).await;
 }
 
 #[tokio::test]

@@ -1,5 +1,5 @@
 use crate::{
-    models::{analysis::Signal, helpers::format_account_age, sellers::Sellers},
+    models::analysis::Signal,
     services::{
         b2b_scrapers::{
             B2bListingProfile, B2bSupplierProfile, SupplierRecord,
@@ -10,104 +10,13 @@ use crate::{
                 AUDITED_PREFIX as MIC_AUDITED_PREFIX, LICENCE_CHECKED as MIC_LICENCE_CHECKED,
             },
         },
-        b2c_scrapers::B2cProfileResult,
-        claude::{
-            B2bClaudeAnalysis, ClaudeAnalysis, Finding, IMAGE_ANALYSIS_ENABLED, ImageAssessment,
-        },
+        claude::{B2bClaudeAnalysis, Finding, IMAGE_ANALYSIS_ENABLED, ImageAssessment},
         whois::WhoisResult,
     },
 };
 use chrono::{Datelike, Utc};
 use regex::Regex;
 use std::sync::LazyLock;
-
-/// It takes Claude's raw analysis and turns it into a real, ordered list of
-/// 7 separate signal cards each one representing one specific thing that was checked.
-///
-/// It starts with an empty list, adds the price signal, built directly, by hand,
-/// adds several signals using a shared helper, finding_to_signal, adds the
-/// account age signal, built by hand again, pushes the image authenticity signal,
-/// built by hand once more and returns the complete list.
-pub fn build_signals(analysis: &ClaudeAnalysis, seller: &Sellers) -> Vec<Signal> {
-    let mut signals = Vec::new();
-    signals.push(Signal {
-        label: "Price analysis".to_string(),
-        sub: analysis.price_assessment.reasoning.clone(),
-        value: analysis.price_assessment.verdict.clone(),
-        signal_type: if analysis.price_assessment.verdict == "normal" {
-            "good".to_string()
-        } else {
-            "caution".to_string()
-        },
-        category: "listing".to_string(),
-        check_type: "anomaly".to_string(),
-    });
-
-    signals.push(finding_to_signal(
-        "Urgency language",
-        &analysis.urgency_language.evidence,
-        &analysis.urgency_language,
-        "communication",
-        "pattern",
-    ));
-
-    signals.push(finding_to_signal(
-        "Advance payment request",
-        &analysis.advance_payment_request.evidence,
-        &analysis.advance_payment_request,
-        "communication",
-        "pattern",
-    ));
-
-    signals.push(Signal {
-        label: "Account age".to_string(),
-        sub: "Cross-referenced with Safely records".to_string(),
-        value: seller
-            .join_date
-            .map(|d| format_account_age(d))
-            .unwrap_or_else(|| "Unknown".to_string()),
-        signal_type: "info".to_string(),
-        category: "marketplace".to_string(),
-        check_type: "anomaly".to_string(),
-    });
-
-    signals.push(finding_to_signal(
-        "Duplicate listing",
-        &analysis.duplicate_listing.evidence,
-        &analysis.duplicate_listing,
-        "listing",
-        "pattern",
-    ));
-
-    signals.push(image_authenticity_signal(&analysis.image_authenticity));
-
-    signals.push(finding_to_signal(
-        "Overall legitimacy check",
-        &analysis.fraud_pattern_match.evidence,
-        &analysis.fraud_pattern_match,
-        "behavioral",
-        "pattern",
-    ));
-
-    signals.push(Signal {
-        label: "Contact info".to_string(),
-        sub: analysis.contact_info_in_listing.evidence.clone(),
-        value: if analysis.contact_info_in_listing.found {
-            "Confirmed".to_string()
-        } else {
-            "Not confirmed".to_string()
-        },
-        signal_type: if analysis.contact_info_in_listing.found {
-            "caution".to_string()
-        } else {
-            "good".to_string()
-        },
-        category: "communication".to_string(),
-        check_type: "existence".to_string(),
-    });
-
-    signals
-}
 
 /// It converts one of Claude's yes/no findings (like "was urgency language detected?")
 /// into a properly-formatted Signal card, ready to display.
@@ -151,7 +60,6 @@ pub fn finding_to_signal(
 /// shown as it is.
 pub fn platform_display_name(platform: &str) -> String {
     match platform {
-        "olx" => "OLX",
         "b2brazil" => "B2Brazil",
         "alibaba" => "Alibaba",
         "tradewheel" => "TradeWheel",
@@ -214,11 +122,9 @@ pub fn build_domain_signal(
     }
 }
 
-/// Builds a real signal from a WHOIS lookup, if one was performed.
-/// Genuinely new information - Layer 3's first real "Active
-/// collection" signal - correctly labeled as an Existence check under
-/// the Website category, matching the same taxonomy every other
-/// signal already uses.
+/// Builds a "Seller website check" card from a WHOIS lookup of a
+/// website. Not used by the marketplace scan right now; kept for the
+/// coming website checks (a seller's own website).
 pub fn build_whois_signal(whois: Option<&WhoisResult>) -> Option<Signal> {
     let whois = whois?;
 
@@ -248,102 +154,6 @@ pub fn build_whois_signal(whois: Option<&WhoisResult>) -> Option<Signal> {
         signal_type: "good".to_string(),
         category: "website".to_string(),
         check_type: "existence".to_string(),
-    })
-}
-
-/// Builds signals from OLX's verified-seller "store" data - genuinely
-/// new, real trust information (member duration, product count,
-/// rating) that's already sitting on the listing page itself for
-/// verified sellers, at zero extra cost.
-pub fn build_seller_verification_signals(
-    verified: bool,
-    rating: Option<f64>,
-    total_products: Option<i32>,
-) -> Vec<Signal> {
-    let mut signals = Vec::new();
-
-    signals.push(Signal {
-        label: "Platform verification".to_string(),
-        sub: if verified {
-            "This seller is verified on the platform.".to_string()
-        } else {
-            "This seller is not verified on the platform.".to_string()
-        },
-        value: if verified {
-            "Verified".to_string()
-        } else {
-            "Not verified".to_string()
-        },
-        signal_type: if verified {
-            "good".to_string()
-        } else {
-            "caution".to_string()
-        },
-        category: "identity".to_string(),
-        check_type: "existence".to_string(),
-    });
-
-    if let (Some(r), Some(p)) = (rating, total_products) {
-        signals.push(Signal {
-            label: "Seller track record".to_string(),
-            sub: format!(
-                "This seller has listed {} products with a {:.1} average rating.",
-                p, r
-            ),
-            value: format!("{:.1} rating, {} listings", r, p),
-            signal_type: if r < 3.0 {
-                "caution".to_string()
-            } else {
-                "good".to_string()
-            },
-            category: "reputation".to_string(),
-            check_type: "anomaly".to_string(),
-        });
-    }
-
-    signals
-}
-
-/// Builds a real signal from a seller's own store page, once visited
-/// - Tier 2's real, direct proof (or disproof) of identity
-/// consistency, genuinely stronger than anything Tier 1 alone could
-/// confirm.
-pub fn build_store_page_signal(
-    result: &B2cProfileResult,
-    claimed_website: Option<&str>,
-) -> Option<Signal> {
-    let website_cross_confirmed = match (claimed_website, &result.website) {
-        (Some(claimed), Some(found_on_store)) => {
-            claimed.to_lowercase() == found_on_store.to_lowercase()
-        }
-        _ => false,
-    };
-
-    let (value, signal_type, sub) = match (result.seller_name_confirmed, website_cross_confirmed) {
-        (true, true) => (
-            "Fully confirmed",
-            "good",
-            "The seller's name AND their claimed website both genuinely appear on their own store page - a strong, independent match.".to_string(),
-        ),
-        (true, false) => (
-            "Name confirmed only",
-            "caution",
-            "The seller's name appears on their store page, but their claimed website could not be independently confirmed there.".to_string(),
-        ),
-        (false, _) => (
-            "Unconfirmed",
-            "caution",
-            "The seller's name could not be confirmed on their own store page.".to_string(),
-        ),
-    };
-
-    Some(Signal {
-        label: "Store page check".to_string(),
-        sub,
-        value: value.to_string(),
-        signal_type: signal_type.to_string(),
-        category: "identity".to_string(),
-        check_type: "consistency".to_string(),
     })
 }
 
@@ -657,8 +467,7 @@ fn read_founding_year(text: &str) -> Option<i32> {
 
 /// Checks how long ago this company claims to have been established -
 /// a genuinely new company is not inherently fraudulent, but it's a
-/// real, honest anomaly worth noting, the same logic already applied
-/// to OLX account age.
+/// real, honest anomaly worth noting.
 ///
 /// A company that gives no founding year at all is a small warning:
 /// scam companies often leave it out so buyers can't see how new they
@@ -2073,7 +1882,7 @@ fn risky_payment_note(signals: &mut [Signal], payment_methods: Option<&str>) {
     card.signal_type = signal_type.to_string();
 }
 
-/// Image authenticity card, shared by B2C and B2B. While image checking
+/// Image authenticity card. While image checking
 /// is switched off (IMAGE_ANALYSIS_ENABLED in claude.rs), Claude never
 /// sees the photos, so "not verified" says nothing about the seller -
 /// the card then reads "Not checked" and does not count as a caution.
@@ -2119,7 +1928,7 @@ fn table_rank(label: &str) -> u8 {
         "Urgency language" => 2,
         "Advance payment request" => 3,
         "Account age" => 4,
-        "Duplicate listing" | "Listing detail" => 5,
+        "Listing detail" => 5,
         // Shown right after Listing detail (same rank, added after it).
         "Regulated product" => 5,
         "Product range" => 5,
@@ -2129,7 +1938,6 @@ fn table_rank(label: &str) -> u8 {
         "Seller website check" => 9,
         "Platform verification" => 10,
         "Contact info" => 11,
-        "Store page check" => 12,
         "Seller track record" => 13,
         "Registration consistency" => 14,
         // Shown right after Registration consistency.

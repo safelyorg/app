@@ -38,7 +38,7 @@ async fn create_outcome_proceeded_success() {
     let (user, _) = create_test_user(&pool, email).await;
     let headers = auth_headers_for(&pool, user.id).await;
 
-    let platform = "olx";
+    let platform = "alibaba";
     let platform_id = "outcome_proceeded_seller_001";
     cleanup_test_seller_chain(&pool, platform, platform_id).await;
     let analysis_id =
@@ -82,7 +82,7 @@ async fn create_outcome_aborted_success() {
     let (user, _) = create_test_user(&pool, email).await;
     let headers = auth_headers_for(&pool, user.id).await;
 
-    let platform = "olx";
+    let platform = "alibaba";
     let platform_id = "outcome_aborted_seller_001";
     cleanup_test_seller_chain(&pool, platform, platform_id).await;
     let analysis_id =
@@ -152,7 +152,7 @@ async fn record_outcome_proceeded_success() {
     cleanup_test_user(&pool, email).await;
     let (user, _) = create_test_user(&pool, email).await;
 
-    let platform = "olx";
+    let platform = "alibaba";
     let platform_id = "record_outcome_proceeded_seller_001";
     cleanup_test_seller_chain(&pool, platform, platform_id).await;
     let analysis_id =
@@ -179,7 +179,7 @@ async fn record_outcome_aborted_success() {
     cleanup_test_user(&pool, email).await;
     let (user, _) = create_test_user(&pool, email).await;
 
-    let platform = "olx";
+    let platform = "alibaba";
     let platform_id = "record_outcome_aborted_seller_001";
     cleanup_test_seller_chain(&pool, platform, platform_id).await;
     let analysis_id =
@@ -206,7 +206,7 @@ async fn record_outcome_sets_a_real_recent_timestamp() {
     cleanup_test_user(&pool, email).await;
     let (user, _) = create_test_user(&pool, email).await;
 
-    let platform = "olx";
+    let platform = "alibaba";
     let platform_id = "record_outcome_timestamp_seller_001";
     cleanup_test_seller_chain(&pool, platform, platform_id).await;
     let analysis_id =
@@ -257,7 +257,7 @@ async fn record_outcome_nonexistent_user_fails() {
     cleanup_test_user(&pool, email).await;
     let (owner, _) = create_test_user(&pool, email).await;
 
-    let platform = "olx";
+    let platform = "alibaba";
     let platform_id = "record_outcome_bad_user_seller_001";
     cleanup_test_seller_chain(&pool, platform, platform_id).await;
     let analysis_id =

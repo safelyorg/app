@@ -1,7 +1,5 @@
 use backend::errors::claude::ClaudeError;
-use backend::services::claude::{
-    CallB2bClaudeArguments, CallClaudeArguments, b2b_content, b2c_content, call_b2b_claude,
-};
+use backend::services::claude::{CallB2bClaudeArguments, b2b_content, call_b2b_claude};
 use serial_test::serial;
 use std::env::{remove_var, set_var, var};
 
@@ -59,29 +57,8 @@ fn b2b_content_has_no_leftover_duplicate_json_shape_line() {
 }
 
 // ─────────────────────────────────────────────────────────
-// b2c_content - confirming the image_authenticity constraint was added
-// ─────────────────────────────────────────────────────────
-
-#[test]
-fn b2c_content_constrains_image_authenticity_to_exact_words() {
-    let image_urls: Vec<String> = vec![];
-    let args = CallClaudeArguments {
-        platform: "olx",
-        seller_name: "Test",
-        seller_account_age: "1 year",
-        title: "Test",
-        price: 1000,
-        description: "Test",
-        image_urls: &image_urls,
-        language: "en",
-    };
-    let prompt = b2c_content(&args);
-    assert!(prompt.contains("not verified"));
-}
-
-// ─────────────────────────────────────────────────────────
 // language - confirming today's language instruction is genuinely
-// present in both prompts, not just accepted as a parameter
+// present in the prompt, not just accepted as a parameter
 // ─────────────────────────────────────────────────────────
 
 #[test]
@@ -92,25 +69,8 @@ fn b2b_content_writes_the_real_portuguese_instruction_when_requested() {
     assert!(prompt.contains("Portuguese (Brazil)"));
 }
 
-#[test]
-fn b2c_content_writes_the_real_portuguese_instruction_when_requested() {
-    let image_urls: Vec<String> = vec![];
-    let args = CallClaudeArguments {
-        platform: "olx",
-        seller_name: "Test",
-        seller_account_age: "1 year",
-        title: "Test",
-        price: 1000,
-        description: "Test",
-        image_urls: &image_urls,
-        language: "pt-br",
-    };
-    let prompt = b2c_content(&args);
-    assert!(prompt.contains("Portuguese (Brazil)"));
-}
-
 // ─────────────────────────────────────────────────────────
-// call_b2b_claude - missing API key (parallel to the existing b2c test)
+// call_b2b_claude - missing API key
 // ─────────────────────────────────────────────────────────
 
 #[tokio::test]

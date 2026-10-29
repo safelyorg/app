@@ -1,10 +1,10 @@
 # Safely
 
-Safely is a Chrome extension that warns people about fraud *before* they send money to a scammer on an online marketplace. It reads a listing's details, checks the seller's history, and uses AI to flag common fraud patterns — urgency language, suspicious pricing, recycled images, and more — showing a plain 0-100 risk score right in the browser.
+Safely is a Chrome extension that warns buyers about fraud *before* they pay a supplier on a B2B marketplace. It reads the supplier and listing details, checks the company's history, and uses AI to flag common fraud patterns — payment demands, suspicious pricing, missing company details, and more — showing a plain 0-100 risk score right in the browser.
 
 It also checks the current website's address against a list of known marketplaces, to catch lookalike/phishing domains pretending to be the real thing.
 
-**Status:** Fully live on OLX. More marketplaces are on the roadmap.
+**Status:** Live on 10 B2B marketplaces: Alibaba, Made-in-China, Global Sources (incl. its Hong Kong trade-show pages), TradeWheel, ExportHub, B2Brazil, ThomasNet, B2BMap, Kompass and Wholesale Central.
 
 ---
 

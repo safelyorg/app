@@ -1,22 +1,11 @@
 use sqlx::{Error, Pool, Postgres, query_as, query_scalar};
 use uuid::Uuid;
 
-/// Points a seller's fraud reports add to the warning score:
-/// - consumer listings (OLX, calculate_risk_score in scoring.rs):
-///   1 report 20, 2 reports 35, 3 or more 50;
-/// - supplier listings (B2B): 5 per report, 20 at most. Suppliers also
-///   get a minimum score from report_floor.
-pub fn report_points(count: i64, is_b2b: bool) -> i16 {
-    if is_b2b {
-        (count.clamp(0, 4) as i16) * 5
-    } else {
-        match count {
-            i64::MIN..=0 => 0,
-            1 => 20,
-            2 => 35,
-            _ => 50,
-        }
-    }
+/// Points a supplier's fraud reports add to the warning score: 5 per
+/// report, 20 at most. Suppliers also get a minimum score from
+/// report_floor.
+pub fn report_points(count: i64) -> i16 {
+    (count.clamp(0, 4) as i16) * 5
 }
 
 /// The lowest score a supplier (B2B) can have, from how many different
@@ -85,14 +74,7 @@ mod tests {
 
     #[test]
     fn report_points_follow_the_scan_rules() {
-        assert_eq!(
-            [0, 1, 2, 3, 9].map(|n| report_points(n, false)),
-            [0, 20, 35, 50, 50]
-        );
-        assert_eq!(
-            [0, 1, 2, 4, 9].map(|n| report_points(n, true)),
-            [0, 5, 10, 20, 20]
-        );
+        assert_eq!([0, 1, 2, 4, 9].map(report_points), [0, 5, 10, 20, 20]);
     }
 
     #[test]

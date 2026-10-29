@@ -3,7 +3,6 @@ function formatPlatformName(platform) {
     if (!platform)
         return "Not found";
     const names = {
-        olx: "OLX",
         b2brazil: "B2Brazil",
         alibaba: "Alibaba",
         tradewheel: "TradeWheel",
@@ -364,9 +363,6 @@ function formatPlatformName(platform) {
                 seller_location: scraped.seller_location || null,
                 seller_last_active: scraped.seller_last_active || null,
                 seller_website: scraped.seller_website || null,
-                seller_verified: scraped.seller_verified || false,
-                seller_rating: scraped.seller_rating || null,
-                seller_total_products: scraped.seller_total_products || null,
                 domain_check_status: domainCheck ? domainCheck.status : null,
                 domain_check_real_name: domainCheck ? domainCheck.realName : null,
                 domain_check_real_domain: domainCheck ? domainCheck.realDomain : null,

@@ -86,20 +86,6 @@ struct ContentBlock {
     text: String,
 }
 
-// 3. The raw data of analysis is inserted in this struct for better structure.
-#[derive(Debug, Deserialize)]
-pub struct ClaudeAnalysis {
-    pub urgency_language: Finding,
-    pub advance_payment_request: Finding,
-    pub duplicate_listing: Finding,
-    pub image_authenticity: ImageAssessment,
-    pub fraud_pattern_match: Finding,
-    pub contact_info_in_listing: Finding,
-    pub price_assessment: PriceAssessment,
-    pub extracted_phone_number: Option<String>,
-    pub overall_risk_notes: String,
-}
-
 #[derive(Clone, Debug, Default, Deserialize)]
 pub struct Finding {
     pub found: bool,
@@ -116,18 +102,6 @@ pub struct ImageAssessment {
 pub struct PriceAssessment {
     pub verdict: String,
     pub reasoning: String,
-}
-
-#[derive(Debug)]
-pub struct CallClaudeArguments<'a> {
-    pub platform: &'a str,
-    pub seller_name: &'a str,
-    pub seller_account_age: &'a str,
-    pub title: &'a str,
-    pub price: i64,
-    pub description: &'a str,
-    pub image_urls: &'a [String],
-    pub language: &'a str,
 }
 
 // B2B analysis structs
@@ -233,15 +207,12 @@ fn or_not_provided<'a>(value: &'a str) -> &'a str {
 /// seller. Nothing else needs changing.
 pub const IMAGE_ANALYSIS_ENABLED: bool = true;
 
-/// The ONE, shared place that builds the real content blocks sent to
-/// Claude - genuinely unified for both B2C and B2B, so a future
-/// decision to re-enable image analysis only ever needs to happen in
-/// one spot, not two separate, duplicated copies.
+/// The one place that builds the content blocks sent to Claude (the
+/// prompt, then up to 3 photos).
 fn build_content_blocks(prompt: String, image_urls: &[String]) -> Vec<ContentItem> {
     let mut content_blocks: Vec<ContentItem> = vec![ContentItem::Text { text: prompt }];
 
-    // Images are only sent when IMAGE_ANALYSIS_ENABLED is true, for
-    // both B2C and B2B.
+    // Images are only sent when IMAGE_ANALYSIS_ENABLED is true.
     if IMAGE_ANALYSIS_ENABLED {
         for url in image_urls.iter().take(3) {
             content_blocks.push(ContentItem::Image {
@@ -282,7 +253,7 @@ fn is_photo_load_error(status: u16, body: &str) -> bool {
 }
 
 /// Sends one request to Claude and returns its answer text, without
-/// code fences. Shared by the consumer (B2C) and supplier (B2B) scans.
+/// code fences.
 async fn send_to_claude(content: Vec<ContentItem>) -> Result<String, SendError> {
     let has_photos = content
         .iter()
@@ -505,18 +476,6 @@ async fn send_with_photo_fallback(
     }
 }
 
-pub async fn call_b2c_claude(args: CallClaudeArguments<'_>) -> Result<ClaudeAnalysis, ClaudeError> {
-    let prompt = b2c_content(&args);
-    let answer = send_with_photo_fallback(prompt, args.image_urls, || {
-        b2c_content(&CallClaudeArguments {
-            image_urls: &[],
-            ..args
-        })
-    })
-    .await?;
-    from_str(&answer).map_err(|e| ClaudeError::ParseFailed(e.to_string()))
-}
-
 pub async fn call_b2b_claude(
     args: CallB2bClaudeArguments<'_>,
 ) -> Result<B2bClaudeAnalysis, ClaudeError> {
@@ -526,83 +485,6 @@ pub async fn call_b2b_claude(
     })
     .await?;
     from_str(&answer).map_err(|e| ClaudeError::ParseFailed(e.to_string()))
-}
-
-pub fn b2c_content(arg: &CallClaudeArguments) -> String {
-    format!(
-        r#"
-        You are a fraud detection assistant for an online marketplace.
-        Analyze this listing and seller, then return ONLY a raw JSON object with no markdown, no code fences, no backticks, no explanation. Start your response with {{ and end with }}.
-
-        IMPORTANT: Write every text value in the JSON below (all
-        "evidence" and "reasoning" fields, and "overall_risk_notes") in
-        {language}. Keep every JSON key name and every "verdict" value
-        exactly as specified in English - only the free-text explanations
-        should be in {language}.
-
-        Platform: {platform}
-        Seller name: {seller_name}
-        Seller account age: {seller_account_age}
-        Listing title: {title}
-        Listing price: PKR {price}
-        Listing description: {description}
-
-        For the duplicate_listing field: check if the description appears generic, templated, or copy-pasted. Look for mismatched details between title and description, no item-specific information like serial numbers or condition details, language that could apply to any listing of this type rather than this specific item. Set found to true if the listing appears to be a template or copy rather than an original genuine listing.
-        For image_authenticity: verdict must be exactly "original" or
-        "not verified" - no other words. Use "not verified" whenever no
-        images were provided or authenticity cannot genuinely be assessed.
-        For extracted_phone_number: sellers often write their real phone
-        number in the description using odd separators to dodge
-        automated scraping - things like "0+3+4+2+..." or "0:3:4:2..."
-        or "0/3/4/2..." Look for any sequence of digits, however
-        separated, that forms a plausible Pakistani phone number
-        (typically starting with 0, 10-11 digits total). If found,
-        return it as a single, clean digit string with all
-        placeholder characters removed (e.g. "03001234567"). If no
-        phone number is genuinely present in the text, return null.
-        Return JSON in exactly this shape:
-
-        {{
-        "urgency_language": {{
-            "found": false,
-            "evidence": ""
-        }},
-        "advance_payment_request": {{
-            "found": false,
-            "evidence": ""
-        }},
-        "contact_info_in_listing": {{
-            "found": false,
-            "evidence": ""
-        }},
-        "price_assessment": {{
-            "verdict": "normal",
-            "reasoning": ""
-        }},
-        "fraud_pattern_match": {{
-            "found": false,
-            "evidence": ""
-        }},
-        "duplicate_listing": {{
-            "found": false,
-            "evidence": ""
-        }},
-        "image_authenticity": {{
-            "verdict": "original",
-            "reasoning": ""
-        }},
-        "extracted_phone_number": null,
-        "overall_risk_notes": ""
-        }}
-        "#,
-        platform = arg.platform,
-        seller_name = arg.seller_name,
-        seller_account_age = arg.seller_account_age,
-        title = arg.title,
-        price = arg.price,
-        description = arg.description,
-        language = language_instruction(arg.language),
-    )
 }
 
 pub fn b2b_content(arg: &CallB2bClaudeArguments) -> String {

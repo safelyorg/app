@@ -204,23 +204,6 @@
             none +
             "</div>");
     }
-    // Labels only the backend's B2B path produces. Used to tell a B2B
-    // supplier scan apart from a consumer (OLX-style) scan without
-    // relying on a separate platform list here that could drift out of
-    // sync with the backend's scraper registry.
-    const B2B_ONLY_LABELS = [
-        "Company profile completeness",
-        "Listing completeness",
-        "Registration consistency",
-    ];
-    function isB2bScan(signals) {
-        return signals.some((s) => B2B_ONLY_LABELS.includes(s.label));
-    }
-    const B2C_CHECKS = [
-        ["Ask for a live video call", "Verify the item is physically in the seller's hands before sending any payment."],
-        ["Check IMEI on delivery", "Dial *#06# on the device and confirm the number matches what the seller declared at deal creation."],
-        ["Do not pay to number in listing", "A phone number in the listing could route your payment outside Safely escrow protection."],
-    ];
     const B2B_CHECKS = [
         ["Use buyer protection if the platform offers it", "If the platform has protected payment (e.g. Trade Assurance on Alibaba), pay through it so the order is covered. If it has none, pay only by bank transfer to an account in the company's own name."],
         ["Match the business licence to the bank account", "Ask for the business licence and check that the company name on it matches the listing and the name on the bank account exactly."],
@@ -263,10 +246,7 @@
         "Fake commodity sellers ask for fees, a deposit or document costs before anything ships. Pay nothing until the goods are inspected by a company you choose (such as SGS), and pay only by Letter of Credit.",
     ];
     function buildRecommendedChecks(signals) {
-        const isB2b = isB2bScan(signals);
-        const payment = isB2b
-            ? signals.find((s) => s.label === "Advance payment request" && s.type === "caution")
-            : undefined;
+        const payment = signals.find((s) => s.label === "Advance payment request" && s.type === "caution");
         // "Full prepayment" gets its own advice; any other flagged payment
         // ("Untraceable payment", or an older scan's "Detected") keeps the
         // Western Union warning.
@@ -275,21 +255,16 @@
             : payment.value === "Full prepayment"
                 ? [B2B_FULL_PREPAYMENT_CHECK]
                 : [B2B_RISKY_PAYMENT_CHECK];
-        const regulated = isB2b
-            ? signals.find((s) => s.label === "Regulated product" && s.type === "caution")
-            : undefined;
+        const regulated = signals.find((s) => s.label === "Regulated product" && s.type === "caution");
         const regulatedCheck = !regulated
             ? []
             : regulated.value === "Licence needed, not the maker"
                 ? [B2B_REGULATED_PRODUCT_CHECK]
                 : [B2B_LICENCE_CHECK];
-        const commodityCheck = isB2b &&
-            signals.some((s) => s.label === "Product range" && s.value === "Commodity scam pattern")
+        const commodityCheck = signals.some((s) => s.label === "Product range" && s.value === "Commodity scam pattern")
             ? [B2B_COMMODITY_CHECK]
             : [];
-        const checks = isB2b
-            ? commodityCheck.concat(regulatedCheck, paymentCheck, B2B_CHECKS)
-            : B2C_CHECKS;
+        const checks = commodityCheck.concat(regulatedCheck, paymentCheck, B2B_CHECKS);
         return ('<div class="safely-heading">' +
             esc(tr("Before you pay")) +
             '</div><div class="safely-rows">' +

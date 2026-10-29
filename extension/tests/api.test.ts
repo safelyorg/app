@@ -3,8 +3,8 @@ import { fakeChrome } from "./setup-chrome";
 function formatPlatformName(platform: string | null | undefined): string {
   if (!platform) return "Not found";
   const names: Record<string, string> = {
-    olx: "OLX",
     b2brazil: "B2Brazil",
+    alibaba: "Alibaba",
   };
   return names[platform] || platform;
 }
@@ -314,8 +314,8 @@ describe("submitOutcome", () => {
 });
 
 describe("formatPlatformName", () => {
-  it("returns the real, correct display name for olx", () => {
-    expect(formatPlatformName("olx")).toBe("OLX");
+  it("returns the real, correct display name for alibaba", () => {
+    expect(formatPlatformName("alibaba")).toBe("Alibaba");
   });
 
   it("returns the real, correct display name for b2brazil", () => {
@@ -323,7 +323,7 @@ describe("formatPlatformName", () => {
   });
 
   it("returns the raw platform string unchanged for an unrecognized platform", () => {
-    expect(formatPlatformName("alibaba")).toBe("alibaba");
+    expect(formatPlatformName("someplatform")).toBe("someplatform");
   });
 
   it("returns 'Not found' for null", () => {
@@ -343,7 +343,7 @@ describe("fetchAnalysis", () => {
   function setupScraperMocks(overrides: Partial<Record<string, any>> = {}) {
     (window as any).__safelyScrapers = {
       loadProtectedDomains: vi.fn().mockResolvedValue(undefined),
-      detectPlatform: vi.fn().mockReturnValue("olx"),
+      detectPlatform: vi.fn().mockReturnValue("b2brazil"),
       isListingPage: vi.fn().mockReturnValue(true),
       requiresClientSideScraping: vi.fn().mockReturnValue(false),
       checkDomain: vi.fn().mockReturnValue(null),
@@ -389,7 +389,7 @@ describe("fetchAnalysis", () => {
           seller: {
             id: "seller-1",
             name: "Real Seller",
-            platform: "olx",
+            platform: "b2brazil",
             platform_id: "p1",
             handle: null,
             phone: null,
@@ -410,7 +410,7 @@ describe("fetchAnalysis", () => {
     expect(pageData.analysisId).toBe("real-id-123");
     expect(pageData.riskScore).toBe(55);
     expect(pageData.seller.name).toBe("Real Seller");
-    expect(pageData.seller.platform).toBe("OLX");
+    expect(pageData.seller.platform).toBe("B2Brazil");
     expect(pageData.signals).toHaveLength(1);
   });
 
@@ -507,9 +507,9 @@ describe("fetchAnalysis", () => {
     setupScraperMocks({
       checkDomain: vi.fn().mockReturnValue({
         status: "suspicious",
-        realName: "OLX",
-        realDomain: "olx.com.pk",
-        currentDomain: "0lx.com.pk",
+        realName: "B2Brazil",
+        realDomain: "b2brazil.com",
+        currentDomain: "b2brazi1.com",
       }),
     });
     (globalThis as any).fetch.mockResolvedValue({
@@ -523,6 +523,6 @@ describe("fetchAnalysis", () => {
     const callArgs = (globalThis as any).fetch.mock.calls[0];
     const sentBody = JSON.parse(callArgs[1].body);
     expect(sentBody.domain_check_status).toBe("suspicious");
-    expect(sentBody.domain_check_real_domain).toBe("olx.com.pk");
+    expect(sentBody.domain_check_real_domain).toBe("b2brazil.com");
   });
 });

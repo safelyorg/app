@@ -385,20 +385,12 @@
         if (e.key === "Escape")
             closeSheet();
     }, true);
-    // Points a seller's reports add to the score - the same rule as the
-    // backend (report_points in services/fraud_reports.rs): OLX 0 / 20 /
-    // 35 / 50, suppliers 5 per report and 20 at most. Only used when the
-    // server didn't send the new score back.
-    function reportPoints(count, isB2b) {
-        if (isB2b)
-            return Math.min(Math.max(count, 0), 4) * 5;
-        if (count <= 0)
-            return 0;
-        if (count === 1)
-            return 20;
-        if (count === 2)
-            return 35;
-        return 50;
+    // Points a supplier's reports add to the score - the same rule as
+    // the backend (report_points in services/fraud_reports.rs): 5 per
+    // report, 20 at most. Only used when the server didn't send the new
+    // score back.
+    function reportPoints(count) {
+        return Math.min(Math.max(count, 0), 4) * 5;
     }
     // The lowest score a supplier with this many reports can have - the
     // backend's report_floor: 2 reports 35, 3 reports 67, then +10 each,
@@ -424,7 +416,7 @@
         submitBtn.textContent = tr("Sending…");
         submitBtn.disabled = true;
         const reportData = {
-            platform: pageData.seller.platform || "olx",
+            platform: pageData.seller.platform || "",
             platform_id: pageData.seller.platformId || null,
             report_type: selected.value,
             description: null,
@@ -465,9 +457,8 @@
             pageData.riskScore = result.risk_score;
         }
         else {
-            const isB2b = String(pageData.seller.platform || "").toLowerCase() !== "olx";
-            const raised = (pageData.riskScore || 0) + reportPoints(newCount, isB2b) - reportPoints(oldCount, isB2b);
-            pageData.riskScore = Math.min(100, Math.max(raised, isB2b ? reportFloor(newCount) : 0));
+            const raised = (pageData.riskScore || 0) + reportPoints(newCount) - reportPoints(oldCount);
+            pageData.riskScore = Math.min(100, Math.max(raised, reportFloor(newCount)));
         }
         pageData.reportedByYou = true;
         reportedNote = "You reported this supplier.";

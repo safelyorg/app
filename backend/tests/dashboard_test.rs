@@ -55,11 +55,11 @@ async fn get_history_success() {
     let (user, _) = create_test_user(&pool, email).await;
     let headers = auth_headers_for(&pool, user.id).await;
 
-    cleanup_test_seller_chain(&pool, "olx", "history_test_seller_001").await;
+    cleanup_test_seller_chain(&pool, "alibaba", "history_test_seller_001").await;
     let (_, _) = insert_test_history_chain(
         &pool,
         user.id,
-        "olx",
+        "alibaba",
         "history_test_seller_001",
         "Test Listing Title",
     )
@@ -76,11 +76,11 @@ async fn get_history_success() {
 
     assert_eq!(history.len(), 1, "expected exactly one history item");
     assert_eq!(history[0]["listing_title"], json!("Test Listing Title"));
-    assert_eq!(history[0]["platform"], json!("olx"));
+    assert_eq!(history[0]["platform"], json!("alibaba"));
     assert_eq!(history[0]["seller_name"], json!("Test Seller"));
     assert_eq!(history[0]["reported"], json!(false));
 
-    cleanup_test_seller_chain(&pool, "olx", "history_test_seller_001").await;
+    cleanup_test_seller_chain(&pool, "alibaba", "history_test_seller_001").await;
     cleanup_test_user(&pool, email).await;
 }
 
@@ -127,11 +127,11 @@ async fn get_user_history_success_single_item() {
     let email = "get_user_history_single_test@example.com";
     let (user, _) = create_test_user(&pool, email).await;
 
-    cleanup_test_seller_chain(&pool, "olx", "history_single_item_001").await;
+    cleanup_test_seller_chain(&pool, "alibaba", "history_single_item_001").await;
     let (listing_id, seller_id) = insert_test_history_chain(
         &pool,
         user.id,
-        "olx",
+        "alibaba",
         "history_single_item_001",
         "Single Item Test Listing",
     )
@@ -148,7 +148,7 @@ async fn get_user_history_success_single_item() {
         item.listing_title,
         Some("Single Item Test Listing".to_string())
     );
-    assert_eq!(item.platform, "olx");
+    assert_eq!(item.platform, "alibaba");
     assert_eq!(item.seller_name, Some("Test Seller".to_string()));
     assert_eq!(item.seller_id, seller_id);
     assert!(
@@ -156,7 +156,7 @@ async fn get_user_history_success_single_item() {
         "expected reported to be false, since no fraud report was filed"
     );
 
-    cleanup_test_seller_chain(&pool, "olx", "history_single_item_001").await;
+    cleanup_test_seller_chain(&pool, "alibaba", "history_single_item_001").await;
     cleanup_test_user(&pool, email).await;
 
     let _ = listing_id;
@@ -167,12 +167,12 @@ async fn get_user_history_deduplicates_same_listing() {
     let pool = test_pool().await;
     let email = "get_user_history_dedup_test@example.com";
     let (user, _) = create_test_user(&pool, email).await;
-    cleanup_test_seller_chain(&pool, "olx", "history_dedup_001").await;
+    cleanup_test_seller_chain(&pool, "alibaba", "history_dedup_001").await;
 
     let (listing_id, _seller_id) = insert_test_history_chain(
         &pool,
         user.id,
-        "olx",
+        "alibaba",
         "history_dedup_001",
         "Duplicated Listing",
     )
@@ -205,7 +205,7 @@ async fn get_user_history_deduplicates_same_listing() {
         "expected the MOST RECENT analysis (risk_score 99) to be the one kept"
     );
 
-    cleanup_test_seller_chain(&pool, "olx", "history_dedup_001").await;
+    cleanup_test_seller_chain(&pool, "alibaba", "history_dedup_001").await;
     cleanup_test_user(&pool, email).await;
 }
 
@@ -215,7 +215,7 @@ async fn get_user_history_reported_scoped_per_listing() {
     let email = "get_user_history_scoped_test@example.com";
     let (user, _) = create_test_user(&pool, email).await;
 
-    let platform = "olx";
+    let platform = "alibaba";
     let platform_id = "history_scoped_seller_001";
 
     query("DELETE FROM fraud_reports WHERE seller_id IN (SELECT id FROM sellers WHERE platform = $1 AND platform_id = $2)")
@@ -240,7 +240,7 @@ async fn get_user_history_reported_scoped_per_listing() {
     .expect("expected to create the seller");
 
     let listing_id_reported = Uuid::now_v7();
-    let listing_url_reported = "https://olx.com/item/reported-listing-001";
+    let listing_url_reported = "https://www.alibaba.com/product-detail/reported-listing-001";
     query(
         "INSERT INTO listings (id, seller_id, platform, listing_url, listing_id, title, first_seen_at, updated_at)
          VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())",
@@ -256,7 +256,7 @@ async fn get_user_history_reported_scoped_per_listing() {
     .expect("expected to create the reported listing");
 
     let listing_id_clean = Uuid::now_v7();
-    let listing_url_clean = "https://olx.com/item/clean-listing-002";
+    let listing_url_clean = "https://www.alibaba.com/product-detail/clean-listing-002";
     query(
         "INSERT INTO listings (id, seller_id, platform, listing_url, listing_id, title, first_seen_at, updated_at)
          VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())",
@@ -341,14 +341,14 @@ async fn get_user_history_orders_newest_first() {
     let email = "get_user_history_ordering_test@example.com";
     let (user, _) = create_test_user(&pool, email).await;
 
-    cleanup_test_seller_chain(&pool, "olx", "history_order_oldest_001").await;
-    cleanup_test_seller_chain(&pool, "olx", "history_order_middle_001").await;
-    cleanup_test_seller_chain(&pool, "olx", "history_order_newest_001").await;
+    cleanup_test_seller_chain(&pool, "alibaba", "history_order_oldest_001").await;
+    cleanup_test_seller_chain(&pool, "alibaba", "history_order_middle_001").await;
+    cleanup_test_seller_chain(&pool, "alibaba", "history_order_newest_001").await;
 
     let (listing_oldest, _) = insert_test_history_chain(
         &pool,
         user.id,
-        "olx",
+        "alibaba",
         "history_order_oldest_001",
         "Oldest Listing",
     )
@@ -357,7 +357,7 @@ async fn get_user_history_orders_newest_first() {
     let (listing_middle, _) = insert_test_history_chain(
         &pool,
         user.id,
-        "olx",
+        "alibaba",
         "history_order_middle_001",
         "Middle Listing",
     )
@@ -366,7 +366,7 @@ async fn get_user_history_orders_newest_first() {
     let (listing_newest, _) = insert_test_history_chain(
         &pool,
         user.id,
-        "olx",
+        "alibaba",
         "history_order_newest_001",
         "Newest Listing",
     )
@@ -398,9 +398,9 @@ async fn get_user_history_orders_newest_first() {
         "expected the oldest listing to appear last"
     );
 
-    cleanup_test_seller_chain(&pool, "olx", "history_order_oldest_001").await;
-    cleanup_test_seller_chain(&pool, "olx", "history_order_middle_001").await;
-    cleanup_test_seller_chain(&pool, "olx", "history_order_newest_001").await;
+    cleanup_test_seller_chain(&pool, "alibaba", "history_order_oldest_001").await;
+    cleanup_test_seller_chain(&pool, "alibaba", "history_order_middle_001").await;
+    cleanup_test_seller_chain(&pool, "alibaba", "history_order_newest_001").await;
     cleanup_test_user(&pool, email).await;
 }
 
@@ -461,7 +461,7 @@ async fn get_history_html_success_with_real_data() {
     let (user, _) = create_test_user(&pool, email).await;
     let headers = auth_headers_for(&pool, user.id).await;
 
-    let platform = "olx";
+    let platform = "alibaba";
     let platform_id = "history_html_success_001";
     cleanup_test_seller_chain(&pool, platform, platform_id).await;
     let (_listing_id, _seller_id) = insert_test_history_chain(
@@ -552,11 +552,11 @@ async fn get_history_item_success() {
     let (user, _) = create_test_user(&pool, email).await;
     let headers = auth_headers_for(&pool, user.id).await;
 
-    cleanup_test_seller_chain(&pool, "olx", "history_item_success_001").await;
+    cleanup_test_seller_chain(&pool, "alibaba", "history_item_success_001").await;
     let (listing_id, _seller_id) = insert_test_history_chain(
         &pool,
         user.id,
-        "olx",
+        "alibaba",
         "history_item_success_001",
         "Test Listing For Detail",
     )
@@ -579,11 +579,11 @@ async fn get_history_item_success() {
     .0;
 
     assert_eq!(result["listing_title"], json!("Test Listing For Detail"));
-    assert_eq!(result["platform"], json!("olx"));
+    assert_eq!(result["platform"], json!("alibaba"));
     assert_eq!(result["reported"], json!(false));
     assert_eq!(result["fraud_report_count"], json!(0));
 
-    cleanup_test_seller_chain(&pool, "olx", "history_item_success_001").await;
+    cleanup_test_seller_chain(&pool, "alibaba", "history_item_success_001").await;
     cleanup_test_user(&pool, email).await;
 }
 
@@ -622,11 +622,11 @@ async fn get_history_item_not_found_belongs_to_another_user() {
     let (user_b, _) = create_test_user(&pool, email_b).await;
     let headers_b = auth_headers_for(&pool, user_b.id).await;
 
-    cleanup_test_seller_chain(&pool, "olx", "history_item_owned_by_a_001").await;
+    cleanup_test_seller_chain(&pool, "alibaba", "history_item_owned_by_a_001").await;
     let (listing_id, _seller_id) = insert_test_history_chain(
         &pool,
         user_a.id,
-        "olx",
+        "alibaba",
         "history_item_owned_by_a_001",
         "Person A's Private Listing",
     )
@@ -653,7 +653,7 @@ async fn get_history_item_not_found_belongs_to_another_user() {
         }
     }
 
-    cleanup_test_seller_chain(&pool, "olx", "history_item_owned_by_a_001").await;
+    cleanup_test_seller_chain(&pool, "alibaba", "history_item_owned_by_a_001").await;
     cleanup_test_user(&pool, email_a).await;
     cleanup_test_user(&pool, email_b).await;
 }
@@ -665,11 +665,11 @@ async fn get_history_item_accepts_a_language_query_param() {
     let (user, _) = create_test_user(&pool, email).await;
     let headers = auth_headers_for(&pool, user.id).await;
 
-    cleanup_test_seller_chain(&pool, "olx", "history_item_language_001").await;
+    cleanup_test_seller_chain(&pool, "alibaba", "history_item_language_001").await;
     let (listing_id, _seller_id) = insert_test_history_chain(
         &pool,
         user.id,
-        "olx",
+        "alibaba",
         "history_item_language_001",
         "Language Param Test Listing",
     )
@@ -700,7 +700,7 @@ async fn get_history_item_accepts_a_language_query_param() {
         json!("Language Param Test Listing")
     );
 
-    cleanup_test_seller_chain(&pool, "olx", "history_item_language_001").await;
+    cleanup_test_seller_chain(&pool, "alibaba", "history_item_language_001").await;
     cleanup_test_user(&pool, email).await;
 }
 
@@ -735,11 +735,11 @@ async fn get_history_detail_not_found_belongs_to_another_user() {
     let email_intruder = "history_detail_intruder@example.com";
     let (intruder, _) = create_test_user(&pool, email_intruder).await;
 
-    cleanup_test_seller_chain(&pool, "olx", "history_detail_owned_001").await;
+    cleanup_test_seller_chain(&pool, "alibaba", "history_detail_owned_001").await;
     let (listing_id, _seller_id) = insert_test_history_chain(
         &pool,
         owner.id,
-        "olx",
+        "alibaba",
         "history_detail_owned_001",
         "Owner's Private Listing",
     )
@@ -760,7 +760,7 @@ async fn get_history_detail_not_found_belongs_to_another_user() {
         "expected None - a real security boundary, not leaking that this ID exists"
     );
 
-    cleanup_test_seller_chain(&pool, "olx", "history_detail_owned_001").await;
+    cleanup_test_seller_chain(&pool, "alibaba", "history_detail_owned_001").await;
     cleanup_test_user(&pool, email_owner).await;
     cleanup_test_user(&pool, email_intruder).await;
 }
@@ -771,11 +771,11 @@ async fn get_history_detail_success_no_reports() {
     let email = "history_detail_no_reports_test@example.com";
     let (user, _) = create_test_user(&pool, email).await;
 
-    cleanup_test_seller_chain(&pool, "olx", "history_detail_no_reports_001").await;
+    cleanup_test_seller_chain(&pool, "alibaba", "history_detail_no_reports_001").await;
     let (listing_id, _seller_id) = insert_test_history_chain(
         &pool,
         user.id,
-        "olx",
+        "alibaba",
         "history_detail_no_reports_001",
         "Clean Listing Detail",
     )
@@ -800,7 +800,7 @@ async fn get_history_detail_success_no_reports() {
     assert!(!result.reported, "expected reported to be false");
     assert!(result.reports.is_empty(), "expected an empty reports list");
 
-    cleanup_test_seller_chain(&pool, "olx", "history_detail_no_reports_001").await;
+    cleanup_test_seller_chain(&pool, "alibaba", "history_detail_no_reports_001").await;
     cleanup_test_user(&pool, email).await;
 }
 
@@ -814,7 +814,7 @@ async fn get_history_detail_success_with_multiple_reports() {
     let other_email = "history_detail_multi_reports_other_test@example.com";
     let (other_user, _) = create_test_user(&pool, other_email).await;
 
-    let platform = "olx";
+    let platform = "alibaba";
     let platform_id = "history_detail_multi_reports_001";
 
     query("DELETE FROM fraud_reports WHERE seller_id IN (SELECT id FROM sellers WHERE platform = $1 AND platform_id = $2)")
@@ -930,7 +930,7 @@ async fn get_reports_success() {
     let (user, _) = create_test_user(&pool, email).await;
     let headers = auth_headers_for(&pool, user.id).await;
 
-    let platform = "olx";
+    let platform = "alibaba";
     let platform_id = "get_reports_seller_001";
 
     cleanup_test_seller_with_reports(&pool, platform, platform_id).await;
@@ -948,7 +948,7 @@ async fn get_reports_success() {
     .await
     .expect("expected to create the seller");
 
-    let listing_url = "https://olx.com.pk/item/get-reports-test-listing";
+    let listing_url = "https://www.alibaba.com/product-detail/get-reports-test-listing";
     query(
         "INSERT INTO fraud_reports (id, seller_id, user_id, platform, platform_id, report_type, listing_url, reported_at)
          VALUES ($1, $2, $3, $4, $5, $6::report_types, $7, NOW())",
@@ -975,7 +975,7 @@ async fn get_reports_success() {
 
     assert_eq!(reports.len(), 1, "expected exactly one report");
     assert_eq!(reports[0]["seller_name"], json!("Reported Seller"));
-    assert_eq!(reports[0]["platform"], json!("olx"));
+    assert_eq!(reports[0]["platform"], json!("alibaba"));
     assert_eq!(reports[0]["listing_url"], json!(listing_url));
     assert_eq!(reports[0]["report_type"], json!("scam"));
 
@@ -1008,7 +1008,7 @@ async fn get_user_reports_success_across_multiple_sellers() {
     let email = "get_user_reports_multi_seller_test@example.com";
     let (user, _) = create_test_user(&pool, email).await;
 
-    let platform = "olx";
+    let platform = "alibaba";
     let platform_id_a = "reports_multi_seller_a_001";
     let platform_id_b = "reports_multi_seller_b_001";
 
@@ -1051,7 +1051,7 @@ async fn get_user_reports_success_across_multiple_sellers() {
     .bind(platform)
     .bind(platform_id_a)
     .bind("scam")
-    .bind("https://olx.com/item/report-against-a")
+    .bind("https://www.alibaba.com/product-detail/report-against-a")
     .execute(&pool)
     .await
     .expect("expected to create the report against seller A");
@@ -1066,7 +1066,7 @@ async fn get_user_reports_success_across_multiple_sellers() {
     .bind(platform)
     .bind(platform_id_b)
     .bind("fake_item")
-    .bind("https://olx.com/item/report-against-b")
+    .bind("https://www.alibaba.com/product-detail/report-against-b")
     .execute(&pool)
     .await
     .expect("expected to create the report against seller B");
@@ -1106,7 +1106,7 @@ async fn get_user_reports_orders_newest_first() {
     let email = "get_user_reports_ordering_test@example.com";
     let (user, _) = create_test_user(&pool, email).await;
 
-    let platform = "olx";
+    let platform = "alibaba";
     let now = Utc::now();
 
     // Each person can report a seller only once, so each report goes to
@@ -1155,7 +1155,7 @@ async fn get_user_reports_orders_newest_first() {
         .bind(platform)
         .bind(platform_id)
         .bind(report_type)
-        .bind(format!("https://olx.com/item/ordering-{}", report_type))
+        .bind(format!("https://www.alibaba.com/product-detail/ordering-{}", report_type))
         .bind(reported_at)
         .execute(&pool)
         .await
@@ -1246,7 +1246,7 @@ async fn get_reports_html_success_with_real_data() {
     let (user, _) = create_test_user(&pool, email).await;
     let headers = auth_headers_for(&pool, user.id).await;
 
-    let platform = "olx";
+    let platform = "alibaba";
     let platform_id = "reports_html_success_001";
     cleanup_test_seller_with_reports(&pool, platform, platform_id).await;
 
@@ -1263,7 +1263,7 @@ async fn get_reports_html_success_with_real_data() {
     .await
     .expect("expected to create the seller");
 
-    let listing_url = "https://olx.com/item/reports-html-test-listing";
+    let listing_url = "https://www.alibaba.com/product-detail/reports-html-test-listing";
     query(
         "INSERT INTO fraud_reports (id, seller_id, user_id, platform, platform_id, report_type, listing_url, reported_at)
          VALUES ($1, $2, $3, $4, $5, $6::report_types, $7, NOW())",
@@ -1636,7 +1636,7 @@ async fn delete_account_success_verifies_every_effect() {
     let (user, _) = create_test_user(&pool, email).await;
     let headers = auth_headers_for(&pool, user.id).await;
 
-    let platform = "olx";
+    let platform = "alibaba";
     let platform_id = "delete_account_seller_001";
     cleanup_test_seller_chain(&pool, platform, platform_id).await;
 
@@ -1659,7 +1659,7 @@ async fn delete_account_success_verifies_every_effect() {
     .bind(platform)
     .bind(platform_id)
     .bind("scam")
-    .bind("https://olx.com/item/delete-account-report")
+    .bind("https://www.alibaba.com/product-detail/delete-account-report")
     .execute(&pool)
     .await
     .expect("expected to create the fraud report");
@@ -1773,7 +1773,7 @@ async fn delete_user_account_success_verifies_every_effect() {
     let email = "delete_user_account_service_test@example.com";
     let (user, _) = create_test_user(&pool, email).await;
 
-    let platform = "olx";
+    let platform = "alibaba";
     let platform_id = "delete_user_account_seller_001";
     cleanup_test_seller_chain(&pool, platform, platform_id).await;
 
@@ -1796,7 +1796,7 @@ async fn delete_user_account_success_verifies_every_effect() {
     .bind(platform)
     .bind(platform_id)
     .bind("scam")
-    .bind("https://olx.com/item/delete-user-account-report")
+    .bind("https://www.alibaba.com/product-detail/delete-user-account-report")
     .execute(&pool)
     .await
     .expect("expected to create the fraud report");

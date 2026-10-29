@@ -532,7 +532,7 @@ mod tests {
     fn matches_platform_correctly_identifies_b2brazil_only() {
         let scraper = B2brazilScraper;
         assert!(scraper.matches_platform("b2brazil"));
-        assert!(!scraper.matches_platform("olx"));
+        assert!(!scraper.matches_platform("alibaba"));
         assert!(!scraper.matches_platform("alibaba"));
     }
 

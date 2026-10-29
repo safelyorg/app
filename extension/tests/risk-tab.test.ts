@@ -273,14 +273,14 @@ describe("Risk tab - reporting", () => {
     expect(ringNumber()).toBe("35");
   });
 
-  it("uses the OLX rule (+20 for the first report) on OLX", async () => {
+  it("adds 5 for the first report when the server sends no score", async () => {
     vi.useFakeTimers();
     (window as any).__safelyAPI.submitReport.mockResolvedValue({ success: true, risk_score: null });
-    showResult(supplierData({ riskScore: 30, seller: { platform: "OLX" } }));
+    showResult(supplierData({ riskScore: 30, fraudReportCount: 0 }));
 
     await report();
 
-    expect(ringNumber()).toBe("50");
+    expect(ringNumber()).toBe("35");
   });
 
   it("brings the Report link back for the next supplier", async () => {

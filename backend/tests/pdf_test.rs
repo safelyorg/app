@@ -31,7 +31,7 @@ use uuid::Uuid;
 fn make_seller_response() -> SellersResponse {
     SellersResponse {
         id: Uuid::now_v7(),
-        platform: "olx".to_string(),
+        platform: "alibaba".to_string(),
         platform_id: "test_seller".to_string(),
         name: Some("Test Seller".to_string()),
         handle: Some("test_handle".to_string()),
@@ -57,8 +57,8 @@ fn make_detail(
         id: Uuid::now_v7(),
         created_at: Utc::now(),
         listing_title: Some("Test Listing".to_string()),
-        listing_url: "https://olx.com.pk/item/test".to_string(),
-        platform: "olx".to_string(),
+        listing_url: "https://www.alibaba.com/product-detail/test".to_string(),
+        platform: "alibaba".to_string(),
         risk_score,
         risk_level,
         signals,
@@ -127,7 +127,7 @@ async fn download_evidence_pdf_fails_when_the_analysis_belongs_to_someone_else()
         .await
         .expect("expected to create a real session");
 
-    let platform = "olx".to_string();
+    let platform = "alibaba".to_string();
     let platform_id = "download_pdf_owner_seller_001".to_string();
     cleanup_test_seller(&pool, &platform, &platform_id).await;
     let seller_request = SellersRequest {
@@ -148,7 +148,7 @@ async fn download_evidence_pdf_fails_when_the_analysis_belongs_to_someone_else()
     let listing_request = ListingsRequest {
         seller_id: Some(seller.id),
         platform: platform.clone(),
-        listing_url: "https://olx.com.pk/item/download-pdf-owner-test".to_string(),
+        listing_url: "https://www.alibaba.com/product-detail/download-pdf-owner-test".to_string(),
         listing_id: Some("download_pdf_owner_listing_001".to_string()),
         title: Some("Owner's Listing".to_string()),
         price: Some(1000),
@@ -218,7 +218,7 @@ async fn download_evidence_pdf_succeeds_and_returns_real_pdf_bytes() {
         .await
         .expect("expected to create a real session");
 
-    let platform = "olx".to_string();
+    let platform = "alibaba".to_string();
     let platform_id = "download_pdf_success_seller_001".to_string();
     cleanup_test_seller(&pool, &platform, &platform_id).await;
     let seller_request = SellersRequest {
@@ -239,7 +239,7 @@ async fn download_evidence_pdf_succeeds_and_returns_real_pdf_bytes() {
     let listing_request = ListingsRequest {
         seller_id: Some(seller.id),
         platform: platform.clone(),
-        listing_url: "https://olx.com.pk/item/download-pdf-success-test".to_string(),
+        listing_url: "https://www.alibaba.com/product-detail/download-pdf-success-test".to_string(),
         listing_id: Some("download_pdf_success_listing_001".to_string()),
         title: Some("Real Test Listing".to_string()),
         price: Some(50000),

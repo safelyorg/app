@@ -63,12 +63,6 @@ pub struct AnalyzeRequest {
     #[serde(default)]
     pub seller_website: Option<String>,
     #[serde(default)]
-    pub seller_verified: Option<bool>,
-    #[serde(default)]
-    pub seller_rating: Option<f64>,
-    #[serde(default)]
-    pub seller_total_products: Option<i32>,
-    #[serde(default)]
     pub domain_check_status: Option<String>,
     #[serde(default)]
     pub domain_check_real_name: Option<String>,

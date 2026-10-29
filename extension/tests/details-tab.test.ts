@@ -71,7 +71,7 @@ describe("Details tab - counts and lists", () => {
 
   it("has no 'Show more' with 2 or fewer fine checks", () => {
     showResult(supplierData({ signals: [signal("A", "ok", "good"), signal("B", "ok", "good")] }));
-    expect(details().querySelector("[data-safely-more]")).toBeNull();
+    expect(section("Looks fine").querySelector("[data-safely-more]")).toBeNull();
   });
 
   it("shows info checks as fine, with an 'i' mark", () => {
@@ -196,13 +196,10 @@ describe("Details tab - Before you pay", () => {
       (el) => el.textContent,
     );
 
-  it("shows the consumer steps on an OLX-style scan", () => {
+  it("shows the supplier steps on every scan, even without a supplier-only card", () => {
     showResult(supplierData({ signals: [signal("Phone", "Found", "good")] }));
-    expect(steps()).toEqual([
-      "Ask for a live video call",
-      "Check IMEI on delivery",
-      "Do not pay to number in listing",
-    ]);
+    expect(steps()[0]).toBe("Use buyer protection if the platform offers it");
+    expect(steps()).not.toContain("Check IMEI on delivery");
   });
 
   it("shows the supplier steps on a B2B scan, 3 first and the rest under 'Show more'", () => {
