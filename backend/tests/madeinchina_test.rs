@@ -420,3 +420,28 @@ fn payment_written_only_in_the_faq_is_still_read() {
         "Supplier's FAQ: What's your minimum order quantity (MOQ)? 300 pieces. | What are your payment terms?"
     ));
 }
+
+#[tokio::test]
+async fn a_main_site_product_page_reads_the_supplier_page_from_the_browser() {
+    unsafe {
+        std::env::set_var("SCRAPERAPI_KEY", "k");
+    }
+    let page = b2b_page_from_browser_first(
+        "madeinchina",
+        "https://www.made-in-china.com/product/Elitebook650-G10-Business-Laptop-UJrpmMjbvoRP.html",
+        Some(&main_site_product_page()),
+        Some(&supplier_page_without_heading()),
+        None,
+    )
+    .await
+    .expect("read from the browser");
+    assert!(
+        !page.company_page_missing,
+        "the supplier page from the browser is used"
+    );
+    assert_eq!(
+        page.company_key.as_deref(),
+        Some("angtongtech.en.made-in-china.com")
+    );
+    assert_eq!(page.supplier.country.as_deref(), Some("Beijing, China"));
+}

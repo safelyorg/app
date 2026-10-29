@@ -31,16 +31,22 @@ chrome.runtime.onMessage.addListener(handleSessionUpdateMessage);
 //   (must match GLOBALSOURCES_SUPPLIER_PAGE in scrapers/index.ts);
 // - an Alibaba company's own page, e.g.
 //   https://zl9809.en.alibaba.com/company_profile.html
-//   (must match ALIBABA_COMPANY_PAGE in scrapers/index.ts).
+//   (must match ALIBABA_COMPANY_PAGE in scrapers/index.ts);
+// - a Made-in-China supplier's own page, e.g.
+//   https://szclover.en.made-in-china.com/
+//   (must match MADEINCHINA_SHOP_PAGE in scrapers/index.ts), for product
+//   pages on the main site (www.made-in-china.com).
 // A product page cannot load them itself (they are on another address).
 // Any other address is refused, so a web page cannot use this to load
 // other sites.
 const SUPPLIER_PAGES = [
     /^https:\/\/[a-z0-9-]+\.[a-z]+\.globalsources\.com\/homepage_\d+\.htm$/,
     /^https:\/\/[a-z0-9-]+\.en\.alibaba\.com\/company_profile\.html$/,
+    /^https:\/\/[a-z0-9-]+\.en\.made-in-china\.com\/$/,
 ];
 // The largest page sent back (Global Sources supplier pages are about
-// 0.1 MB, Alibaba company pages about 0.3 MB).
+// 0.1 MB, Alibaba company pages about 0.3 MB, Made-in-China supplier
+// pages up to about 1.1 MB).
 const MAX_SUPPLIER_PAGE_CHARS = 3000000;
 const SUPPLIER_PAGE_TIMEOUT_MS = 15000;
 function isAllowedSupplierPage(url) {

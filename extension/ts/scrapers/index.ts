@@ -611,22 +611,45 @@ type DomainCheckResult = LegitimateDomainResult | SuspiciousDomainResult | null;
       : null;
   }
 
+  /// A Made-in-China supplier's own page (its shop):
+  /// "https://{shop}.en.made-in-china.com/". Must match the Made-in-China
+  /// line in SUPPLIER_PAGES in background.ts.
+  const MADEINCHINA_SHOP_PAGE = /^https:\/\/[a-z0-9-]+\.en\.made-in-china\.com\/$/;
+
   /// On a Made-in-China product page: the supplier's own page, loaded in
-  /// this browser, trimmed. Only when the product page is on the
-  /// supplier's shop - a page on the main site (www.made-in-china.com)
-  /// cannot load another address, so Safely's server loads that supplier
-  /// page instead. null on a supplier page, or if it could not be loaded.
+  /// this browser, trimmed. A product page on the supplier's shop loads
+  /// it itself. A product page on the main site (www.made-in-china.com)
+  /// cannot load another address, so the background script loads it
+  /// (only that kind of page - see background.ts), without the buyer's
+  /// cookies (tested 2026-10-29: the real page comes back). null on a
+  /// supplier page, or if it could not be loaded; then Safely's server
+  /// loads it through ScraperAPI.
   async function fetchMadeinchinaSupplierPage(): Promise<string | null> {
     if (!window.location.pathname.startsWith("/product/")) return null;
     const shop = madeinchinaShopUrl(document);
-    if (!shop || shop !== window.location.origin) return null;
+    if (!shop) return null;
+    const url = shop.toLowerCase() + "/";
+    if (shop === window.location.origin) {
+      try {
+        const response = await fetch(url, { credentials: "include" });
+        if (!response.ok) return null;
+        const html = await response.text();
+        return madeinchinaTrimmed(new DOMParser().parseFromString(html, "text/html"));
+      } catch (e) {
+        console.error("Safely: failed to load the Made-in-China supplier page", e);
+        return null;
+      }
+    }
+    if (!MADEINCHINA_SHOP_PAGE.test(url)) return null;
+    const response = await askBackground({ type: "SAFELY_FETCH_SUPPLIER_PAGE", url }, 20000);
+    if (!response || typeof response.html !== "string" || response.html.length === 0) {
+      console.error("Safely: the Made-in-China supplier page could not be loaded in the browser");
+      return null;
+    }
     try {
-      const response = await fetch(shop + "/", { credentials: "include" });
-      if (!response.ok) return null;
-      const html = await response.text();
-      return madeinchinaTrimmed(new DOMParser().parseFromString(html, "text/html"));
+      return madeinchinaTrimmed(new DOMParser().parseFromString(response.html, "text/html"));
     } catch (e) {
-      console.error("Safely: failed to load the Made-in-China supplier page", e);
+      console.error("Safely: could not read the Made-in-China supplier page", e);
       return null;
     }
   }

@@ -660,8 +660,9 @@ pub async fn b2b_page_from_browser(
 /// Made-in-China: its pages are plain HTML the buyer's browser already
 /// has, so reading them there is faster than ScraperAPI and costs no
 /// credits. A product page on the main site (www.made-in-china.com)
-/// cannot load the supplier's page from the browser (another address),
-/// so that one page is fetched through ScraperAPI.
+/// cannot load the supplier's page itself (another address), so the
+/// extension's background script loads it (tested 2026-10-29); only if
+/// that fails is it fetched through ScraperAPI.
 /// Global Sources: the same plain HTML. Its supplier pages are on
 /// another address ({shop}.manufacturer.globalsources.com), so the
 /// extension loads them through its background script.
