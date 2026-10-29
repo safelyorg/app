@@ -95,6 +95,6 @@ If you can, ask for a reference: another buyer you can call. For big orders, a f
 
 ## How Safely helps
 
-Doing all of this by hand takes time, often hours for one supplier. Safely is a Chrome extension that runs these kinds of checks for you. When you open a supplier page on Alibaba, Made-in-China, ThomasNet, Wholesale Central, Kompass, B2Brazil, TradeWheel, ExportHub or B2BMap, it checks 15 signals across the listing, the seller and the company, and shows a 0 to 100 risk score with the reasons in about 10 seconds.
+Doing all of this by hand takes time, often hours for one supplier. Safely is a Chrome extension that runs these kinds of checks for you. When you open a supplier page on Alibaba, Made-in-China, Global Sources, ThomasNet, Wholesale Central, Kompass, B2Brazil, TradeWheel, ExportHub or B2BMap, it checks 15 signals across the listing, the seller and the company, and shows a 0 to 100 risk score with the reasons in about 10 seconds.
 
 It does not replace your judgement or a phone call, but it shows you which suppliers need a closer look before you pay.
