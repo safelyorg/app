@@ -939,6 +939,131 @@
             return null;
         }
     }
+    /// An ExportHub company page: "https://www.exporthub.com/{company}/".
+    /// Its second page is the same address + "profile.html".
+    const EXPORTHUB_COMPANY_PAGE = /^https:\/\/www\.exporthub\.com\/[a-z0-9-]+\/$/;
+    /// On an ExportHub product page: the page as it is shown in this tab,
+    /// trimmed. ExportHub pages also load fine again without cookies
+    /// (tested 2026-10-29), but copying needs no request at all.
+    function exporthubPageHtml() {
+        try {
+            return madeinchinaTrimmed(document.cloneNode(true));
+        }
+        catch (e) {
+            console.error("Safely: could not copy the ExportHub page", e);
+            return null;
+        }
+    }
+    /// The company page linked from an ExportHub product page (the
+    /// company box in the sidebar, the same link Safely's server reads).
+    /// null if none.
+    function exporthubCompanyUrl(doc) {
+        const link = doc.querySelector(".product-del_sidebar__comp-nm a");
+        const href = link ? (link.getAttribute("href") || "").trim() : "";
+        if (!href)
+            return null;
+        let url;
+        try {
+            url = new URL(href, "https://www.exporthub.com/").href.split(/[?#]/)[0];
+        }
+        catch {
+            return null;
+        }
+        if (!url.endsWith("/"))
+            url += "/";
+        return EXPORTHUB_COMPANY_PAGE.test(url) ? url : null;
+    }
+    /// Loads one ExportHub page from this same site, trimmed. null if it
+    /// could not be loaded.
+    async function loadExporthubPage(url) {
+        try {
+            const response = await fetch(url, { credentials: "include" });
+            if (!response.ok)
+                return null;
+            const html = await response.text();
+            return madeinchinaTrimmed(new DOMParser().parseFromString(html, "text/html"));
+        }
+        catch (e) {
+            console.error("Safely: failed to load the ExportHub page " + url, e);
+            return null;
+        }
+    }
+    /// On an ExportHub product page: the company page and its second page
+    /// ("profile.html"), both trimmed. Either is null if it could not be
+    /// loaded; then Safely's server loads that one through ScraperAPI.
+    async function fetchExporthubCompanyPages() {
+        const none = { company: null, extended: null };
+        if (!window.location.pathname.startsWith("/product/"))
+            return none;
+        const url = exporthubCompanyUrl(document);
+        if (!url)
+            return none;
+        const [company, extended] = await Promise.all([
+            loadExporthubPage(url),
+            loadExporthubPage(url + "profile.html"),
+        ]);
+        return { company, extended };
+    }
+    /// ThomasNet's profile page is also the company page, so it is the
+    /// only page sent. Its data is in the page's Next.js data script
+    /// (script#__NEXT_DATA__), which is kept; every other script is
+    /// removed. ThomasNet pages load fine again without cookies (tested
+    /// 2026-10-29).
+    function thomasnetTrimmed(doc) {
+        const nextData = doc.querySelector("script#__NEXT_DATA__");
+        const kept = nextData ? nextData.outerHTML : "";
+        const html = madeinchinaTrimmed(doc);
+        if (!kept)
+            return html;
+        const end = html.lastIndexOf("</body>");
+        return end === -1 ? html + kept : html.slice(0, end) + kept + html.slice(end);
+    }
+    /// The company part of a ThomasNet profile address,
+    /// "/company/applied-rapid-technologies-1095055/profile" ->
+    /// "applied-rapid-technologies-1095055". null if there is none.
+    function thomasnetSlug(url) {
+        const match = url.match(/\/company\/([^/?#]+)/);
+        return match ? match[1].toLowerCase() : null;
+    }
+    /// The ThomasNet profile page the buyer is on, trimmed. It is loaded
+    /// again: ThomasNet moves between pages without reloading, and then
+    /// the data script still belongs to the first page opened. If loading
+    /// fails, the tab is copied, but only when its data is for this same
+    /// company. null if neither works; then Safely's server loads it
+    /// through ScraperAPI.
+    async function thomasnetPageHtml() {
+        const slug = thomasnetSlug(window.location.pathname);
+        if (!slug)
+            return null;
+        try {
+            const response = await fetch(window.location.href, { credentials: "include" });
+            if (response.ok) {
+                const html = await response.text();
+                return thomasnetTrimmed(new DOMParser().parseFromString(html, "text/html"));
+            }
+        }
+        catch (e) {
+            console.error("Safely: could not load the ThomasNet page again", e);
+        }
+        try {
+            const canonical = document.querySelector('link[rel="canonical"]');
+            const nextData = document.querySelector("script#__NEXT_DATA__")?.textContent || "";
+            const sameCompany = (canonical && thomasnetSlug(canonical.href) === slug) ||
+                nextData.toLowerCase().includes("/company/" + slug + "/");
+            if (!sameCompany)
+                return null;
+            return thomasnetTrimmed(document.cloneNode(true));
+        }
+        catch (e) {
+            console.error("Safely: could not copy the ThomasNet page", e);
+            return null;
+        }
+    }
+    window.__safelyScrapers.thomasnetPageHtml = thomasnetPageHtml;
+    window.__safelyScrapers.thomasnetTrimmed = thomasnetTrimmed;
+    window.__safelyScrapers.exporthubPageHtml = exporthubPageHtml;
+    window.__safelyScrapers.exporthubCompanyUrl = exporthubCompanyUrl;
+    window.__safelyScrapers.fetchExporthubCompanyPages = fetchExporthubCompanyPages;
     window.__safelyScrapers.kompassPageHtml = kompassPageHtml;
     window.__safelyScrapers.kompassCompanyUrl = kompassCompanyUrl;
     window.__safelyScrapers.fetchKompassCompanyPage = fetchKompassCompanyPage;

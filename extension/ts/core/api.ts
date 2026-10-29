@@ -189,7 +189,8 @@ function formatPlatformName(platform: string | null | undefined): string {
   // product page is copied from the tab and the company page is loaded
   // with the buyer's cookies. ExportHub: ScraperAPI needs its most
   // expensive mode there; the product page is copied from the tab and
-  // both company pages are loaded from here. Must match
+  // both company pages are loaded from here. ThomasNet: the profile
+  // page is also the company page, so only that page is sent. Must match
   // BROWSER_FIRST_PLATFORMS in
   // backend/services/b2b_scrapers/mod.rs.
   const BROWSER_FIRST_PLATFORMS = [
@@ -199,6 +200,7 @@ function formatPlatformName(platform: string | null | undefined): string {
     "alibaba",
     "kompass",
     "exporthub",
+    "thomasnet",
   ];
 
   // The most page text sent in one scan, so the request stays under the
@@ -504,6 +506,9 @@ function formatPlatformName(platform: string | null | undefined): string {
             extendedPageHtml = null;
           }
         }
+      } else if (browserFirst && platform === "thomasnet" && scrapers.thomasnetPageHtml) {
+        pageHtml = await scrapers.thomasnetPageHtml();
+        if (pageHtml && pageHtml.length > MAX_PAGE_CHARS) pageHtml = null;
       } else if (BROWSER_PAGE_PLATFORMS.indexOf(platform) !== -1) {
         pageHtml = pageHtmlForSafely();
       }

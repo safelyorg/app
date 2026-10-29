@@ -1048,6 +1048,62 @@ type DomainCheckResult = LegitimateDomainResult | SuspiciousDomainResult | null;
     return { company, extended };
   }
 
+  /// ThomasNet's profile page is also the company page, so it is the
+  /// only page sent. Its data is in the page's Next.js data script
+  /// (script#__NEXT_DATA__), which is kept; every other script is
+  /// removed. ThomasNet pages load fine again without cookies (tested
+  /// 2026-10-29).
+  function thomasnetTrimmed(doc: Document): string {
+    const nextData = doc.querySelector("script#__NEXT_DATA__");
+    const kept = nextData ? nextData.outerHTML : "";
+    const html = madeinchinaTrimmed(doc);
+    if (!kept) return html;
+    const end = html.lastIndexOf("</body>");
+    return end === -1 ? html + kept : html.slice(0, end) + kept + html.slice(end);
+  }
+
+  /// The company part of a ThomasNet profile address,
+  /// "/company/applied-rapid-technologies-1095055/profile" ->
+  /// "applied-rapid-technologies-1095055". null if there is none.
+  function thomasnetSlug(url: string): string | null {
+    const match = url.match(/\/company\/([^/?#]+)/);
+    return match ? match[1].toLowerCase() : null;
+  }
+
+  /// The ThomasNet profile page the buyer is on, trimmed. It is loaded
+  /// again: ThomasNet moves between pages without reloading, and then
+  /// the data script still belongs to the first page opened. If loading
+  /// fails, the tab is copied, but only when its data is for this same
+  /// company. null if neither works; then Safely's server loads it
+  /// through ScraperAPI.
+  async function thomasnetPageHtml(): Promise<string | null> {
+    const slug = thomasnetSlug(window.location.pathname);
+    if (!slug) return null;
+    try {
+      const response = await fetch(window.location.href, { credentials: "include" });
+      if (response.ok) {
+        const html = await response.text();
+        return thomasnetTrimmed(new DOMParser().parseFromString(html, "text/html"));
+      }
+    } catch (e) {
+      console.error("Safely: could not load the ThomasNet page again", e);
+    }
+    try {
+      const canonical = document.querySelector<HTMLLinkElement>('link[rel="canonical"]');
+      const nextData = document.querySelector("script#__NEXT_DATA__")?.textContent || "";
+      const sameCompany =
+        (canonical && thomasnetSlug(canonical.href) === slug) ||
+        nextData.toLowerCase().includes("/company/" + slug + "/");
+      if (!sameCompany) return null;
+      return thomasnetTrimmed(document.cloneNode(true) as Document);
+    } catch (e) {
+      console.error("Safely: could not copy the ThomasNet page", e);
+      return null;
+    }
+  }
+
+  (window as any).__safelyScrapers.thomasnetPageHtml = thomasnetPageHtml;
+  (window as any).__safelyScrapers.thomasnetTrimmed = thomasnetTrimmed;
   (window as any).__safelyScrapers.exporthubPageHtml = exporthubPageHtml;
   (window as any).__safelyScrapers.exporthubCompanyUrl = exporthubCompanyUrl;
   (window as any).__safelyScrapers.fetchExporthubCompanyPages = fetchExporthubCompanyPages;

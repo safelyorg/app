@@ -684,6 +684,10 @@ pub async fn b2b_page_from_browser(
 /// (tested 2026-10-29). The extension copies the product page from the
 /// tab and loads both company pages (the company page and its
 /// "profile.html" tab, sent as extended_page_html).
+/// ThomasNet: the profile page is also the company page, so it is the
+/// only page. It loads fine in the buyer's browser, even again without
+/// cookies (tested 2026-10-29); the extension sends it with its data
+/// script (__NEXT_DATA__), which is where most details are.
 pub const BROWSER_FIRST_PLATFORMS: &[&str] = &[
     "wholesalecentral",
     "madeinchina",
@@ -691,6 +695,7 @@ pub const BROWSER_FIRST_PLATFORMS: &[&str] = &[
     "alibaba",
     "kompass",
     "exporthub",
+    "thomasnet",
 ];
 
 /// true when `html` is a real page and not the site's robot check.
@@ -929,6 +934,10 @@ mod browser_page_tests {
         assert!(
             BROWSER_FIRST_PLATFORMS.contains(&"exporthub"),
             "ExportHub is read from the browser first"
+        );
+        assert!(
+            BROWSER_FIRST_PLATFORMS.contains(&"thomasnet"),
+            "ThomasNet is read from the browser first"
         );
         assert!(
             b2b_page_from_browser_first("wholesalecentral", "u", None, None, None)
