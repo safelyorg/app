@@ -18,7 +18,21 @@ function formatPlatformName(platform) {
 }
 (function () {
     "use strict";
-    const SAFELY_ENV = "local";
+    // "production" when the extension was installed from the Chrome Web
+    // Store, "local" when it was loaded unpacked from this folder. The
+    // Web Store adds an update_url to every extension it installs, and an
+    // unpacked one never has it - so the right server is picked on its
+    // own and a store upload can never point at localhost by mistake.
+    function detectEnv() {
+        try {
+            const manifest = globalThis.chrome?.runtime?.getManifest?.();
+            return manifest && manifest.update_url ? "production" : "local";
+        }
+        catch (e) {
+            return "local";
+        }
+    }
+    const SAFELY_ENV = detectEnv();
     const API_BASE = SAFELY_ENV === "local" ? "http://localhost:3000/api/v1" : "https://safely.sh/api/v1";
     // Same toggle, but for the actual website (not the /api/v1 path) -
     // kept as one source of truth alongside API_BASE.
