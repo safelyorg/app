@@ -381,8 +381,24 @@ impl B2bScraper for B2bmapScraper {
     /// One seller record per company: the company page's slug, e.g.
     /// "https://b2bmap.com/loyal-vina" -> "loyal-vina". Without this,
     /// every b2bmap seller landed on one shared "unknown" record.
+    ///
+    /// On the company page itself (which has no supplier-name link), the
+    /// slug comes from the page's own address (the canonical link,
+    /// "https://b2bmap.com/persy-booths"). That is how Safely checks that
+    /// a company page sent by the browser belongs to the same company as
+    /// the product.
     fn company_key(&self, listing_html: &str) -> Option<String> {
-        company_slug(&self.extract_company_profile_url(listing_html)?)
+        if let Some(url) = self.extract_company_profile_url(listing_html) {
+            return company_slug(&url);
+        }
+        let document = Html::parse_document(listing_html);
+        let own = |selector: &str, attr: &str| -> Option<String> {
+            let sel = Selector::parse(selector).ok()?;
+            let value = document.select(&sel).next()?.value().attr(attr)?;
+            company_slug(value)
+        };
+        own(r#"link[rel="canonical"]"#, "href")
+            .or_else(|| own(r#"meta[property="og:url"]"#, "content"))
     }
 
     fn enrich_from_company_profile(
@@ -1043,6 +1059,20 @@ mod tests {
                 .enrich_record_from_company_profile(None, "<html></html>")
                 .is_none()
         );
+    }
+
+    #[test]
+    fn company_page_gives_the_same_key_from_its_own_address() {
+        // Like the real Persy Booths company page (Oct 2026): no
+        // supplier-name link, only its own address in the head.
+        let company = r#"<html><head><link rel="canonical" href="https://b2bmap.com/persy-booths" /><meta property="og:url" content="https://b2bmap.com/persy-booths" /></head><body><h1><a href="https://b2bmap.com/persy-booths"><span>Persy Booths</span></a></h1></body></html>"#;
+        assert_eq!(
+            B2bmapScraper.company_key(company).as_deref(),
+            Some("persy-booths")
+        );
+        // A product page's own address is never a company slug.
+        let product = r#"<html><head><link rel="canonical" href="https://b2bmap.com/products/persy-four-soundproof-meeting-pod-germany" /></head></html>"#;
+        assert_eq!(B2bmapScraper.company_key(product), None);
     }
 
     #[test]

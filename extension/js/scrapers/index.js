@@ -1108,6 +1108,135 @@
             return null;
         }
     }
+    /// On a TradeWheel product page (/p/...): the page as it is shown in
+    /// this tab, trimmed. TradeWheel pages also load fine again without
+    /// cookies (tested 2026-10-29), but copying needs no request at all.
+    function tradewheelPageHtml() {
+        try {
+            return madeinchinaTrimmed(document.cloneNode(true));
+        }
+        catch (e) {
+            console.error("Safely: could not copy the TradeWheel page", e);
+            return null;
+        }
+    }
+    /// The company page linked from a TradeWheel product page (the company
+    /// box, the same link Safely's server reads):
+    /// "https://www.tradewheel.com/co/{company}/". null if none.
+    function tradewheelCompanyUrl(doc) {
+        for (const link of Array.from(doc.querySelectorAll(".comp-info a[href]"))) {
+            const href = (link.getAttribute("href") || "").trim();
+            if (!href.includes("/co/"))
+                continue;
+            try {
+                const url = new URL(href, "https://www.tradewheel.com/");
+                const match = url.pathname.match(/^\/co\/([a-z0-9-]+)\/?$/i);
+                if (url.hostname === "www.tradewheel.com" && match) {
+                    return "https://www.tradewheel.com/co/" + match[1] + "/";
+                }
+            }
+            catch {
+                // not a usable link
+            }
+        }
+        return null;
+    }
+    /// On a TradeWheel product page: the company page, loaded from this
+    /// same site and trimmed. null if it could not be loaded; then
+    /// Safely's server loads it through ScraperAPI.
+    async function fetchTradewheelCompanyPage() {
+        if (!window.location.pathname.startsWith("/p/"))
+            return null;
+        const url = tradewheelCompanyUrl(document);
+        if (!url)
+            return null;
+        try {
+            const response = await fetch(url, { credentials: "include" });
+            if (!response.ok)
+                return null;
+            const html = await response.text();
+            return madeinchinaTrimmed(new DOMParser().parseFromString(html, "text/html"));
+        }
+        catch (e) {
+            console.error("Safely: failed to load the TradeWheel company page", e);
+            return null;
+        }
+    }
+    /// b2bmap's own sections - never a company page. Same list as
+    /// company_slug in backend b2bmap.rs.
+    const B2BMAP_SECTIONS = [
+        "products",
+        "product-list",
+        "companies",
+        "company-list",
+        "buyleads",
+        "business-directory",
+        "pricing",
+        "myzone",
+        "contact-info",
+    ];
+    /// On a B2BMap product page (/products/...): the page as it is shown
+    /// in this tab, trimmed. B2BMap pages also load fine again without
+    /// cookies (tested 2026-10-29), but copying needs no request at all.
+    function b2bmapPageHtml() {
+        try {
+            return madeinchinaTrimmed(document.cloneNode(true));
+        }
+        catch (e) {
+            console.error("Safely: could not copy the B2BMap page", e);
+            return null;
+        }
+    }
+    /// The company page linked from a B2BMap product page (the supplier
+    /// name, the same link Safely's server reads):
+    /// "https://b2bmap.com/{company}". null if none.
+    function b2bmapCompanyUrl(doc) {
+        const link = doc.querySelector("h4.text-18.text-lg-22 a[href]");
+        const href = link ? (link.getAttribute("href") || "").trim() : "";
+        if (!href)
+            return null;
+        try {
+            const url = new URL(href, "https://b2bmap.com/");
+            if (url.hostname !== "b2bmap.com" && url.hostname !== "www.b2bmap.com")
+                return null;
+            const slug = url.pathname.split("/").filter(Boolean)[0];
+            if (!slug || !/^[a-z0-9-]+$/i.test(slug))
+                return null;
+            if (B2BMAP_SECTIONS.includes(slug.toLowerCase()))
+                return null;
+            return "https://b2bmap.com/" + slug.toLowerCase();
+        }
+        catch {
+            return null;
+        }
+    }
+    /// On a B2BMap product page: the company page, loaded from this same
+    /// site and trimmed. null if it could not be loaded; then Safely's
+    /// server loads it through ScraperAPI.
+    async function fetchB2bmapCompanyPage() {
+        if (!window.location.pathname.startsWith("/products/"))
+            return null;
+        const url = b2bmapCompanyUrl(document);
+        if (!url)
+            return null;
+        try {
+            const response = await fetch(url, { credentials: "include" });
+            if (!response.ok)
+                return null;
+            const html = await response.text();
+            return madeinchinaTrimmed(new DOMParser().parseFromString(html, "text/html"));
+        }
+        catch (e) {
+            console.error("Safely: failed to load the B2BMap company page", e);
+            return null;
+        }
+    }
+    window.__safelyScrapers.b2bmapPageHtml = b2bmapPageHtml;
+    window.__safelyScrapers.b2bmapCompanyUrl = b2bmapCompanyUrl;
+    window.__safelyScrapers.fetchB2bmapCompanyPage = fetchB2bmapCompanyPage;
+    window.__safelyScrapers.tradewheelPageHtml = tradewheelPageHtml;
+    window.__safelyScrapers.tradewheelCompanyUrl = tradewheelCompanyUrl;
+    window.__safelyScrapers.fetchTradewheelCompanyPage = fetchTradewheelCompanyPage;
     window.__safelyScrapers.b2brazilPageHtml = b2brazilPageHtml;
     window.__safelyScrapers.b2brazilCompanyUrl = b2brazilCompanyUrl;
     window.__safelyScrapers.fetchB2brazilCompanyPage = fetchB2brazilCompanyPage;
