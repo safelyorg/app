@@ -1059,6 +1059,58 @@
             return null;
         }
     }
+    /// On a B2Brazil product page (/hotsite/{company}/{product}): the
+    /// page as it is shown in this tab, trimmed. B2Brazil pages also load
+    /// fine again without cookies (tested 2026-10-29), but copying needs
+    /// no request at all.
+    function b2brazilPageHtml() {
+        try {
+            return madeinchinaTrimmed(document.cloneNode(true));
+        }
+        catch (e) {
+            console.error("Safely: could not copy the B2Brazil page", e);
+            return null;
+        }
+    }
+    /// The company's page, "https://b2brazil.com/hotsite/{company}". Taken
+    /// from the address of the product page the buyer is on - the same
+    /// /hotsite/{company} part Safely's server uses. null when the page
+    /// is not a product page.
+    function b2brazilCompanyUrl(pageUrl) {
+        let url;
+        try {
+            url = new URL(pageUrl);
+        }
+        catch {
+            return null;
+        }
+        if (!isB2brazilListingUrl(url.href))
+            return null;
+        const company = url.pathname.split("/").filter(Boolean)[1];
+        return /^[A-Za-z0-9_-]+$/.test(company) ? url.origin + "/hotsite/" + company : null;
+    }
+    /// On a B2Brazil product page: the company's page, loaded from this
+    /// same site and trimmed. null if it could not be loaded; then
+    /// Safely's server loads it through ScraperAPI.
+    async function fetchB2brazilCompanyPage() {
+        const url = b2brazilCompanyUrl(window.location.href);
+        if (!url)
+            return null;
+        try {
+            const response = await fetch(url, { credentials: "include" });
+            if (!response.ok)
+                return null;
+            const html = await response.text();
+            return madeinchinaTrimmed(new DOMParser().parseFromString(html, "text/html"));
+        }
+        catch (e) {
+            console.error("Safely: failed to load the B2Brazil company page", e);
+            return null;
+        }
+    }
+    window.__safelyScrapers.b2brazilPageHtml = b2brazilPageHtml;
+    window.__safelyScrapers.b2brazilCompanyUrl = b2brazilCompanyUrl;
+    window.__safelyScrapers.fetchB2brazilCompanyPage = fetchB2brazilCompanyPage;
     window.__safelyScrapers.thomasnetPageHtml = thomasnetPageHtml;
     window.__safelyScrapers.thomasnetTrimmed = thomasnetTrimmed;
     window.__safelyScrapers.exporthubPageHtml = exporthubPageHtml;

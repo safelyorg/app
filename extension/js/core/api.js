@@ -87,7 +87,9 @@ function formatPlatformName(platform) {
     // with the buyer's cookies. ExportHub: ScraperAPI needs its most
     // expensive mode there; the product page is copied from the tab and
     // both company pages are loaded from here. ThomasNet: the profile
-    // page is also the company page, so only that page is sent. Must match
+    // page is also the company page, so only that page is sent. B2Brazil:
+    // the product page is copied from the tab and the company page is
+    // loaded from here. Must match
     // BROWSER_FIRST_PLATFORMS in
     // backend/services/b2b_scrapers/mod.rs.
     const BROWSER_FIRST_PLATFORMS = [
@@ -98,6 +100,7 @@ function formatPlatformName(platform) {
         "kompass",
         "exporthub",
         "thomasnet",
+        "b2brazil",
     ];
     // The most page text sent in one scan, so the request stays under the
     // server's size limit (2 MB, and the page text grows a little when it
@@ -405,6 +408,17 @@ function formatPlatformName(platform) {
                     const sent = pageHtml.length + (companyPageHtml ? companyPageHtml.length : 0);
                     if (!companyPageHtml || (extendedPageHtml && sent + extendedPageHtml.length > MAX_PAGE_CHARS)) {
                         extendedPageHtml = null;
+                    }
+                }
+            }
+            else if (browserFirst && platform === "b2brazil" && scrapers.b2brazilPageHtml) {
+                pageHtml = scrapers.b2brazilPageHtml();
+                if (pageHtml && pageHtml.length > MAX_PAGE_CHARS)
+                    pageHtml = null;
+                if (pageHtml && scrapers.fetchB2brazilCompanyPage) {
+                    companyPageHtml = await scrapers.fetchB2brazilCompanyPage();
+                    if (companyPageHtml && pageHtml.length + companyPageHtml.length > MAX_PAGE_CHARS) {
+                        companyPageHtml = null;
                     }
                 }
             }

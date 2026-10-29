@@ -688,6 +688,9 @@ pub async fn b2b_page_from_browser(
 /// only page. It loads fine in the buyer's browser, even again without
 /// cookies (tested 2026-10-29); the extension sends it with its data
 /// script (__NEXT_DATA__), which is where most details are.
+/// B2Brazil: its pages load fine in the buyer's browser, even again
+/// without cookies (tested 2026-10-29). The extension copies the product
+/// page from the tab and loads the company page (/hotsite/{company}).
 pub const BROWSER_FIRST_PLATFORMS: &[&str] = &[
     "wholesalecentral",
     "madeinchina",
@@ -696,6 +699,7 @@ pub const BROWSER_FIRST_PLATFORMS: &[&str] = &[
     "kompass",
     "exporthub",
     "thomasnet",
+    "b2brazil",
 ];
 
 /// true when `html` is a real page and not the site's robot check.
@@ -938,6 +942,10 @@ mod browser_page_tests {
         assert!(
             BROWSER_FIRST_PLATFORMS.contains(&"thomasnet"),
             "ThomasNet is read from the browser first"
+        );
+        assert!(
+            BROWSER_FIRST_PLATFORMS.contains(&"b2brazil"),
+            "B2Brazil is read from the browser first"
         );
         assert!(
             b2b_page_from_browser_first("wholesalecentral", "u", None, None, None)
