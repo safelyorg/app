@@ -802,6 +802,79 @@
             return null;
         }
     }
+    /// An Alibaba company's own page, the only kind of Alibaba page the
+    /// background script loads for a scan:
+    /// "https://{shop}.en.alibaba.com/company_profile.html".
+    /// Must match the Alibaba line in SUPPLIER_PAGES in background.ts.
+    const ALIBABA_COMPANY_PAGE = /^https:\/\/[a-z0-9-]+\.en\.alibaba\.com\/company_profile\.html$/;
+    /// "https://ZL9809.m.en.alibaba.com/x?y" or "zl9809.en.alibaba.com"
+    /// -> "https://zl9809.en.alibaba.com/company_profile.html". null when
+    /// it is not a company shop address. Same rule as normalize_shop_host
+    /// in backend alibaba.rs.
+    function alibabaCompanyPageFrom(raw) {
+        let host;
+        try {
+            const text = raw.trim();
+            const withScheme = /^https?:\/\//i.test(text) ? text : "https://" + text.replace(/^\/\//, "");
+            host = new URL(withScheme).hostname.toLowerCase();
+        }
+        catch {
+            return null;
+        }
+        host = host.replace(/^www\./, "").replace(/\.m\.en\.alibaba\.com$/, ".en.alibaba.com");
+        const url = "https://" + host + "/company_profile.html";
+        return ALIBABA_COMPANY_PAGE.test(url) ? url : null;
+    }
+    /// The company page of the supplier on an Alibaba product page. Read
+    /// the same way Safely's server reads it: the "Company profile" link
+    /// first, then the shop address in the page's own product data
+    /// ("subDomain"). null if neither is there.
+    function alibabaCompanyUrl(doc) {
+        for (const link of Array.from(doc.querySelectorAll("a[href]"))) {
+            if ((link.textContent || "").trim() !== "Company profile")
+                continue;
+            const url = alibabaCompanyPageFrom(link.getAttribute("href") || "");
+            if (url)
+                return url;
+        }
+        for (const script of Array.from(doc.querySelectorAll("script"))) {
+            const match = (script.textContent || "").match(/"subDomain"\s*:\s*"([^"]+)"/);
+            if (match) {
+                const url = alibabaCompanyPageFrom(match[1]);
+                if (url)
+                    return url;
+            }
+        }
+        return null;
+    }
+    /// On an Alibaba product page: the company's own page, trimmed. It is
+    /// on another address ({shop}.en.alibaba.com), which this page cannot
+    /// load itself, so the background script loads it (only that kind of
+    /// page - see background.ts), without the buyer's cookies. Tested
+    /// 2026-10-29: Alibaba sends the real page this way (no robot check),
+    /// with the company data in its module-data parts. null if it could
+    /// not be loaded; then Safely's server loads it through ScraperAPI.
+    async function fetchAlibabaCompanyPage() {
+        if (!/\/product-detail\//.test(window.location.pathname))
+            return null;
+        const url = alibabaCompanyUrl(document);
+        if (!url)
+            return null;
+        const response = await askBackground({ type: "SAFELY_FETCH_SUPPLIER_PAGE", url }, 20000);
+        if (!response || typeof response.html !== "string" || response.html.length === 0) {
+            console.error("Safely: the Alibaba company page could not be loaded in the browser");
+            return null;
+        }
+        try {
+            return madeinchinaTrimmed(new DOMParser().parseFromString(response.html, "text/html"));
+        }
+        catch (e) {
+            console.error("Safely: could not read the Alibaba company page", e);
+            return null;
+        }
+    }
+    window.__safelyScrapers.alibabaCompanyUrl = alibabaCompanyUrl;
+    window.__safelyScrapers.fetchAlibabaCompanyPage = fetchAlibabaCompanyPage;
     window.__safelyScrapers.globalsourcesPageHtml = globalsourcesPageHtml;
     window.__safelyScrapers.globalsourcesSupplierUrl = globalsourcesSupplierUrl;
     window.__safelyScrapers.globalsourcesTrimmed = globalsourcesTrimmed;

@@ -78,9 +78,12 @@ function formatPlatformName(platform) {
     // has already passed it. Made-in-China's pages are plain HTML this
     // browser already has, which is faster and costs no ScraperAPI
     // credits. Global Sources: the same, and its supplier page is loaded
-    // by the background script. Must match BROWSER_FIRST_PLATFORMS in
+    // by the background script. Alibaba: ScraperAPI took close to a minute
+    // and was often shown "Product Not Available"; the product page is
+    // sent from here, and the company page is loaded by the background
+    // script. Must match BROWSER_FIRST_PLATFORMS in
     // backend/services/b2b_scrapers/mod.rs.
-    const BROWSER_FIRST_PLATFORMS = ["wholesalecentral", "madeinchina", "globalsources"];
+    const BROWSER_FIRST_PLATFORMS = ["wholesalecentral", "madeinchina", "globalsources", "alibaba"];
     // The most page text sent in one scan, so the request stays under the
     // server's size limit (2 MB, and the page text grows a little when it
     // is sent). A page over it is not sent, and Safely fetches it through
@@ -346,6 +349,15 @@ function formatPlatformName(platform) {
                     pageHtml = null;
                 if (pageHtml && scrapers.fetchGlobalsourcesSupplierPage) {
                     companyPageHtml = await scrapers.fetchGlobalsourcesSupplierPage();
+                    if (companyPageHtml && pageHtml.length + companyPageHtml.length > MAX_PAGE_CHARS) {
+                        companyPageHtml = null;
+                    }
+                }
+            }
+            else if (browserFirst && platform === "alibaba") {
+                pageHtml = pageHtmlForSafely();
+                if (pageHtml && scrapers.fetchAlibabaCompanyPage) {
+                    companyPageHtml = await scrapers.fetchAlibabaCompanyPage();
                     if (companyPageHtml && pageHtml.length + companyPageHtml.length > MAX_PAGE_CHARS) {
                         companyPageHtml = null;
                     }

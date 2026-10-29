@@ -48,19 +48,23 @@ function handleSessionUpdateMessage(
 
 chrome.runtime.onMessage.addListener(handleSessionUpdateMessage);
 
-// The only pages the background script loads for a scan: a Global
-// Sources supplier's page, e.g.
-// https://boxinltd.manufacturer.globalsources.com/homepage_6008846289828.htm.
-// A Global Sources product page cannot load it itself (it is on another
-// address). Any other address is refused, so a web page cannot use this
-// to load other sites. Must match GLOBALSOURCES_SUPPLIER_PAGE in
-// scrapers/index.ts.
+// The only pages the background script loads for a scan:
+// - a Global Sources supplier's page, e.g.
+//   https://boxinltd.manufacturer.globalsources.com/homepage_6008846289828.htm
+//   (must match GLOBALSOURCES_SUPPLIER_PAGE in scrapers/index.ts);
+// - an Alibaba company's own page, e.g.
+//   https://zl9809.en.alibaba.com/company_profile.html
+//   (must match ALIBABA_COMPANY_PAGE in scrapers/index.ts).
+// A product page cannot load them itself (they are on another address).
+// Any other address is refused, so a web page cannot use this to load
+// other sites.
 const SUPPLIER_PAGES: RegExp[] = [
   /^https:\/\/[a-z0-9-]+\.[a-z]+\.globalsources\.com\/homepage_\d+\.htm$/,
+  /^https:\/\/[a-z0-9-]+\.en\.alibaba\.com\/company_profile\.html$/,
 ];
 
 // The largest page sent back (Global Sources supplier pages are about
-// 0.1 MB).
+// 0.1 MB, Alibaba company pages about 0.3 MB).
 const MAX_SUPPLIER_PAGE_CHARS = 3000000;
 const SUPPLIER_PAGE_TIMEOUT_MS = 15000;
 

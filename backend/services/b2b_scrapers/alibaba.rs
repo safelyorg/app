@@ -246,6 +246,20 @@ fn absolute_url(url: &str) -> String {
 /// the mobile ".m.en." variant folded into ".en.", and only real
 /// "<shop>.en.alibaba.com" hosts accepted (never www.alibaba.com
 /// itself, which every page links to).
+/// The shop address from the page's own address: the canonical link,
+/// then og:url. A product page's own address is on www.alibaba.com, so
+/// normalize_shop_host turns it down and this gives None there.
+fn own_shop_address(html: &str) -> Option<String> {
+    let document = Html::parse_document(html);
+    let read = |selector: &str, attr: &str| -> Option<String> {
+        let sel = Selector::parse(selector).ok()?;
+        let value = document.select(&sel).next()?.value().attr(attr)?;
+        normalize_shop_host(value)
+    };
+    read(r#"link[rel="canonical"]"#, "href")
+        .or_else(|| read(r#"meta[property="og:url"]"#, "content"))
+}
+
 fn normalize_shop_host(raw: &str) -> Option<String> {
     let s = raw.trim().to_lowercase();
     let s = s
@@ -432,7 +446,11 @@ impl B2bScraper for AlibabaScraper {
     /// same on every product that company lists. Read from the page's
     /// hidden data first (globalData.seller.subDomain), then from the
     /// visible "Company profile" link, so it's found on either page
-    /// layout.
+    /// layout. On the company's own page (company_profile.html), which
+    /// has neither, it comes from the page's own address (canonical
+    /// link or og:url, "https://zl9809.en.alibaba.com/"). That is how
+    /// Safely checks that a company page sent by the browser belongs to
+    /// the same company as the product.
     fn company_key(&self, listing_html: &str) -> Option<String> {
         extract_detail_seller(listing_html)
             .as_ref()
@@ -442,6 +460,7 @@ impl B2bScraper for AlibabaScraper {
                 self.extract_company_profile_url(listing_html)
                     .and_then(|u| normalize_shop_host(&u))
             })
+            .or_else(|| own_shop_address(listing_html))
     }
 
     /// Alibaba's own record of the supplier, all from the listing
@@ -1439,6 +1458,25 @@ mod tests {
         );
         assert_eq!(normalize_shop_host("a.b.en.alibaba.com"), None);
         assert_eq!(normalize_shop_host(""), None);
+    }
+
+    #[test]
+    fn company_page_gives_the_same_key_from_its_own_address() {
+        // Like zl9809.en.alibaba.com/company_profile.html as the browser
+        // loads it: no detailData and no "Company profile" link text.
+        let page = r#"<html><head><meta property="og:url" content="https://zl9809.en.alibaba.com/"/><link rel="canonical" href="https://zl9809.en.alibaba.com/"/></head><body><a href="/company_profile.html">Profile</a></body></html>"#;
+        assert_eq!(
+            AlibabaScraper.company_key(page).as_deref(),
+            Some("zl9809.en.alibaba.com")
+        );
+        let og_only = r#"<html><head><meta property="og:url" content="https://zl9809.en.alibaba.com/"/></head></html>"#;
+        assert_eq!(
+            AlibabaScraper.company_key(og_only).as_deref(),
+            Some("zl9809.en.alibaba.com")
+        );
+        // A product page's own address is never a shop address.
+        let product = r#"<html><head><link rel="canonical" href="https://www.alibaba.com/product-detail/x_1.html"/></head></html>"#;
+        assert_eq!(AlibabaScraper.company_key(product), None);
     }
 
     #[test]
