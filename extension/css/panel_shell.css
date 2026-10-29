@@ -483,6 +483,26 @@ button.safely-row-head:hover {
 .safely-btn-dark:hover {
     opacity: 0.88;
 }
+/* Some sites (Alibaba) color every link on the page with a strong
+   rule of their own, which turned the white "Sign in free" and
+   "See plans" text dark. These rules win over the site's, so Safely's
+   links keep their own colors on every site. */
+#safely-root a.safely-btn-dark,
+#safely-root a.safely-btn-dark:link,
+#safely-root a.safely-btn-dark:visited,
+#safely-root a.safely-btn-dark:hover,
+#safely-root a.safely-btn-dark:active {
+    color: var(--on-ink, #ffffff) !important;
+    text-decoration: none !important;
+}
+#safely-root a.safely-link-out,
+#safely-root a.safely-link-out:link,
+#safely-root a.safely-link-out:visited {
+    color: var(--ink-2) !important;
+}
+#safely-root a.safely-link-out:hover {
+    color: var(--ink) !important;
+}
 .safely-btn-line {
     background: var(--bg);
     color: var(--ink);
