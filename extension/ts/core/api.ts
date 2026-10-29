@@ -192,7 +192,7 @@ function formatPlatformName(platform: string | null | undefined): string {
   // both company pages are loaded from here. ThomasNet: the profile
   // page is also the company page, so only that page is sent. B2Brazil:
   // the product page is copied from the tab and the company page is
-  // loaded from here. Must match
+  // loaded from here. TradeWheel: the same. Must match
   // BROWSER_FIRST_PLATFORMS in
   // backend/services/b2b_scrapers/mod.rs.
   const BROWSER_FIRST_PLATFORMS = [
@@ -204,6 +204,7 @@ function formatPlatformName(platform: string | null | undefined): string {
     "exporthub",
     "thomasnet",
     "b2brazil",
+    "tradewheel",
   ];
 
   // The most page text sent in one scan, so the request stays under the
@@ -507,6 +508,15 @@ function formatPlatformName(platform: string | null | undefined): string {
           const sent = pageHtml.length + (companyPageHtml ? companyPageHtml.length : 0);
           if (!companyPageHtml || (extendedPageHtml && sent + extendedPageHtml.length > MAX_PAGE_CHARS)) {
             extendedPageHtml = null;
+          }
+        }
+      } else if (browserFirst && platform === "tradewheel" && scrapers.tradewheelPageHtml) {
+        pageHtml = scrapers.tradewheelPageHtml();
+        if (pageHtml && pageHtml.length > MAX_PAGE_CHARS) pageHtml = null;
+        if (pageHtml && scrapers.fetchTradewheelCompanyPage) {
+          companyPageHtml = await scrapers.fetchTradewheelCompanyPage();
+          if (companyPageHtml && pageHtml.length + companyPageHtml.length > MAX_PAGE_CHARS) {
+            companyPageHtml = null;
           }
         }
       } else if (browserFirst && platform === "b2brazil" && scrapers.b2brazilPageHtml) {

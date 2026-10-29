@@ -247,8 +247,23 @@ impl B2bScraper for TradewheelScraper {
     /// e.g. "https://www.tradewheel.com/co/fengtai-clothing/" ->
     /// "fengtai-clothing". Every product from that company links to the
     /// same page, so every scan lands on the same record.
+    ///
+    /// On the company page itself (which has no link to itself), the
+    /// slug comes from the page's own address (the canonical link,
+    /// "https://www.tradewheel.com/co/embroiderylinksports/"). That is
+    /// how Safely checks that a company page sent by the browser belongs
+    /// to the same company as the product.
     fn company_key(&self, listing_html: &str) -> Option<String> {
-        company_slug(&self.extract_company_profile_url(listing_html)?)
+        if let Some(url) = self.extract_company_profile_url(listing_html) {
+            return company_slug(&url);
+        }
+        let document = Html::parse_document(listing_html);
+        select_attr(&document, r#"link[rel="canonical"]"#, "href")
+            .and_then(|u| company_slug(&u))
+            .or_else(|| {
+                select_attr(&document, r#"meta[property="og:url"]"#, "content")
+                    .and_then(|u| company_slug(&u))
+            })
     }
 }
 
@@ -1156,6 +1171,20 @@ mod tests {
             company_slug("https://www.tradewheel.com/p/x-2402918/"),
             None
         );
+    }
+
+    #[test]
+    fn company_page_gives_the_same_key_from_its_own_address() {
+        // Like the real Embroidery Link Sports company page (Oct 2026):
+        // no link to itself, only its own address in the head.
+        let company = r#"<html><head><link rel="canonical" href="https://www.tradewheel.com/co/embroiderylinksports/"></head><body><h1 class="comp_heading">Embroidery Link Sports</h1></body></html>"#;
+        assert_eq!(
+            TradewheelScraper.company_key(company).as_deref(),
+            Some("embroiderylinksports")
+        );
+        // A product page's own address is never a company slug.
+        let product = r#"<html><head><link rel="canonical" href="https://www.tradewheel.com/p/polo-shirts-2525134/"></head></html>"#;
+        assert_eq!(TradewheelScraper.company_key(product), None);
     }
 
     #[test]

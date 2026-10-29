@@ -1148,6 +1148,59 @@ type DomainCheckResult = LegitimateDomainResult | SuspiciousDomainResult | null;
     }
   }
 
+  /// On a TradeWheel product page (/p/...): the page as it is shown in
+  /// this tab, trimmed. TradeWheel pages also load fine again without
+  /// cookies (tested 2026-10-29), but copying needs no request at all.
+  function tradewheelPageHtml(): string | null {
+    try {
+      return madeinchinaTrimmed(document.cloneNode(true) as Document);
+    } catch (e) {
+      console.error("Safely: could not copy the TradeWheel page", e);
+      return null;
+    }
+  }
+
+  /// The company page linked from a TradeWheel product page (the company
+  /// box, the same link Safely's server reads):
+  /// "https://www.tradewheel.com/co/{company}/". null if none.
+  function tradewheelCompanyUrl(doc: Document): string | null {
+    for (const link of Array.from(doc.querySelectorAll<HTMLAnchorElement>(".comp-info a[href]"))) {
+      const href = (link.getAttribute("href") || "").trim();
+      if (!href.includes("/co/")) continue;
+      try {
+        const url = new URL(href, "https://www.tradewheel.com/");
+        const match = url.pathname.match(/^\/co\/([a-z0-9-]+)\/?$/i);
+        if (url.hostname === "www.tradewheel.com" && match) {
+          return "https://www.tradewheel.com/co/" + match[1] + "/";
+        }
+      } catch {
+        // not a usable link
+      }
+    }
+    return null;
+  }
+
+  /// On a TradeWheel product page: the company page, loaded from this
+  /// same site and trimmed. null if it could not be loaded; then
+  /// Safely's server loads it through ScraperAPI.
+  async function fetchTradewheelCompanyPage(): Promise<string | null> {
+    if (!window.location.pathname.startsWith("/p/")) return null;
+    const url = tradewheelCompanyUrl(document);
+    if (!url) return null;
+    try {
+      const response = await fetch(url, { credentials: "include" });
+      if (!response.ok) return null;
+      const html = await response.text();
+      return madeinchinaTrimmed(new DOMParser().parseFromString(html, "text/html"));
+    } catch (e) {
+      console.error("Safely: failed to load the TradeWheel company page", e);
+      return null;
+    }
+  }
+
+  (window as any).__safelyScrapers.tradewheelPageHtml = tradewheelPageHtml;
+  (window as any).__safelyScrapers.tradewheelCompanyUrl = tradewheelCompanyUrl;
+  (window as any).__safelyScrapers.fetchTradewheelCompanyPage = fetchTradewheelCompanyPage;
   (window as any).__safelyScrapers.b2brazilPageHtml = b2brazilPageHtml;
   (window as any).__safelyScrapers.b2brazilCompanyUrl = b2brazilCompanyUrl;
   (window as any).__safelyScrapers.fetchB2brazilCompanyPage = fetchB2brazilCompanyPage;

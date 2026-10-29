@@ -691,6 +691,9 @@ pub async fn b2b_page_from_browser(
 /// B2Brazil: its pages load fine in the buyer's browser, even again
 /// without cookies (tested 2026-10-29). The extension copies the product
 /// page from the tab and loads the company page (/hotsite/{company}).
+/// TradeWheel: the same (tested 2026-10-29). The product page is copied
+/// from the tab and the company page (/co/{company}/) is loaded from the
+/// same site.
 pub const BROWSER_FIRST_PLATFORMS: &[&str] = &[
     "wholesalecentral",
     "madeinchina",
@@ -700,6 +703,7 @@ pub const BROWSER_FIRST_PLATFORMS: &[&str] = &[
     "exporthub",
     "thomasnet",
     "b2brazil",
+    "tradewheel",
 ];
 
 /// true when `html` is a real page and not the site's robot check.
@@ -922,10 +926,10 @@ mod browser_page_tests {
     async fn browser_first_is_only_for_listed_platforms() {
         let page = wc_product(63409);
         assert!(
-            b2b_page_from_browser_first("tradewheel", "u", Some(&page), None, None)
+            b2b_page_from_browser_first("b2bmap", "u", Some(&page), None, None)
                 .await
                 .is_none(),
-            "TradeWheel keeps ScraperAPI first"
+            "B2BMap keeps ScraperAPI first"
         );
         assert!(
             BROWSER_FIRST_PLATFORMS.contains(&"alibaba"),
@@ -946,6 +950,10 @@ mod browser_page_tests {
         assert!(
             BROWSER_FIRST_PLATFORMS.contains(&"b2brazil"),
             "B2Brazil is read from the browser first"
+        );
+        assert!(
+            BROWSER_FIRST_PLATFORMS.contains(&"tradewheel"),
+            "TradeWheel is read from the browser first"
         );
         assert!(
             b2b_page_from_browser_first("wholesalecentral", "u", None, None, None)
