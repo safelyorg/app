@@ -88,11 +88,11 @@ pub async fn analyze(
     // Platforms whose scraper implements company_key get one seller
     // record per company; the rest keep the per-listing ID below.
     // For platforms in BROWSER_FIRST_PLATFORMS (Wholesale Central,
-    // Made-in-China, Global Sources), the pages the buyer's browser sent
-    // are read first, and ScraperAPI is only the backup. Everywhere else
-    // ScraperAPI is first; for platforms in BROWSER_PAGE_PLATFORMS
-    // (Alibaba), the page the buyer's browser sent is the backup, read
-    // only if ScraperAPI could not get the listing.
+    // Made-in-China, Global Sources, Alibaba), the pages the buyer's
+    // browser sent are read first, and ScraperAPI is only the backup.
+    // Everywhere else ScraperAPI is first. For platforms in
+    // BROWSER_PAGE_PLATFORMS (Alibaba), the browser's page is tried once
+    // more at the end if ScraperAPI could not get the listing either.
     let from_browser = b2b_page_from_browser_first(
         &request.platform,
         &request.listing_url,

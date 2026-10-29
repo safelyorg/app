@@ -572,12 +572,10 @@ fn take_and_replace(
     *supplier = f(current);
 }
 
-/// Platforms where the page the buyer's browser sent (page_html) is the
-/// BACKUP: the listing is fetched through ScraperAPI first, and the
-/// browser's page is read only if ScraperAPI fails. Useful for Alibaba,
-/// where ScraperAPI is slow (close to a minute with ultra premium +
-/// render) and some listings (e.g. medical items) are hidden from US
-/// visitors.
+/// Platforms where the page the buyer's browser sent (page_html) is
+/// also the LAST backup: read once more if the browser-first read (see
+/// BROWSER_FIRST_PLATFORMS) and ScraperAPI both failed. Alibaba is in
+/// both lists.
 /// To stop using the backup for a platform, remove it from this list
 /// (and from BROWSER_PAGE_PLATFORMS in the extension's api.ts).
 pub const BROWSER_PAGE_PLATFORMS: &[&str] = &["alibaba"];
@@ -667,7 +665,20 @@ pub async fn b2b_page_from_browser(
 /// Global Sources: the same plain HTML. Its supplier pages are on
 /// another address ({shop}.manufacturer.globalsources.com), so the
 /// extension loads them through its background script.
-pub const BROWSER_FIRST_PLATFORMS: &[&str] = &["wholesalecentral", "madeinchina", "globalsources"];
+/// Alibaba: through ScraperAPI (ultra premium + render) the listing took
+/// close to a minute, and Alibaba often answered "Product Not Available"
+/// to ScraperAPI's US address (tested 2026-10-29 on the live server). With
+/// the company page after it, a scan went over the 100 seconds nginx and
+/// Cloudflare wait, and the extension showed "Reload". The extension
+/// already sends the page the buyer is on, so it is read first now. The
+/// company page (on {shop}.en.alibaba.com) is not sent by the extension,
+/// so that one page is still fetched through ScraperAPI.
+pub const BROWSER_FIRST_PLATFORMS: &[&str] = &[
+    "wholesalecentral",
+    "madeinchina",
+    "globalsources",
+    "alibaba",
+];
 
 /// true when `html` is a real page and not the site's robot check.
 fn usable_browser_page(html: &str) -> bool {
@@ -820,10 +831,14 @@ mod browser_page_tests {
     async fn browser_first_is_only_for_listed_platforms() {
         let page = wc_product(63409);
         assert!(
-            b2b_page_from_browser_first("alibaba", "u", Some(&page), None)
+            b2b_page_from_browser_first("exporthub", "u", Some(&page), None)
                 .await
                 .is_none(),
-            "Alibaba keeps ScraperAPI first"
+            "ExportHub keeps ScraperAPI first"
+        );
+        assert!(
+            BROWSER_FIRST_PLATFORMS.contains(&"alibaba"),
+            "Alibaba is read from the browser first"
         );
         assert!(
             b2b_page_from_browser_first("wholesalecentral", "u", None, None)
