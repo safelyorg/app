@@ -1,5 +1,5 @@
 use backend::errors::claude::ClaudeError;
-use backend::services::claude::{CallB2bClaudeArguments, b2b_content, call_b2b_claude};
+use backend::services::shared::claude::{CallB2bClaudeArguments, b2b_content, call_b2b_claude};
 use serial_test::serial;
 use std::env::{remove_var, set_var, var};
 

@@ -1,5 +1,5 @@
 use crate::models::analysis::Signal;
-use crate::services::fraud_reports::count_fraud_reports;
+use crate::services::features::fraud_reports::count_fraud_reports;
 use sqlx::{Pool, Postgres};
 use uuid::Uuid;
 

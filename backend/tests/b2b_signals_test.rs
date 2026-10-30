@@ -1,7 +1,7 @@
 mod common;
 
 use crate::common::{make_listing, make_supplier};
-use backend::services::signals::{
+use backend::services::features::signals::{
     build_b2b_company_age_signal, build_b2b_listing_completeness_signal,
     build_b2b_transparency_signal, build_b2b_verification_signal,
 };

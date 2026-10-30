@@ -1,5 +1,5 @@
 use crate::models::domain_age::DomainAgeQuery;
-use crate::services::domain_age::{LookupError, allow_visitor, lookup, normalize_domain};
+use crate::services::features::domain_age::{LookupError, allow_visitor, lookup, normalize_domain};
 use axum::{
     Json,
     extract::Query,

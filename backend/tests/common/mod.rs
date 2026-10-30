@@ -2,9 +2,9 @@ use axum::http::{HeaderMap, HeaderValue};
 use backend::{
     models::{analysis::Signal, users::User},
     services::{
-        auth::{create_session, find_or_create_user_by_email},
-        b2b_scrapers::{B2bListingProfile, B2bSupplierProfile},
-        osint::SellerIdentifiers,
+        features::auth::{create_session, find_or_create_user_by_email},
+        features::osint::SellerIdentifiers,
+        sources::b2b::{B2bListingProfile, B2bSupplierProfile},
     },
 };
 use chrono::{DateTime, Utc};

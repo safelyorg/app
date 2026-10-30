@@ -1,7 +1,7 @@
 use crate::{
     errors::{auth::AuthServiceError, google_oauth::GoogleOauthConfigError},
     models::users::{GoogleTokenEndpoint, GoogleUserInfoEndpoint, User},
-    services::auth::find_user_by_email,
+    services::features::auth::find_user_by_email,
 };
 use sqlx::{Error, Pool, Postgres, query, query_as};
 use std::env::var;

@@ -4,8 +4,8 @@ use crate::common::{
     TestPaidPlan, cleanup_test_user, create_test_user, insert_subscription_with_scans, test_pool,
 };
 use backend::services::{
-    analysis::ScanHold,
-    billing::{ScanCharge, get_scan_usage, give_back_scan, reserve_scan},
+    features::analysis::ScanHold,
+    features::billing::{ScanCharge, get_scan_usage, give_back_scan, reserve_scan},
 };
 use serde_json::json;
 use sqlx::{Pool, Postgres};

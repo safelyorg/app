@@ -1,0 +1,87 @@
+{
+  "category": "b2b",
+  "status": "live",
+  "about": "B2B marketplaces: a buyer scans a supplier's product page (or, on some platforms, the supplier's own page). Safely reads the product page and the supplier's company pages, then shows one card per check and a risk score.",
+  "how_to_change": [
+    "warning_points: how much a card adds to the score when it is a warning. Change the number, then deploy.",
+    "points_when_value: a different number for one exact card value (for example Account age 'Not provided').",
+    "enabled: false removes the card from every B2B scan and from the score.",
+    "platform_rules: add or remove a platform id in a list to change how those cards treat that platform.",
+    "A new card needs code once (something has to work out its result); after that its points and on/off live here."
+  ],
+  "scoring": {
+    "default_warning_points": 15,
+    "info_points_each": 5,
+    "info_points_max": 15,
+    "not_enough_information_floor": 34
+  },
+  "platform_rules": {
+    "no_founding_year_field": {
+      "about": "The platform has no founding-year field for any supplier, so 'Account age' does not blame the seller for a missing year (it is still a warning).",
+      "platforms": ["wholesalecentral"]
+    },
+    "hidden_company_figures": {
+      "about": "The platform never shows sales or export figures (and may hide employees), so 'Company profile completeness' is not counted against the supplier.",
+      "platforms": ["kompass", "wholesalecentral"]
+    },
+    "no_order_details": {
+      "about": "Supplier directories that never show price, MOQ, Incoterms, packaging or delivery for any supplier, so 'Listing completeness' is not counted against the supplier.",
+      "platforms": ["thomasnet", "kompass", "wholesalecentral"]
+    },
+    "prices_for_signed_in": {
+      "about": "Prices are shown only to signed-in buyers, so 'Price analysis' says it could not check the price instead of judging it.",
+      "platforms": ["wholesalecentral"]
+    },
+    "supplier_page_scans": {
+      "about": "A buyer can scan the supplier's own page (many products) as well as a product page; product cards then say a supplier page was scanned.",
+      "platforms": ["wholesalecentral", "madeinchina"]
+    }
+  },
+  "platforms": [
+    { "id": "alibaba", "name": "Alibaba", "pages_read": ["product page", "company_profile.html"] },
+    { "id": "b2brazil", "name": "B2Brazil", "pages_read": ["product page (/hotsite/{company}/{product})", "company page (/hotsite/{company})"] },
+    { "id": "exporthub", "name": "ExportHub", "pages_read": ["product page", "company page", "profile.html"] },
+    { "id": "tradewheel", "name": "TradeWheel", "pages_read": ["product page (/p/...)", "company page (/co/{company}/)", "About Us (/co/{company}/about-us/)"] },
+    { "id": "b2bmap", "name": "B2BMap", "pages_read": ["product page (/products/...)", "company page (b2bmap.com/{company})"] },
+    { "id": "thomasnet", "name": "ThomasNet", "pages_read": ["company profile page (it is the listing)"] },
+    { "id": "kompass", "name": "Kompass", "pages_read": ["product page (/p/...)", "company page (/c/{name}/{id}/)"] },
+    { "id": "wholesalecentral", "name": "Wholesale Central", "pages_read": ["product page or supplier page", "supplier page"] },
+    { "id": "madeinchina", "name": "Made-in-China", "pages_read": ["product page or the supplier's shop home page", "shop home page"] },
+    { "id": "globalsources", "name": "Global Sources", "pages_read": ["product page", "supplier home page (homepage_{id}.htm)", "company profile (company-profile_{id}.htm)", "trade show: exhibitor page"] }
+  ],
+  "reads": {
+    "supplier": ["company name", "logo", "founding year", "country and address", "verified badge or membership level", "employees", "sales", "export share", "contact person", "phone", "email", "website", "company description", "registration number"],
+    "listing": ["title", "description", "up to 3 photos", "unit price", "FOB price", "minimum order", "payment type", "port", "production capacity", "delivery time", "Incoterms", "packaging"],
+    "outside": ["WHOIS of the supplier's website", "web search for social pages and scam mentions (Serper)", "Safely's own history and buyer reports"]
+  },
+  "rules": [
+    "Only contact details the supplier itself gives count: a phone, an email or a website. The platform's message form is not a contact channel.",
+    "Paid membership levels (Gold, Diamond, Premium...) are never counted as a check on the company.",
+    "The year a supplier joined the platform is not the year the company was founded.",
+    "Missing price, MOQ or shipping terms is normal in B2B and is not suspicious on its own.",
+    "A judgement belongs to the company, not to one product page."
+  ],
+  "cards": [
+    { "card": "Domain check", "enabled": true, "what_it_checks": "The page is on the platform's real domain, not a lookalike.", "reads": ["page address"], "warning_points": 15 },
+    { "card": "Safely history", "enabled": true, "what_it_checks": "Scam reports from Safely users and earlier scans of this supplier.", "reads": ["Safely database"], "warning_points": 15 },
+    { "card": "Seller website check", "enabled": true, "what_it_checks": "The supplier's own website: given by the supplier, or found by web search (marked as not given).", "reads": ["supplier website", "web search results"], "warning_points": 15 },
+    { "card": "Overall legitimacy check", "enabled": true, "what_it_checks": "Does this look like a real, operating business (no made-up, impossible or self-contradicting details, no random mix of industries)?", "reads": ["company description", "address", "registration", "products"], "warning_points": 25 },
+    { "card": "Registration consistency", "enabled": true, "what_it_checks": "Name, founding year, size and products hang together.", "reads": ["company name", "founding year", "employees", "business type", "main products"], "warning_points": 15 },
+    { "card": "Listing detail", "enabled": true, "what_it_checks": "The listing describes a real, specific product (specs, materials), not generic copy-paste text.", "reads": ["title", "description"], "warning_points": 15 },
+    { "card": "Price analysis", "enabled": true, "what_it_checks": "The price and minimum order are plausible for the product.", "reads": ["unit price", "FOB price", "minimum order"], "warning_points": 25 },
+    { "card": "Contact info", "enabled": true, "what_it_checks": "The supplier gives at least one direct channel: phone, email or website.", "reads": ["phone", "email", "website", "contact person"], "warning_points": 25 },
+    { "card": "Urgency language", "enabled": true, "what_it_checks": "Pressure tactics: 'deal expires today', 'decide now', discouraging samples or checks.", "reads": ["description", "company text"], "warning_points": 15 },
+    { "card": "Advance payment request", "enabled": true, "what_it_checks": "100% payment before shipment, or untraceable payment (Western Union, crypto, gift cards, a personal account).", "reads": ["payment type", "supplier's own payment text"], "warning_points": 25 },
+    { "card": "Image authenticity", "enabled": true, "what_it_checks": "The photos look like the supplier's own, not stock or reused images.", "reads": ["up to 3 photos"], "warning_points": 15 },
+    { "card": "Regulated product", "enabled": true, "what_it_checks": "Shown only for licence-only products (botox, fillers, prescription medicines) or a false manufacturer claim.", "reads": ["title", "description", "business type"], "warning_points": 15 },
+    { "card": "Platform verification", "enabled": true, "what_it_checks": "The platform's own check on the company (verified badge, audit, licence check); paid levels are not a check.", "reads": ["badges", "audit report", "membership level"], "warning_points": 10 },
+    { "card": "Account age", "enabled": true, "what_it_checks": "How old the company says it is; a missing year is a small warning.", "reads": ["founding year", "join date", "the company's own text about years in business"], "warning_points": 15, "points_when_value": { "Not provided": 10 } },
+    { "card": "Seller track record", "enabled": true, "what_it_checks": "The platform's own figures: orders, rating, on-time and reorder rate.", "reads": ["platform record"], "warning_points": 15 },
+    { "card": "Product range", "enabled": true, "what_it_checks": "Products that are common bait in fake commodity deals, or a range that does not fit the company.", "reads": ["other products", "keywords"], "warning_points": 15 },
+    { "card": "Certificates", "enabled": true, "what_it_checks": "Certificates the company shows.", "reads": ["certificate images"], "warning_points": 15 },
+    { "card": "Company details", "enabled": true, "what_it_checks": "Says when the company's own page could not be loaded, so some details may be missing.", "reads": ["company pages"], "warning_points": 15 },
+    { "card": "Company profile completeness", "enabled": true, "what_it_checks": "Employees, sales and export share filled in.", "reads": ["employees", "sales", "export share"], "warning_points": 15 },
+    { "card": "Listing completeness", "enabled": true, "what_it_checks": "How many of the 9 order details are given (price, MOQ, payment, port, capacity, delivery, Incoterms, packaging...).", "reads": ["the 9 order fields"], "warning_points": 10 },
+    { "card": "Social presence check", "enabled": true, "what_it_checks": "The company's pages on Facebook, LinkedIn, Instagram, TikTok, Reddit, Trustpilot, reviews; scam mentions online.", "reads": ["web search (Serper)"], "warning_points": 15, "points_when_value": { "Scam mentions found": 25 } }
+  ]
+}

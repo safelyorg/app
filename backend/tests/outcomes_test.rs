@@ -3,7 +3,7 @@ mod common;
 use axum::{Json, extract::State, http::HeaderMap};
 use backend::handlers::outcomes::create_outcome;
 use backend::models::outcomes::{OutcomeAction, OutcomeRequest};
-use backend::services::outcomes::record_outcome;
+use backend::services::features::outcomes::record_outcome;
 use common::{
     admin_pool, auth_headers_for, cleanup_test_seller_chain, cleanup_test_user, create_test_user,
     insert_test_analysis_for_outcomes,

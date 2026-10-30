@@ -1,4 +1,4 @@
-use backend::services::claude::{CallB2bClaudeArguments, b2b_content};
+use backend::services::shared::claude::{CallB2bClaudeArguments, b2b_content};
 
 #[test]
 fn b2b_content_includes_the_real_company_name() {

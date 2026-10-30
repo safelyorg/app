@@ -1,6 +1,6 @@
 use crate::{
     models::{listings::ListingCategory, risk_factors::RiskFactor, sellers::SellersResponse},
-    services::osint::PlatformCheckResult,
+    services::features::osint::PlatformCheckResult,
 };
 use chrono::{DateTime, NaiveDate, Utc};
 use serde::{Deserialize, Serialize};

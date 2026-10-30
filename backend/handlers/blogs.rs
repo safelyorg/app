@@ -1,5 +1,5 @@
-use crate::services::blogs::render_blog;
-use crate::services::tools::{
+use crate::services::features::blogs::render_blog;
+use crate::services::features::tools::{
     CONTENT_DIR, DEFAULT_LANG, LOCALES_DIR, Library, NOT_FOUND_PAGE, Texts, is_valid_lang,
     is_valid_slug,
 };

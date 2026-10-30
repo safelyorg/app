@@ -25,7 +25,7 @@
 //! Optional: `draft: true` hides a blog until it is ready.
 
 use crate::models::blogs::BlogPost;
-use crate::services::tools::{
+use crate::services::features::tools::{
     BLOGS_TAB, DEFAULT_LANG, Library, MORE_ITEMS, SITE_URL, Texts, Version, alternate_links,
     blog_cards, escape_html, fill_template, hreflang, lang_options, markdown_files,
     markdown_to_html, parse_date, related, required, split_front_matter, tools_base,
@@ -33,7 +33,7 @@ use crate::services::tools::{
 use std::path::Path;
 
 const WORDS_PER_MINUTE: usize = 200;
-const BLOG_TEMPLATE: &str = include_str!("../../site/templates/blog.html");
+const BLOG_TEMPLATE: &str = include_str!("../../../site/templates/blog.html");
 
 /// Where one blog lives: /blog/<name> for English,
 /// /pt-br/blog/<name> for Portuguese.
@@ -190,7 +190,7 @@ pub fn render_blog(post: &BlogPost, lang: &str, library: &Library, texts: &Texts
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::services::tools::{LOCALES_DIR, LangContent};
+    use crate::services::features::tools::{LOCALES_DIR, LangContent};
     use chrono::NaiveDate;
 
     const GOOD: &str = "---\ntitle: How to check a supplier\ndescription: Seven checks.\ndate: 2026-10-20\nshort_answer: Check the registration & the contacts.\n---\n\n## First\nSome **bold** text.\n";

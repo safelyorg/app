@@ -2,8 +2,8 @@ use crate::models::history::{
     AnalysisDetailRow, HistoryDetailResponse, HistoryItem, ReportItem, ReportSummary,
 };
 use crate::models::sellers::{Sellers, SellersResponse};
-use crate::services::fraud_reports::{build_network_summary, count_fraud_reports};
-use crate::services::listings::get_monthly_visit_activity;
+use crate::services::features::fraud_reports::{build_network_summary, count_fraud_reports};
+use crate::services::features::listings::get_monthly_visit_activity;
 use sqlx::{Error, Pool, Postgres, query_as};
 use uuid::Uuid;
 

@@ -23,25 +23,25 @@ use backend::{
         sellers::{SellerVerification, Sellers, SellersRequest},
     },
     services::{
-        analysis::{
+        features::analysis::{
             BuildResponseData, CreateAnalysisData, RATE_LIMITS, authorize_request, build_requests,
             check_rate_limit, create_analysis, resolve_seller, resolve_supplier_website,
             save_and_build_response,
         },
-        auth::{create_session, find_or_create_user_by_email},
-        b2b_scrapers::B2bSupplierProfile,
-        confidence::calculate_confidence,
-        evidence::{record_evidence, record_risk_factors},
-        fraud_reports::{build_network_summary, count_fraud_reports},
-        listings::{create_listing, get_monthly_visit_activity},
-        network_memory::build_network_memory_signal,
-        osint::{
+        features::auth::{create_session, find_or_create_user_by_email},
+        features::fraud_reports::{build_network_summary, count_fraud_reports},
+        features::listings::{create_listing, get_monthly_visit_activity},
+        features::network_memory::build_network_memory_signal,
+        features::osint::{
             build_location_fallback_queries, build_osint_query_matrix, run_serper_search,
             score_identifier_match,
         },
-        risk_factors::{derive_risk_factors, find_signal, is_new_account},
-        sellers::{create_seller, find_seller},
-        signals::build_domain_signal,
+        features::risk_factors::{derive_risk_factors, find_signal, is_new_account},
+        features::sellers::{create_seller, find_seller},
+        features::signals::build_domain_signal,
+        shared::confidence::calculate_confidence,
+        shared::evidence::{record_evidence, record_risk_factors},
+        sources::b2b::B2bSupplierProfile,
     },
 };
 use chrono::{Datelike, Duration as chrono_duration, NaiveDate, Utc};

@@ -3,8 +3,8 @@ use crate::{
     handlers::auth::{DASHBOARD_PATH, OAUTH_LINK_USER_COOKIE, OAUTH_STATE_COOKIE},
     models::users::{GoogleUserInfoEndpoint, MagicLink, SignupSourceRequest, User},
     services::{
-        email::send_welcome_email,
-        google_oauth::{find_user_by_google_id, link_google_account},
+        features::email::send_welcome_email,
+        features::google_oauth::{find_user_by_google_id, link_google_account},
     },
 };
 use axum::{http::HeaderMap, response::Redirect};

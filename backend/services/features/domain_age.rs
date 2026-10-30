@@ -14,7 +14,7 @@
 //! cannot flood the registries from our server.
 
 use crate::models::domain_age::{DomainAge, Verdict};
-use crate::services::whois::check_domain_whois;
+use crate::services::shared::whois::check_domain_whois;
 use chrono::{NaiveDate, Utc};
 use serde_json::Value;
 use std::collections::HashMap;

@@ -1,7 +1,8 @@
 use crate::{
     errors::dashboard::DashboardError,
     services::{
-        auth::extract_user_id, history::get_history_detail, pdf_report::generate_evidence_pdf,
+        features::auth::extract_user_id, features::history::get_history_detail,
+        features::pdf_report::generate_evidence_pdf,
     },
 };
 use axum::{

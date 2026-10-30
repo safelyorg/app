@@ -173,7 +173,7 @@ function formatPlatformName(platform: string | null | undefined): string {
   // Platforms whose listing page is also sent from this browser, as a
   // BACKUP: Safely fetches the listing through ScraperAPI first and
   // reads this copy only if that fails. Must match
-  // BROWSER_PAGE_PLATFORMS in backend/services/b2b_scrapers/mod.rs.
+  // BROWSER_PAGE_PLATFORMS in backend/services/sources/b2b/mod.rs.
   const BROWSER_PAGE_PLATFORMS = ["alibaba"];
 
   // Platforms where this browser is the FIRST source: Safely reads the
@@ -196,7 +196,7 @@ function formatPlatformName(platform: string | null | undefined): string {
   // loaded from here. TradeWheel: the same, plus its About Us page
   // (website, factory details). B2BMap: the same. Must match
   // BROWSER_FIRST_PLATFORMS in
-  // backend/services/b2b_scrapers/mod.rs.
+  // backend/services/sources/b2b/mod.rs.
   const BROWSER_FIRST_PLATFORMS = [
     "wholesalecentral",
     "madeinchina",

@@ -2,7 +2,7 @@ use axum::Json;
 use backend::{
     errors::auth::AuthError,
     handlers::subscribe::{NewsletterSubscribeRequest, newsletter_subscribe},
-    services::email::subscribe_to_newsletter,
+    services::features::email::subscribe_to_newsletter,
 };
 use dotenvy::{dotenv, var};
 use serde_json::json;

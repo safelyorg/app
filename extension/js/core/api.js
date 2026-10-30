@@ -70,15 +70,15 @@ function formatPlatformName(platform) {
     // Platforms whose listing page is also sent from this browser, as a
     // BACKUP: Safely fetches the listing through ScraperAPI first and
     // reads this copy only if that fails. Must match
-    // BROWSER_PAGE_PLATFORMS in backend/services/b2b_scrapers/mod.rs.
+    // BROWSER_PAGE_PLATFORMS in backend/services/sources/b2b/mod.rs.
     const BROWSER_PAGE_PLATFORMS = ["alibaba"];
     // Platforms where this browser is the FIRST source: Safely reads the
     // page sent from here, and uses ScraperAPI only if that fails.
     // Wholesale Central's robot check blocks ScraperAPI, but this browser
     // has already passed it. Made-in-China's pages are plain HTML this
     // browser already has, which is faster and costs no ScraperAPI
-    // credits. Global Sources: the same, and its supplier page is loaded
-    // by the background script. Alibaba: ScraperAPI took close to a minute
+    // credits. Global Sources: the same, and its supplier page and company
+    // profile page are loaded by the background script. Alibaba: ScraperAPI took close to a minute
     // and was often shown "Product Not Available"; the product page is
     // sent from here, and the company page is loaded by the background
     // script. Kompass: its robot check blocks ScraperAPI and any page
@@ -92,7 +92,7 @@ function formatPlatformName(platform) {
     // loaded from here. TradeWheel: the same, plus its About Us page
     // (website, factory details). B2BMap: the same. Must match
     // BROWSER_FIRST_PLATFORMS in
-    // backend/services/b2b_scrapers/mod.rs.
+    // backend/services/sources/b2b/mod.rs.
     const BROWSER_FIRST_PLATFORMS = [
         "wholesalecentral",
         "madeinchina",
@@ -341,7 +341,7 @@ function formatPlatformName(platform) {
             let pageHtml = null;
             let companyPageHtml = null;
             // The company's second page: ExportHub's "profile.html", TradeWheel's
-            // About Us page.
+            // About Us page, Global Sources' company profile page.
             let extendedPageHtml = null;
             const scrapers = window.__safelyScrapers;
             const browserFirst = BROWSER_FIRST_PLATFORMS.indexOf(platform) !== -1;
@@ -371,10 +371,16 @@ function formatPlatformName(platform) {
                 pageHtml = await scrapers.globalsourcesPageHtml();
                 if (pageHtml && pageHtml.length > MAX_PAGE_CHARS)
                     pageHtml = null;
-                if (pageHtml && scrapers.fetchGlobalsourcesSupplierPage) {
-                    companyPageHtml = await scrapers.fetchGlobalsourcesSupplierPage();
+                if (pageHtml && scrapers.fetchGlobalsourcesSupplierPages) {
+                    const pages = await scrapers.fetchGlobalsourcesSupplierPages();
+                    companyPageHtml = pages.company;
+                    extendedPageHtml = pages.extended;
                     if (companyPageHtml && pageHtml.length + companyPageHtml.length > MAX_PAGE_CHARS) {
                         companyPageHtml = null;
+                    }
+                    const sent = pageHtml.length + (companyPageHtml ? companyPageHtml.length : 0);
+                    if (!companyPageHtml || (extendedPageHtml && sent + extendedPageHtml.length > MAX_PAGE_CHARS)) {
+                        extendedPageHtml = null;
                     }
                 }
             }

@@ -1,4 +1,4 @@
-use backend::services::b2b_scrapers::get_scraper_for_platform;
+use backend::services::sources::b2b::get_scraper_for_platform;
 
 // A small page built the same way as Wholesale Central's real pages:
 // the data rows inside a self.__next_f.push([1,"..."]) script.

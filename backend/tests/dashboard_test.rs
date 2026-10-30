@@ -22,9 +22,9 @@ use backend::{
     models::fraud_reports::ReportTypes,
     routes::dashboard::dashboard_routes,
     services::{
-        auth::{create_session, insert_magic_link, set_login_method},
-        dashboard::{delete_user_account, unlink_google_account},
-        history::{get_history_detail, get_user_history, get_user_reports},
+        features::auth::{create_session, insert_magic_link, set_login_method},
+        features::dashboard::{delete_user_account, unlink_google_account},
+        features::history::{get_history_detail, get_user_history, get_user_reports},
     },
 };
 use chrono::{Duration, Utc};

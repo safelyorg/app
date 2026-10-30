@@ -1,4 +1,4 @@
-use backend::services::osint::{
+use backend::services::features::osint::{
     PlatformCheckResult, SCAM_MENTIONS_FOUND, SocialCandidateLink, build_location_fallback_queries,
     build_osint_query_matrix, scam_word_near_name, social_presence_signal,
 };

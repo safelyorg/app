@@ -1,4 +1,4 @@
-use backend::services::platform_config::get_all_platform_domains;
+use backend::services::shared::platform_config::get_all_platform_domains;
 
 #[test]
 fn returns_the_real_known_platforms_with_correct_domains() {

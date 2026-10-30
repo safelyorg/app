@@ -1,0 +1,55 @@
+{
+  "category": "websites",
+  "status": "planned",
+  "about": "A seller's own shop website (not a marketplace). The user presses 'Check this website' in the extension; Safely reads a few of the site's own pages plus outside records, then shows one card per check and a risk score. A check counts as one scan.",
+  "how_to_change": [
+    "warning_points: how much a card adds to the score when it is a warning. Change the number, then deploy.",
+    "points_when_value: a different number for one exact card value.",
+    "enabled: false removes the card from every website check and from the score.",
+    "step: the build step that adds the card (1 is built first). Cards of later steps are not shown until their step is built.",
+    "A new card needs code once; after that its points and on/off live here."
+  ],
+  "scoring": {
+    "default_warning_points": 15,
+    "info_points_each": 5,
+    "info_points_max": 15,
+    "not_enough_information_floor": 34
+  },
+  "pages_read": {
+    "max_pages": 12,
+    "pages": ["home page", "About us", "Contact us", "Shipping policy", "Return / refund policy", "Terms", "Privacy policy", "1-2 product pages", "sitemap.xml (to find these pages)"],
+    "how": "Browser first: the extension loads the shop's own pages from the same site. ScraperAPI only when a page is missing or is a robot check."
+  },
+  "reads": {
+    "website": ["domain", "company name", "address", "phone", "email", "registration or tax number", "policies", "payment methods shown", "prices and discounts", "photos", "trust badges", "reviews on the site", "social links"],
+    "outside": ["WHOIS (domain age, owner hidden or not)", "DNS (email set up for the domain)", "certificate (when it was issued)", "online reviews", "safe-browsing lists", "website history (Wayback Machine)", "Safely's own history and buyer reports"]
+  },
+  "rules": [
+    "Follow robots.txt. Never fill in a form, sign in, add to a cart or buy anything.",
+    "Only contact details the site itself gives count: a phone, an email or an address. A contact form alone is not a contact channel.",
+    "A Gmail or Hotmail address is a note, not proof of a scam.",
+    "A brand-new domain is a warning, not proof of a scam.",
+    "Judge the shop (the domain), not one product page."
+  ],
+  "cards": [
+    { "card": "Domain check", "step": 1, "enabled": true, "what_it_checks": "The domain does not copy a famous brand's name or domain (lookalike letters, small spelling changes).", "reads": ["domain"], "warning_points": 25 },
+    { "card": "Safely history", "step": 1, "enabled": true, "what_it_checks": "Scam reports from Safely users and earlier checks of this website.", "reads": ["Safely database"], "warning_points": 15 },
+    { "card": "Website age", "step": 1, "enabled": true, "what_it_checks": "When the domain was registered (a few weeks old is a warning).", "reads": ["WHOIS"], "warning_points": 25, "points_when_value": { "Not found": 10 } },
+    { "card": "Company email", "step": 1, "enabled": true, "what_it_checks": "An email on the site's own domain, and the domain set up to receive email; only Gmail or Hotmail is a note.", "reads": ["emails on the site", "DNS MX record"], "warning_points": 10 },
+    { "card": "Business details", "step": 1, "enabled": true, "what_it_checks": "A real address, a phone and a registration or tax number on the site.", "reads": ["About us", "Contact us", "footer", "Terms"], "warning_points": 15 },
+    { "card": "Contact info", "step": 1, "enabled": true, "what_it_checks": "At least one direct channel: phone, email or address.", "reads": ["Contact us", "footer"], "warning_points": 25 },
+    { "card": "Shop policies", "step": 1, "enabled": true, "what_it_checks": "Shipping, returns/refund, terms and privacy pages exist and are real (not empty, not copied from another shop).", "reads": ["policy pages"], "warning_points": 15 },
+    { "card": "Payment at checkout", "step": 1, "enabled": true, "what_it_checks": "The ways to pay the site shows; only bank transfer, crypto or gift cards is a warning.", "reads": ["payment logos and text", "FAQ", "Terms"], "warning_points": 25 },
+    { "card": "Prices", "step": 1, "enabled": true, "what_it_checks": "Prices that are too good to be true (for example 80% off everything).", "reads": ["product pages", "home page"], "warning_points": 15 },
+    { "card": "Urgency language", "step": 1, "enabled": true, "what_it_checks": "Pressure tactics: countdown timers, 'only 2 left' on every product, 'offer ends today'.", "reads": ["home page", "product pages"], "warning_points": 15 },
+    { "card": "Overall legitimacy check", "step": 1, "enabled": true, "what_it_checks": "Does this look like a real, operating shop (no made-up, impossible or self-contradicting details)?", "reads": ["all pages read"], "warning_points": 25 },
+    { "card": "Owner and certificate", "step": 2, "enabled": true, "what_it_checks": "Domain owner hidden, and a certificate issued only days ago.", "reads": ["WHOIS", "certificate"], "warning_points": 10 },
+    { "card": "Online reviews", "step": 2, "enabled": true, "what_it_checks": "Ratings and recent complaints on Trustpilot, Sitejabber, ScamAdviser, Reddit.", "reads": ["web search"], "warning_points": 25 },
+    { "card": "Safe-browsing lists", "step": 2, "enabled": true, "what_it_checks": "The site is listed as phishing or malware (Google Safe Browsing and similar lists).", "reads": ["safe-browsing lists"], "warning_points": 25 },
+    { "card": "Social presence check", "step": 2, "enabled": true, "what_it_checks": "The shop's social pages exist and are real; scam mentions online.", "reads": ["social links on the site", "web search"], "warning_points": 15, "points_when_value": { "Scam mentions found": 25 } },
+    { "card": "Trust badges", "step": 3, "enabled": true, "what_it_checks": "Security or 'verified' badges that are only a picture, not a real link to the badge company.", "reads": ["badges on the site"], "warning_points": 15 },
+    { "card": "Reviews on the site", "step": 3, "enabled": true, "what_it_checks": "Reviews on the shop itself that look copied or fake.", "reads": ["product pages"], "warning_points": 15 },
+    { "card": "Image authenticity", "step": 4, "enabled": true, "what_it_checks": "Product photos found on other shops (copied photos).", "reads": ["product photos"], "warning_points": 15 },
+    { "card": "Website history", "step": 4, "enabled": true, "what_it_checks": "When the site was first seen, and whether the domain sold something completely different before.", "reads": ["Wayback Machine"], "warning_points": 15 }
+  ]
+}

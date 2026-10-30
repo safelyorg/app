@@ -1,4 +1,4 @@
-use crate::services::b2b_scrapers::{
+use crate::services::sources::b2b::{
     B2bListingProfile, B2bScraper, B2bSupplierProfile, SupplierRecord,
 };
 use scraper::{Html, Selector};

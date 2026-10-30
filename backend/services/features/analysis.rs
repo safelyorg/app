@@ -6,31 +6,32 @@ use crate::{
         sellers::{SellerVerification, Sellers, SellersRequest, SellersResponse},
     },
     services::{
-        auth::extract_user_id,
-        b2b_scrapers::{B2bListingProfile, B2bSupplierProfile, SupplierRecord},
-        billing::{ScanCharge, ScanLimitError, give_back_scan, reserve_scan},
-        claude::{CallB2bClaudeArguments, call_b2b_claude},
-        confidence::calculate_confidence,
-        evidence::{record_evidence, record_risk_factors},
-        fraud_reports::{
+        features::auth::extract_user_id,
+        features::billing::{ScanCharge, ScanLimitError, give_back_scan, reserve_scan},
+        features::fraud_reports::{
             already_reported, build_network_summary, count_fraud_reports, report_floor,
             report_points,
         },
-        listings::get_monthly_visit_activity,
-        network_memory::build_network_memory_signal,
-        osint::{PlatformCheckResult, SCAM_MENTIONS_FOUND, build_social_presence_matrix},
-        risk_factors::{
+        features::listings::get_monthly_visit_activity,
+        features::network_memory::build_network_memory_signal,
+        features::osint::{PlatformCheckResult, build_social_presence_matrix},
+        features::risk_factors::{
             NETWORK_REPORTS_FACTOR, derive_risk_factors, not_enough_information_factor,
         },
-        sellers::{create_seller, find_seller},
-        signals::{
-            PRICES_FOR_SIGNED_IN_PLATFORMS, apply_found_website, apply_missing_price_note,
-            apply_no_photos_note, apply_risky_payment_note, apply_supplier_claims,
-            apply_supplier_page_note, apply_supplier_record, build_b2b_claude_signals,
-            build_b2b_company_age_signal, build_b2b_listing_completeness_signal,
-            build_b2b_transparency_signal, build_b2b_verification_signal, build_domain_signal,
-            is_supplier_page_scan, soften_no_presence, stated_founding_year,
+        features::sellers::{create_seller, find_seller},
+        features::signals::{
+            apply_found_website, apply_missing_price_note, apply_no_photos_note,
+            apply_risky_payment_note, apply_supplier_claims, apply_supplier_page_note,
+            apply_supplier_record, build_b2b_claude_signals, build_b2b_company_age_signal,
+            build_b2b_listing_completeness_signal, build_b2b_transparency_signal,
+            build_b2b_verification_signal, build_domain_signal, is_supplier_page_scan,
+            soften_no_presence, stated_founding_year,
         },
+        shared::claude::{CallB2bClaudeArguments, call_b2b_claude},
+        shared::confidence::calculate_confidence,
+        shared::evidence::{record_evidence, record_risk_factors},
+        shared::standards::{self, PRICES_FOR_SIGNED_IN},
+        sources::b2b::{B2bListingProfile, B2bSupplierProfile, SupplierRecord},
     },
 };
 use axum::{Json, http::HeaderMap};
@@ -544,49 +545,38 @@ fn b2b_company_age(signals: &[Signal]) -> Option<String> {
         .filter(|v| v != "Not provided" && v != "Invalid date")
 }
 
-/// Points one warning adds to a B2B score. Strong scam signs count
-/// more, weak ones less (every warning used to count the same 15):
-/// - 25: a price that doesn't add up, contact details that can't be
-///   confirmed, payment demands, a company that doesn't look real, and
-///   the company's name found next to "scam" words online;
-/// - 10: no verified badge, no order details at all, a hidden founding
-///   year - common on honest listings too;
-/// - 15: every other warning.
+/// Points one warning adds to a B2B score, from
+/// backend/standards/b2b.json ("warning_points" of each card, or
+/// "points_when_value" for one exact value). Strong scam signs count
+/// more (25: price, contact info, payment demands, a company that
+/// doesn't look real, scam mentions online), weak ones less (10: no
+/// verified badge, no order details, a hidden founding year), and every
+/// other warning 15.
 /// Only "caution" results count here; "bad" results (fake website,
 /// scam reports) are handled by the risk factors instead.
 fn warning_points(signal: &Signal) -> i16 {
     if signal.signal_type != "caution" {
         return 0;
     }
-    match signal.label.as_str() {
-        "Price analysis"
-        | "Contact info"
-        | "Advance payment request"
-        | "Overall legitimacy check" => 25,
-        "Social presence check" if signal.value == SCAM_MENTIONS_FOUND => 25,
-        "Platform verification" | "Listing completeness" => 10,
-        "Account age" if signal.value == "Not provided" => 10,
-        _ => 15,
-    }
+    standards::b2b().warning_points(&signal.label, &signal.value)
 }
 
-/// Points each "info" card adds to a B2B score. Info is not a warning,
-/// but it is not good news either (photos not confirmed, a risky
-/// payment option listed, a company page that would not load...), so
-/// it adds a little. Capped so info alone can never leave Low risk:
-/// a supplier with only info cards scores at most 15.
-const INFO_POINTS: i16 = 5;
-const INFO_POINTS_MAX: i16 = 15;
-
+/// Points each "info" card adds to a B2B score (b2b.json "scoring").
+/// Info is not a warning, but it is not good news either (photos not
+/// confirmed, a risky payment option listed, a company page that would
+/// not load...), so it adds a little. Capped so info alone can never
+/// leave Low risk.
 fn info_points(signals: &[Signal]) -> i16 {
+    let scoring = &standards::b2b().scoring;
     let count = signals.iter().filter(|s| s.signal_type == "info").count() as i16;
-    (count * INFO_POINTS).min(INFO_POINTS_MAX)
+    (count * scoring.info_points_each).min(scoring.info_points_max)
 }
 
-/// The lowest score a B2B scan shows when Safely could check too little
-/// about the supplier (see not_enough_information_factor): the start of
-/// Moderate, so "nothing found" never reads as "Low risk".
-const NOT_ENOUGH_INFORMATION_FLOOR: i16 = 34;
+/// Removes the cards b2b.json switches off ("enabled": false), so they
+/// are neither shown nor scored.
+fn keep_enabled_cards(signals: &mut Vec<Signal>) {
+    signals.retain(|s| standards::b2b().card_enabled(&s.label));
+}
 
 /// The full B2B risk score from a scan's signals and the seller's number
 /// of fraud reports. Used by the scan, and again when someone reports
@@ -615,7 +605,10 @@ pub fn b2b_score_from_signals(signals: &[Signal], fraud_count: i64) -> i16 {
     let mut risk_score = b2b_risk_score(base_score, count("hard"), count("compound"));
     risk_score = risk_score.max(report_floor(fraud_count));
     if not_enough_information_factor(signals).is_some() {
-        risk_score = risk_score.max(NOT_ENOUGH_INFORMATION_FLOOR);
+        // The lowest score when Safely could check too little about the
+        // supplier (b2b.json "scoring"): the start of Moderate, so
+        // "nothing found" never reads as "Low risk".
+        risk_score = risk_score.max(standards::b2b().scoring.not_enough_information_floor);
     }
     risk_score.min(100)
 }
@@ -724,14 +717,15 @@ fn price_for_claude(listing: &B2bListingProfile) -> String {
     // Safely does not use a hidden price - so Claude is told why there
     // is none, instead of "Not provided".
     if price.is_empty()
-        && PRICES_FOR_SIGNED_IN_PLATFORMS.contains(&listing.source_platform.as_str())
+        && standards::b2b().platform_has(PRICES_FOR_SIGNED_IN, &listing.source_platform)
     {
         return PRICE_HIDDEN_FOR_CLAUDE.to_string();
     }
     price
 }
 
-/// What Claude sees as the price on PRICES_FOR_SIGNED_IN_PLATFORMS.
+/// What Claude sees as the price on the "prices_for_signed_in"
+/// platforms (b2b.json).
 const PRICE_HIDDEN_FOR_CLAUDE: &str =
     "Hidden - this platform shows prices only to signed-in buyers, so the price cannot be judged";
 
@@ -882,6 +876,7 @@ pub async fn build_b2b_analysis_path(
     // No social pages is normal for a supplier the platform already
     // proves is real (orders, reviews, a company check).
     soften_no_presence(&mut signals);
+    keep_enabled_cards(&mut signals);
 
     let risk_score = b2b_score_from_signals(&signals, fraud_count);
 
@@ -949,7 +944,7 @@ mod b2b_score_tests {
         assert_eq!(
             warning_points(&sig(
                 "Social presence check",
-                super::SCAM_MENTIONS_FOUND,
+                crate::services::features::osint::SCAM_MENTIONS_FOUND,
                 "caution"
             )),
             25

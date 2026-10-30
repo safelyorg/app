@@ -2,8 +2,8 @@ use crate::{
     errors::reviews::ReviewError,
     models::reviews::{MyReview, PublicReview, ReviewPhoto, ReviewRequest},
     services::{
-        auth::extract_user_id,
-        reviews::{
+        features::auth::extract_user_id,
+        features::reviews::{
             MAX_PHOTO_BYTES, detect_image_type, find_approved_photo, find_my_photo, find_my_review,
             list_approved_reviews, save_review, save_review_photo, validate_review,
         },

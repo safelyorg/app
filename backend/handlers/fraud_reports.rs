@@ -1,12 +1,12 @@
 use crate::models::analysis::{RiskLevel, Signal};
-use crate::services::analysis::b2b_score_from_signals;
-use crate::services::auth::extract_user_id;
-use crate::services::fraud_reports::{
+use crate::services::features::analysis::b2b_score_from_signals;
+use crate::services::features::auth::extract_user_id;
+use crate::services::features::fraud_reports::{
     already_reported, count_fraud_reports, report_floor, report_points,
 };
-use crate::services::network_memory::fraud_report_history;
-use crate::services::risk_factors::{derive_risk_factors, not_enough_information_factor};
-use crate::services::sellers::find_seller;
+use crate::services::features::network_memory::fraud_report_history;
+use crate::services::features::risk_factors::{derive_risk_factors, not_enough_information_factor};
+use crate::services::features::sellers::find_seller;
 use crate::{errors::fraud_reports::FraudReportError, models::fraud_reports::FraudReportsRequest};
 use axum::{Json, extract::State, http::HeaderMap};
 use serde_json::{Value, from_value, json, to_value};

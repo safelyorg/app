@@ -1,6 +1,6 @@
 mod common;
 
-use backend::services::b2b_scrapers::{
+use backend::services::sources::b2b::{
     B2bScraper, B2bSupplierProfile, alibaba::AlibabaScraper, b2brazil::B2brazilScraper,
     check_b2b_page, exporthub::ExporthubScraper, fetch_b2b_page, looks_like_a_real_page,
     tradewheel::TradewheelScraper,
@@ -846,7 +846,7 @@ async fn check_b2b_page_returns_none_when_the_primary_fetch_fails() {
 #[serial]
 async fn check_b2b_page_retries_a_server_error_exactly_once() {
     // A 500 from ScraperAPI is tried once more (FETCH_RETRIES = 1 in
-    // b2b_scrapers/mod.rs) - 2 requests in total, never the old 3.
+    // sources/b2b/mod.rs) - 2 requests in total, never the old 3.
     let mock_server = MockServer::start().await;
     let _fake = FakeScraperApi::start(&mock_server);
     let listing_url = format!("{}/listing", mock_server.uri());
@@ -1896,7 +1896,7 @@ fn scrapers_that_do_not_override_enrich_from_extended_profile_genuinely_leave_th
 
 #[test]
 fn get_scraper_for_platform_finds_the_newly_registered_thomasnet_scraper() {
-    let scraper = backend::services::b2b_scrapers::get_scraper_for_platform("thomasnet");
+    let scraper = backend::services::sources::b2b::get_scraper_for_platform("thomasnet");
     assert!(
         scraper.is_some(),
         "expected thomasnet to be registered in the real scraper list"
@@ -1906,7 +1906,7 @@ fn get_scraper_for_platform_finds_the_newly_registered_thomasnet_scraper() {
 
 #[test]
 fn get_scraper_for_platform_finds_the_newly_registered_b2bmap_scraper() {
-    let scraper = backend::services::b2b_scrapers::get_scraper_for_platform("b2bmap");
+    let scraper = backend::services::sources::b2b::get_scraper_for_platform("b2bmap");
     assert!(
         scraper.is_some(),
         "expected b2bmap to be registered in the real scraper list"
@@ -1924,7 +1924,7 @@ fn get_scraper_for_platform_still_finds_every_other_registered_scraper_after_b2b
         "thomasnet",
     ] {
         assert!(
-            backend::services::b2b_scrapers::get_scraper_for_platform(platform).is_some(),
+            backend::services::sources::b2b::get_scraper_for_platform(platform).is_some(),
             "expected '{}' to still be found after b2bmap was added",
             platform
         );
@@ -1934,7 +1934,7 @@ fn get_scraper_for_platform_still_finds_every_other_registered_scraper_after_b2b
 #[test]
 fn country_code_for_platform_returns_us_for_b2bmap() {
     assert_eq!(
-        backend::services::scraper_client::country_code_for_platform("b2bmap"),
+        backend::services::shared::scraper_client::country_code_for_platform("b2bmap"),
         Some("us")
     );
 }
@@ -1945,7 +1945,7 @@ fn get_scraper_for_platform_still_finds_every_other_registered_scraper() {
     // accidentally push out or shadow any existing B2B entry.
     for platform in ["alibaba", "tradewheel", "exporthub", "b2brazil"] {
         assert!(
-            backend::services::b2b_scrapers::get_scraper_for_platform(platform).is_some(),
+            backend::services::sources::b2b::get_scraper_for_platform(platform).is_some(),
             "expected '{}' to still be found after thomasnet was added",
             platform
         );

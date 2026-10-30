@@ -1,7 +1,7 @@
 use crate::{
     errors::outcomes::OutcomeError,
     models::outcomes::OutcomeRequest,
-    services::{auth::extract_user_id, outcomes::record_outcome},
+    services::{features::auth::extract_user_id, features::outcomes::record_outcome},
 };
 use axum::{Json, extract::State, http::HeaderMap};
 use serde_json::{Value, json};

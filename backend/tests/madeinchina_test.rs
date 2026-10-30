@@ -1,4 +1,4 @@
-use backend::services::b2b_scrapers::{b2b_page_from_browser_first, get_scraper_for_platform};
+use backend::services::sources::b2b::{b2b_page_from_browser_first, get_scraper_for_platform};
 
 // Small pages built from the real Made-in-China pages (October 2026):
 // the same elements and classes, with most of the text left out.

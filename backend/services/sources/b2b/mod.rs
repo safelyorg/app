@@ -11,7 +11,7 @@ pub mod wholesalecentral;
 
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use crate::services::scraper_client::{
+use crate::services::shared::scraper_client::{
     build_scraper_client, scraperapi_key_is_set, wrap_scraper_url_for_platform,
 };
 

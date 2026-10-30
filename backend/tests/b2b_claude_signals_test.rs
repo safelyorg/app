@@ -1,8 +1,8 @@
 use backend::services::{
-    claude::{
+    features::signals::build_b2b_claude_signals,
+    shared::claude::{
         B2bClaudeAnalysis, Finding, IMAGE_ANALYSIS_ENABLED, ImageAssessment, PriceAssessment,
     },
-    signals::build_b2b_claude_signals,
 };
 
 fn make_analysis(

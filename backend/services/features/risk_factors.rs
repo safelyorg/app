@@ -1,8 +1,8 @@
 use crate::models::{analysis::Signal, risk_factors::RiskFactor};
-use crate::services::confidence::calculate_confidence;
-use crate::services::signals::{
+use crate::services::features::signals::{
     COMMODITY_SCAM_PATTERN, FULL_PREPAYMENT, REGULATED_NOT_MAKER, UNTRACEABLE_PAYMENT,
 };
+use crate::services::shared::confidence::calculate_confidence;
 
 /// The risk factor shown when Safely could check too little about a
 /// supplier to trust a low score (see not_enough_information_factor).

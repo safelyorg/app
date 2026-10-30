@@ -1,12 +1,12 @@
-use crate::services::translation::get_or_create_translation;
+use crate::services::features::translation::get_or_create_translation;
 use crate::{
     errors::dashboard::DashboardError,
     models::{analysis::RiskLevel, fraud_reports::ReportTypes},
     services::{
-        auth::{extract_user_id, find_user_by_id, set_login_method},
-        dashboard::{delete_user_account, unlink_google_account},
-        history::{get_history_detail, get_user_history, get_user_reports},
-        templates::get_tera,
+        features::auth::{extract_user_id, find_user_by_id, set_login_method},
+        features::dashboard::{delete_user_account, unlink_google_account},
+        features::history::{get_history_detail, get_user_history, get_user_reports},
+        features::templates::get_tera,
     },
 };
 use axum::{

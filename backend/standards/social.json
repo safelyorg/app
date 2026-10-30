@@ -1,0 +1,14 @@
+{
+  "category": "social",
+  "status": "not built yet",
+  "about": "Sellers on social media (Facebook, WhatsApp, Instagram...). Fill in the cards here when this is built; each card then gets its own points, like b2b.json.",
+  "how_to_change": ["Same as b2b.json."],
+  "scoring": {
+    "default_warning_points": 15,
+    "info_points_each": 5,
+    "info_points_max": 15,
+    "not_enough_information_floor": 34
+  },
+  "rules": [],
+  "cards": []
+}

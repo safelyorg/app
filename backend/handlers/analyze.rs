@@ -5,19 +5,21 @@ use crate::{
         sellers::Sellers,
     },
     services::{
-        analysis::{
+        features::analysis::{
             BuildResponseData, authorize_request, authorize_scan, build_b2b_analysis_path,
             build_requests, resolve_seller, save_and_build_response,
         },
-        b2b_scrapers::{
+        features::listings::{create_listing, update_listing_from_b2b},
+        features::osint::{SellerIdentifiers, verify_social_link},
+        features::sellers::update_seller_from_b2b,
+        features::signals::{is_supplier_page_scan, sort_signals_by_table},
+        features::translation::{
+            AnalysisTranslation, get_or_create_translation, save_english_baseline,
+        },
+        sources::b2b::{
             b2b_page_from_browser, b2b_page_from_browser_first, fetch_b2b_page,
             get_scraper_for_platform,
         },
-        listings::{create_listing, update_listing_from_b2b},
-        osint::{SellerIdentifiers, verify_social_link},
-        sellers::update_seller_from_b2b,
-        signals::{is_supplier_page_scan, sort_signals_by_table},
-        translation::{AnalysisTranslation, get_or_create_translation, save_english_baseline},
     },
 };
 use axum::{Json, extract::State, http::HeaderMap};
@@ -73,7 +75,7 @@ pub async fn analyze(
     let mut request = request;
     let reader_language = reader_language(request.language.as_deref());
     request.language = Some("en".to_string());
-    // Only the supported B2B marketplaces (b2b_scrapers) are scanned.
+    // Only the supported B2B marketplaces (services/sources/b2b) are scanned.
     // Anything else is refused before a page is fetched; the scan held
     // above is given back.
     if get_scraper_for_platform(&request.platform).is_none() {

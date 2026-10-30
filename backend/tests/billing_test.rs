@@ -23,8 +23,8 @@ use backend::{
     },
     models::billing::{ParsedCustomer, ParsedMetadata, ParsedProduct, ParsedSubscription},
     services::{
-        auth::find_or_create_user_by_email,
-        billing::{
+        features::auth::find_or_create_user_by_email,
+        features::billing::{
             BillingInterval, CreateCheckoutError, FREE_MONTHLY_SCANS, ScanLimitError,
             apply_scheduled_downgrade_if_due, apply_upgrade, cancel_with_creem,
             change_creem_subscription_product, check_and_increment_scan_usage, create_checkout,
@@ -34,7 +34,7 @@ use backend::{
             scan_limit_for_plan, upsert_subscription, verify_and_parse_webhook,
             verify_creem_signature,
         },
-        email::{
+        features::email::{
             send_payment_failed_email, send_subscription_canceled_email,
             send_subscription_ended_email,
         },

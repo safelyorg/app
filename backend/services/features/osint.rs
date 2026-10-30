@@ -304,7 +304,7 @@ pub async fn run_serper_search(
 /// config/platform_domains.json already powering the extension's
 /// Domain check signal - one, single, shared source of truth.
 fn is_own_platform_domain(url: &str) -> bool {
-    crate::services::platform_config::get_all_platform_domains()
+    crate::services::shared::platform_config::get_all_platform_domains()
         .values()
         .any(|domain| url.contains(domain))
 }

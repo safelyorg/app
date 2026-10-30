@@ -4,7 +4,7 @@ use crate::{
         CreateCheckoutRequest, CreateCheckoutResponse, CreemWebhookEvent, ParsedProduct,
         ParsedSubscription,
     },
-    services::email::{send_payment_failed_email, send_subscription_ended_email},
+    services::features::email::{send_payment_failed_email, send_subscription_ended_email},
 };
 use axum::{Json, body::Bytes, http::HeaderMap};
 use chrono::{DateTime, NaiveDate, Utc};

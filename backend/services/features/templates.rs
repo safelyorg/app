@@ -3,15 +3,15 @@ use tera::Tera;
 
 static TERA: OnceLock<Tera> = OnceLock::new();
 
-const EMAIL_TEMPLATE: &str = include_str!("../templates/email.html");
-const WELCOME_EMAIL_TEMPLATE: &str = include_str!("../templates/welcome_email.html");
-const PAYMENT_FAILED_TEMPLATE: &str = include_str!("../templates/payment_failed_email.html");
+const EMAIL_TEMPLATE: &str = include_str!("../../templates/email.html");
+const WELCOME_EMAIL_TEMPLATE: &str = include_str!("../../templates/welcome_email.html");
+const PAYMENT_FAILED_TEMPLATE: &str = include_str!("../../templates/payment_failed_email.html");
 const SUBSCRIPTION_CANCELED_TEMPLATE: &str =
-    include_str!("../templates/subscription_canceled_email.html");
+    include_str!("../../templates/subscription_canceled_email.html");
 const SUBSCRIPTION_ENDED_TEMPLATE: &str =
-    include_str!("../templates/subscription_ended_email.html");
-const HISTORY_ROWS_TEMPLATE: &str = include_str!("../templates/history_rows.html");
-const REPORT_ROWS_TEMPLATE: &str = include_str!("../templates/report_rows.html");
+    include_str!("../../templates/subscription_ended_email.html");
+const HISTORY_ROWS_TEMPLATE: &str = include_str!("../../templates/history_rows.html");
+const REPORT_ROWS_TEMPLATE: &str = include_str!("../../templates/report_rows.html");
 
 /// It builds one shared "template engine" containing every real
 /// template this app uses - both real email templates, and HTML

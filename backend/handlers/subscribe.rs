@@ -1,6 +1,6 @@
 use crate::{
     errors::auth::AuthError,
-    services::{auth::validate_email_format, email::subscribe_to_newsletter},
+    services::{features::auth::validate_email_format, features::email::subscribe_to_newsletter},
 };
 use axum::Json;
 use serde::Deserialize;

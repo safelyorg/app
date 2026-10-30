@@ -57,7 +57,7 @@
 
 use crate::models::blogs::BlogPost;
 use crate::models::tools::Tool;
-use crate::services::blogs::{blog_path, load_posts};
+use crate::services::features::blogs::{blog_path, load_posts};
 use chrono::{Datelike, NaiveDate, Utc};
 use pulldown_cmark::{Options, Parser, html};
 use std::collections::HashMap;
@@ -91,16 +91,16 @@ const NEW_FOR_DAYS: i64 = 30;
 /// The address part that opens the "Blogs" side of the list: /tools#blogs
 pub const BLOGS_TAB: &str = "#blogs";
 
-const TOOL_TEMPLATE: &str = include_str!("../../site/templates/tool.html");
-const TOOLS_TEMPLATE: &str = include_str!("../../site/templates/tools.html");
+const TOOL_TEMPLATE: &str = include_str!("../../../site/templates/tool.html");
+const TOOLS_TEMPLATE: &str = include_str!("../../../site/templates/tools.html");
 /// The site's "page not found" page, shown for a tool or blog that does not exist.
-pub const NOT_FOUND_PAGE: &str = include_str!("../../site/templates/404.html");
+pub const NOT_FOUND_PAGE: &str = include_str!("../../../site/templates/404.html");
 
 /// The box of each tool, by its name (the Markdown file name).
 /// A new tool adds one entry here, like the Domain Age Checker below.
 pub const WIDGETS: &[(&str, &str)] = &[(
     "domain-age-checker",
-    include_str!("../../site/templates/tool_widgets/domain-age-checker.html"),
+    include_str!("../../../site/templates/tool_widgets/domain-age-checker.html"),
 )];
 
 /// Pages that are always in the sitemap. The list page, every tool and
@@ -1269,7 +1269,7 @@ pub fn render_sitemap(library: &Library) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::services::blogs::parse_post;
+    use crate::services::features::blogs::parse_post;
 
     const GOOD: &str = "---\ntitle: Domain Age Checker\ndescription: See how old a website is & who registered it.\ndate: 2026-10-20\n---\n\n## What it checks\nSome **bold** text.\n";
     const POST: &str = "---\ntitle: How to check a supplier\ndescription: Seven checks.\ndate: 2026-10-16\nshort_answer: Check the registration.\n---\n\n## First\nText.\n";

@@ -1,15 +1,15 @@
 use crate::errors::billing::{BillingError, WebhookError};
-use crate::services::billing::{extract_subscription, mark_event_processed_if_new};
+use crate::services::features::billing::{extract_subscription, mark_event_processed_if_new};
 use crate::services::{
-    auth::extract_user_id,
-    billing::{
+    features::auth::extract_user_id,
+    features::billing::{
         BillingInterval, CreateCheckoutError, PLAN_PRODUCTS, PlanChange,
         apply_scheduled_downgrade_if_due, apply_upgrade, cancel_with_creem, classify_plan_change,
         create_checkout, fetch_subscriber_email, get_scan_usage, handle_subscription_granted,
         handle_subscription_lost, handle_subscription_past_due, handle_subscription_update,
         plan_for_product_id, product_ids_key, schedule_downgrade, verify_and_parse_webhook,
     },
-    email::send_subscription_canceled_email,
+    features::email::send_subscription_canceled_email,
 };
 use axum::{
     Json,

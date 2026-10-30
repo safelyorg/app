@@ -1,4 +1,4 @@
-use crate::services::tools::{
+use crate::services::features::tools::{
     CONTENT_DIR, DEFAULT_LANG, LOCALES_DIR, Library, NOT_FOUND_PAGE, Texts, WIDGETS, is_valid_lang,
     is_valid_slug, render_sitemap, render_tool, render_tools, widget_for,
 };

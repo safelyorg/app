@@ -978,7 +978,7 @@ type DomainCheckResult = LegitimateDomainResult | SuspiciousDomainResult | null;
   const KOMPASS_COMPANY_PAGE = /^https:\/\/[a-z]+\.kompass\.com\/c\/[^/?#]+\/[a-z0-9]+\/$/;
 
   /// Kompass's robot check (DataDome). Must match the Kompass entry in
-  /// BLOCK_PAGE_MARKERS in backend/services/b2b_scrapers/mod.rs.
+  /// BLOCK_PAGE_MARKERS in backend/services/sources/b2b/mod.rs.
   const KOMPASS_ROBOT_CHECK = "Please enable JS and disable any ad blocker";
 
   /// On a Kompass product page: the page as it is shown in this tab,

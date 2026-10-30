@@ -1,0 +1,14 @@
+{
+  "category": "databases",
+  "status": "not built yet",
+  "about": "Company databases (Crunchbase, company registers...) used to look a seller up outside the page it sells on. Fill in the cards here when this is built.",
+  "how_to_change": ["Same as b2b.json."],
+  "scoring": {
+    "default_warning_points": 15,
+    "info_points_each": 5,
+    "info_points_max": 15,
+    "not_enough_information_floor": 34
+  },
+  "rules": [],
+  "cards": []
+}

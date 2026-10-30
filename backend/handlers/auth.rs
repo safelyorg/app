@@ -5,13 +5,13 @@ use crate::{
         SignupSourceRequest, VerifyMagicLinkToken,
     },
     services::{
-        auth::{
+        features::auth::{
             delete_session, extract_user_id, find_or_create_user_by_email, finish_sign_in,
             handle_google_connect, insert_magic_link, save_signup_source, validate_email_format,
             validate_magic_link,
         },
-        email::send_magic_link_email,
-        google_oauth::{
+        features::email::send_magic_link_email,
+        features::google_oauth::{
             build_google_authorize_url, exchange_code_for_user, find_or_create_user_by_google,
         },
     },

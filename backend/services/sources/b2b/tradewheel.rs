@@ -1,4 +1,4 @@
-use crate::services::b2b_scrapers::{B2bListingProfile, B2bScraper, B2bSupplierProfile};
+use crate::services::sources::b2b::{B2bListingProfile, B2bScraper, B2bSupplierProfile};
 use scraper::{ElementRef, Html, Selector};
 use std::collections::HashMap;
 

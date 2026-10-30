@@ -1,7 +1,13 @@
 use crate::{
     models::analysis::Signal,
     services::{
-        b2b_scrapers::{
+        shared::claude::{B2bClaudeAnalysis, Finding, IMAGE_ANALYSIS_ENABLED, ImageAssessment},
+        shared::standards::{
+            self, HIDDEN_COMPANY_FIGURES, NO_FOUNDING_YEAR_FIELD, NO_ORDER_DETAILS,
+            PRICES_FOR_SIGNED_IN, SUPPLIER_PAGE_SCANS,
+        },
+        shared::whois::WhoisResult,
+        sources::b2b::{
             B2bListingProfile, B2bSupplierProfile, SupplierRecord,
             globalsources::{
                 TRADE_SHOW_ONLY as GS_TRADE_SHOW_ONLY, VERIFIED_PREFIX as GS_VERIFIED_PREFIX,
@@ -10,8 +16,6 @@ use crate::{
                 AUDITED_PREFIX as MIC_AUDITED_PREFIX, LICENCE_CHECKED as MIC_LICENCE_CHECKED,
             },
         },
-        claude::{B2bClaudeAnalysis, Finding, IMAGE_ANALYSIS_ENABLED, ImageAssessment},
-        whois::WhoisResult,
     },
 };
 use chrono::{Datelike, Utc};
@@ -481,7 +485,8 @@ pub fn build_b2b_company_age_signal(supplier: &B2bSupplierProfile) -> Signal {
         // instead of "this company does not say". What the seller's own
         // text claims about its years in business is added, marked as
         // not checked. The join year is added later (apply_supplier_record).
-        let no_field = NO_FOUNDING_YEAR_PLATFORMS.contains(&supplier.source_platform.as_str());
+        let no_field =
+            standards::b2b().platform_has(NO_FOUNDING_YEAR_FIELD, &supplier.source_platform);
         let first = if no_field {
             format!(
                 "{} does not show when a company was founded.",
@@ -564,11 +569,6 @@ pub fn build_b2b_company_age_signal(supplier: &B2bSupplierProfile) -> Signal {
     }
 }
 
-/// Platforms whose pages have no founding-year field for any supplier
-/// (Wholesale Central shows only "Member since"). A missing year there
-/// is still a warning, but the card does not blame the seller for it.
-pub const NO_FOUNDING_YEAR_PLATFORMS: [&str; 1] = ["wholesalecentral"];
-
 /// Start and end of the sentence quoting what the seller's own text
 /// says about its years in business, so it can be kept when the card's
 /// text is rewritten (see apply_supplier_record).
@@ -646,7 +646,7 @@ fn claim_sentence(sub: &str) -> String {
 }
 
 /// Uses the platform's own record of a supplier (see SupplierRecord in
-/// b2b_scrapers - only Alibaba has one for now) to correct two cards
+/// sources/b2b - only Alibaba has one for now) to correct two cards
 /// and add one. Runs after the normal B2B cards are built and before
 /// the score is added up. With no record, nothing changes.
 ///
@@ -1039,7 +1039,7 @@ pub const PRICE_NOT_LISTED: &str = "Not listed";
 pub fn apply_missing_price_note(signals: &mut [Signal], listing: &B2bListingProfile) {
     // Prices shown only to signed-in buyers: there was no price to
     // judge, whatever Claude said, so the card says so.
-    if PRICES_FOR_SIGNED_IN_PLATFORMS.contains(&listing.source_platform.as_str())
+    if standards::b2b().platform_has(PRICES_FOR_SIGNED_IN, &listing.source_platform)
         && listing.unit_price.is_none()
         && listing.fob_price.is_none()
     {
@@ -1050,7 +1050,7 @@ pub fn apply_missing_price_note(signals: &mut [Signal], listing: &B2bListingProf
         }
         return;
     }
-    if NO_ORDER_DETAILS_PLATFORMS.contains(&listing.source_platform.as_str())
+    if standards::b2b().platform_has(NO_ORDER_DETAILS, &listing.source_platform)
         || listing.unit_price.is_some()
         || listing.fob_price.is_some()
     {
@@ -1431,7 +1431,7 @@ pub fn build_b2b_transparency_signal(supplier: &B2bSupplierProfile) -> Signal {
     // no place for any of the three. "0 of 3" there says nothing about
     // the supplier, so it reads like the listing card.
     if filled_count == 0
-        && HIDDEN_COMPANY_FIGURES_PLATFORMS.contains(&supplier.source_platform.as_str())
+        && standards::b2b().platform_has(HIDDEN_COMPANY_FIGURES, &supplier.source_platform)
     {
         let sub = if supplier.source_platform == "kompass" {
             "This platform does not show sales or export figures, and shows the employee count only to its paying members, so this is not counted against the supplier."
@@ -1469,39 +1469,18 @@ pub fn build_b2b_transparency_signal(supplier: &B2bSupplierProfile) -> Signal {
     }
 }
 
-/// Platforms that never show a company's sales or export figures and
-/// hide the employee count from free visitors (Kompass), or have no
-/// place for any of them (Wholesale Central).
-pub const HIDDEN_COMPANY_FIGURES_PLATFORMS: [&str; 2] = ["kompass", "wholesalecentral"];
-
-/// Platforms that are supplier directories, not marketplaces: they
-/// never show price, MOQ, Incoterms, packaging or delivery details for
-/// any supplier. Add a platform here only when NO listing on it can
-/// ever have these fields. Wholesale Central shows a minimum order but
-/// none of the other details, and hides prices (see
-/// PRICES_FOR_SIGNED_IN_PLATFORMS).
-pub const NO_ORDER_DETAILS_PLATFORMS: [&str; 3] = ["thomasnet", "kompass", "wholesalecentral"];
-
-/// Platforms that show prices only to signed-in buyers ("Unlock
-/// wholesale price"). Safely never uses a price the platform hides, so
-/// the price card says it could not be checked instead of judging it.
-pub const PRICES_FOR_SIGNED_IN_PLATFORMS: [&str; 1] = ["wholesalecentral"];
-
-/// Value of the price card on PRICES_FOR_SIGNED_IN_PLATFORMS.
+/// Value of the price card on the "prices_for_signed_in" platforms
+/// (backend/standards/b2b.json).
 pub const PRICE_HIDDEN: &str = "Not shown on this platform";
-
-/// Platforms where a buyer can scan the supplier's own page as well as
-/// a product page. A supplier page lists many products, so no product
-/// is read from it (the listing has no title).
-pub const SUPPLIER_PAGE_PLATFORMS: [&str; 2] = ["wholesalecentral", "madeinchina"];
 
 /// Value of the product cards when the supplier's own page was scanned.
 pub const OPEN_A_PRODUCT: &str = "Open a product to check this";
 
 /// True when the scanned page was a supplier's own page with many
-/// products (see SUPPLIER_PAGE_PLATFORMS), not one product.
+/// products (see "supplier_page_scans" in b2b.json), not one product.
 pub fn is_supplier_page_scan(listing: &B2bListingProfile) -> bool {
-    SUPPLIER_PAGE_PLATFORMS.contains(&listing.source_platform.as_str()) && listing.title.is_none()
+    standards::b2b().platform_has(SUPPLIER_PAGE_SCANS, &listing.source_platform)
+        && listing.title.is_none()
 }
 
 /// On a supplier's own page there is no single product, so the product
@@ -1523,7 +1502,7 @@ pub fn apply_supplier_page_note(signals: &mut [Signal], listing: &B2bListingProf
     // which explains its hidden prices, is left as it is.
     if listing.unit_price.is_none()
         && listing.fob_price.is_none()
-        && !PRICES_FOR_SIGNED_IN_PLATFORMS.contains(&listing.source_platform.as_str())
+        && !standards::b2b().platform_has(PRICES_FOR_SIGNED_IN, &listing.source_platform)
     {
         for card in signals.iter_mut().filter(|s| s.label == "Price analysis") {
             card.value = OPEN_A_PRODUCT.to_string();
@@ -1557,10 +1536,10 @@ pub fn build_b2b_listing_completeness_signal(listing: &B2bListingProfile) -> Sig
     let total = fields.len();
 
     // A seller can't be marked down for details the platform has no
-    // place for. Directory platforms (see NO_ORDER_DETAILS_PLATFORMS)
+    // place for. Directory platforms (see "no_order_details" in b2b.json)
     // never show price, MOQ, Incoterms etc., so on them an empty
     // listing is normal and stays information only.
-    if NO_ORDER_DETAILS_PLATFORMS.contains(&listing.source_platform.as_str()) {
+    if standards::b2b().platform_has(NO_ORDER_DETAILS, &listing.source_platform) {
         let sub = if listing.source_platform == "wholesalecentral" {
             "Wholesale Central does not show Incoterms, ports, delivery or packaging details for any supplier, and shows prices only to signed-in buyers, so this is not counted against the supplier."
         } else {
@@ -2417,7 +2396,7 @@ mod b2b_signal_tests {
         apply_supplier_page_note(&mut cards, &empty_listing("wholesalecentral"));
         assert_eq!(cards[0].value, PRICE_HIDDEN);
     }
-    use crate::services::claude::{ImageAssessment, PriceAssessment};
+    use crate::services::shared::claude::{ImageAssessment, PriceAssessment};
 
     fn f(found: bool) -> Finding {
         Finding {

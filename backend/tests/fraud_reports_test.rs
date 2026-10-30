@@ -11,8 +11,8 @@ use backend::{
     models::analysis::Signal,
     models::fraud_reports::{FraudReportsRequest, ReportTypes},
     services::{
-        analysis::b2b_score_from_signals, fraud_reports::already_reported,
-        network_memory::fraud_report_history,
+        features::analysis::b2b_score_from_signals, features::fraud_reports::already_reported,
+        features::network_memory::fraud_report_history,
     },
 };
 use serde_json::{Value, json, to_value};

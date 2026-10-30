@@ -3,7 +3,7 @@ use serde_json::from_str;
 use std::collections::HashMap;
 
 static PLATFORM_DOMAINS: Lazy<HashMap<String, String>> = Lazy::new(|| {
-    let raw = include_str!("../config/platform_domains.json");
+    let raw = include_str!("../../config/platform_domains.json");
     from_str(raw).expect("platform_domains.json must be valid JSON")
 });
 

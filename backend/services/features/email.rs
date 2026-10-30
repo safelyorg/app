@@ -1,6 +1,6 @@
 use crate::{
     errors::auth::AuthError,
-    services::{auth::validate_email_format, templates::get_tera},
+    services::{features::auth::validate_email_format, features::templates::get_tera},
 };
 use reqwest::{Client, StatusCode};
 use serde_json::json;

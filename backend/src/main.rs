@@ -6,7 +6,7 @@ use backend::routes::{
     analyze, auth, billing, dashboard, fraud_reports, outcomes, platform_domains, reviews,
     subscribe, tool_api, tools,
 };
-use backend::services::scraper_client::warn_if_scraperapi_key_missing;
+use backend::services::shared::scraper_client::warn_if_scraperapi_key_missing;
 use dotenvy::dotenv;
 use sqlx::{Pool, Postgres};
 use tokio::net::TcpListener;
