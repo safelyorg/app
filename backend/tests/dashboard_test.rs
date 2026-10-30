@@ -499,6 +499,16 @@ async fn get_history_html_success_with_real_data() {
         html.contains(">15<"),
         "expected the real risk score to appear in the rendered HTML"
     );
+    assert!(
+        html.contains(">Alibaba</td>"),
+        "expected the platform's name in its own column, got: {}",
+        html
+    );
+    assert!(
+        html.contains("html rendering test listing") && html.contains(" alibaba\""),
+        "expected the platform name in the search text, got: {}",
+        html
+    );
 
     cleanup_test_seller_chain(&pool, platform, platform_id).await;
     cleanup_test_user(&pool, email).await;

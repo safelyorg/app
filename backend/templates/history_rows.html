@@ -1,5 +1,5 @@
 {% if items | length == 0 %}
-<tr><td colspan="4" class="px-4 py-14 text-center text-muted text-[13px]">No scans yet. Open a supplier or listing page with the Safely extension to get started.</td></tr>
+<tr><td colspan="5" class="px-4 py-14 text-center text-muted text-[13px]">No scans yet. Open a supplier or listing page with the Safely extension to get started.</td></tr>
 {% else %}
 {% for item in items %}
 <tr data-risk="{{ item.risk_level }}" data-id="{{ item.id }}" data-search="{{ item.search_text }}" class="history-row border-b border-line last:border-b-0 hover:bg-surface2 cursor-pointer transition">
@@ -13,6 +13,7 @@
             <span class="block text-[11px] text-muted truncate">{{ item.seller_name | default(value="Unknown seller") }}</span>
         </div>
     </td>
+    <td class="hidden sm:table-cell px-4 py-3.5 text-[12.5px] text-muted truncate">{{ item.platform_name }}</td>
     <td class="px-4 py-3.5">
         <span class="inline-flex items-center gap-2">
             <span class="font-display text-[17px] w-7">{{ item.risk_score }}</span>

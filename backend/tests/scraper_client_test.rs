@@ -1,9 +1,12 @@
 mod common;
 
 use backend::services::sources::b2b::{
-    B2bScraper, B2bSupplierProfile, alibaba::AlibabaScraper, b2brazil::B2brazilScraper,
-    check_b2b_page, exporthub::ExporthubScraper, fetch_b2b_page, looks_like_a_real_page,
-    tradewheel::TradewheelScraper,
+    B2bScraper, B2bSupplierProfile,
+    brazil::b2brazil::B2brazilScraper,
+    check_b2b_page,
+    china::alibaba::AlibabaScraper,
+    fetch_b2b_page, looks_like_a_real_page,
+    usa::{exporthub::ExporthubScraper, tradewheel::TradewheelScraper},
 };
 use serial_test::serial;
 use std::env::{remove_var, set_var, var};

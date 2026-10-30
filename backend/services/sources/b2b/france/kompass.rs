@@ -1,4 +1,4 @@
-use super::{B2bListingProfile, B2bScraper, B2bSupplierProfile};
+use crate::services::sources::b2b::{B2bListingProfile, B2bScraper, B2bSupplierProfile};
 use scraper::{ElementRef, Html, Selector};
 
 pub struct KompassScraper;

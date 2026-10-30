@@ -38,16 +38,16 @@
     }
   },
   "platforms": [
-    { "id": "alibaba", "name": "Alibaba", "pages_read": ["product page", "company_profile.html"] },
-    { "id": "b2brazil", "name": "B2Brazil", "pages_read": ["product page (/hotsite/{company}/{product})", "company page (/hotsite/{company})"] },
-    { "id": "exporthub", "name": "ExportHub", "pages_read": ["product page", "company page", "profile.html"] },
-    { "id": "tradewheel", "name": "TradeWheel", "pages_read": ["product page (/p/...)", "company page (/co/{company}/)", "About Us (/co/{company}/about-us/)"] },
-    { "id": "b2bmap", "name": "B2BMap", "pages_read": ["product page (/products/...)", "company page (b2bmap.com/{company})"] },
-    { "id": "thomasnet", "name": "ThomasNet", "pages_read": ["company profile page (it is the listing)"] },
-    { "id": "kompass", "name": "Kompass", "pages_read": ["product page (/p/...)", "company page (/c/{name}/{id}/)"] },
-    { "id": "wholesalecentral", "name": "Wholesale Central", "pages_read": ["product page or supplier page", "supplier page"] },
-    { "id": "madeinchina", "name": "Made-in-China", "pages_read": ["product page or the supplier's shop home page", "shop home page"] },
-    { "id": "globalsources", "name": "Global Sources", "pages_read": ["product page", "supplier home page (homepage_{id}.htm)", "company profile (company-profile_{id}.htm)", "trade show: exhibitor page"] }
+    { "id": "alibaba", "country": "china", "name": "Alibaba", "pages_read": ["product page", "company_profile.html"] },
+    { "id": "b2brazil", "country": "brazil", "name": "B2Brazil", "pages_read": ["product page (/hotsite/{company}/{product})", "company page (/hotsite/{company})"] },
+    { "id": "exporthub", "country": "usa", "name": "ExportHub", "pages_read": ["product page", "company page", "profile.html"] },
+    { "id": "tradewheel", "country": "usa", "name": "TradeWheel", "pages_read": ["product page (/p/...)", "company page (/co/{company}/)", "About Us (/co/{company}/about-us/)"] },
+    { "id": "b2bmap", "country": "usa", "name": "B2BMap", "pages_read": ["product page (/products/...)", "company page (b2bmap.com/{company})"] },
+    { "id": "thomasnet", "country": "usa", "name": "ThomasNet", "pages_read": ["company profile page (it is the listing)"] },
+    { "id": "kompass", "country": "france", "name": "Kompass", "pages_read": ["product page (/p/...)", "company page (/c/{name}/{id}/)"] },
+    { "id": "wholesalecentral", "country": "usa", "name": "Wholesale Central", "pages_read": ["product page or supplier page", "supplier page"] },
+    { "id": "madeinchina", "country": "china", "name": "Made-in-China", "pages_read": ["product page or the supplier's shop home page", "shop home page"] },
+    { "id": "globalsources", "country": "hong_kong", "name": "Global Sources", "pages_read": ["product page", "supplier home page (homepage_{id}.htm)", "company profile (company-profile_{id}.htm)", "trade show: exhibitor page"] }
   ],
   "reads": {
     "supplier": ["company name", "logo", "founding year", "country and address", "verified badge or membership level", "employees", "sales", "export share", "contact person", "phone", "email", "website", "company description", "registration number"],

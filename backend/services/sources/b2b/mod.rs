@@ -1,13 +1,20 @@
-pub mod alibaba;
-pub mod b2bmap;
-pub mod b2brazil;
-pub mod exporthub;
-pub mod globalsources;
-pub mod kompass;
-pub mod madeinchina;
-pub mod thomasnet;
-pub mod tradewheel;
-pub mod wholesalecentral;
+//! B2B marketplaces. This file is the shared reader every marketplace
+//! uses: the page types (B2bSupplierProfile, B2bListingProfile,
+//! SupplierRecord), the B2bScraper trait, page fetching (ScraperAPI and
+//! the buyer's browser) and the list of platforms. The marketplaces are
+//! in one folder per country, by where the company running the platform
+//! is based: brazil, china, france, hong_kong, usa.
+pub mod brazil;
+pub mod china;
+pub mod france;
+pub mod hong_kong;
+pub mod usa;
+
+use brazil::b2brazil;
+use china::{alibaba, madeinchina};
+use france::kompass;
+use hong_kong::globalsources;
+use usa::{b2bmap, exporthub, thomasnet, tradewheel, wholesalecentral};
 
 use std::sync::atomic::{AtomicBool, Ordering};
 

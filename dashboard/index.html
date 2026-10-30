@@ -367,6 +367,10 @@
                                     style="width: 110px"
                                 />
                                 <col />
+                                <col
+                                    class="hidden sm:table-column"
+                                    style="width: 140px"
+                                />
                                 <col style="width: 150px" />
                                 <col style="width: 100px" />
                             </colgroup>
@@ -378,6 +382,7 @@
                                         Date
                                     </th>
                                     <th class="px-4 py-3" data-i18n="dash.table.listing">Listing</th>
+                                    <th class="hidden sm:table-cell px-4 py-3" data-i18n="dash.table.platform">Platform</th>
                                     <th class="px-4 py-3" data-i18n="dash.table.risk">Risk</th>
                                     <th class="px-4 py-3" data-i18n="dash.table.reported">Reported</th>
                                 </tr>
@@ -920,6 +925,32 @@
                             id="detail-title"
                             class="text-[18px] font-bold tracking-tight truncate flex-1"
                         ></div>
+                        <!-- The original listing, in a new tab (detail_view.ts sets
+                             the address and "Open on Alibaba"). Hidden when the
+                             scan has no address. -->
+                        <a
+                            id="detail-listing-link"
+                            href="#"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            class="hidden inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-surface2 border border-line text-[12px] font-bold hover:bg-surface3 transition flex-shrink-0"
+                        >
+                            <span id="detail-listing-link-text" class="hidden sm:inline">Open listing</span>
+                            <svg
+                                width="13"
+                                height="13"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="2.2"
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                                aria-hidden="true"
+                            >
+                                <path d="M7 17L17 7" />
+                                <path d="M8 7h9v9" />
+                            </svg>
+                        </a>
                         <button
                             id="detail-download-pdf"
                             class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-surface2 border border-line text-[12px] font-bold hover:bg-surface3 transition flex-shrink-0"

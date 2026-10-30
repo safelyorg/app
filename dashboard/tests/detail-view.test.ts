@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll } from "vitest";
-import { loadScript, global } from "./load-script";
+import { loadScript, global, readText } from "./load-script";
 
 // These tests load the real ts/shared.ts and ts/detail_view.ts and
 // check the result page they draw (the same layout as the extension).
@@ -17,6 +17,7 @@ const buildVisits = (m: any) => global("buildVisits")(m);
 const buildDetailsTab = (d: any) => global("buildDetailsTab")(d);
 const buildPresence = (r: any) => global("buildPresence")(r);
 const buildReports = (r: any) => global("buildReports")(r);
+const listingLinkLabel = (p: any) => global("listingLinkLabel")(p);
 
 function html(markup: string): HTMLElement {
   const div = document.createElement("div");
@@ -131,10 +132,15 @@ describe("result page - What we found", () => {
 
 describe("result page - supplier facts", () => {
   it("shows how long the supplier is on the platform and the report count", () => {
-    const facts = html(buildFacts(scan({ fraud_report_count: 3 })));
-    expect(facts.textContent).toContain("On ThomasNet for");
-    expect(facts.textContent).toContain("About 11 years");
+    const facts = html(buildFacts(scan({ fraud_report_count: 3, seller: { account_age: "3 years" } })));
+    expect(facts.textContent).toContain("On ThomasNet for3 years");
     expect(facts.textContent).toContain("Reports on Safely3");
+  });
+
+  it("calls a founding-year age the company's age, not time on the platform", () => {
+    const facts = html(buildFacts(scan()));
+    expect(facts.textContent).toContain("Company ageAbout 11 years");
+    expect(facts.textContent).not.toContain("On ThomasNet for");
   });
 
   it("hides rows Safely doesn't know", () => {
@@ -244,6 +250,33 @@ describe("result page - your reports", () => {
     const list = html(buildReports([{ report_type: "no_delivery", reported_at: "2026-10-20T08:00:00Z" }]));
     expect(list.textContent).toContain("Took payment and never shipped");
     expect(list.textContent).toContain("Submitted 2026-10-20");
+  });
+});
+
+describe("result page - original listing", () => {
+  it("names the platform on the button", () => {
+    expect(listingLinkLabel("alibaba")).toBe("Open on Alibaba");
+    expect(listingLinkLabel("wholesalecentral")).toBe("Open on Wholesale Central");
+    expect(listingLinkLabel(null)).toBe("Open listing");
+  });
+
+  it("the page has the button next to the title", async () => {
+    const page = await readText("index.html");
+    expect(page).toContain('id="detail-listing-link"');
+    expect(page).toContain('id="detail-listing-link-text"');
+    expect(page).toContain('target="_blank"');
+  });
+});
+
+describe("history table - platform column", () => {
+  it("has a Platform heading between Listing and Risk", async () => {
+    const page = await readText("index.html");
+    const listing = page.indexOf('data-i18n="dash.table.listing"');
+    const platform = page.indexOf('data-i18n="dash.table.platform"');
+    const risk = page.indexOf('data-i18n="dash.table.risk"');
+    expect(listing).toBeGreaterThan(-1);
+    expect(platform).toBeGreaterThan(listing);
+    expect(risk).toBeGreaterThan(platform);
   });
 });
 

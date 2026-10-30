@@ -439,7 +439,17 @@ impl B2bScraper for AlibabaScraper {
                 }
             }
         }
-        None
+        // Newer product pages draw the "Company profile" button with
+        // JavaScript, so the page has no such link. The same address is
+        // in the page's own data (seller.companyProfileUrl, or the shop
+        // address seller.subDomain). Without this, Safely took the
+        // product page for the company's own page and never loaded the
+        // company page (employees, revenue, address, description).
+        let seller = extract_detail_seller(listing_html)?;
+        json_str(&seller, "companyProfileUrl")
+            .and_then(|u| normalize_shop_host(&u))
+            .or_else(|| json_str(&seller, "subDomain").and_then(|d| normalize_shop_host(&d)))
+            .map(|host| format!("https://{}/company_profile.html", host))
     }
 
     /// The company's shop address, e.g. "youhuan.en.alibaba.com" - the
@@ -653,8 +663,47 @@ impl B2bScraper for AlibabaScraper {
         if let Some(address) = field("supplierOperationalAddress") {
             add_to_description(&mut supplier, &format!("Address: {}.", address));
         }
+        if let Some(revenue) = field("companyTotalRevenue") {
+            add_to_description(
+                &mut supplier,
+                &format!(
+                    "Total annual revenue: {} (stated by the supplier).",
+                    revenue
+                ),
+            );
+        }
 
         supplier
+    }
+
+    /// The company page says whether Alibaba checked the company itself
+    /// (companyHasPassOnsite: Alibaba staff visited the premises;
+    /// companyHasPassAssessment: an outside assessment). Newer product
+    /// pages leave the on-site check out, so it is read here too.
+    fn enrich_record_from_company_profile(
+        &self,
+        record: Option<SupplierRecord>,
+        profile_html: &str,
+    ) -> Option<SupplierRecord> {
+        let module_data = collect_module_data(&Html::parse_document(profile_html));
+        let is_true = |v: &Value| match v {
+            Value::Bool(b) => *b,
+            other => other.get("value").and_then(Value::as_bool).unwrap_or(false),
+        };
+        let checked = module_data.iter().any(|d| {
+            ["companyHasPassOnsite", "companyHasPassAssessment"]
+                .iter()
+                .any(|key| d.get(*key).map_or(false, is_true))
+        });
+        if !checked {
+            return record;
+        }
+        let mut r = record.unwrap_or_else(|| SupplierRecord {
+            platform: "Alibaba".to_string(),
+            ..Default::default()
+        });
+        r.checked_by_platform = true;
+        Some(r)
     }
 
     fn parse_listing(&self, html: &str, listing_url: &str) -> B2bListingProfile {
@@ -1671,6 +1720,75 @@ mod tests {
         assert!(d.contains("Main products: smartphone, tablet, television."));
         assert!(d.contains("Address: 829, Block 14, Foshan, Guangdong, China."));
         assert_eq!(d.matches("Business type:").count(), 1);
+    }
+
+    #[test]
+    fn company_page_link_comes_from_page_data_when_the_button_is_not_drawn() {
+        // Like the "17 Pro Max" product page (Oct 2026): no "Company
+        // profile" link, only the address in window.detailData.
+        let script = r#"<script>window.detailData = {"globalData":{"seller":{"companyProfileUrl":"https://zl9809.en.alibaba.com/company_profile.html","subDomain":"zl9809.en.alibaba.com"}}};</script>"#;
+        let html = product_page(BADGED_CARD, TIERS, script);
+        assert_eq!(
+            AlibabaScraper.extract_company_profile_url(&html).as_deref(),
+            Some("https://zl9809.en.alibaba.com/company_profile.html")
+        );
+        // Only the shop address.
+        let script = r#"<script>window.detailData = {"globalData":{"seller":{"subDomain":"ZL9809.m.en.alibaba.com"}}};</script>"#;
+        assert_eq!(
+            AlibabaScraper
+                .extract_company_profile_url(&product_page(BADGED_CARD, TIERS, script))
+                .as_deref(),
+            Some("https://zl9809.en.alibaba.com/company_profile.html")
+        );
+        // Never another site.
+        let script = r#"<script>window.detailData = {"globalData":{"seller":{"companyProfileUrl":"https://evil.example/company_profile.html"}}};</script>"#;
+        assert_eq!(
+            AlibabaScraper.extract_company_profile_url(&product_page(BADGED_CARD, TIERS, script)),
+            None
+        );
+        // The company's own page has no product data: nothing to load.
+        let own = r#"<html><head><link rel="canonical" href="https://zl9809.en.alibaba.com/"/></head></html>"#;
+        assert_eq!(AlibabaScraper.extract_company_profile_url(own), None);
+    }
+
+    // Company facts module from the real "Guangdong Boyue" company page.
+    const BOYUE_FACTS: &str = r#"<!DOCTYPE html><html><body>
+<div module-data='%7B%22mds%22%3A%7B%22moduleData%22%3A%7B%22data%22%3A%7B%22companyHasPassOnsite%22%3Atrue%2C%22companyNumberOfEmployees%22%3A%7B%22title%22%3A%22Total Employees%22%2C%22value%22%3A%22Above 1000 People%22%7D%2C%22companyTotalRevenue%22%3A%7B%22title%22%3A%22Total Annual Revenue%22%2C%22value%22%3A%22Above US%24100 Million%22%7D%2C%22companyEstablishedYear%22%3A%7B%22authType%22%3A%22onsite%22%2C%22value%22%3A2026%7D%2C%22companyHasPassAssessment%22%3A%7B%22title%22%3A%22Supplier Assessment%22%2C%22value%22%3Afalse%7D%7D%7D%7D%7D'></div>
+</body></html>"#;
+
+    #[test]
+    fn company_page_gives_employees_revenue_and_on_site_check() {
+        let supplier = AlibabaScraper.parse_supplier(&product_page(BADGED_CARD, TIERS, ""), "u");
+        let s = AlibabaScraper.enrich_from_company_profile(supplier, BOYUE_FACTS);
+        assert_eq!(s.employee_count.as_deref(), Some("Above 1000 People"));
+        assert_eq!(s.year_established.as_deref(), Some("2026"));
+        assert!(
+            s.company_description
+                .unwrap()
+                .contains("Total annual revenue: Above US$100 Million (stated by the supplier).")
+        );
+
+        let record = AlibabaScraper.supplier_record(YINGMO_DATA).map(|mut r| {
+            r.checked_by_platform = false;
+            r
+        });
+        let r = AlibabaScraper
+            .enrich_record_from_company_profile(record, BOYUE_FACTS)
+            .unwrap();
+        assert!(r.checked_by_platform);
+        assert_eq!(r.orders_6_months, Some(197));
+        // Without a record from the product page, one is made.
+        let r = AlibabaScraper
+            .enrich_record_from_company_profile(None, BOYUE_FACTS)
+            .unwrap();
+        assert!(r.checked_by_platform);
+        assert_eq!(r.platform, "Alibaba");
+        // No check on the page: the record is left as it was.
+        assert!(
+            AlibabaScraper
+                .enrich_record_from_company_profile(None, SHOP_HEADER)
+                .is_none()
+        );
     }
 
     #[test]

@@ -1,4 +1,6 @@
-use super::{B2bListingProfile, B2bScraper, B2bSupplierProfile, SupplierRecord};
+use crate::services::sources::b2b::{
+    B2bListingProfile, B2bScraper, B2bSupplierProfile, SupplierRecord,
+};
 use chrono::{Datelike, Utc};
 use scraper::{ElementRef, Html, Selector};
 

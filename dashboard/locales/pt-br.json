@@ -16,6 +16,7 @@
   "dash.table.listing": "Anúncio",
   "dash.table.risk": "Risco",
   "dash.table.reported": "Denunciado",
+  "dash.table.platform": "Plataforma",
   "dash.reports.title": "Denúncias de Fraude",
   "dash.reports.reason": "Motivo",
   "dash.reports.platform": "Plataforma",
@@ -287,5 +288,7 @@
   "dash.detail.one_link": "1 link",
   "dash.detail.links": "{n} links",
   "dash.detail.not_found_on": "Não encontrado em {list}",
-  "dash.detail.social_presence": "Verificação de presença social"
+  "dash.detail.social_presence": "Verificação de presença social",
+  "dash.detail.open_on": "Abrir em {platform}",
+  "dash.detail.open_listing": "Abrir anúncio"
 }

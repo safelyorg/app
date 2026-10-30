@@ -65,6 +65,8 @@ pub struct PlatformRule {
 #[derive(Debug, Deserialize)]
 pub struct PlatformStandard {
     pub id: String,
+    /// The country folder its reader is in: services/sources/b2b/{country}/.
+    pub country: String,
     pub name: String,
     pub pages_read: Vec<String>,
 }
@@ -231,6 +233,12 @@ mod tests {
         for p in &b2b().platforms {
             assert!(get_scraper_for_platform(&p.id).is_some(), "{}", p.id);
             assert!(!p.pages_read.is_empty(), "{}", p.id);
+            // Its reader is in the country folder the file names.
+            let file = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("services/sources/b2b")
+                .join(&p.country)
+                .join(format!("{}.rs", p.id));
+            assert!(file.exists(), "{} is not at {}", p.id, file.display());
         }
         for rule in b2b().platform_rules.values() {
             for id in &rule.platforms {

@@ -18,7 +18,9 @@
 //! the business licence. "Diamond Member" / "Gold Member" are paid
 //! membership levels, never a check on the company.
 
-use super::{B2bListingProfile, B2bScraper, B2bSupplierProfile, SupplierRecord};
+use crate::services::sources::b2b::{
+    B2bListingProfile, B2bScraper, B2bSupplierProfile, SupplierRecord,
+};
 use chrono::{Datelike, Utc};
 use regex::Regex;
 use scraper::{ElementRef, Html, Node, Selector};

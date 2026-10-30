@@ -9,11 +9,11 @@ use crate::{
         shared::whois::WhoisResult,
         sources::b2b::{
             B2bListingProfile, B2bSupplierProfile, SupplierRecord,
-            globalsources::{
-                TRADE_SHOW_ONLY as GS_TRADE_SHOW_ONLY, VERIFIED_PREFIX as GS_VERIFIED_PREFIX,
-            },
-            madeinchina::{
+            china::madeinchina::{
                 AUDITED_PREFIX as MIC_AUDITED_PREFIX, LICENCE_CHECKED as MIC_LICENCE_CHECKED,
+            },
+            hong_kong::globalsources::{
+                TRADE_SHOW_ONLY as GS_TRADE_SHOW_ONLY, VERIFIED_PREFIX as GS_VERIFIED_PREFIX,
             },
         },
     },

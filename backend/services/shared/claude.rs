@@ -644,6 +644,11 @@ fn b2b_content_with(arg: &CallB2bClaudeArguments, photos_blocked: bool) -> Strin
         stated information (name, founding year, scale) hangs together
         coherently; false ONLY if you can name a real, concrete
         inconsistency. Missing fields alone are not an inconsistency. A
+        company founded this year or last year that states a very large
+        size (over 500 employees, or yearly revenue over US$10 million)
+        IS a real, concrete inconsistency - say which figure and the
+        founding year - unless its own description explains it (for
+        example, a new branch of an older group). A
         broad company name (see COMPANY NAMES above) is consistent when
         the company's own description, business type or main products
         cover what it sells (e.g. "hardware product customization" covers
@@ -1043,6 +1048,9 @@ mod b2b_prompt_tests {
             "missing details: registration or tax number, street address, founding year"
         ));
         assert!(flat.contains("a company name that looks unusual or made up (say so plainly"));
+        assert!(
+            flat.contains("company founded this year or last year that states a very large size")
+        );
         assert!(
             flat.contains(
                 "how long the company has been on this or any platform (years on Alibaba"

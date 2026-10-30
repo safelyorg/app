@@ -6,6 +6,7 @@ use crate::{
         features::auth::{extract_user_id, find_user_by_id, set_login_method},
         features::dashboard::{delete_user_account, unlink_google_account},
         features::history::{get_history_detail, get_user_history, get_user_reports},
+        features::signals::platform_display_name,
         features::templates::get_tera,
     },
 };
@@ -34,6 +35,9 @@ struct HistoryRow {
     risk_score: i16,
     listing_title: Option<String>,
     listing_url: String,
+    /// The platform's name as buyers know it ("Alibaba", "Wholesale
+    /// Central"), for the Platform column.
+    platform_name: String,
     seller_name: Option<String>,
     reported: bool,
     search_text: String,
@@ -99,10 +103,13 @@ pub async fn get_history_html(
     let rows: Vec<HistoryRow> = items
         .into_iter()
         .map(|item| {
+            let platform_name = platform_display_name(&item.platform);
+            // The search box also finds scans by platform ("alibaba").
             let search_text = format!(
-                "{} {}",
+                "{} {} {}",
                 item.listing_title.as_deref().unwrap_or(""),
-                item.seller_name.as_deref().unwrap_or("")
+                item.seller_name.as_deref().unwrap_or(""),
+                platform_name
             )
             .to_lowercase();
 
@@ -113,6 +120,7 @@ pub async fn get_history_html(
                 risk_score: item.risk_score,
                 listing_title: item.listing_title,
                 listing_url: item.listing_url,
+                platform_name,
                 seller_name: item.seller_name,
                 reported: item.reported,
                 search_text,

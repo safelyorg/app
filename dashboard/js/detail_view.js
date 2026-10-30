@@ -296,6 +296,14 @@ function platformName(platform) {
         return "";
     return PLATFORM_NAMES[platform.toLowerCase()] || platform;
 }
+// The button that opens the original listing: "Open on Alibaba", or
+// "Open listing" when the platform is not known.
+function listingLinkLabel(platform) {
+    const name = platformName(platform);
+    return name
+        ? t("dash.detail.open_on", "Open on {platform}").replace("{platform}", name)
+        : t("dash.detail.open_listing", "Open listing");
+}
 function capitalizeFirst(str) {
     return str ? str.charAt(0).toUpperCase() + str.slice(1) : str;
 }
@@ -687,7 +695,13 @@ function renderDetailBody(data) {
     const linkEl = document.getElementById("detail-listing-link");
     if (linkEl) {
         if (data.listing_url) {
+            const label = listingLinkLabel(data.platform);
             linkEl.href = data.listing_url;
+            linkEl.title = label;
+            linkEl.setAttribute("aria-label", label);
+            const textEl = document.getElementById("detail-listing-link-text");
+            if (textEl)
+                textEl.textContent = label;
             linkEl.classList.remove("hidden");
         }
         else {
