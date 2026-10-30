@@ -476,9 +476,40 @@ fn read_founding_year(text: &str) -> Option<i32> {
 /// "N/A" and similar words count as no year (see stated_founding_year).
 pub fn build_b2b_company_age_signal(supplier: &B2bSupplierProfile) -> Signal {
     let Some(year_str) = stated_founding_year(supplier.year_established.as_deref()) else {
+        // Still a warning. On a platform that has no founding-year field
+        // the seller could not have filled it in, so the text says that
+        // instead of "this company does not say". What the seller's own
+        // text claims about its years in business is added, marked as
+        // not checked. The join year is added later (apply_supplier_record).
+        let no_field = NO_FOUNDING_YEAR_PLATFORMS.contains(&supplier.source_platform.as_str());
+        let first = if no_field {
+            format!(
+                "{} does not show when a company was founded.",
+                platform_display_name(&supplier.source_platform)
+            )
+        } else {
+            "This company does not say when it was founded, so you cannot tell how new it is."
+                .to_string()
+        };
+        let ask = if no_field {
+            "Ask the supplier for its business licence to see the founding year."
+        } else {
+            "Ask the supplier for its founding year and business licence."
+        };
+        let claim = supplier
+            .company_description
+            .as_deref()
+            .and_then(claimed_time_in_business)
+            .map(|q| {
+                format!(
+                    " {} \"{}\" - that is the supplier's own claim, {}",
+                    CLAIM_START, q, CLAIM_END
+                )
+            })
+            .unwrap_or_default();
         return Signal {
             label: "Account age".to_string(),
-            sub: "This company does not say when it was founded, so you cannot tell how new it is. Ask the supplier for its founding year and business licence.".to_string(),
+            sub: format!("{}{} {}", first, claim, ask),
             value: "Not provided".to_string(),
             signal_type: "caution".to_string(),
             category: "company".to_string(),
@@ -533,6 +564,87 @@ pub fn build_b2b_company_age_signal(supplier: &B2bSupplierProfile) -> Signal {
     }
 }
 
+/// Platforms whose pages have no founding-year field for any supplier
+/// (Wholesale Central shows only "Member since"). A missing year there
+/// is still a warning, but the card does not blame the seller for it.
+pub const NO_FOUNDING_YEAR_PLATFORMS: [&str; 1] = ["wholesalecentral"];
+
+/// Start and end of the sentence quoting what the seller's own text
+/// says about its years in business, so it can be kept when the card's
+/// text is rewritten (see apply_supplier_record).
+const CLAIM_START: &str = "Its own description says";
+const CLAIM_END: &str = "not checked.";
+
+/// Start of the last sentence on the "Not provided" card.
+const ASK_SUPPLIER: &str = "Ask the supplier for";
+
+/// Ways a seller's own text says how long it has been in business:
+/// "for over 15 years", "20+ years", "10 years of experience",
+/// "since 2008", "established in 1998". A bare "3 years" is not enough
+/// (it is often a warranty or a product's life).
+static TIME_IN_BUSINESS: LazyLock<Vec<Regex>> = LazyLock::new(|| {
+    [
+        r"(?i)\b(?:for\s+)?(?:over|more\s+than|nearly|almost)\s+\d{1,3}\+?\s+years?\b",
+        r"(?i)\b\d{1,3}\+\s*years?\b",
+        r"(?i)\b\d{1,3}\s+years?\s+(?:of\s+)?(?:experience|in\s+(?:the\s+)?(?:business|industry))",
+        r"(?i)\b(?:since|founded\s+in|established\s+in|founded|established)\s+(?:18|19|20)\d{2}\b",
+    ]
+    .iter()
+    .map(|p| Regex::new(p).expect("valid pattern"))
+    .collect()
+});
+
+/// Words near a match that show it is not about the company's age.
+const NOT_COMPANY_AGE: &[&str] = &[
+    "warranty",
+    "guarantee",
+    "lifespan",
+    "life span",
+    " old",
+    "money-back",
+];
+
+/// What the seller's own text claims about how long it has been in
+/// business, quoted as written ("For over 15 years"). None when the text
+/// says nothing like that. A year in the future is ignored.
+pub fn claimed_time_in_business(text: &str) -> Option<String> {
+    let current_year = Utc::now().year();
+    for pattern in TIME_IN_BUSINESS.iter() {
+        for m in pattern.find_iter(text) {
+            let before = text[..m.start()].chars().rev().take(30).collect::<String>();
+            let before: String = before.chars().rev().collect();
+            let after: String = text[m.end()..].chars().take(30).collect();
+            let near = format!("{} {}", before, after).to_lowercase();
+            if NOT_COMPANY_AGE.iter().any(|w| near.contains(w)) {
+                continue;
+            }
+            let quote = m.as_str().trim();
+            let year_ok = quote
+                .rsplit(|c: char| !c.is_ascii_digit())
+                .find(|n| n.len() == 4)
+                .and_then(|y| y.parse::<i32>().ok())
+                .is_none_or(|y| y <= current_year);
+            if year_ok {
+                return Some(quote.to_string());
+            }
+        }
+    }
+    None
+}
+
+/// The "Its own description says ..." sentence from a card's text, with
+/// a space in front, or "" when there is none.
+fn claim_sentence(sub: &str) -> String {
+    let Some(start) = sub.find(CLAIM_START) else {
+        return String::new();
+    };
+    let rest = &sub[start..];
+    match rest.find(CLAIM_END) {
+        Some(end) => format!(" {}", &rest[..end + CLAIM_END.len()]),
+        None => String::new(),
+    }
+}
+
 /// Uses the platform's own record of a supplier (see SupplierRecord in
 /// b2b_scrapers - only Alibaba has one for now) to correct two cards
 /// and add one. Runs after the normal B2B cards are built and before
@@ -547,7 +659,8 @@ pub fn build_b2b_company_age_signal(supplier: &B2bSupplierProfile) -> Signal {
 /// - "Account age": when no founding year was found but the account
 ///   has been on the platform for 2 years or more, it shows those
 ///   years as info instead of the "Not provided" warning. Under 2
-///   years the warning stays - a brand-new account is worth noting.
+///   years the warning stays - a brand-new account is worth noting -
+///   and the year it joined is added to the text.
 /// - "Seller track record" (new): the platform's own figures - orders
 ///   in the last 6 months, rating, on-time rate, reorder rate.
 pub fn apply_supplier_record(signals: &mut Vec<Signal>, record: Option<&SupplierRecord>) {
@@ -600,13 +713,35 @@ pub fn apply_supplier_record(signals: &mut Vec<Signal>, record: Option<&Supplier
             .iter_mut()
             .find(|s| s.label == "Account age" && s.value == "Not provided")
         {
+            let claim = claim_sentence(&s.sub);
             s.value = years_text(y);
             s.signal_type = "info".to_string();
             s.sub = format!(
-                "This company does not show its founding year, but its account has been on {p} for {y}. That is how long it has sold on {p}, not how old the company is - ask the supplier for its business licence to see the founding year.",
+                "This company does not show its founding year, but its account has been on {p} for {y}. That is how long it has sold on {p}, not how old the company is - ask the supplier for its business licence to see the founding year.{claim}",
                 p = platform,
-                y = years_text(y)
+                y = years_text(y),
+                claim = claim
             );
+        }
+    }
+
+    // No founding year and a new account (under 2 years, so the card is
+    // still the "Not provided" warning): say when it joined, so the
+    // buyer knows the platform has no record of it before that.
+    if let Some(joined) = r.joined_platform_year {
+        if let Some(s) = signals
+            .iter_mut()
+            .find(|s| s.label == "Account age" && s.value == "Not provided")
+        {
+            let note = format!(
+                "This supplier joined {p} only in {joined}, so {p} has no record of it before that.",
+                p = platform,
+                joined = joined
+            );
+            s.sub = match s.sub.find(ASK_SUPPLIER) {
+                Some(at) => format!("{}{} {}", &s.sub[..at], note, &s.sub[at..]),
+                None => format!("{} {}", s.sub.trim(), note),
+            };
         }
     }
 
@@ -2857,6 +2992,114 @@ mod b2b_signal_tests {
         assert!(cards.is_empty());
         apply_supplier_claims(&mut cards, None, &s, &l);
         assert!(cards.is_empty());
+    }
+
+    /// Like the real iPhoenix Technology Corp. page on Wholesale Central
+    /// (Oct 2026): no founding-year field, "For over 15 years" in its own
+    /// text, a member since 2026.
+    fn iphoenix() -> (SupplierRecord, B2bSupplierProfile) {
+        let s = B2bSupplierProfile {
+            source_platform: "wholesalecentral".into(),
+            company_description: Some(
+                "Address: 11268 Rust St., South El Monte, CA 91733, United States.\niPhoenix Technology Corporation is a leading importer of Bluetooth speakers. For over 15 years, we have been dedicated to bringing joy to music lovers.".into(),
+            ),
+            ..Default::default()
+        };
+        let r = SupplierRecord {
+            platform: "Wholesale Central".into(),
+            years_on_platform: Some(0),
+            joined_platform_year: Some(2026),
+            ..Default::default()
+        };
+        (r, s)
+    }
+
+    #[test]
+    fn no_founding_year_field_is_not_blamed_on_the_seller() {
+        let (r, s) = iphoenix();
+        let mut cards = vec![build_b2b_company_age_signal(&s)];
+        assert_eq!(
+            cards[0].sub,
+            "Wholesale Central does not show when a company was founded. Its own description says \"For over 15 years\" - that is the supplier's own claim, not checked. Ask the supplier for its business licence to see the founding year."
+        );
+        apply_supplier_record(&mut cards, Some(&r));
+        let a = get(&cards, "Account age");
+        assert_eq!(a.value, "Not provided");
+        assert_eq!(a.signal_type, "caution", "still a warning");
+        assert_eq!(
+            a.sub,
+            "Wholesale Central does not show when a company was founded. Its own description says \"For over 15 years\" - that is the supplier's own claim, not checked. This supplier joined Wholesale Central only in 2026, so Wholesale Central has no record of it before that. Ask the supplier for its business licence to see the founding year."
+        );
+    }
+
+    #[test]
+    fn other_platforms_keep_their_text_and_get_the_claim_and_join_year() {
+        let (_, mut s) = iphoenix();
+        s.source_platform = "b2bmap".into();
+        s.company_description = None;
+        let card = build_b2b_company_age_signal(&s);
+        assert_eq!(
+            card.sub,
+            "This company does not say when it was founded, so you cannot tell how new it is. Ask the supplier for its founding year and business licence."
+        );
+        s.company_description = Some("Trading since 2008 with buyers in Europe.".into());
+        let mut cards = vec![build_b2b_company_age_signal(&s)];
+        let r = SupplierRecord {
+            platform: "B2BMap".into(),
+            years_on_platform: Some(0),
+            joined_platform_year: Some(2026),
+            ..Default::default()
+        };
+        apply_supplier_record(&mut cards, Some(&r));
+        assert_eq!(
+            get(&cards, "Account age").sub,
+            "This company does not say when it was founded, so you cannot tell how new it is. Its own description says \"since 2008\" - that is the supplier's own claim, not checked. This supplier joined B2BMap only in 2026, so B2BMap has no record of it before that. Ask the supplier for its founding year and business licence."
+        );
+    }
+
+    #[test]
+    fn two_years_on_the_platform_keeps_the_claim() {
+        let (mut r, s) = iphoenix();
+        r.years_on_platform = Some(3);
+        r.joined_platform_year = Some(Utc::now().year() - 3);
+        let mut cards = vec![build_b2b_company_age_signal(&s)];
+        apply_supplier_record(&mut cards, Some(&r));
+        let a = get(&cards, "Account age");
+        assert_eq!(a.signal_type, "info");
+        assert!(a.sub.ends_with("Its own description says \"For over 15 years\" - that is the supplier's own claim, not checked."), "{}", a.sub);
+        assert!(!a.sub.contains("joined"), "not a new account");
+    }
+
+    #[test]
+    fn claims_about_years_in_business_are_found() {
+        for (text, claim) in [
+            ("For over 15 years, we have served", "For over 15 years"),
+            ("with 20+ years in apparel", "20+ years"),
+            (
+                "We have 10 years of experience in sportswear",
+                "10 years of experience",
+            ),
+            ("more than 30 years in the business", "more than 30 years"),
+            ("Established in 1998 in Sialkot", "Established in 1998"),
+        ] {
+            assert_eq!(
+                claimed_time_in_business(text).as_deref(),
+                Some(claim),
+                "{text}"
+            );
+        }
+        for text in [
+            "Every booth has a 3-year warranty",
+            "a three-year warranty and over 2 years of guarantee",
+            "warranty for over 2 years",
+            "for children over 3 years old",
+            "present in over 31 countries",
+            "built for a lifespan of over 10 years",
+            "since 2999",
+            "delivery within 4-6 weeks",
+        ] {
+            assert_eq!(claimed_time_in_business(text), None, "{text}");
+        }
     }
 
     #[test]
