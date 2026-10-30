@@ -45,7 +45,7 @@ impl B2bScraper for B2brazilScraper {
             }
         }
 
-        let (contact_name, contact_phone, contact_location) =
+        let (contact_name, contact_phone, contact_location, hidden_phone) =
             extract_contact_and_location(&document);
         let contact_name = contact_name.and_then(|n| clean_masked_name(&n));
         let country = contact_location.or(country);
@@ -91,7 +91,7 @@ impl B2bScraper for B2brazilScraper {
             contact_name,
             contact_phone,
             badge_honorific: None,
-            company_description: None,
+            company_description: hidden_phone.map(|shown| hidden_phone_note(&shown)),
             website_url: None,
         }
     }
@@ -122,6 +122,13 @@ impl B2bScraper for B2brazilScraper {
                         }
                     })
                     .filter(|v| v != "Not informed");
+                // "Others" says nothing about how to pay, so it is not
+                // counted as a payment type.
+                let value = if label == "Type of Payment" {
+                    value.filter(|v| !is_other(v))
+                } else {
+                    value
+                };
                 fields.insert(label, value);
             }
         }
@@ -186,6 +193,18 @@ impl B2bScraper for B2brazilScraper {
         profile_html: &str,
     ) -> B2bSupplierProfile {
         let document = Html::parse_document(profile_html);
+        // The hidden-phone note from the product page is kept after the
+        // company's own text (the company page shows the same block).
+        let note = supplier
+            .company_description
+            .as_deref()
+            .and_then(|d| d.lines().find(|l| l.starts_with(HIDDEN_PHONE_PREFIX)))
+            .map(str::to_string)
+            .or_else(|| {
+                extract_contact_and_location(&document)
+                    .3
+                    .map(|shown| hidden_phone_note(&shown))
+            });
         if let Ok(sel) = Selector::parse(".section-content-about div") {
             if let Some(el) = document.select(&sel).next() {
                 let text = el.text().collect::<String>();
@@ -193,6 +212,18 @@ impl B2bScraper for B2brazilScraper {
                 if !trimmed.is_empty() {
                     supplier.company_description = Some(decode_leftover_entities(trimmed));
                 }
+            }
+        }
+        if let Some(note) = note {
+            let has_note = supplier
+                .company_description
+                .as_deref()
+                .is_some_and(|d| d.contains(HIDDEN_PHONE_PREFIX));
+            if !has_note {
+                supplier.company_description = Some(match supplier.company_description.take() {
+                    Some(d) => format!("{d}\n{note}"),
+                    None => note,
+                });
             }
         }
         supplier
@@ -243,6 +274,28 @@ impl B2bScraper for B2brazilScraper {
         }
         has_company_lists(&record).then_some(record)
     }
+}
+
+/// Start of the line that says B2Brazil hides the supplier's phone.
+/// The prompt's B2Brazil facts (claude.rs) explain what it means.
+pub const HIDDEN_PHONE_PREFIX: &str = "Phone hidden by B2Brazil:";
+
+/// "+55 35********" -> "Phone hidden by B2Brazil: the supplier gave a
+/// phone number, but B2Brazil shows only "+55 35********" to visitors
+/// who are not signed in."
+fn hidden_phone_note(shown: &str) -> String {
+    format!(
+        "{HIDDEN_PHONE_PREFIX} the supplier gave a phone number, but B2Brazil shows only \"{}\" to visitors who are not signed in.",
+        shown.split_whitespace().collect::<Vec<_>>().join(" ")
+    )
+}
+
+/// "Others", "Other" - a payment type that names no way to pay.
+fn is_other(value: &str) -> bool {
+    matches!(
+        value.trim().trim_end_matches('.').to_lowercase().as_str(),
+        "other" | "others" | "outros" | "otros"
+    )
 }
 
 fn new_record() -> SupplierRecord {
@@ -626,6 +679,75 @@ mod tests {
         );
     }
 
+    /// Like the real Silti page (Oct 2026): the phone hidden with stars,
+    /// and "Type of Payment: Others".
+    const SILTI_PRODUCT: &str = r#"<html><body>
+        <h2 class="section-product-title">5002 - TOP MOTION DESIGN WITH CROSS STRAP</h2>
+        <div class="section-product-item"><h3>Unit Price:</h3><p>Not informed</p></div>
+        <div class="section-product-item"><h3>Type of Payment:</h3><p>Others</p></div>
+        <div class="section-product-item"><h3>Delivery Timeframe:</h3><p>Immediate</p></div>
+        <ul class="section-content-more-info-list">
+            <li><img data-src="//cdn.b2brazil.com/assets/images/user-icon-x.svg"> Tatiane ********</li>
+            <li><img data-src="//cdn.b2brazil.com/assets/images/phone-x.svg"> +55 35********</li>
+            <li><img data-src="//cdn.b2brazil.com/assets/images/map-marker-x.svg"> Juruaia / MG | Brazil</li>
+        </ul>
+    </body></html>"#;
+
+    #[test]
+    fn a_hidden_phone_is_noted_but_never_used_as_the_phone() {
+        let s = B2brazilScraper.parse_supplier(SILTI_PRODUCT, "u");
+        assert_eq!(s.contact_phone, None, "a hidden number cannot be used");
+        assert_eq!(s.contact_name.as_deref(), Some("Tatiane"));
+        assert_eq!(
+            s.company_description.as_deref(),
+            Some(
+                "Phone hidden by B2Brazil: the supplier gave a phone number, but B2Brazil shows only \"+55 35********\" to visitors who are not signed in."
+            )
+        );
+        // Signed in, the full number is shown: it is the phone, no note.
+        let signed_in = SILTI_PRODUCT.replace("+55 35********", "+55 35 99123 4567");
+        let s = B2brazilScraper.parse_supplier(&signed_in, "u");
+        assert_eq!(s.contact_phone.as_deref(), Some("+55 35 99123 4567"));
+        assert_eq!(s.company_description, None);
+    }
+
+    #[test]
+    fn the_hidden_phone_note_stays_after_the_company_text() {
+        let company = r#"<html><body>
+            <div class="section-content-about"><div>We are Silti, a Brazilian Beach and Fitness fashion brand.</div></div>
+            <ul class="section-content-more-info-list">
+                <li><img data-src="//cdn.b2brazil.com/assets/images/phone-x.svg"> +55 35********</li>
+            </ul></body></html>"#;
+        let s = B2brazilScraper.parse_supplier(SILTI_PRODUCT, "u");
+        let s = B2brazilScraper.enrich_from_company_profile(s, company);
+        let d = s.company_description.unwrap();
+        assert!(d.starts_with("We are Silti, a Brazilian Beach and Fitness fashion brand.\n"));
+        assert_eq!(d.matches(HIDDEN_PHONE_PREFIX).count(), 1);
+        // Only the company page shows it: still noted.
+        let s = B2brazilScraper
+            .enrich_from_company_profile(B2brazilScraper.parse_supplier("", "u"), company);
+        assert!(s.company_description.unwrap().contains(HIDDEN_PHONE_PREFIX));
+    }
+
+    #[test]
+    fn others_is_not_a_payment_type() {
+        let l = B2brazilScraper.parse_listing(SILTI_PRODUCT, "u");
+        assert_eq!(l.payment_type, None);
+        assert_eq!(l.delivery_timeframe.as_deref(), Some("Immediate"));
+        let real = SILTI_PRODUCT.replace("<p>Others</p>", "<p>T/T, L/C</p>");
+        assert_eq!(
+            B2brazilScraper
+                .parse_listing(&real, "u")
+                .payment_type
+                .as_deref(),
+            Some("T/T, L/C")
+        );
+        for other in ["Other", "others.", "Outros", "OTHERS"] {
+            assert!(is_other(other), "{other}");
+        }
+        assert!(!is_other("Other methods: T/T"));
+    }
+
     #[test]
     fn fully_masked_contact_name_is_none() {
         assert_eq!(clean_masked_name("********"), None);
@@ -822,16 +944,23 @@ mod tests {
 /// - this block gives a real city and state, e.g. "MACAE / RJ".
 ///
 /// The phone number here is often deliberately masked by B2Brazil
-/// itself (e.g. "+55 22********") until a paid tier unlocks it - a
-/// masked, partial number has no real value for identity matching, so
-/// it's deliberately treated the same as "not present" here, rather
-/// than capturing a useless fragment.
+/// itself (e.g. "+55 22********") for visitors who are not signed in -
+/// a masked, partial number cannot be used to reach the supplier, so it
+/// is never the contact phone. It is returned separately (the last
+/// value, as shown), so the result can say the supplier did give a
+/// phone that B2Brazil hides.
 fn extract_contact_and_location(
     document: &Html,
-) -> (Option<String>, Option<String>, Option<String>) {
+) -> (
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+) {
     let mut contact_name = None;
     let mut contact_phone = None;
     let mut location = None;
+    let mut hidden_phone = None;
 
     if let Ok(li_sel) = Selector::parse("ul.section-content-more-info-list li") {
         for li in document.select(&li_sel) {
@@ -851,11 +980,13 @@ fn extract_contact_and_location(
             } else if html_lower.contains("phone-") {
                 if !text.contains('*') {
                     contact_phone = Some(text);
+                } else if text.chars().any(|c| c.is_ascii_digit()) {
+                    hidden_phone = Some(text);
                 }
             } else if html_lower.contains("map-marker") {
                 location = Some(text);
             }
         }
     }
-    (contact_name, contact_phone, location)
+    (contact_name, contact_phone, location, hidden_phone)
 }

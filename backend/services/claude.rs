@@ -170,7 +170,7 @@ pub struct CallB2bClaudeArguments<'a> {
 fn platform_facts(platform: &str) -> Option<&'static str> {
     match platform {
         "b2brazil" => Some(
-            "masks supplier contact names (e.g. \"Smith ********\"), so a contact name shown here may be only the part the platform leaves visible",
+            "masks supplier contact names (e.g. \"Smith ********\"), so a contact name shown here may be only the part the platform leaves visible. It also hides supplier phone numbers with stars (e.g. \"+55 35********\") from visitors who are not signed in: when the company description has a \"Phone hidden by B2Brazil\" line, the supplier DID give a phone number, but it cannot be used. Contact is still not confirmed by that number, but never say that no phone number was provided - say the supplier gave one that B2Brazil hides, and that the buyer can see it by signing in to B2Brazil",
         ),
         "exporthub" => {
             Some("does not verify companies, so a missing verified badge is normal there")
@@ -948,6 +948,18 @@ mod b2b_prompt_tests {
         assert!(p.contains("Platform facts: globalsources shows \"Verified Supplier\""));
         let p = b2b_content(&args("alibaba", "", ""));
         assert!(!p.contains("Platform facts:"));
+    }
+
+    #[test]
+    fn a_phone_hidden_by_b2brazil_is_not_called_missing() {
+        let p = b2b_content(&args("b2brazil", "", ""));
+        let flat = p.split_whitespace().collect::<Vec<_>>().join(" ");
+        assert!(
+            flat.contains("when the company description has a \"Phone hidden by B2Brazil\" line")
+        );
+        assert!(flat.contains("never say that no phone number was provided"));
+        // Other platforms do not get it.
+        assert!(!b2b_content(&args("alibaba", "", "")).contains("Phone hidden by B2Brazil"));
     }
 
     #[test]
