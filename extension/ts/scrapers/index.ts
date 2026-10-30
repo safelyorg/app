@@ -1203,22 +1203,39 @@ type DomainCheckResult = LegitimateDomainResult | SuspiciousDomainResult | null;
     return null;
   }
 
-  /// On a TradeWheel product page: the company page, loaded from this
-  /// same site and trimmed. null if it could not be loaded; then
-  /// Safely's server loads it through ScraperAPI.
-  async function fetchTradewheelCompanyPage(): Promise<string | null> {
-    if (!window.location.pathname.startsWith("/p/")) return null;
-    const url = tradewheelCompanyUrl(document);
-    if (!url) return null;
+  /// Loads one TradeWheel page from this same site, trimmed. null if it
+  /// could not be loaded.
+  async function loadTradewheelPage(url: string): Promise<string | null> {
     try {
       const response = await fetch(url, { credentials: "include" });
       if (!response.ok) return null;
       const html = await response.text();
       return madeinchinaTrimmed(new DOMParser().parseFromString(html, "text/html"));
     } catch (e) {
-      console.error("Safely: failed to load the TradeWheel company page", e);
+      console.error("Safely: failed to load the TradeWheel page " + url, e);
       return null;
     }
+  }
+
+  /// On a TradeWheel product page: the company page and its About Us
+  /// page ("/co/{company}/about-us/"), both loaded from this same site and
+  /// trimmed. The company page has the employees and the contact person;
+  /// About Us has the website, the factory details and the company's own
+  /// text. Either is null if it could not be loaded; then Safely's server
+  /// loads that one through ScraperAPI.
+  async function fetchTradewheelCompanyPages(): Promise<{
+    company: string | null;
+    extended: string | null;
+  }> {
+    const none = { company: null, extended: null };
+    if (!window.location.pathname.startsWith("/p/")) return none;
+    const url = tradewheelCompanyUrl(document);
+    if (!url) return none;
+    const [company, extended] = await Promise.all([
+      loadTradewheelPage(url),
+      loadTradewheelPage(url + "about-us/"),
+    ]);
+    return { company, extended };
   }
 
   /// b2bmap's own sections - never a company page. Same list as
@@ -1289,7 +1306,7 @@ type DomainCheckResult = LegitimateDomainResult | SuspiciousDomainResult | null;
   (window as any).__safelyScrapers.fetchB2bmapCompanyPage = fetchB2bmapCompanyPage;
   (window as any).__safelyScrapers.tradewheelPageHtml = tradewheelPageHtml;
   (window as any).__safelyScrapers.tradewheelCompanyUrl = tradewheelCompanyUrl;
-  (window as any).__safelyScrapers.fetchTradewheelCompanyPage = fetchTradewheelCompanyPage;
+  (window as any).__safelyScrapers.fetchTradewheelCompanyPages = fetchTradewheelCompanyPages;
   (window as any).__safelyScrapers.b2brazilPageHtml = b2brazilPageHtml;
   (window as any).__safelyScrapers.b2brazilCompanyUrl = b2brazilCompanyUrl;
   (window as any).__safelyScrapers.fetchB2brazilCompanyPage = fetchB2brazilCompanyPage;

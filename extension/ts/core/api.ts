@@ -33,7 +33,8 @@ interface AnalyzePayload {
   // Platforms in BROWSER_FIRST_PLATFORMS: the supplier's page, loaded
   // in this browser.
   company_page_html?: string | null;
-  // ExportHub only: the supplier's second page ("profile.html").
+  // The supplier's second page: ExportHub's "profile.html", TradeWheel's
+  // About Us page.
   extended_page_html?: string | null;
 }
 interface SocialCandidateLink {
@@ -192,7 +193,8 @@ function formatPlatformName(platform: string | null | undefined): string {
   // both company pages are loaded from here. ThomasNet: the profile
   // page is also the company page, so only that page is sent. B2Brazil:
   // the product page is copied from the tab and the company page is
-  // loaded from here. TradeWheel and B2BMap: the same. Must match
+  // loaded from here. TradeWheel: the same, plus its About Us page
+  // (website, factory details). B2BMap: the same. Must match
   // BROWSER_FIRST_PLATFORMS in
   // backend/services/b2b_scrapers/mod.rs.
   const BROWSER_FIRST_PLATFORMS = [
@@ -448,7 +450,8 @@ function formatPlatformName(platform: string | null | undefined): string {
       // together.
       let pageHtml: string | null = null;
       let companyPageHtml: string | null = null;
-      // Only ExportHub: the company's second page ("profile.html").
+      // The company's second page: ExportHub's "profile.html", TradeWheel's
+      // About Us page.
       let extendedPageHtml: string | null = null;
       const scrapers = (window as any).__safelyScrapers;
       const browserFirst = BROWSER_FIRST_PLATFORMS.indexOf(platform) !== -1;
@@ -523,10 +526,16 @@ function formatPlatformName(platform: string | null | undefined): string {
       } else if (browserFirst && platform === "tradewheel" && scrapers.tradewheelPageHtml) {
         pageHtml = scrapers.tradewheelPageHtml();
         if (pageHtml && pageHtml.length > MAX_PAGE_CHARS) pageHtml = null;
-        if (pageHtml && scrapers.fetchTradewheelCompanyPage) {
-          companyPageHtml = await scrapers.fetchTradewheelCompanyPage();
+        if (pageHtml && scrapers.fetchTradewheelCompanyPages) {
+          const pages = await scrapers.fetchTradewheelCompanyPages();
+          companyPageHtml = pages.company;
+          extendedPageHtml = pages.extended;
           if (companyPageHtml && pageHtml.length + companyPageHtml.length > MAX_PAGE_CHARS) {
             companyPageHtml = null;
+          }
+          const sent = pageHtml.length + (companyPageHtml ? companyPageHtml.length : 0);
+          if (!companyPageHtml || (extendedPageHtml && sent + extendedPageHtml.length > MAX_PAGE_CHARS)) {
+            extendedPageHtml = null;
           }
         }
       } else if (browserFirst && platform === "b2brazil" && scrapers.b2brazilPageHtml) {

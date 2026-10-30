@@ -693,8 +693,10 @@ pub async fn b2b_page_from_browser(
 /// without cookies (tested 2026-10-29). The extension copies the product
 /// page from the tab and loads the company page (/hotsite/{company}).
 /// TradeWheel: the same (tested 2026-10-29). The product page is copied
-/// from the tab and the company page (/co/{company}/) is loaded from the
-/// same site.
+/// from the tab, and the company page (/co/{company}/) and its About Us
+/// page (/co/{company}/about-us/, sent as extended_page_html) are loaded
+/// from the same site. About Us is the only page with the website, the
+/// factory details and the company's own text (phone, email).
 /// B2BMap: the same (tested 2026-10-29). The product page is copied from
 /// the tab and the company page (b2bmap.com/{company}) is loaded from
 /// the same site. With it, every platform reads the browser first and
@@ -736,9 +738,10 @@ fn company_page_matches(scraper: &dyn B2bScraper, listing_html: &str, company_ht
 /// listed or the page is missing or unreadable - analyze.rs then
 /// fetches it through ScraperAPI as before. When the company page from
 /// the browser is missing or wrong, only that page is fetched through
-/// ScraperAPI. The same for the second company page (ExportHub's
-/// profile.html, extended_page_html). The pages are never saved or written to the log (they
-/// can contain the buyer's own account details); only sizes are logged.
+/// ScraperAPI. The same for the second company page (extended_page_html:
+/// ExportHub's profile.html, TradeWheel's About Us page). The pages are
+/// never saved or written to the log (they can contain the buyer's own
+/// account details); only sizes are logged.
 pub async fn b2b_page_from_browser_first(
     platform: &str,
     page_url: &str,
@@ -798,7 +801,8 @@ pub async fn b2b_page_from_browser_first(
                 });
                 listing = scraper.enrich_listing_from_company_profile(listing, company_html);
                 record = scraper.enrich_record_from_company_profile(record.take(), company_html);
-                // The second company page (only ExportHub has one).
+                // The second company page (ExportHub: profile.html,
+                // TradeWheel: About Us). Other platforms have none.
                 match company_url
                     .as_deref()
                     .and_then(|url| scraper.build_extended_profile_url(url))
@@ -866,8 +870,8 @@ pub async fn b2b_page_from_browser_first(
     })
 }
 
-/// Fetches only the second company page (ExportHub's "profile.html")
-/// through ScraperAPI, when the browser's copy could not be used.
+/// Fetches only the second company page (ExportHub's "profile.html",
+/// TradeWheel's About Us page) through ScraperAPI, when the browser's copy could not be used.
 /// Returns true when it loaded.
 async fn enrich_from_extended_page(
     scraper: &dyn B2bScraper,

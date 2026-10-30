@@ -2,8 +2,8 @@ import { describe, it, expect, beforeAll, vi } from "vitest";
 import "./setup-chrome";
 
 // How Safely reads TradeWheel pages in the browser: the product page is
-// copied from the open tab, and the company page is loaded from the
-// same site.
+// copied from the open tab, and the company page and its About Us page
+// are loaded from the same site.
 
 const load = (path: string): Promise<unknown> => import(/* @vite-ignore */ path);
 let scrapers: any;
@@ -55,17 +55,45 @@ describe("TradeWheel pages from the browser", () => {
     expect(html).not.toContain("safely-root");
   });
 
-  it("loads the company page from the same site", async () => {
+  it("loads the company page and its About Us page from the same site", async () => {
     onPage(PRODUCT, BOX);
-    const fetchMock = vi.fn().mockResolvedValue(new Response("<html><body>Established Year 1998</body></html>", { status: 200 }));
+    const fetchMock = vi.fn().mockImplementation((url: string) =>
+      Promise.resolve(
+        new Response(
+          url.endsWith("about-us/")
+            ? "<html><body>Website www.embroiderylinksports.com</body></html>"
+            : "<html><body>Established Year 1998</body></html>",
+          { status: 200 },
+        ),
+      ),
+    );
     vi.stubGlobal("fetch", fetchMock);
-    expect(await scrapers.fetchTradewheelCompanyPage()).toContain("1998");
+    const pages = await scrapers.fetchTradewheelCompanyPages();
+    expect(pages.company).toContain("1998");
+    expect(pages.extended).toContain("www.embroiderylinksports.com");
     expect(fetchMock).toHaveBeenCalledWith(COMPANY, expect.anything());
+    expect(fetchMock).toHaveBeenCalledWith(COMPANY + "about-us/", expect.anything());
+    vi.unstubAllGlobals();
+  });
+
+  it("sends the company page even when About Us fails", async () => {
+    onPage(PRODUCT, BOX);
+    const fetchMock = vi.fn().mockImplementation((url: string) =>
+      Promise.resolve(
+        url.endsWith("about-us/")
+          ? new Response("not found", { status: 404 })
+          : new Response("<html><body>Established Year 1998</body></html>", { status: 200 }),
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const pages = await scrapers.fetchTradewheelCompanyPages();
+    expect(pages.company).toContain("1998");
+    expect(pages.extended).toBe(null);
     vi.unstubAllGlobals();
   });
 
   it("loads nothing on a company page", async () => {
     onPage(COMPANY, BOX);
-    expect(await scrapers.fetchTradewheelCompanyPage()).toBe(null);
+    expect(await scrapers.fetchTradewheelCompanyPages()).toEqual({ company: null, extended: null });
   });
 });

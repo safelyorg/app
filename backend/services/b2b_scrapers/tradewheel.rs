@@ -243,6 +243,119 @@ impl B2bScraper for TradewheelScraper {
         supplier
     }
 
+    /// The company's "About Us" page,
+    /// "https://www.tradewheel.com/co/{company}/about-us/". It shows what
+    /// the company page does not: the website (the company page only
+    /// shows a "Show" button), the factory details and the company's own
+    /// text, which often has its phone number and email.
+    fn build_extended_profile_url(&self, profile_url: &str) -> Option<String> {
+        company_slug(profile_url)
+            .map(|slug| format!("https://www.tradewheel.com/co/{}/about-us/", slug))
+    }
+
+    /// Adds what only the About Us page shows. A value already read from
+    /// the company page is kept.
+    fn enrich_from_extended_profile(
+        &self,
+        mut supplier: B2bSupplierProfile,
+        extended_html: &str,
+    ) -> B2bSupplierProfile {
+        let document = Html::parse_document(extended_html);
+        let mut fields = HashMap::new();
+        read_table_pairs(&document, "tr", &mut fields);
+        let get = |label: &str| -> Option<String> {
+            fields
+                .get(&normalize_label(label))
+                .and_then(|v| non_placeholder(v))
+        };
+
+        fill(
+            &mut supplier.year_established,
+            get("Established Year").or_else(|| get("Year Established")),
+        );
+        fill(&mut supplier.employee_count, get("Total Employees"));
+        fill(
+            &mut supplier.sales_revenue,
+            get("Total Revenue").or_else(|| get("Annual Revenue")),
+        );
+        fill(&mut supplier.export_percentage, get("Export Percentage"));
+
+        // The company's own text, with the emails Cloudflare hides put back.
+        let overview = company_overview(&document);
+
+        // The About Us table shows the real website to every visitor.
+        if supplier.website_url.is_none() {
+            supplier.website_url = get("Website")
+                .filter(|w| looks_like_website(w))
+                .or_else(|| {
+                    overview
+                        .as_deref()
+                        .and_then(|t| value_after_label(t, "website:"))
+                        .filter(|w| looks_like_website(w))
+                });
+        }
+        if supplier.contact_phone.is_none() {
+            supplier.contact_phone = overview.as_deref().and_then(phone_in_text);
+        }
+
+        let mut lines: Vec<String> = Vec::new();
+        // The address, when the company page did not give one.
+        let has_address = supplier
+            .company_description
+            .as_deref()
+            .is_some_and(|d| d.starts_with(ADDRESS_PREFIX));
+        let address = if has_address {
+            None
+        } else {
+            get("Address")
+                .and_then(|a| street_address(&a))
+                .map(|a| address_line(&a))
+        };
+
+        let factory: Vec<String> = [
+            ("Factory Size", "factory size"),
+            ("Total QC Staff", "quality control staff"),
+            ("Total RND Staff", "R&D staff"),
+            ("Number of Production Lines", "production lines"),
+            ("Annual output", "annual output"),
+            ("Average Lead Time", "average lead time"),
+        ]
+        .iter()
+        .filter_map(|(label, name)| get(label).map(|v| format!("{}: {}", name, v)))
+        .collect();
+        if !factory.is_empty() {
+            lines.push(format!("Factory: {}.", factory.join(", ")));
+        }
+        if let Some(email) = overview.as_deref().and_then(email_in_text) {
+            lines.push(format!("Email: {}.", email));
+        }
+        if let Some(text) = overview {
+            let text = if text.chars().count() > MAX_OVERVIEW_CHARS {
+                text.chars().take(MAX_OVERVIEW_CHARS).collect()
+            } else {
+                text
+            };
+            lines.push(format!(
+                "Company overview (written by the supplier): {}",
+                text
+            ));
+        }
+
+        if address.is_some() || !lines.is_empty() {
+            let mut parts: Vec<String> = Vec::new();
+            if let Some(a) = address {
+                parts.push(a);
+            }
+            if let Some(d) = supplier.company_description.take() {
+                parts.push(d);
+            }
+            parts.extend(lines);
+            supplier.company_description = Some(parts.join("\n"));
+        }
+
+        supplier
+    }
+
     /// One seller record per company: the company page's slug,
     /// e.g. "https://www.tradewheel.com/co/fengtai-clothing/" ->
     /// "fengtai-clothing". Every product from that company links to the
@@ -265,6 +378,108 @@ impl B2bScraper for TradewheelScraper {
                     .and_then(|u| company_slug(&u))
             })
     }
+}
+
+/// Longest "Company Overview" text passed on to the check.
+const MAX_OVERVIEW_CHARS: usize = 1500;
+
+/// The "Company Overview" text on the About Us page, without its
+/// heading. Cloudflare hides emails on the page ("[email protected]",
+/// the real address coded in data-cfemail); they are put back. None
+/// when the page has no overview text.
+fn company_overview(document: &Html) -> Option<String> {
+    let sel = Selector::parse(".company-overview").ok()?;
+    let el = document.select(&sel).next()?;
+    let mut text = collapse_whitespace(&el.text().collect::<String>());
+    if let Some(rest) = text.strip_prefix("Company Overview") {
+        text = rest.trim().to_string();
+    }
+    if let Ok(cf_sel) = Selector::parse("[data-cfemail]") {
+        for hidden in el.select(&cf_sel) {
+            if let Some(email) = hidden
+                .value()
+                .attr("data-cfemail")
+                .and_then(decode_cf_email)
+            {
+                text = text.replacen("[email protected]", &email, 1);
+            }
+        }
+    }
+    non_placeholder(&text)
+}
+
+/// Cloudflare's email coding: the first byte is the key, every byte
+/// after it is one letter XOR the key. "5c35323a331c..." -> "info@...".
+fn decode_cf_email(hex: &str) -> Option<String> {
+    if !hex.is_ascii() || hex.len() < 4 || !hex.len().is_multiple_of(2) {
+        return None;
+    }
+    let bytes: Vec<u8> = (0..hex.len())
+        .step_by(2)
+        .map(|i| u8::from_str_radix(&hex[i..i + 2], 16))
+        .collect::<Result<_, _>>()
+        .ok()?;
+    let key = bytes[0];
+    let email: String = bytes[1..].iter().map(|b| (b ^ key) as char).collect();
+    (email.contains('@') && email.is_ascii() && !email.contains(' ')).then_some(email)
+}
+
+/// The first word after a label, e.g. "Website: www.x.com Address: ..."
+/// with "website:" -> "www.x.com". The label is matched ignoring capitals.
+fn value_after_label(text: &str, label: &str) -> Option<String> {
+    let lower = text.to_ascii_lowercase();
+    let start = lower.find(label)? + label.len();
+    text[start..]
+        .split_whitespace()
+        .next()
+        .map(|w| w.trim_end_matches([',', ';']).to_string())
+}
+
+/// The first email address in the text.
+fn email_in_text(text: &str) -> Option<String> {
+    text.split_whitespace()
+        .map(|w| w.trim_matches(|c: char| !c.is_ascii_alphanumeric()))
+        .find(|w| {
+            let mut halves = w.splitn(2, '@');
+            matches!(
+                (halves.next(), halves.next()),
+                (Some(user), Some(domain)) if !user.is_empty() && domain.contains('.')
+            )
+        })
+        .map(str::to_string)
+}
+
+/// Words a phone number follows in the company's own text.
+const PHONE_LABELS: &[&str] = &["whatsapp", "phone", "mobile", "cell", "tel", "contact no"];
+
+/// A phone number written after one of PHONE_LABELS, e.g.
+/// "WhatsApp +92 343 1714847" -> "+92 343 1714847". It must start within
+/// a few characters of the label and have 7 to 15 digits.
+fn phone_in_text(text: &str) -> Option<String> {
+    let lower = text.to_ascii_lowercase();
+    for label in PHONE_LABELS {
+        for (at, _) in lower.match_indices(label) {
+            let after = &text[at + label.len()..];
+            let Some(offset) = after
+                .char_indices()
+                .take(12)
+                .find(|(_, c)| c.is_ascii_digit() || matches!(c, '+' | '('))
+                .map(|(i, _)| i)
+            else {
+                continue;
+            };
+            let run: String = after[offset..]
+                .chars()
+                .take_while(|c| c.is_ascii_digit() || matches!(c, '+' | ' ' | '-' | '(' | ')'))
+                .collect();
+            let run = run.trim().trim_end_matches(['-', '(']).trim().to_string();
+            let digits = run.chars().filter(|c| c.is_ascii_digit()).count();
+            if (7..=15).contains(&digits) {
+                return Some(run);
+            }
+        }
+    }
+    None
 }
 
 /// "https://www.tradewheel.com/co/fengtai-clothing/" -> "fengtai-clothing".
@@ -1326,6 +1541,158 @@ mod tests {
                 .starts_with("Address: Bashir Member Street,")
         );
         assert_eq!(s.country.as_deref(), Some("Pakistan"));
+    }
+
+    // Trimmed from the real Embroidery Link Sports About Us page
+    // (Oct 2026): the website shown to every visitor, the factory
+    // details, and the company's own text with a WhatsApp number and an
+    // email that Cloudflare hides.
+    const ABOUT_US: &str = r##"<html><head><link rel="canonical" href="https://www.tradewheel.com/co/embroiderylinksports/about-us/"></head><body>
+<div class="company-overview desc scrollable-div">
+  <h2 class="secondary-heading">Company Overview</h2>
+  <p><p class="MsoNormal">We are leading manufacturer and exporters of embroidery goods.</p>
+  <p class="MsoNormal">Abdullah Usman <strong>(CEO)</strong></p>
+  <p class="MsoNormal"><strong>WhatsApp</strong> +92 343 1714847</p>
+  <p class="MsoNormal"><strong>Email:</strong> <a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="5c35323a331c39313e2e333538392e25303532372f2c332e282f723f3331">[email&#160;protected]</a></p>
+  <p class="MsoNormal"><strong>Website:</strong> www.embroiderylinksports.com</p></p>
+</div>
+<h3 class="secondary-heading">Company Information</h3>
+<table class="table table-responsive">
+  <tr><td class='td1'>Business Type </td><td> Manufacturer</td></tr>
+  <tr><td class='td1'>Website </td><td> www.embroiderylinksports.com </td></tr>
+  <tr><td class='td1'>Established Year </td><td> 1998</td></tr>
+  <tr><td class='td1'>Address </td><td> Neka Pura, Haider Street No.1, Sialkot, Pakistan.</td></tr>
+</table>
+<h3 class="secondary-heading">Factory Information</h3>
+<table class="table table-responsive">
+  <tr><td class="td1"> Location </td><td> Neka Pura, Sialkot, Pakistan. </td></tr>
+  <tr><td class="td1"> Factory Size </td><td> </td></tr>
+  <tr><td class="td1"> Total QC Staff </td><td> 20 </td></tr>
+  <tr><td class="td1"> Total RND Staff </td><td> 15 </td></tr>
+  <tr><td class="td1"> Number of Production Lines </td><td> 8 </td></tr class="td1">
+  <tr><td class="td1"> Annual output </td><td> </td></tr>
+  <tr><td class="td1"> Average Lead Time </td><td> 1 to 3 week </td></tr>
+</table>
+<table class="table table-responsive">
+  <tr><td class='td1'>Total Revenue </td><td> 20 million $ </td></tr>
+  <tr><td class='td1'>Export Percentage </td><td> 85% </td></tr>
+</table>
+<div class="footer"><span class="__cf_email__" data-cfemail="8be2e5ede4cbfff9eaefeefce3eeeee7a5e8e4e6">[email&#160;protected]</span></div>
+</body></html>"##;
+
+    #[test]
+    fn about_us_page_address_is_built_from_the_company_page() {
+        assert_eq!(
+            TradewheelScraper
+                .build_extended_profile_url("https://www.tradewheel.com/co/embroiderylinksports/")
+                .as_deref(),
+            Some("https://www.tradewheel.com/co/embroiderylinksports/about-us/")
+        );
+        assert_eq!(
+            TradewheelScraper.build_extended_profile_url("https://www.tradewheel.com/p/x-1/"),
+            None
+        );
+        // The About Us page belongs to the same company.
+        assert_eq!(
+            TradewheelScraper.company_key(ABOUT_US).as_deref(),
+            Some("embroiderylinksports")
+        );
+    }
+
+    #[test]
+    fn about_us_page_gives_website_phone_email_and_factory() {
+        // What the company page already gave is kept.
+        let mut supplier = TradewheelScraper.parse_supplier(LISTING, "u");
+        supplier.year_established = Some("1998".to_string());
+        supplier.company_description =
+            Some("Address: Neka Pura, Haider Street No.1, Sialkot, Pakistan.\nBusiness type: Manufacturer.".to_string());
+        let s = TradewheelScraper.enrich_from_extended_profile(supplier, ABOUT_US);
+        assert_eq!(
+            s.website_url.as_deref(),
+            Some("www.embroiderylinksports.com")
+        );
+        assert_eq!(s.contact_phone.as_deref(), Some("+92 343 1714847"));
+        assert_eq!(s.sales_revenue.as_deref(), Some("20 million $"));
+        assert_eq!(s.export_percentage.as_deref(), Some("85%"));
+        let d = s.company_description.unwrap();
+        assert!(d.starts_with("Address: Neka Pura, Haider Street No.1, Sialkot, Pakistan.\nBusiness type: Manufacturer.\n"), "{d}");
+        assert!(
+            d.contains("Factory: quality control staff: 20, R&D staff: 15, production lines: 8, average lead time: 1 to 3 week."),
+            "{d}"
+        );
+        assert!(!d.contains("factory size"), "an empty row is left out");
+        assert!(d.contains("Email: info@embroiderylinksports.com."), "{d}");
+        assert!(
+            !d.contains("tradewheel.com"),
+            "the footer email is TradeWheel's, not the company's"
+        );
+        assert!(
+            d.contains("Company overview (written by the supplier): We are leading manufacturer")
+        );
+        assert_eq!(
+            d.matches("Address:").count(),
+            1,
+            "the address is not added twice"
+        );
+    }
+
+    #[test]
+    fn about_us_page_alone_still_gives_the_address() {
+        let s = TradewheelScraper.enrich_from_extended_profile(
+            TradewheelScraper.parse_supplier(TOPOWER_LISTING, "u"),
+            ABOUT_US,
+        );
+        // The listing's own address is kept, not replaced.
+        assert!(
+            s.company_description
+                .unwrap()
+                .starts_with("Address: Room 1704")
+        );
+        let s =
+            TradewheelScraper.enrich_from_extended_profile(B2bSupplierProfile::default(), ABOUT_US);
+        assert!(
+            s.company_description.unwrap().starts_with(
+                "Address: Neka Pura, Haider Street No.1, Sialkot, Pakistan.\nFactory:"
+            )
+        );
+        assert_eq!(s.year_established.as_deref(), Some("1998"));
+    }
+
+    #[test]
+    fn a_hidden_website_or_short_number_is_not_taken() {
+        let html = ABOUT_US
+            .replace(" www.embroiderylinksports.com </td>", " Show </td>")
+            .replace("<strong>Website:</strong> www.embroiderylinksports.com", "")
+            .replace("+92 343 1714847", "123");
+        let s =
+            TradewheelScraper.enrich_from_extended_profile(B2bSupplierProfile::default(), &html);
+        assert_eq!(s.website_url, None);
+        assert_eq!(s.contact_phone, None);
+    }
+
+    #[test]
+    fn phone_numbers_are_found_only_after_a_label() {
+        assert_eq!(
+            phone_in_text("Tel: 0086-532-1234567 Fax").as_deref(),
+            Some("0086-532-1234567")
+        );
+        assert_eq!(
+            phone_in_text("Mobile/WhatsApp: (92) 300 1234567").as_deref(),
+            Some("(92) 300 1234567")
+        );
+        assert_eq!(phone_in_text("Since 1998 we made 2000000 shirts"), None);
+        assert_eq!(phone_in_text("a hotel 123 rooms"), None);
+    }
+
+    #[test]
+    fn cloudflare_email_is_decoded() {
+        assert_eq!(
+            decode_cf_email("5c35323a331c39313e2e333538392e25303532372f2c332e282f723f3331")
+                .as_deref(),
+            Some("info@embroiderylinksports.com")
+        );
+        assert_eq!(decode_cf_email("zz"), None);
+        assert_eq!(decode_cf_email(""), None);
     }
 
     #[test]

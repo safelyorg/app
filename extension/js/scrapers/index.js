@@ -1165,15 +1165,9 @@
         }
         return null;
     }
-    /// On a TradeWheel product page: the company page, loaded from this
-    /// same site and trimmed. null if it could not be loaded; then
-    /// Safely's server loads it through ScraperAPI.
-    async function fetchTradewheelCompanyPage() {
-        if (!window.location.pathname.startsWith("/p/"))
-            return null;
-        const url = tradewheelCompanyUrl(document);
-        if (!url)
-            return null;
+    /// Loads one TradeWheel page from this same site, trimmed. null if it
+    /// could not be loaded.
+    async function loadTradewheelPage(url) {
         try {
             const response = await fetch(url, { credentials: "include" });
             if (!response.ok)
@@ -1182,9 +1176,28 @@
             return madeinchinaTrimmed(new DOMParser().parseFromString(html, "text/html"));
         }
         catch (e) {
-            console.error("Safely: failed to load the TradeWheel company page", e);
+            console.error("Safely: failed to load the TradeWheel page " + url, e);
             return null;
         }
+    }
+    /// On a TradeWheel product page: the company page and its About Us
+    /// page ("/co/{company}/about-us/"), both loaded from this same site and
+    /// trimmed. The company page has the employees and the contact person;
+    /// About Us has the website, the factory details and the company's own
+    /// text. Either is null if it could not be loaded; then Safely's server
+    /// loads that one through ScraperAPI.
+    async function fetchTradewheelCompanyPages() {
+        const none = { company: null, extended: null };
+        if (!window.location.pathname.startsWith("/p/"))
+            return none;
+        const url = tradewheelCompanyUrl(document);
+        if (!url)
+            return none;
+        const [company, extended] = await Promise.all([
+            loadTradewheelPage(url),
+            loadTradewheelPage(url + "about-us/"),
+        ]);
+        return { company, extended };
     }
     /// b2bmap's own sections - never a company page. Same list as
     /// company_slug in backend b2bmap.rs.
@@ -1260,7 +1273,7 @@
     window.__safelyScrapers.fetchB2bmapCompanyPage = fetchB2bmapCompanyPage;
     window.__safelyScrapers.tradewheelPageHtml = tradewheelPageHtml;
     window.__safelyScrapers.tradewheelCompanyUrl = tradewheelCompanyUrl;
-    window.__safelyScrapers.fetchTradewheelCompanyPage = fetchTradewheelCompanyPage;
+    window.__safelyScrapers.fetchTradewheelCompanyPages = fetchTradewheelCompanyPages;
     window.__safelyScrapers.b2brazilPageHtml = b2brazilPageHtml;
     window.__safelyScrapers.b2brazilCompanyUrl = b2brazilCompanyUrl;
     window.__safelyScrapers.fetchB2brazilCompanyPage = fetchB2brazilCompanyPage;
