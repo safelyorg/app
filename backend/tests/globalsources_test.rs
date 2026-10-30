@@ -79,6 +79,48 @@ fn supplier_page() -> String {
     )
 }
 
+/// The same supplier's company profile page (company-profile_{id}.htm),
+/// trimmed from the real Shenzhen N+1 page (October 2026): label / value
+/// tables, as the extension sends them (no scripts).
+fn profile_page() -> String {
+    let row = |label: &str, value: &str| {
+        format!(
+            r#"<div class="table-box"><div class="table-item"><div class="table-label">{label}</div> <div class="table-value-long last-value"><span>{value}</span></div></div></div>"#
+        )
+    };
+    let pair = |l1: &str, v1: &str, l2: &str, v2: &str| {
+        format!(
+            r#"<div class="table-box"><div class="table-item"><div class="table-label">{l1}</div> <div class="table-value"><span>{v1}</span></div> <div class="table-label">{l2}</div> <div class="table-value last-value"><span>{v2}</span></div></div></div>"#
+        )
+    };
+    page(
+        "<title>Company Overview of China Manufacturer - Huizhou Boxin Electronics Co., Ltd</title>",
+        &[
+            "<h3 class=\"article-title\">Basic Information</h3><div class=\"company-table\">".to_string(),
+            row("Total Capitalization", "US$400,000 to 499,999"),
+            pair("Year Established", "2005", "Total Employees", "200 to 249"),
+            pair("Company Certificate", "NA", "Product Certificate", "ROHS, FCC"),
+            "</div><h3 class=\"article-title\">Trading Capabilities</h3><div class=\"company-table\">".to_string(),
+            pair("Total Annual Sales", "US$40,000,000 to 44,999,999", "Export Percentage", "100 percent"),
+            pair("Major Customer", "Secrecy", "Small Orders Accepted", "Yes"),
+            "</div><h3>Factory Information</h3><div class=\"company-table\">".to_string(),
+            pair("Factory Size", "3000 Square Metre", "No. of Production Lines", "8"),
+            pair("Number of Production Staff", "200 to 249", "Number of QC Staff", "30 to 39"),
+            pair("Year Established", "2010", "Number of R &amp; D Staff", "10 to 19"),
+            row("Address", "F5 No. 61 Liuxian 2nd Rd., Baoan District, Shenzhen, Guangdong, China"),
+            row("Contact Person", "Ms.Yu, Esther"),
+            row("Job Title", "Sales Manager"),
+            row("Hotline", "(86-755) 2757 3322"),
+            row("Customer Service e-mail", "Service@boxin-example.com"),
+            "</div>".to_string(),
+        ]
+        .concat(),
+    )
+}
+
+const PROFILE_URL: &str =
+    "https://boxinltd.manufacturer.globalsources.com/company-profile_6008846289828.htm";
+
 #[test]
 fn global_sources_is_a_b2b_platform() {
     assert!(get_scraper_for_platform("globalsources").is_some());
@@ -232,14 +274,85 @@ async fn product_and_supplier_pages_from_the_browser_make_one_result() {
         PRODUCT_URL,
         Some(&product_page()),
         Some(&supplier_page()),
-        None,
+        Some(&profile_page()),
     )
     .await
     .expect("read from the browser");
     assert_eq!(page.company_key.as_deref(), Some(SUPPLIER_HOST));
     assert!(!page.company_page_missing);
     assert_eq!(page.supplier.year_established.as_deref(), Some("2005"));
+    assert_eq!(page.supplier.employee_count.as_deref(), Some("200 to 249"));
+    assert_eq!(page.supplier.contact_name.as_deref(), Some("Ms.Yu, Esther"));
     assert!(page.listing.title.is_some());
+}
+
+#[test]
+fn the_company_profile_page_is_the_second_company_page() {
+    let scraper = get_scraper_for_platform("globalsources").unwrap();
+    let company = scraper
+        .extract_company_profile_url(&product_page())
+        .unwrap();
+    assert_eq!(
+        scraper.build_extended_profile_url(&company).as_deref(),
+        Some(PROFILE_URL)
+    );
+    // Trade-show suppliers have their exhibitor page instead.
+    let exhibitor = scraper
+        .extract_company_profile_url(&show_product(true))
+        .unwrap();
+    assert_eq!(scraper.build_extended_profile_url(&exhibitor), None);
+}
+
+#[test]
+fn the_company_profile_page_gives_figures_contact_and_factory() {
+    let scraper = get_scraper_for_platform("globalsources").unwrap();
+    let s = scraper.parse_supplier(&product_page(), PRODUCT_URL);
+    let s = scraper.enrich_from_company_profile(s, &supplier_page());
+    let s = scraper.enrich_from_extended_profile(s, &profile_page());
+    assert_eq!(s.year_established.as_deref(), Some("2005"), "kept");
+    assert_eq!(s.employee_count.as_deref(), Some("200 to 249"));
+    assert_eq!(
+        s.sales_revenue.as_deref(),
+        Some("US$40,000,000 to 44,999,999")
+    );
+    assert_eq!(s.export_percentage.as_deref(), Some("100 percent"));
+    assert_eq!(s.contact_name.as_deref(), Some("Ms.Yu, Esther"));
+    assert_eq!(s.contact_phone.as_deref(), Some("(86-755) 2757 3322"));
+    let d = s.company_description.unwrap();
+    assert!(d.contains("\nContact person's role: Sales Manager."));
+    assert!(d.contains("\nEmail given on its Global Sources profile: Service@boxin-example.com."));
+    assert!(d.contains(
+        "\nCompany profile on Global Sources: Total capitalization: US$400,000 to 499,999; Factory size: 3000 Square Metre; Production lines: 8; Production staff: 200 to 249; Quality control staff: 30 to 39; R&D staff: 10 to 19."
+    ));
+    assert!(d.contains("\nFactory address: F5 No. 61 Liuxian 2nd Rd."));
+    assert!(!d.contains("Secrecy"), "placeholders are left out");
+    // Read twice: no line twice.
+    let s2 = scraper.enrich_from_extended_profile(
+        scraper.enrich_from_extended_profile(
+            scraper.parse_supplier(&product_page(), PRODUCT_URL),
+            &profile_page(),
+        ),
+        &profile_page(),
+    );
+    assert_eq!(
+        s2.company_description
+            .unwrap()
+            .matches("Factory address:")
+            .count(),
+        1
+    );
+}
+
+#[test]
+fn a_profile_page_without_values_changes_nothing() {
+    let scraper = get_scraper_for_platform("globalsources").unwrap();
+    let before = scraper.parse_supplier(&product_page(), PRODUCT_URL);
+    let empty = page("<title>x</title>", "<div class=\"company-table\"></div>");
+    let after = scraper
+        .enrich_from_extended_profile(scraper.parse_supplier(&product_page(), PRODUCT_URL), &empty);
+    assert_eq!(after.company_description, before.company_description);
+    assert_eq!(after.employee_count, None);
+    assert_eq!(after.contact_phone, None);
 }
 
 #[test]

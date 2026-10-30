@@ -34,7 +34,7 @@ interface AnalyzePayload {
   // in this browser.
   company_page_html?: string | null;
   // The supplier's second page: ExportHub's "profile.html", TradeWheel's
-  // About Us page.
+  // About Us page, Global Sources' company profile page.
   extended_page_html?: string | null;
 }
 interface SocialCandidateLink {
@@ -181,8 +181,8 @@ function formatPlatformName(platform: string | null | undefined): string {
   // Wholesale Central's robot check blocks ScraperAPI, but this browser
   // has already passed it. Made-in-China's pages are plain HTML this
   // browser already has, which is faster and costs no ScraperAPI
-  // credits. Global Sources: the same, and its supplier page is loaded
-  // by the background script. Alibaba: ScraperAPI took close to a minute
+  // credits. Global Sources: the same, and its supplier page and company
+  // profile page are loaded by the background script. Alibaba: ScraperAPI took close to a minute
   // and was often shown "Product Not Available"; the product page is
   // sent from here, and the company page is loaded by the background
   // script. Kompass: its robot check blocks ScraperAPI and any page
@@ -451,7 +451,7 @@ function formatPlatformName(platform: string | null | undefined): string {
       let pageHtml: string | null = null;
       let companyPageHtml: string | null = null;
       // The company's second page: ExportHub's "profile.html", TradeWheel's
-      // About Us page.
+      // About Us page, Global Sources' company profile page.
       let extendedPageHtml: string | null = null;
       const scrapers = (window as any).__safelyScrapers;
       const browserFirst = BROWSER_FIRST_PLATFORMS.indexOf(platform) !== -1;
@@ -476,10 +476,16 @@ function formatPlatformName(platform: string | null | undefined): string {
       } else if (browserFirst && platform === "globalsources" && scrapers.globalsourcesPageHtml) {
         pageHtml = await scrapers.globalsourcesPageHtml();
         if (pageHtml && pageHtml.length > MAX_PAGE_CHARS) pageHtml = null;
-        if (pageHtml && scrapers.fetchGlobalsourcesSupplierPage) {
-          companyPageHtml = await scrapers.fetchGlobalsourcesSupplierPage();
+        if (pageHtml && scrapers.fetchGlobalsourcesSupplierPages) {
+          const pages = await scrapers.fetchGlobalsourcesSupplierPages();
+          companyPageHtml = pages.company;
+          extendedPageHtml = pages.extended;
           if (companyPageHtml && pageHtml.length + companyPageHtml.length > MAX_PAGE_CHARS) {
             companyPageHtml = null;
+          }
+          const sent = pageHtml.length + (companyPageHtml ? companyPageHtml.length : 0);
+          if (!companyPageHtml || (extendedPageHtml && sent + extendedPageHtml.length > MAX_PAGE_CHARS)) {
+            extendedPageHtml = null;
           }
         }
       } else if (browserFirst && platform === "alibaba") {

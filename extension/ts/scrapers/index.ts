@@ -318,6 +318,13 @@ type DomainCheckResult = LegitimateDomainResult | SuspiciousDomainResult | null;
   const GLOBALSOURCES_SUPPLIER_PAGE =
     /^https:\/\/[a-z0-9-]+\.[a-z]+\.globalsources\.com\/homepage_\d+\.htm$/;
 
+  /// The supplier's company profile page, next to its own page:
+  /// "https://{shop}.manufacturer.globalsources.com/company-profile_{id}.htm".
+  /// It has the employees, sales, contact person, hotline and email.
+  /// Must match GLOBALSOURCES_PROFILE_PAGE in background.ts.
+  const GLOBALSOURCES_PROFILE_PAGE =
+    /^https:\/\/[a-z0-9-]+\.[a-z]+\.globalsources\.com\/company-profile_\d+\.htm$/;
+
   const platformRegistry: PlatformConfig[] = [
     {
       name: "b2brazil",
@@ -834,33 +841,14 @@ type DomainCheckResult = LegitimateDomainResult | SuspiciousDomainResult | null;
     });
   }
 
-  /// On a Global Sources product page: the supplier's page, trimmed.
-  /// It is on another address ({shop}.manufacturer.globalsources.com),
-  /// which this page cannot load itself, so the background script loads
-  /// it (only that kind of page - see background.ts). null if it could
-  /// not be loaded; then Safely's server loads it instead.
-  async function fetchGlobalsourcesSupplierPage(): Promise<string | null> {
-    if (!isGlobalsourcesScanUrl(window.location.href)) return null;
-    // Trade show: the exhibitor page is on this same address, so it is
-    // loaded from here.
-    if (isGlobalsourcesShowProductPath(window.location.pathname)) {
-      const exhibitor = globalsourcesExhibitorUrl(document, window.location.href);
-      if (!exhibitor) return null;
-      try {
-        const response = await fetch(exhibitor, { credentials: "include" });
-        if (!response.ok) return null;
-        const html = await response.text();
-        return globalsourcesTrimmed(html, new DOMParser().parseFromString(html, "text/html"));
-      } catch (e) {
-        console.error("Safely: failed to load the Global Sources exhibitor page", e);
-        return null;
-      }
-    }
-    const url = globalsourcesSupplierUrl(document);
-    if (!url) return null;
+  /// Loads one Global Sources supplier page through the background script
+  /// (it is on another address, {shop}.manufacturer.globalsources.com,
+  /// which a product page cannot load itself), trimmed. null if it could
+  /// not be loaded.
+  async function loadGlobalsourcesSupplierPage(url: string): Promise<string | null> {
     const response = await askBackground({ type: "SAFELY_FETCH_SUPPLIER_PAGE", url }, 20000);
     if (!response || typeof response.html !== "string" || response.html.length === 0) {
-      console.error("Safely: the Global Sources supplier page could not be loaded in the browser");
+      console.error("Safely: the Global Sources page could not be loaded in the browser: " + url);
       return null;
     }
     try {
@@ -869,9 +857,52 @@ type DomainCheckResult = LegitimateDomainResult | SuspiciousDomainResult | null;
         new DOMParser().parseFromString(response.html, "text/html"),
       );
     } catch (e) {
-      console.error("Safely: could not read the Global Sources supplier page", e);
+      console.error("Safely: could not read the Global Sources page " + url, e);
       return null;
     }
+  }
+
+  /// On a Global Sources product page: the supplier's pages, trimmed.
+  /// - Marketplace: the supplier's own page and its company profile page
+  ///   (the second page: employees, sales, contact person, hotline and
+  ///   email), both loaded by the background script (only those kinds of
+  ///   page - see background.ts).
+  /// - Trade show: the exhibitor page, on this same address, so it is
+  ///   loaded from here; there is no second page.
+  /// Either is null if it could not be loaded; then Safely's server loads
+  /// that one through ScraperAPI.
+  async function fetchGlobalsourcesSupplierPages(): Promise<{
+    company: string | null;
+    extended: string | null;
+  }> {
+    const none = { company: null, extended: null };
+    if (!isGlobalsourcesScanUrl(window.location.href)) return none;
+    if (isGlobalsourcesShowProductPath(window.location.pathname)) {
+      const exhibitor = globalsourcesExhibitorUrl(document, window.location.href);
+      if (!exhibitor) return none;
+      try {
+        const response = await fetch(exhibitor, { credentials: "include" });
+        if (!response.ok) return none;
+        const html = await response.text();
+        return {
+          company: globalsourcesTrimmed(html, new DOMParser().parseFromString(html, "text/html")),
+          extended: null,
+        };
+      } catch (e) {
+        console.error("Safely: failed to load the Global Sources exhibitor page", e);
+        return none;
+      }
+    }
+    const url = globalsourcesSupplierUrl(document);
+    if (!url) return none;
+    const profile = url.replace("/homepage_", "/company-profile_");
+    const [company, extended] = await Promise.all([
+      loadGlobalsourcesSupplierPage(url),
+      GLOBALSOURCES_PROFILE_PAGE.test(profile)
+        ? loadGlobalsourcesSupplierPage(profile)
+        : Promise.resolve(null),
+    ]);
+    return { company, extended };
   }
 
   /// An Alibaba company's own page, the only kind of Alibaba page the
@@ -1324,5 +1355,5 @@ type DomainCheckResult = LegitimateDomainResult | SuspiciousDomainResult | null;
   (window as any).__safelyScrapers.globalsourcesSupplierUrl = globalsourcesSupplierUrl;
   (window as any).__safelyScrapers.globalsourcesTrimmed = globalsourcesTrimmed;
   (window as any).__safelyScrapers.globalsourcesExhibitorUrl = globalsourcesExhibitorUrl;
-  (window as any).__safelyScrapers.fetchGlobalsourcesSupplierPage = fetchGlobalsourcesSupplierPage;
+  (window as any).__safelyScrapers.fetchGlobalsourcesSupplierPages = fetchGlobalsourcesSupplierPages;
 })();

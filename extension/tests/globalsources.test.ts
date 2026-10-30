@@ -14,6 +14,8 @@ const BACKGROUND = "../ts/background";
 const load = (path: string): Promise<unknown> => import(/* @vite-ignore */ path);
 
 const SUPPLIER = "https://boxinltd.manufacturer.globalsources.com/homepage_6008846289828.htm";
+const PROFILE = "https://boxinltd.manufacturer.globalsources.com/company-profile_6008846289828.htm";
+const PRODUCT = "https://www.globalsources.com/TWS-earbud/tws-earbud-1231057850p.htm";
 
 let scrapers: any;
 let handleFetch: any;
@@ -159,9 +161,50 @@ describe("Global Sources trade-show pages", () => {
   });
 });
 
+describe("Global Sources supplier pages from the browser", () => {
+  function onProductPage(): void {
+    Object.defineProperty(window, "location", {
+      value: { href: PRODUCT, hostname: "www.globalsources.com", pathname: new URL(PRODUCT).pathname },
+      writable: true,
+    });
+    document.body.innerHTML = `<div class="company-info"><div class="supplier-name">
+      <a href="//boxinltd.manufacturer.globalsources.com/homepage_6008846289828.htm">Huizhou Boxin</a></div></div>`;
+  }
+
+  it("loads the supplier's page and its company profile page through the background script", async () => {
+    onProductPage();
+    const send = (globalThis as any).chrome.runtime.sendMessage;
+    const asked: string[] = [];
+    send.mockImplementation((m: any, cb: (r: unknown) => void) => {
+      asked.push(m.url);
+      cb({ html: m.url === PROFILE ? "<html><body>Total Employees 200 to 249</body></html>" : "<html><body>Boxin home</body></html>" });
+    });
+    const pages = await scrapers.fetchGlobalsourcesSupplierPages();
+    expect(asked.sort()).toEqual([PROFILE, SUPPLIER].sort());
+    expect(pages.company).toContain("Boxin home");
+    expect(pages.extended).toContain("200 to 249");
+    send.mockReset();
+  });
+
+  it("still sends the supplier's page when the company profile page fails", async () => {
+    onProductPage();
+    const send = (globalThis as any).chrome.runtime.sendMessage;
+    send.mockImplementation((m: any, cb: (r: unknown) => void) =>
+      cb({ html: m.url === PROFILE ? null : "<html><body>Boxin home</body></html>" }),
+    );
+    const pages = await scrapers.fetchGlobalsourcesSupplierPages();
+    expect(pages.company).toContain("Boxin home");
+    expect(pages.extended).toBe(null);
+    send.mockReset();
+  });
+});
+
 describe("background script: loading a supplier page", () => {
   it("allows only Global Sources supplier pages", () => {
     expect(isAllowed(SUPPLIER)).toBe(true);
+    expect(isAllowed(PROFILE)).toBe(true);
+    expect(isAllowed("https://x.manufacturer.globalsources.com.evil.example/company-profile_1.htm")).toBe(false);
+    expect(isAllowed(PROFILE + "?a=b")).toBe(false);
     expect(isAllowed("https://www.globalsources.com/TWS-earbud/x-1231057850p.htm")).toBe(false);
     expect(isAllowed("https://evil.example/homepage_1.htm")).toBe(false);
     expect(isAllowed("https://x.manufacturer.globalsources.com.evil.example/homepage_1.htm")).toBe(false);

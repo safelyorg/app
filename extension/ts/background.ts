@@ -51,7 +51,10 @@ chrome.runtime.onMessage.addListener(handleSessionUpdateMessage);
 // The only pages the background script loads for a scan:
 // - a Global Sources supplier's page, e.g.
 //   https://boxinltd.manufacturer.globalsources.com/homepage_6008846289828.htm
-//   (must match GLOBALSOURCES_SUPPLIER_PAGE in scrapers/index.ts);
+//   (must match GLOBALSOURCES_SUPPLIER_PAGE in scrapers/index.ts), and its
+//   company profile page, e.g.
+//   https://boxinltd.manufacturer.globalsources.com/company-profile_6008846289828.htm
+//   (must match GLOBALSOURCES_PROFILE_PAGE in scrapers/index.ts);
 // - an Alibaba company's own page, e.g.
 //   https://zl9809.en.alibaba.com/company_profile.html
 //   (must match ALIBABA_COMPANY_PAGE in scrapers/index.ts);
@@ -64,6 +67,7 @@ chrome.runtime.onMessage.addListener(handleSessionUpdateMessage);
 // other sites.
 const SUPPLIER_PAGES: RegExp[] = [
   /^https:\/\/[a-z0-9-]+\.[a-z]+\.globalsources\.com\/homepage_\d+\.htm$/,
+  /^https:\/\/[a-z0-9-]+\.[a-z]+\.globalsources\.com\/company-profile_\d+\.htm$/,
   /^https:\/\/[a-z0-9-]+\.en\.alibaba\.com\/company_profile\.html$/,
   /^https:\/\/[a-z0-9-]+\.en\.made-in-china\.com\/$/,
 ];
@@ -96,7 +100,7 @@ async function loadSupplierPage(url: string): Promise<string | null> {
   }
 }
 
-// Sent by scrapers/index.ts (fetchGlobalsourcesSupplierPage) during a
+// Sent by scrapers/index.ts (fetchGlobalsourcesSupplierPages and others) during a
 // scan. Only messages from this extension's own scripts are answered.
 function handleFetchSupplierPageMessage(
   message: FetchSupplierPageMessage,

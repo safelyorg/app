@@ -11,7 +11,10 @@
 //! https://www.globalsources.com/{category}/{name}-{id}p.htm
 //! The supplier's own page (https://{shop}.manufacturer.globalsources.com/
 //! homepage_{id}.htm) is read as well, for its founding year, ranking
-//! and profile, but is never scanned on its own. The trade-show pages
+//! and profile, and so is its company profile page (company-profile_{id}
+//! .htm, sent as the second company page), for its employees, sales,
+//! export share, contact person, hotline and email. Neither is scanned
+//! on its own. The trade-show pages
 //! (/products/HK/..., /exhibitors/HK/...) are read by globalsources_show.rs.
 //!
 //! Everything is in the page's plain HTML:
@@ -226,6 +229,38 @@ fn labeled_values(document: &Html, pairs: &[(&str, &str)]) -> Vec<(String, Strin
     }
     found
 }
+
+/// Label / value pairs on the company profile page ("Total Employees",
+/// "Contact Person", "Hotline"...): a ".table-label" with its value in
+/// the element right after it.
+const PROFILE_PAIRS: &[(&str, &str)] = &[
+    (".table-label", "table-value"),
+    (".table-label", "table-value-long"),
+];
+
+/// Values on the company profile page that only say nothing was given.
+const PROFILE_PLACEHOLDERS: &[&str] = &["na", "n/a", "none", "unknown", "secrecy", "-"];
+
+/// The company profile page: the same address as the supplier's page,
+/// "homepage_{id}" becoming "company-profile_{id}".
+fn company_profile_url(supplier_page_url: &str) -> Option<String> {
+    let url = absolute_url(supplier_page_url);
+    supplier_host(&url)?;
+    let url = url.split(['?', '#']).next()?;
+    url.contains("/homepage_")
+        .then(|| url.replacen("/homepage_", "/company-profile_", 1))
+}
+
+/// Facts from the company profile page, in the order they are written
+/// into the description, as (label on the page, name used).
+const PROFILE_FACTS: &[(&str, &str)] = &[
+    ("Total Capitalization", "Total capitalization"),
+    ("Factory Size", "Factory size"),
+    ("No. of Production Lines", "Production lines"),
+    ("Number of Production Staff", "Production staff"),
+    ("Number of QC Staff", "Quality control staff"),
+    ("Number of R & D Staff", "R&D staff"),
+];
 
 fn page_data(document: &Html) -> Vec<Value> {
     let mut items = Vec::new();
@@ -1125,6 +1160,94 @@ impl B2bScraper for GlobalsourcesScraper {
         supplier
     }
 
+    /// The supplier's company profile page (marketplace only; trade-show
+    /// suppliers have their exhibitor page instead).
+    fn build_extended_profile_url(&self, profile_url: &str) -> Option<String> {
+        company_profile_url(profile_url)
+    }
+
+    /// Adds what only the company profile page shows: employees, annual
+    /// sales, export share, the contact person, the hotline and email
+    /// the supplier gives there, and its factory figures. What the other
+    /// pages already gave is kept.
+    fn enrich_from_extended_profile(
+        &self,
+        mut supplier: B2bSupplierProfile,
+        extended_html: &str,
+    ) -> B2bSupplierProfile {
+        let document = Html::parse_document(extended_html);
+        let values = labeled_values(&document, PROFILE_PAIRS);
+        let get = |name: &str| {
+            values
+                .iter()
+                .find(|(n, _)| n.eq_ignore_ascii_case(name))
+                .map(|(_, v)| v.trim().to_string())
+                .filter(|v| !PROFILE_PLACEHOLDERS.contains(&v.to_lowercase().as_str()))
+        };
+        let fill = |slot: &mut Option<String>, value: Option<String>| {
+            if slot.is_none() {
+                *slot = value;
+            }
+        };
+        fill(
+            &mut supplier.year_established,
+            get("Year Established").and_then(|y| year_in(&y)),
+        );
+        fill(&mut supplier.employee_count, get("Total Employees"));
+        fill(&mut supplier.sales_revenue, get("Total Annual Sales"));
+        fill(&mut supplier.export_percentage, get("Export Percentage"));
+        fill(&mut supplier.contact_name, get("Contact Person"));
+        fill(
+            &mut supplier.contact_phone,
+            get("Hotline").filter(|p| p.chars().filter(char::is_ascii_digit).count() >= 7),
+        );
+
+        let mut lines: Vec<String> = Vec::new();
+        if let Some(role) = get("Job Title") {
+            lines.push(format!(
+                "Contact person's role: {}.",
+                role.trim_end_matches('.')
+            ));
+        }
+        if let Some(email) = get("Customer Service e-mail").filter(|e| e.contains('@')) {
+            lines.push(format!(
+                "Email given on its Global Sources profile: {email}."
+            ));
+        }
+        let factory: Vec<String> = PROFILE_FACTS
+            .iter()
+            .filter_map(|(label, name)| get(label).map(|v| format!("{name}: {v}")))
+            .collect();
+        if !factory.is_empty() {
+            lines.push(format!(
+                "Company profile on Global Sources: {}.",
+                factory.join("; ")
+            ));
+        }
+        if let Some(address) = get("Address") {
+            lines.push(format!(
+                "Factory address: {}.",
+                address.trim_end_matches('.')
+            ));
+        }
+
+        let mut description = supplier.company_description.take().unwrap_or_default();
+        for line in lines {
+            let key = line.split(':').next().unwrap_or("");
+            if !description
+                .lines()
+                .any(|l| l.split(':').next() == Some(key))
+            {
+                if !description.is_empty() {
+                    description.push('\n');
+                }
+                description.push_str(&line);
+            }
+        }
+        supplier.company_description = (!description.is_empty()).then_some(description);
+        supplier
+    }
+
     /// Trade-show product pages show no price: it comes from the
     /// exhibitor page's product list.
     fn enrich_listing_from_company_profile(
@@ -1166,6 +1289,30 @@ impl B2bScraper for GlobalsourcesScraper {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_company_profile_page_is_next_to_the_supplier_page() {
+        assert_eq!(
+            company_profile_url(
+                "https://smartwatch-n.manufacturer.globalsources.com/homepage_6008850873897.htm"
+            )
+            .as_deref(),
+            Some(
+                "https://smartwatch-n.manufacturer.globalsources.com/company-profile_6008850873897.htm"
+            )
+        );
+        // Trade-show exhibitor pages have no company profile page.
+        assert_eq!(
+            company_profile_url(
+                "https://www.globalsources.com/exhibitors/HK/aaa-tablet-pc-technology-co-ltd_2008852758138/"
+            ),
+            None
+        );
+        assert_eq!(
+            company_profile_url("https://example.com/homepage_1.htm"),
+            None
+        );
+    }
 
     #[test]
     fn supplier_host_is_only_a_supplier_site() {
