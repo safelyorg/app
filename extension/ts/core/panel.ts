@@ -116,9 +116,9 @@ interface PendingTabRegistration {
     stateIcon(ICON_SIGNIN) +
     '<div class="safely-state-title" id="safely-signin-title"></div>' +
     '<div class="safely-state-text" id="safely-signin-text"></div>' +
-    '<a href="' +
+    '<button type="button" data-safely-url="' +
     (window as any).__safelyAPI.SITE_BASE +
-    '" target="_blank" class="safely-btn safely-btn-dark safely-btn-full" id="safely-signin-btn"></a>' +
+    '/" class="safely-btn safely-btn-dark safely-btn-full" id="safely-signin-btn"></button>' +
     "</div>" +
     '<div class="safely-tab-content safely-state" id="safely-tab-analysis-failed" style="display:none">' +
     stateIcon(ICON_WARNING) +
@@ -133,9 +133,9 @@ interface PendingTabRegistration {
     stateIcon(ICON_CLOCK) +
     '<div class="safely-state-title" id="safely-scan-limit-title"></div>' +
     '<div class="safely-state-text" id="safely-scan-limit-message"></div>' +
-    '<a href="' +
+    '<button type="button" data-safely-url="' +
     (window as any).__safelyAPI.SITE_BASE +
-    '/dashboard/?manage_billing=1" target="_blank" class="safely-btn safely-btn-dark safely-btn-full" id="safely-see-plans-btn"></a>' +
+    '/dashboard/?manage_billing=1" class="safely-btn safely-btn-dark safely-btn-full" id="safely-see-plans-btn"></button>' +
     "</div>" +
     "</div>" +
     '<div id="safely-toolbar"><img class="safely-toolbar-letter" src="' +
@@ -204,6 +204,21 @@ interface PendingTabRegistration {
     "safely-failed-title": "This check didn't finish",
     "safely-scan-limit-title": "You've used this month's scans",
   };
+
+  // "Sign in free" and "See plans" are buttons, not links, and open
+  // Safely's page themselves. Some sites (Alibaba) add their own
+  // tracking to every link on the page when it is clicked, which turned
+  // the address into "https://safely.sh/?spm=a2700.details...". A
+  // button is never changed by the site, so the plain address opens.
+  [signinBtn, seePlansBtn].forEach((btn) => {
+    if (!btn) return;
+    btn.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const url = btn.dataset.safelyUrl;
+      if (url) window.open(url, "_blank", "noopener");
+    });
+  });
 
   if (retryBtn) {
     retryBtn.addEventListener("click", () => {
