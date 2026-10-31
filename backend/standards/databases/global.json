@@ -142,6 +142,30 @@
         "Country"
       ],
       "warning_points": 25
+    },
+    {
+      "card": "Company number",
+      "group": "outside_records",
+      "what_it_checks": "Whether the company number the supplier gives (China's 18-character code, Brazil's CNPJ, France's SIREN / SIRET / VAT number) is a real number: its check digits must add up. Checked inside Safely, no internet. A number that fails is a warning (made up or mistyped).",
+      "reads": [
+        "Registration number",
+        "VAT number",
+        "Country"
+      ],
+      "warning_points": 40
+    },
+    {
+      "card": "Official register",
+      "group": "outside_records",
+      "what_it_checks": "What the country's own register says about the company number (Brazil: Receita Federal via BrasilAPI; France: recherche-entreprises.api.gouv.fr). Active under the same name is a good sign; another company's name is a warning; closed is a warning; not found is information only. Needs REGISTERS_CHECK_ENABLED=true in .env.",
+      "reads": [
+        "Company number",
+        "Company name"
+      ],
+      "warning_points": 40,
+      "points_when_value": {
+        "Closed": 25
+      }
     }
   ]
 }

@@ -25,11 +25,11 @@
       "id": "siren_check",
       "name": "SIREN check",
       "url": "",
-      "what_it_does": "Spots a fake SIREN (it has a check digit).",
+      "what_it_does": "Spots a fake SIREN, SIRET or EU VAT number (check digits).",
       "access": "offline",
       "cost": "free",
       "step": 1,
-      "status": "planned"
+      "status": "live"
     },
     {
       "id": "recherche_entreprises",
@@ -39,7 +39,7 @@
       "access": "api",
       "cost": "free",
       "step": 3,
-      "status": "planned"
+      "status": "live"
     },
     {
       "id": "insee_sirene",

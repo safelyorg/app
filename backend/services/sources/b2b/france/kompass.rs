@@ -1,4 +1,7 @@
-use crate::services::sources::b2b::{B2bListingProfile, B2bScraper, B2bSupplierProfile};
+use crate::services::sources::{
+    b2b::{B2bListingProfile, B2bScraper, B2bSupplierProfile},
+    databases::numbers::{REGISTRATION_PREFIX, VAT_PREFIX},
+};
 use scraper::{ElementRef, Html, Selector};
 
 pub struct KompassScraper;
@@ -151,6 +154,59 @@ fn parse_founding_year(document: &Html) -> Option<String> {
         .find(|n| n.len() == 4)
         .filter(|n| matches!(n.parse::<i32>(), Ok(1800..=2100)))
         .map(str::to_string)
+}
+
+/// The value of a `<th>Label</th><td>Value</td>` row, from the cell's
+/// OWN text only. The "VAT no" cell also holds a hidden pop-up ("Get
+/// more information ... € / call") that must not be read; a value hidden
+/// behind the paid plan sits inside a link, so it gives nothing.
+fn own_text_value(document: &Html, table_selector: &str, label: &str) -> Option<String> {
+    let table_sel = Selector::parse(table_selector).ok()?;
+    let row_sel = Selector::parse("tr").ok()?;
+    let th_sel = Selector::parse("th").ok()?;
+    let td_sel = Selector::parse("td").ok()?;
+    for row in document.select(&table_sel).flat_map(|t| t.select(&row_sel)) {
+        let (Some(th), Some(td)) = (row.select(&th_sel).next(), row.select(&td_sel).next()) else {
+            continue;
+        };
+        if !text_of(&th).trim().eq_ignore_ascii_case(label) {
+            continue;
+        }
+        let own: String = td
+            .children()
+            .filter_map(|c| c.value().as_text().map(|t| t.to_string()))
+            .collect::<Vec<_>>()
+            .join(" ");
+        return clean_optional_text(&own).filter(|v| !is_hidden_value(v));
+    }
+    None
+}
+
+/// The company numbers in the "Legal information" table: "Registration
+/// No." and "VAT no" (free to see on many company pages). They are
+/// written into the description as "Registration number: X." and "VAT
+/// number: Y.", so the AI sees them and the number check reads them.
+fn add_company_numbers(supplier: &mut B2bSupplierProfile, document: &Html) {
+    for (label, prefix) in [
+        ("Registration No.", REGISTRATION_PREFIX),
+        ("VAT no", VAT_PREFIX),
+    ] {
+        let Some(number) = own_text_value(document, "table.tableInfoJuridic", label) else {
+            continue;
+        };
+        let already = supplier
+            .company_description
+            .as_deref()
+            .is_some_and(|d| d.lines().any(|l| l.starts_with(prefix)));
+        if already {
+            continue;
+        }
+        let line = format!("{prefix}{number}.");
+        supplier.company_description = Some(match supplier.company_description.take() {
+            Some(d) => format!("{d}\n{line}"),
+            None => line,
+        });
+    }
 }
 
 /// Start of the address line put in front of the company description,
@@ -344,7 +400,7 @@ impl B2bScraper for KompassScraper {
             .map(|el| text_of(&el).to_lowercase().contains("verified"))
             .unwrap_or(false);
 
-        B2bSupplierProfile {
+        let mut supplier = B2bSupplierProfile {
             company_name: parse_company_name(&document),
             logo_url: parse_logo_url(&document),
             year_established: find_table_value(
@@ -366,7 +422,9 @@ impl B2bScraper for KompassScraper {
                 .or_else(|| parse_business_type_tags(&document)),
             company_description: parse_description(&document),
             website_url: parse_website_url(&document),
-        }
+        };
+        add_company_numbers(&mut supplier, &document);
+        supplier
     }
 
     /// The richer company profile ("About us") page is linked from
@@ -462,6 +520,7 @@ impl B2bScraper for KompassScraper {
                 });
             }
         }
+        add_company_numbers(&mut supplier, &document);
         if !supplier.platform_verified_badge {
             supplier.platform_verified_badge = Selector::parse("#isKompassYear .text")
                 .ok()
@@ -1015,6 +1074,44 @@ mod tests {
                 .count(),
             1
         );
+    }
+
+    // Trimmed from the real Chinese company page on Kompass (Oct 2026):
+    // the "VAT no" cell also holds a hidden pop-up.
+    const LEGAL_TABLE: &str = r#"<html><body><table class="tableInfoJuridic">
+        <tr><th> Corporate capital</th><td> 10,010,000&nbsp;RMB</td></tr>
+        <tr><th> Registration No.</th><td> 321322000202308100316</td></tr>
+        <tr><th> VAT no</th><td> 91321322MACQ3B3D4L<div id="contactCompanyHipayModal-companyTVA-CNNKC00041053" class="modal fade"><div class="h2Modal">Get more information</div><input type="hidden" class="msg-call-price" value="€ / call" /></div></td></tr>
+    </table></body></html>"#;
+
+    // Trimmed from the real Swiss company page: numbers behind the paid plan.
+    const HIDDEN_LEGAL_TABLE: &str = r#"<html><body><table class="tableInfoJuridic">
+        <tr><th> Registration No.</th><td> <a class=" no-information" href="https://www.kompass.com/login/easybusiness/ ">Information available as an option</a> </td></tr>
+        <tr><th> VAT no</th><td> <a class=" no-information" href="https://www.kompass.com/login/easybusiness/ ">Information available as an option</a> </td></tr>
+    </table></body></html>"#;
+
+    #[test]
+    fn company_numbers_go_into_the_description_once() {
+        let s = KompassScraper.parse_supplier(LEGAL_TABLE, "u");
+        let d = s.company_description.clone().unwrap();
+        assert!(
+            d.contains("Registration number: 321322000202308100316."),
+            "{d}"
+        );
+        assert!(d.contains("VAT number: 91321322MACQ3B3D4L."), "{d}");
+        assert!(!d.contains("Get more information"));
+        let again = KompassScraper.enrich_from_company_profile(s, LEGAL_TABLE);
+        assert_eq!(
+            again
+                .company_description
+                .unwrap()
+                .matches("VAT number: ")
+                .count(),
+            1
+        );
+        // Numbers behind the paid plan give nothing.
+        let hidden = KompassScraper.parse_supplier(HIDDEN_LEGAL_TABLE, "u");
+        assert_eq!(hidden.company_description, None);
     }
 
     #[test]

@@ -32,7 +32,9 @@ use crate::{
         shared::evidence::{record_evidence, record_risk_factors},
         shared::standards::{self, PRICES_FOR_SIGNED_IN},
         sources::b2b::{B2bListingProfile, B2bSupplierProfile, SupplierRecord},
-        sources::databases::{OUTSIDE_RECORDS, SellerFacts, check_outside_records},
+        sources::databases::{
+            OUTSIDE_RECORDS, SellerFacts, check_outside_records, numbers::company_numbers_in,
+        },
     },
 };
 use axum::{Json, http::HeaderMap};
@@ -898,6 +900,13 @@ pub async fn build_b2b_analysis_path(
         company_name: supplier.company_name.clone(),
         country: supplier.country.clone(),
         website: supplier.website_url.clone(),
+        // Numbers the scraper wrote into the description (Kompass:
+        // "Registration number: ...", "VAT number: ...").
+        company_numbers: supplier
+            .company_description
+            .as_deref()
+            .map(company_numbers_in)
+            .unwrap_or_default(),
     };
     signals.extend(check_outside_records(&facts).await);
     keep_enabled_cards(&mut signals);

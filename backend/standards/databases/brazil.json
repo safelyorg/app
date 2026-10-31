@@ -23,7 +23,7 @@
       "access": "offline",
       "cost": "free",
       "step": 1,
-      "status": "planned"
+      "status": "live"
     },
     {
       "id": "receita_cnpj",
@@ -33,7 +33,7 @@
       "access": "api",
       "cost": "free",
       "step": 3,
-      "status": "planned"
+      "status": "live"
     },
     {
       "id": "reclame_aqui",
