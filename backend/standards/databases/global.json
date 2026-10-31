@@ -1,0 +1,137 @@
+{
+  "category": "databases",
+  "status": "live",
+  "about": "Outside records about a seller: company registers, chambers of commerce, trade fairs, sanctions lists and website traffic. Used to look a seller up outside the page it sells on, in marketplace scans and website checks.",
+  "how_to_change": [
+    "Each country has its own file next to this one (china.json, usa.json...). Safely reads the seller's country from the page and runs global.json plus that country's file. A country with no file gets global.json only.",
+    "sources: the outside records Safely will read. status 'planned' means not built yet; 'live' means Safely reads it now.",
+    "access: 'offline' (checked inside Safely, no internet), 'api' (free official API), 'download' (a public list file), 'scrape' (read the website), 'paid_api'.",
+    "cost: 'free', 'small_fee' or 'paid'. key_env: the name of the key in .env on the server (the key itself is never written here).",
+    "step: the build step that adds the source (see claude/databases-plan.md in the Safely project).",
+    "cards: same as b2b.json (warning_points, points_when_value, enabled). Every database card has group 'outside_records', so the extension and dashboard can show them in their own section.",
+    "Found = a good sign. Not found = NOT a warning. Only a false claim (fake company number, fake fair) or a sanctions match is a warning."
+  ],
+  "scoring": {
+    "default_warning_points": 15,
+    "info_points_each": 5,
+    "info_points_max": 15,
+    "not_enough_information_floor": 34
+  },
+  "rules": [],
+  "sources": [
+    {
+      "id": "sanctions_us_un",
+      "name": "Sanctions lists (US OFAC, UN)",
+      "url": "https://sanctionssearch.ofac.treas.gov/",
+      "what_it_does": "Is the company on a US or UN banned list? Downloaded once a day; only companies, whole names.",
+      "access": "download",
+      "cost": "free",
+      "step": 2,
+      "status": "live"
+    },
+    {
+      "id": "sanctions_eu",
+      "name": "EU sanctions list",
+      "url": "https://data.europa.eu/data/datasets/consolidated-list-of-persons-groups-and-entities-subject-to-eu-financial-sanctions",
+      "what_it_does": "Is the company on the EU banned list?",
+      "access": "download",
+      "cost": "free",
+      "step": 2,
+      "status": "planned"
+    },
+    {
+      "id": "gleif",
+      "name": "GLEIF (LEI register)",
+      "url": "https://www.gleif.org/",
+      "what_it_does": "Official world list of company IDs (LEI). Bigger companies only.",
+      "access": "api",
+      "cost": "free",
+      "step": 2,
+      "status": "planned"
+    },
+    {
+      "id": "wayback",
+      "name": "Wayback Machine",
+      "url": "https://web.archive.org/",
+      "what_it_does": "Since when the website has existed with real content.",
+      "access": "api",
+      "cost": "free",
+      "step": 2,
+      "status": "planned"
+    },
+    {
+      "id": "tranco",
+      "name": "Tranco list",
+      "url": "https://tranco-list.eu/",
+      "what_it_does": "Is the website in the top 1 million sites (real traffic)?",
+      "access": "download",
+      "cost": "free",
+      "step": 2,
+      "status": "planned"
+    },
+    {
+      "id": "crtsh",
+      "name": "crt.sh",
+      "url": "https://crt.sh/",
+      "what_it_does": "When the website first got a security certificate.",
+      "access": "api",
+      "cost": "free",
+      "step": 2,
+      "status": "planned"
+    },
+    {
+      "id": "opencorporates",
+      "name": "OpenCorporates",
+      "url": "https://opencorporates.com/",
+      "what_it_does": "Company registers of many countries in one place.",
+      "access": "paid_api",
+      "cost": "paid",
+      "step": 5,
+      "status": "planned",
+      "key_env": "OPENCORPORATES_API_KEY"
+    },
+    {
+      "id": "similarweb",
+      "name": "Similarweb",
+      "url": "https://www.similarweb.com/",
+      "what_it_does": "Website visitors and their countries.",
+      "access": "paid_api",
+      "cost": "paid",
+      "step": 5,
+      "status": "planned",
+      "key_env": "SIMILARWEB_API_KEY"
+    },
+    {
+      "id": "semrush",
+      "name": "SEMrush",
+      "url": "https://www.semrush.com/",
+      "what_it_does": "Website search traffic and size.",
+      "access": "paid_api",
+      "cost": "paid",
+      "step": 5,
+      "status": "planned",
+      "key_env": "SEMRUSH_API_KEY"
+    },
+    {
+      "id": "shipping_records",
+      "name": "Shipping records (Panjiva, ImportGenius)",
+      "url": "https://panjiva.com/",
+      "what_it_does": "Does the company really ship goods?",
+      "access": "paid_api",
+      "cost": "paid",
+      "step": 5,
+      "status": "planned"
+    }
+  ],
+  "cards": [
+    {
+      "card": "Sanctions lists",
+      "group": "outside_records",
+      "what_it_checks": "Whether a company with exactly the seller's name is on the US (OFAC) or UN sanctions lists. A match is a warning (it may be another company with the same name); no match is a good sign but says nothing more. Needs SANCTIONS_CHECK_ENABLED=true in .env.",
+      "reads": [
+        "Company name"
+      ],
+      "warning_points": 70
+    }
+  ]
+}

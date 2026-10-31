@@ -133,10 +133,30 @@ fn word_run_positions(words: &[String], needle: &[String]) -> Vec<usize> {
         .collect()
 }
 
+/// Marks that join separate pieces of a search result: Google cuts a
+/// snippet into pieces from different places on the page and joins them
+/// with "...", and social sites separate parts with "·", "▻" or "|". A
+/// scam word in one piece says nothing about a name in another.
+const PIECE_BREAKS: &[&str] = &["...", "…", "·", "▻", "•", "|"];
+
 /// True when the text mentions a scam or a complaint close to the
 /// company's name (at most SCAM_WORD_MAX_GAP words away, before or
-/// after it).
+/// after it), inside the same piece of the text (see PIECE_BREAKS).
 pub fn scam_word_near_name(text: &str, name: &str) -> bool {
+    let mut pieces = vec![text.to_string()];
+    for mark in PIECE_BREAKS {
+        pieces = pieces
+            .iter()
+            .flat_map(|p| p.split(mark).map(str::to_string).collect::<Vec<_>>())
+            .collect();
+    }
+    pieces
+        .iter()
+        .any(|piece| scam_word_near_name_in(piece, name))
+}
+
+/// scam_word_near_name for one piece of text.
+fn scam_word_near_name_in(text: &str, name: &str) -> bool {
     let words = words_of(text);
     let name_words = words_of(name);
     let name_starts = word_run_positions(&words, &name_words);

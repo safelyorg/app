@@ -118,6 +118,24 @@ fn a_scam_word_only_counts_next_to_the_company_name() {
 }
 
 #[test]
+fn a_scam_word_in_another_piece_of_the_snippet_does_not_count() {
+    // The real "Clover Industrial" result (Oct 2026): a Facebook post
+    // about a parcel scam in Crete, and in another piece of the snippet
+    // a "Clover Industrial Estate" in England.
+    let snippet = "xylafagou to avgorou 3rd load moving customers house ... christine dwyer ▻ parcel delivery crete scam page. 8y · public · el gordo ... clover industrial estate, willoughby, alford lincolnshire ln13 9na · no photo ...";
+    assert!(!scam_word_near_name(snippet, "Clover Industrial"));
+    // In the same piece it still counts.
+    assert!(scam_word_near_name(
+        "parcel delivery ... Clover Industrial scam - never shipped my laptops ... more",
+        "Clover Industrial"
+    ));
+    assert!(scam_word_near_name(
+        "Clover Industrial | Beware of Clover Industrial, they took my money",
+        "Clover Industrial"
+    ));
+}
+
+#[test]
 fn only_results_that_really_mention_a_scam_count() {
     assert!(scam_word_near_name(
         "Golden Steel Mills scam - they never delivered the machine",

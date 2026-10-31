@@ -1,0 +1,77 @@
+{
+  "country": "usa",
+  "name": "United States",
+  "names": [
+    "United States",
+    "United States of America",
+    "USA",
+    "US",
+    "U.S.",
+    "U.S.A."
+  ],
+  "company_ids": [],
+  "sources": [
+    {
+      "id": "sec_edgar",
+      "name": "SEC EDGAR",
+      "url": "https://www.sec.gov/edgar",
+      "what_it_does": "Companies listed on the US stock market.",
+      "access": "api",
+      "cost": "free",
+      "step": 3,
+      "status": "planned"
+    },
+    {
+      "id": "sam_gov",
+      "name": "SAM.gov",
+      "url": "https://sam.gov/",
+      "what_it_does": "Companies registered to sell to the US government.",
+      "access": "api",
+      "cost": "free",
+      "step": 3,
+      "status": "planned",
+      "key_env": "SAM_GOV_API_KEY"
+    },
+    {
+      "id": "state_registers",
+      "name": "State company registers (Secretary of State)",
+      "url": "",
+      "what_it_does": "Official company registers, one website per state.",
+      "access": "scrape",
+      "cost": "free",
+      "step": 5,
+      "status": "planned"
+    },
+    {
+      "id": "bbb",
+      "name": "Better Business Bureau",
+      "url": "https://www.bbb.org/",
+      "what_it_does": "Business rating and complaints. No public API.",
+      "access": "scrape",
+      "cost": "free",
+      "step": 4,
+      "status": "planned"
+    },
+    {
+      "id": "us_chambers",
+      "name": "Local chambers (GrowthZone / ChamberMaster)",
+      "url": "",
+      "what_it_does": "Chamber membership.",
+      "access": "scrape",
+      "cost": "free",
+      "step": 4,
+      "status": "planned"
+    },
+    {
+      "id": "us_fairs",
+      "name": "Trade fairs (Map Your Show, ASD Market Week, MAGIC, CES)",
+      "url": "https://www.mapyourshow.com/",
+      "what_it_does": "Trade fair exhibitors.",
+      "access": "scrape",
+      "cost": "free",
+      "step": 4,
+      "status": "planned"
+    }
+  ],
+  "cards": []
+}

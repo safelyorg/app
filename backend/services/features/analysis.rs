@@ -32,6 +32,7 @@ use crate::{
         shared::evidence::{record_evidence, record_risk_factors},
         shared::standards::{self, PRICES_FOR_SIGNED_IN},
         sources::b2b::{B2bListingProfile, B2bSupplierProfile, SupplierRecord},
+        sources::databases::{OUTSIDE_RECORDS, SellerFacts, check_outside_records},
     },
 };
 use axum::{Json, http::HeaderMap};
@@ -558,6 +559,9 @@ fn warning_points(signal: &Signal) -> i16 {
     if signal.signal_type != "caution" {
         return 0;
     }
+    if signal.category == OUTSIDE_RECORDS {
+        return standards::database_warning_points(&signal.label, &signal.value);
+    }
     standards::b2b().warning_points(&signal.label, &signal.value)
 }
 
@@ -575,7 +579,13 @@ fn info_points(signals: &[Signal]) -> i16 {
 /// Removes the cards b2b.json switches off ("enabled": false), so they
 /// are neither shown nor scored.
 fn keep_enabled_cards(signals: &mut Vec<Signal>) {
-    signals.retain(|s| standards::b2b().card_enabled(&s.label));
+    signals.retain(|s| {
+        if s.category == OUTSIDE_RECORDS {
+            standards::database_card_enabled(&s.label)
+        } else {
+            standards::b2b().card_enabled(&s.label)
+        }
+    });
 }
 
 /// The full B2B risk score from a scan's signals and the seller's number
@@ -876,6 +886,14 @@ pub async fn build_b2b_analysis_path(
     // No social pages is normal for a supplier the platform already
     // proves is real (orders, reviews, a company check).
     soften_no_presence(&mut signals);
+    // Outside records (sanctions lists, later company registers): the
+    // same checker the website check uses.
+    let facts = SellerFacts {
+        company_name: supplier.company_name.clone(),
+        country: supplier.country.clone(),
+        website: supplier.website_url.clone(),
+    };
+    signals.extend(check_outside_records(&facts).await);
     keep_enabled_cards(&mut signals);
 
     let risk_score = b2b_score_from_signals(&signals, fraud_count);

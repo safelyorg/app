@@ -1,0 +1,83 @@
+{
+  "country": "china",
+  "name": "China",
+  "names": [
+    "China",
+    "Mainland China",
+    "CN",
+    "PRC",
+    "People's Republic of China"
+  ],
+  "company_ids": [
+    {
+      "name": "Unified Social Credit Code",
+      "length": 18,
+      "has_check_digit": true,
+      "about": "18 letters and numbers on the business licence; the last one is a check character."
+    }
+  ],
+  "sources": [
+    {
+      "id": "uscc_check",
+      "name": "Company code check",
+      "url": "",
+      "what_it_does": "Spots a fake 18-character company code (it has a check character).",
+      "access": "offline",
+      "cost": "free",
+      "step": 1,
+      "status": "planned"
+    },
+    {
+      "id": "gsxt",
+      "name": "National Enterprise Credit Information system",
+      "url": "https://www.gsxt.gov.cn/",
+      "what_it_does": "Official company register. No API and heavy robot checks.",
+      "access": "scrape",
+      "cost": "free",
+      "step": 5,
+      "status": "planned"
+    },
+    {
+      "id": "qichacha",
+      "name": "Qichacha / Tianyancha",
+      "url": "https://www.qcc.com/",
+      "what_it_does": "The official register data through a company.",
+      "access": "paid_api",
+      "cost": "paid",
+      "step": 5,
+      "status": "planned",
+      "key_env": "QICHACHA_API_KEY"
+    },
+    {
+      "id": "canton_fair",
+      "name": "Canton Fair exhibitors",
+      "url": "https://www.cantonfair.org.cn/",
+      "what_it_does": "Did the company have a booth at China's biggest fair?",
+      "access": "scrape",
+      "cost": "free",
+      "step": 4,
+      "status": "planned"
+    },
+    {
+      "id": "ccpit",
+      "name": "CCPIT",
+      "url": "https://en.ccpit.org/",
+      "what_it_does": "China's trade chamber (China Council for the Promotion of International Trade). Access to be checked.",
+      "access": "scrape",
+      "cost": "free",
+      "step": 4,
+      "status": "planned"
+    },
+    {
+      "id": "customs_aeo",
+      "name": "China Customs AEO list",
+      "url": "http://credit.customs.gov.cn/",
+      "what_it_does": "Trusted exporters listed by China Customs.",
+      "access": "scrape",
+      "cost": "free",
+      "step": 4,
+      "status": "planned"
+    }
+  ],
+  "cards": []
+}

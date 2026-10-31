@@ -3,7 +3,7 @@ use crate::models::analysis::Signal;
 /// Results that mean "nothing could be checked here", not a real
 /// finding: the platform didn't show it, the supplier left it out, or
 /// the page couldn't be read. These never count as real, usable data.
-const NO_DATA_VALUES: [&str; 11] = [
+const NO_DATA_VALUES: [&str; 12] = [
     "Unknown",
     "unknown",
     "Not provided",
@@ -15,6 +15,9 @@ const NO_DATA_VALUES: [&str; 11] = [
     "Not found",
     "No website found",
     "No store page found",
+    // Not on a sanctions list: shows only that the company is not
+    // banned, nothing about the company itself.
+    "Not on the lists",
 ];
 
 /// True when this check came back with a real finding (good or bad),

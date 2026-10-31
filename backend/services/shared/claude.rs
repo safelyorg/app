@@ -703,6 +703,15 @@ fn b2b_content_with(arg: &CallB2bClaudeArguments, photos_blocked: bool) -> Strin
         as "normal" unless something provided is actually implausible. If
         a price is provided, say in the reasoning what it is and whether it
         is plausible - do not claim pricing is missing when it is provided.
+        The verdict must be exactly "normal", "suspiciously low" or
+        "suspiciously high". If your reasoning says the price is far below
+        (or far above) what this product normally costs, the verdict must
+        be "suspiciously low" (or "suspiciously high") - never "normal"
+        with a reasoning that says the price does not add up. A price far
+        below the cost of the parts named in the title (e.g. a laptop with
+        a recent Core i7, 32GB RAM and a 1TB SSD for under US$100) is
+        "suspiciously low", even if the buyer could ask which
+        configuration is meant.
 
         For contact_verifiability: judge ONLY the contact details the
         SUPPLIER itself published - can a buyer reach and check this
@@ -1114,6 +1123,18 @@ mod b2b_prompt_tests {
         let a: B2bClaudeAnalysis = serde_json::from_str(json).unwrap();
         assert!(!a.regulated_product.found);
         assert!(!a.maker_claim_mismatch.found);
+    }
+
+    #[test]
+    fn the_price_verdict_must_match_its_reasoning() {
+        let p = b2b_content(&args("madeinchina", "", "US$72.00 (1-99 Pieces)"));
+        let flat = p.split_whitespace().collect::<Vec<_>>().join(" ");
+        assert!(flat.contains(
+            "The verdict must be exactly \"normal\", \"suspiciously low\" or \"suspiciously high\""
+        ));
+        assert!(
+            flat.contains("never \"normal\" with a reasoning that says the price does not add up")
+        );
     }
 
     #[test]

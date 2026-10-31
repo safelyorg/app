@@ -1,0 +1,51 @@
+{
+  "country": "hong_kong",
+  "name": "Hong Kong",
+  "names": [
+    "Hong Kong",
+    "Hong Kong SAR",
+    "HK",
+    "Hongkong"
+  ],
+  "company_ids": [
+    {
+      "name": "Business Registration number",
+      "length": 8,
+      "has_check_digit": false,
+      "about": "The first 8 digits of the Business Registration Certificate number."
+    }
+  ],
+  "sources": [
+    {
+      "id": "companies_registry",
+      "name": "Companies Registry (e-Search)",
+      "url": "https://www.e-services.cr.gov.hk/",
+      "what_it_does": "Official company register. Small fee per search, needs an account.",
+      "access": "scrape",
+      "cost": "small_fee",
+      "step": 5,
+      "status": "planned"
+    },
+    {
+      "id": "hktdc",
+      "name": "HKTDC fairs",
+      "url": "https://www.hktdc.com/",
+      "what_it_does": "Hong Kong Trade Development Council fair exhibitors.",
+      "access": "scrape",
+      "cost": "free",
+      "step": 4,
+      "status": "planned"
+    },
+    {
+      "id": "hkgcc",
+      "name": "Hong Kong General Chamber of Commerce",
+      "url": "https://www.chamber.org.hk/",
+      "what_it_does": "Chamber member directory.",
+      "access": "scrape",
+      "cost": "free",
+      "step": 4,
+      "status": "planned"
+    }
+  ],
+  "cards": []
+}

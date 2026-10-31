@@ -1,0 +1,70 @@
+{
+  "country": "brazil",
+  "name": "Brazil",
+  "names": [
+    "Brazil",
+    "Brasil",
+    "BR"
+  ],
+  "company_ids": [
+    {
+      "name": "CNPJ",
+      "length": 14,
+      "has_check_digit": true,
+      "about": "14 digits, written like 12.345.678/0001-95; the last two are check digits."
+    }
+  ],
+  "sources": [
+    {
+      "id": "cnpj_check",
+      "name": "CNPJ check",
+      "url": "",
+      "what_it_does": "Spots a fake CNPJ (it has two check digits).",
+      "access": "offline",
+      "cost": "free",
+      "step": 1,
+      "status": "planned"
+    },
+    {
+      "id": "receita_cnpj",
+      "name": "Receita Federal CNPJ (BrasilAPI)",
+      "url": "https://brasilapi.com.br/",
+      "what_it_does": "Official register: name, active or closed, opening date, address.",
+      "access": "api",
+      "cost": "free",
+      "step": 3,
+      "status": "planned"
+    },
+    {
+      "id": "reclame_aqui",
+      "name": "Reclame Aqui",
+      "url": "https://www.reclameaqui.com.br/",
+      "what_it_does": "Brazil's biggest complaint website. No public API.",
+      "access": "scrape",
+      "cost": "free",
+      "step": 4,
+      "status": "planned"
+    },
+    {
+      "id": "acsp",
+      "name": "ACSP and local commercial associations",
+      "url": "https://acsp.com.br/",
+      "what_it_does": "Chamber membership. Access to be checked.",
+      "access": "scrape",
+      "cost": "free",
+      "step": 4,
+      "status": "planned"
+    },
+    {
+      "id": "br_fairs",
+      "name": "Trade fairs (Fenatran, Feicon, FIEE, Hospitalar, Fispal)",
+      "url": "",
+      "what_it_does": "Trade fair exhibitors.",
+      "access": "scrape",
+      "cost": "free",
+      "step": 4,
+      "status": "planned"
+    }
+  ],
+  "cards": []
+}

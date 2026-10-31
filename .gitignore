@@ -2,3 +2,4 @@
 .env
 /wasm/target
 node_modules/
+data/

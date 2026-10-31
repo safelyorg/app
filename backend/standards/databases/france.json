@@ -1,0 +1,87 @@
+{
+  "country": "france",
+  "name": "France",
+  "names": [
+    "France",
+    "FR",
+    "République française"
+  ],
+  "company_ids": [
+    {
+      "name": "SIREN",
+      "length": 9,
+      "has_check_digit": true,
+      "about": "9 digits (the first 9 of the 14-digit SIRET); the last one is a check digit."
+    },
+    {
+      "name": "EU VAT number",
+      "length": 13,
+      "has_check_digit": true,
+      "about": "FR + 2 check characters + the SIREN, e.g. FR40303265045."
+    }
+  ],
+  "sources": [
+    {
+      "id": "siren_check",
+      "name": "SIREN check",
+      "url": "",
+      "what_it_does": "Spots a fake SIREN (it has a check digit).",
+      "access": "offline",
+      "cost": "free",
+      "step": 1,
+      "status": "planned"
+    },
+    {
+      "id": "recherche_entreprises",
+      "name": "Recherche d'entreprises",
+      "url": "https://annuaire-entreprises.data.gouv.fr/",
+      "what_it_does": "Official register: name, active or closed, creation date, address.",
+      "access": "api",
+      "cost": "free",
+      "step": 3,
+      "status": "planned"
+    },
+    {
+      "id": "insee_sirene",
+      "name": "INSEE SIRENE",
+      "url": "https://www.insee.fr/",
+      "what_it_does": "The same register with more detail.",
+      "access": "api",
+      "cost": "free",
+      "step": 3,
+      "status": "planned",
+      "key_env": "INSEE_API_KEY"
+    },
+    {
+      "id": "eu_vies",
+      "name": "EU VIES",
+      "url": "https://ec.europa.eu/taxation_customs/vies/",
+      "what_it_does": "Is the EU VAT number real and active? Works for every EU country.",
+      "access": "api",
+      "cost": "free",
+      "step": 3,
+      "status": "planned"
+    },
+    {
+      "id": "cci",
+      "name": "CCI France",
+      "url": "https://www.cci.fr/",
+      "what_it_does": "Chamber of commerce. Access to be checked.",
+      "access": "scrape",
+      "cost": "free",
+      "step": 4,
+      "status": "planned"
+    },
+    {
+      "id": "fr_fairs",
+      "name": "Trade fairs (SIAL Paris, Maison&Objet, Who's Next)",
+      "url": "",
+      "what_it_does": "Trade fair exhibitors.",
+      "access": "scrape",
+      "cost": "free",
+      "step": 4,
+      "status": "planned"
+    }
+  ],
+  "cards": []
+}

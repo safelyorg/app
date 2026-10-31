@@ -1,7 +1,9 @@
 use crate::{
     models::analysis::Signal,
     services::{
-        shared::claude::{B2bClaudeAnalysis, Finding, IMAGE_ANALYSIS_ENABLED, ImageAssessment},
+        shared::claude::{
+            B2bClaudeAnalysis, Finding, IMAGE_ANALYSIS_ENABLED, ImageAssessment, PriceAssessment,
+        },
         shared::standards::{
             self, HIDDEN_COMPANY_FIGURES, NO_FOUNDING_YEAR_FIELD, NO_ORDER_DETAILS,
             PRICES_FOR_SIGNED_IN, SUPPLIER_PAGE_SCANS,
@@ -595,7 +597,12 @@ static TIME_IN_BUSINESS: LazyLock<Vec<Regex>> = LazyLock::new(|| {
 });
 
 /// Words near a match that show it is not about the company's age.
+/// "member" / "joined": a platform membership date ("Diamond Member (a
+/// paid membership) since 2020", "Member of b2bmap since 2024") is how
+/// long the company has paid the platform, not how old it is.
 const NOT_COMPANY_AGE: &[&str] = &[
+    "member",
+    "joined",
     "warranty",
     "guarantee",
     "lifespan",
@@ -1650,6 +1657,54 @@ fn b2b_listing_specificity_signal(finding: &Finding) -> Signal {
     }
 }
 
+/// Phrases in the price reasoning that mean the price is far too low.
+/// The analysis always runs in English (see handlers/analyze.rs).
+const FAR_TOO_LOW: &[&str] = &[
+    "extremely low",
+    "far below",
+    "unrealistically low",
+    "implausibly low",
+    "suspiciously low",
+    "too low to be",
+    "below the cost",
+];
+
+/// true when the reasoning says the price is far too low, without
+/// "not" right before it ("not extremely low" does not count).
+fn reasoning_says_far_too_low(reasoning: &str) -> bool {
+    let lower = reasoning.to_lowercase();
+    FAR_TOO_LOW.iter().any(|phrase| {
+        lower.match_indices(phrase).any(|(i, _)| {
+            let before = lower[..i].trim_end();
+            !(before.ends_with(" not") || before.ends_with("n't") || before.ends_with(" no"))
+        })
+    })
+}
+
+/// The "Price analysis" card. A "normal" verdict whose own reasoning
+/// says the price is far too low (a US$70 laptop with a new Core i7)
+/// becomes "suspiciously low": the verdict and its explanation must
+/// agree.
+fn price_signal(price: &PriceAssessment) -> Signal {
+    let verdict = if price.verdict == "normal" && reasoning_says_far_too_low(&price.reasoning) {
+        "suspiciously low".to_string()
+    } else {
+        price.verdict.clone()
+    };
+    Signal {
+        label: "Price analysis".to_string(),
+        sub: price.reasoning.clone(),
+        signal_type: if verdict == "normal" {
+            "good".to_string()
+        } else {
+            "caution".to_string()
+        },
+        value: verdict,
+        category: "listing".to_string(),
+        check_type: "anomaly".to_string(),
+    }
+}
+
 pub fn build_b2b_claude_signals(analysis: &B2bClaudeAnalysis) -> Vec<Signal> {
     let mut signals = vec![
         b2b_finding_to_signal(
@@ -1665,18 +1720,7 @@ pub fn build_b2b_claude_signals(analysis: &B2bClaudeAnalysis) -> Vec<Signal> {
             &analysis.registration_consistency,
         ),
         b2b_listing_specificity_signal(&analysis.listing_specificity),
-        Signal {
-            label: "Price analysis".to_string(),
-            sub: analysis.pricing_transparency.reasoning.clone(),
-            value: analysis.pricing_transparency.verdict.clone(),
-            signal_type: if analysis.pricing_transparency.verdict == "normal" {
-                "good".to_string()
-            } else {
-                "caution".to_string()
-            },
-            category: "listing".to_string(),
-            check_type: "anomaly".to_string(),
-        },
+        price_signal(&analysis.pricing_transparency),
         b2b_finding_to_signal(
             "Contact info",
             "identity",
@@ -3050,6 +3094,35 @@ mod b2b_signal_tests {
     }
 
     #[test]
+    fn a_price_its_own_reasoning_calls_far_too_low_is_not_normal() {
+        let price = |verdict: &str, reasoning: &str| {
+            price_signal(&PriceAssessment {
+                verdict: verdict.to_string(),
+                reasoning: reasoning.to_string(),
+            })
+        };
+        // The real Clover Industrial laptop scan (Oct 2026).
+        let card = price(
+            "normal",
+            "These price points (approximately US$62-72) are extremely low for a laptop with a claimed 12th Gen Intel Core i7-12700H processor, 32GB RAM, and 1TB SSD.",
+        );
+        assert_eq!(card.value, "suspiciously low");
+        assert_eq!(card.signal_type, "caution");
+        // A plain normal price, or one that is "not extremely low", stays normal.
+        for reasoning in [
+            "US$250 per carton is plausible for this product.",
+            "The price is not extremely low for a generic phone.",
+            "The price isn't far below the usual range.",
+        ] {
+            let card = price("normal", reasoning);
+            assert_eq!(card.value, "normal", "{reasoning}");
+            assert_eq!(card.signal_type, "good");
+        }
+        // Other verdicts are kept as they are.
+        assert_eq!(price("suspiciously high", "x").value, "suspiciously high");
+    }
+
+    #[test]
     fn claims_about_years_in_business_are_found() {
         for (text, claim) in [
             ("For over 15 years, we have served", "For over 15 years"),
@@ -3076,6 +3149,9 @@ mod b2b_signal_tests {
             "built for a lifespan of over 10 years",
             "since 2999",
             "delivery within 4-6 weeks",
+            "On Made-in-China: Diamond Member (a paid membership) since 2020; 7 years on Made-in-China.",
+            "Member of b2bmap since 2024",
+            "Joined Alibaba since 2019",
         ] {
             assert_eq!(claimed_time_in_business(text), None, "{text}");
         }
