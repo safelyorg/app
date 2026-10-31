@@ -570,9 +570,15 @@ fn warning_points(signal: &Signal) -> i16 {
 /// confirmed, a risky payment option listed, a company page that would
 /// not load...), so it adds a little. Capped so info alone can never
 /// leave Low risk.
+///
+/// Outside records (company registers, sanctions lists) never add info
+/// points: "not in the register" is not a warning (databases/global.json).
 fn info_points(signals: &[Signal]) -> i16 {
     let scoring = &standards::b2b().scoring;
-    let count = signals.iter().filter(|s| s.signal_type == "info").count() as i16;
+    let count = signals
+        .iter()
+        .filter(|s| s.signal_type == "info" && s.category != OUTSIDE_RECORDS)
+        .count() as i16;
     (count * scoring.info_points_each).min(scoring.info_points_max)
 }
 
@@ -1017,6 +1023,10 @@ mod b2b_score_tests {
             sig("Image authenticity", "not verified", "info"),
         ];
         assert_eq!(info_points(&mixed), 5, "only info cards count");
+        // "Not in the register" is information that never adds points.
+        let mut register = sig("Company register (GLEIF)", "Not in the register", "info");
+        register.category = crate::services::sources::databases::OUTSIDE_RECORDS.to_string();
+        assert_eq!(info_points(&[register]), 0);
     }
 
     #[test]

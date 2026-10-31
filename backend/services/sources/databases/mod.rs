@@ -11,13 +11,14 @@
 //! What is read is listed in backend/standards/databases/: global.json
 //! for every seller, and one file per country (china.json, usa.json...)
 //! for what only that country has (standards::databases_for_country).
-//! Checks for every country are files here (sanctions.rs); checks for
+//! Checks for every country are files here (sanctions.rs, gleif.rs); checks for
 //! one country will go in a folder of that country's name
 //! (databases/china/, databases/brazil/...), like sources/b2b/{country}/.
 //!
 //! Found = a good sign. Not found = not a warning. Only a false claim or
 //! a sanctions match is a warning.
 
+pub mod gleif;
 pub mod sanctions;
 
 use crate::models::analysis::Signal;
@@ -41,8 +42,12 @@ pub struct SellerFacts {
 /// cards. A check with nothing to go on returns no card.
 pub async fn check_outside_records(facts: &SellerFacts) -> Vec<Signal> {
     let mut cards = Vec::new();
-    if let Some(card) = sanctions::sanctions_signal(facts.company_name.as_deref()).await {
-        cards.push(card);
-    }
+    let name = facts.company_name.as_deref();
+    let (sanctions, register) = tokio::join!(
+        sanctions::sanctions_signal(name),
+        gleif::gleif_signal(name, facts.country.as_deref()),
+    );
+    cards.extend(sanctions);
+    cards.extend(register);
     cards
 }

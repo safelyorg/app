@@ -3,7 +3,7 @@ use crate::models::analysis::Signal;
 /// Results that mean "nothing could be checked here", not a real
 /// finding: the platform didn't show it, the supplier left it out, or
 /// the page couldn't be read. These never count as real, usable data.
-const NO_DATA_VALUES: [&str; 12] = [
+const NO_DATA_VALUES: [&str; 14] = [
     "Unknown",
     "unknown",
     "Not provided",
@@ -18,6 +18,10 @@ const NO_DATA_VALUES: [&str; 12] = [
     // Not on a sanctions list: shows only that the company is not
     // banned, nothing about the company itself.
     "Not on the lists",
+    // Not in the GLEIF register, or only another company with the same
+    // name: nothing learned about this company.
+    "Not in the register",
+    "Same name, other country",
 ];
 
 /// True when this check came back with a real finding (good or bad),

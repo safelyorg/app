@@ -534,7 +534,7 @@ mod tests {
 
     /// Every outside-records card the code can make. A new card must be
     /// added to a databases file too (with its points), or this fails.
-    const DATABASE_CARDS: [&str; 1] = ["Sanctions lists"];
+    const DATABASE_CARDS: [&str; 2] = ["Sanctions lists", "Company register (GLEIF)"];
 
     #[test]
     fn every_database_card_is_in_a_databases_file() {
@@ -544,6 +544,10 @@ mod tests {
         assert_eq!(
             database_warning_points("Sanctions lists", "Possible match"),
             70
+        );
+        assert_eq!(
+            database_warning_points("Company register (GLEIF)", "Closed in the register"),
+            25
         );
         assert_eq!(database_warning_points("Not a card", "x"), 15);
         assert!(database_card_enabled("Sanctions lists"));

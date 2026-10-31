@@ -43,11 +43,11 @@
       "id": "gleif",
       "name": "GLEIF (LEI register)",
       "url": "https://www.gleif.org/",
-      "what_it_does": "Official world list of company IDs (LEI). Bigger companies only.",
+      "what_it_does": "Official world register of company IDs (LEI). Bigger companies only. Searched by the whole company name; needs GLEIF_CHECK_ENABLED=true.",
       "access": "api",
       "cost": "free",
       "step": 2,
-      "status": "planned"
+      "status": "live"
     },
     {
       "id": "wayback",
@@ -132,6 +132,16 @@
         "Company name"
       ],
       "warning_points": 70
+    },
+    {
+      "card": "Company register (GLEIF)",
+      "group": "outside_records",
+      "what_it_checks": "Whether a company with exactly the seller's name is in the official GLEIF register (LEI). Registered in the seller's country is a good sign; listed as closed is a warning; the same name in another country, or not in the register, is information only and never adds to the score. Needs GLEIF_CHECK_ENABLED=true in .env.",
+      "reads": [
+        "Company name",
+        "Country"
+      ],
+      "warning_points": 25
     }
   ]
 }
