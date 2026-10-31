@@ -476,6 +476,18 @@ async fn send_with_photo_fallback(
     }
 }
 
+/// Sends a text-only prompt and returns Claude's answer (a JSON text,
+/// without code fences). Used by the website check
+/// (sources/websites/ai.rs), which reads the answer itself.
+pub async fn ask_claude_text(prompt: String) -> Result<String, ClaudeError> {
+    match send_to_claude(build_content_blocks(prompt, &[])).await {
+        Ok(answer) => Ok(answer),
+        Err(SendError::Failed(e)) => Err(e),
+        // Cannot happen without photos.
+        Err(SendError::PhotosBlocked) => Err(ClaudeError::ServiceUnavailable(400)),
+    }
+}
+
 pub async fn call_b2b_claude(
     args: CallB2bClaudeArguments<'_>,
 ) -> Result<B2bClaudeAnalysis, ClaudeError> {

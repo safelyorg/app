@@ -76,6 +76,7 @@ pub fn platform_display_name(platform: &str) -> String {
         "wholesalecentral" => "Wholesale Central",
         "madeinchina" => "Made-in-China",
         "globalsources" => "Global Sources",
+        "website" => "Website",
         other => other,
     }
     .to_string()

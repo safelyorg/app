@@ -2,13 +2,15 @@ use crate::{
     errors::analyze::AnalyzeError,
     models::{
         analysis::{AnalyzeRequest, AnalyzeResponse, RiskLevel, Signal},
-        sellers::Sellers,
+        listings::ListingsRequest,
+        sellers::{Sellers, SellersRequest},
     },
     services::{
         features::analysis::{
             BuildResponseData, authorize_request, authorize_scan, build_b2b_analysis_path,
             build_requests, resolve_seller, save_and_build_response,
         },
+        features::domain_age::normalize_domain,
         features::listings::{create_listing, update_listing_from_b2b},
         features::osint::{SellerIdentifiers, verify_social_link},
         features::sellers::update_seller_from_b2b,
@@ -20,6 +22,7 @@ use crate::{
             b2b_page_from_browser, b2b_page_from_browser_first, fetch_b2b_page,
             get_scraper_for_platform,
         },
+        sources::websites::{self, WebsiteCheckRequest, build_website_analysis, own_pages},
     },
 };
 use axum::{Json, extract::State, http::HeaderMap};
@@ -269,21 +272,142 @@ pub async fn analyze(
     let mut response = save_and_build_response(data).await?;
     // The result is saved: this scan counts.
     scan_hold.finish();
+    save_and_translate(&pool, &mut response.0, reader_language).await;
+    Ok(response)
+}
 
+/// POST /api/v1/check-website
+///
+/// The "Check this website" scan of a seller's own shop website. The
+/// extension sends the shop's own pages, read in the buyer's browser
+/// after the buyer clicked the button (the extension only reads a site
+/// when asked). Counted as one scan, given back if it does not finish -
+/// like a marketplace scan. The shop is saved as a seller with platform
+/// "website" and its domain as the ID, so reports and Safely history
+/// belong to the whole shop.
+pub async fn check_website(
+    State(pool): State<Pool<Postgres>>,
+    headers: HeaderMap,
+    Json(request): Json<WebsiteCheckRequest>,
+) -> Result<Json<AnalyzeResponse>, AnalyzeError> {
+    let (user_id, scan_hold) = authorize_scan(&headers, &pool).await?;
+    let reader_language = reader_language(request.language.as_deref());
+    let domain = normalize_domain(&request.url)
+        .ok_or_else(|| AnalyzeError::ClaudeAnalysisFailed("Not a website address".to_string()))?;
+    let pages = own_pages(&request.pages, &domain);
+    if pages.is_empty() {
+        return Err(AnalyzeError::ClaudeAnalysisFailed(
+            "No page of the website was sent".to_string(),
+        ));
+    }
+    let home = format!("https://{domain}/");
+
+    let seller_req = SellersRequest {
+        platform: websites::PLATFORM.to_string(),
+        platform_id: Some(domain.clone()),
+        name: None,
+        handle: None,
+        phone: None,
+        profile_url: Some(home.clone()),
+        join_date: None,
+        location: None,
+        last_active: None,
+    };
+    let resolved = resolve_seller(&pool, &seller_req, websites::PLATFORM, &domain).await?;
+    let listing_req = ListingsRequest {
+        seller_id: None,
+        platform: websites::PLATFORM.to_string(),
+        listing_url: home.clone(),
+        listing_id: None,
+        title: Some(domain.clone()),
+        price: None,
+        description: None,
+        category: None,
+        image_urls: None,
+        posted_date: None,
+    };
+    let listing = create_listing(&pool, &listing_req, resolved.seller.id)
+        .await
+        .map_err(|e| AnalyzeError::Database(e.to_string()))?;
+
+    let result = build_website_analysis(
+        &pool,
+        &domain,
+        &pages,
+        resolved.fraud_count,
+        resolved.seller.id,
+    )
+    .await?;
+
+    let mut seller = resolved.seller;
+    let _ = update_seller_from_b2b(
+        &pool,
+        seller.id,
+        result.company_name.as_deref(),
+        result.country.as_deref(),
+        None,
+        None,
+        result.phone.as_deref(),
+        Some(&home),
+    )
+    .await;
+    // The dashboard shows the shop under its domain.
+    let _ = update_listing_from_b2b(&pool, listing.id, Some(&domain), None).await;
+    if result.company_name.is_some() {
+        seller.name = result.company_name.clone();
+    }
+    if result.country.is_some() {
+        seller.location = result.country.clone();
+    }
+
+    let mut signals = result.signals;
+    sort_signals_by_table(&mut signals);
+    let risk_level = match result.risk_score {
+        0..=33 => RiskLevel::Low,
+        34..=66 => RiskLevel::Caution,
+        _ => RiskLevel::High,
+    };
+    let data = BuildResponseData {
+        pool: &pool,
+        listing_id: listing.id,
+        risk_score: result.risk_score,
+        risk_level,
+        signals,
+        overall_risk_notes: result.notes,
+        user_id,
+        seller,
+        fraud_count: resolved.fraud_count,
+        network_summary: resolved.network_summary,
+        social_candidates: Vec::new(),
+    };
+    let mut response = save_and_build_response(data).await?;
+    scan_hold.finish();
+    save_and_translate(&pool, &mut response.0, reader_language).await;
+    Ok(response)
+}
+
+/// After a scan is saved: saves its English text (the source of every
+/// translation) and, for a reader in another language, translates the
+/// response. A failed translation leaves the scan in English.
+async fn save_and_translate(
+    pool: &Pool<Postgres>,
+    response: &mut AnalyzeResponse,
+    reader_language: &'static str,
+) {
     // The English result is always saved first: it is the source every
     // translation is made from. The summary saved with it is the
     // seller's fraud-report line (seller.network_summary) - the same one
     // the dashboard translates - because the dashboard and the extension
     // share these saved translations.
-    let analysis_id = response.0.analysis_id;
-    let signals_value = to_value(&response.0.signals).unwrap_or_default();
-    let factors_value = to_value(&response.0.risk_factors).unwrap_or_default();
+    let analysis_id = response.analysis_id;
+    let signals_value = to_value(&response.signals).unwrap_or_default();
+    let factors_value = to_value(&response.risk_factors).unwrap_or_default();
     if let Err(e) = save_english_baseline(
-        &pool,
+        pool,
         analysis_id,
         &signals_value,
         &factors_value,
-        &response.0.seller.network_summary,
+        &response.seller.network_summary,
         "en",
     )
     .await
@@ -298,24 +422,22 @@ pub async fn analyze(
     // the scan is still shown, in English, never lost.
     if reader_language != "en" {
         match get_or_create_translation(
-            &pool,
+            pool,
             analysis_id,
             &signals_value,
             &factors_value,
-            &response.0.seller.network_summary,
+            &response.seller.network_summary,
             reader_language,
         )
         .await
         {
-            Ok(translation) => apply_translation(&mut response.0, &translation),
+            Ok(translation) => apply_translation(response, &translation),
             Err(e) => eprintln!(
                 "Safely: could not translate analysis {} into {}, showing English: {:?}",
                 analysis_id, reader_language, e
             ),
         }
     }
-
-    Ok(response)
 }
 
 /// The language the person reads Safely in: "pt-br" or "en". Anything
