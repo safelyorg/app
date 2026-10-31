@@ -45,6 +45,11 @@ interface PendingTabRegistration {
 
   const UNSUPPORTED_TEXT =
     "Safely doesn't check this page — open a listing on a supported marketplace to scan it.";
+  // Shown on an ordinary website (not a marketplace), above the
+  // "Check this website" button. Nothing on the site is read before
+  // the buyer clicks it.
+  const WEBSITE_TEXT =
+    "This isn't a marketplace listing. Safely can check this shop's own website instead: how old it is, the company behind it, its policies and how you can pay. It counts as one scan.";
   const SIGNIN_TEXT =
     "Sign in free to analyze this listing. You get 5 free scans every month — no credit card needed.";
 
@@ -63,6 +68,10 @@ interface PendingTabRegistration {
   let renderScanLimitMessage: (() => void) | null = null;
   // The scraper's own "not supported" message, when it gave one.
   let unsupportedCustomMessage: string | null = null;
+  // On an ordinary website the "not supported" view offers "Check this
+  // website" instead. lastScanKind tells Reload which scan to run again.
+  let websiteMode = false;
+  let lastScanKind: "listing" | "website" = "listing";
 
   // Small line icons for the sign-in / limit / error / not-a-listing
   // messages. The same drawings are used for the toolbar buttons.
@@ -111,6 +120,7 @@ interface PendingTabRegistration {
     stateIcon(ICON_INFO) +
     '<div class="safely-state-title" id="safely-unsupported-title"></div>' +
     '<div class="safely-state-text" id="safely-unsupported-message"></div>' +
+    '<button type="button" class="safely-btn safely-btn-dark safely-btn-full" id="safely-check-website-btn" style="display:none"></button>' +
     "</div>" +
     '<div class="safely-tab-content safely-state" id="safely-tab-signin-required" style="display:none">' +
     stateIcon(ICON_SIGNIN) +
@@ -179,6 +189,8 @@ interface PendingTabRegistration {
   const unsupportedMessageEl = document.getElementById(
     "safely-unsupported-message",
   ) as HTMLElement | null;
+  const unsupportedTitleEl = document.getElementById("safely-unsupported-title") as HTMLElement | null;
+  const checkWebsiteBtn = document.getElementById("safely-check-website-btn") as HTMLButtonElement | null;
   const signinRequiredContent = document.getElementById(
     "safely-tab-signin-required",
   ) as HTMLElement;
@@ -223,8 +235,18 @@ interface PendingTabRegistration {
   if (retryBtn) {
     retryBtn.addEventListener("click", () => {
       // Reuses the exact same check-then-fetch flow that already runs
-      // on every real navigation.
-      updateSupportState();
+      // on every real navigation - or the website check, when that was
+      // the scan that did not finish.
+      if (lastScanKind === "website") runWebsiteCheck();
+      else updateSupportState();
+    });
+  }
+
+  if (checkWebsiteBtn) {
+    checkWebsiteBtn.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      runWebsiteCheck();
     });
   }
 
@@ -315,9 +337,8 @@ interface PendingTabRegistration {
         langBtn.style.display = "none";
       }
     }
-    if (unsupportedMessageEl) {
-      unsupportedMessageEl.textContent = tr(unsupportedCustomMessage || UNSUPPORTED_TEXT);
-    }
+    if (unsupportedMessageEl) unsupportedMessageEl.textContent = unsupportedText();
+    if (checkWebsiteBtn) checkWebsiteBtn.textContent = tr("Check this website");
     if (signinText) signinText.textContent = tr(SIGNIN_TEXT);
     if (signinBtn) signinBtn.textContent = tr("Sign in free");
     if (retryText) retryText.textContent = tr("Reload");
@@ -336,6 +357,7 @@ interface PendingTabRegistration {
       const el = document.getElementById(id);
       if (el) el.textContent = tr(stateTitles[id]);
     });
+    if (websiteMode && unsupportedTitleEl) unsupportedTitleEl.textContent = tr("Is this shop safe?");
     panelTabs.querySelectorAll<HTMLElement>("[data-tab]").forEach((btn) => {
       btn.textContent = tr(tabTitles[btn.dataset.tab || ""] || "");
     });
@@ -496,6 +518,8 @@ interface PendingTabRegistration {
 
     if (supported) {
       unsupportedIcon.style.display = "none";
+      lastScanKind = "listing";
+      websiteMode = false;
 
       chrome.storage.local.get("safely_session_token", async (result) => {
         if (!isStillCurrentPage()) return;
@@ -518,18 +542,10 @@ interface PendingTabRegistration {
           });
           if (tabIds.indexOf("risk") !== -1) switchTab("risk");
           (window as any).__safelyResetState();
-          startChecking();
+          startChecking(CHECK_STEPS);
           (window as any).__safelyAPI.fetchAnalysis();
         } else {
-          TAB_ORDER.forEach((id) => {
-            if (iconSlots[id]) iconSlots[id].style.display = "none";
-          });
-          signinRequiredIcon.style.display = "flex";
-          analysisFailedIcon.style.display = "none";
-          scanLimitReachedIcon.style.display = "none";
-          if (usageLine) usageLine.style.display = "none";
-          setStatusDot("");
-          switchTab("signin-required");
+          showSigninRequired();
         }
       });
     } else {
@@ -543,13 +559,65 @@ interface PendingTabRegistration {
 
       unsupportedCustomMessage =
         (window as any).__safelyScrapers.getUnsupportedMessage?.() || null;
-      if (unsupportedMessageEl) {
-        unsupportedMessageEl.textContent = tr(unsupportedCustomMessage || UNSUPPORTED_TEXT);
-      }
+      // A marketplace page that is not a listing keeps its own message;
+      // an ordinary website gets the "Check this website" button.
+      websiteMode =
+        !unsupportedCustomMessage && !!(window as any).__safelyScrapers.isWebsiteCheckable?.();
+      if (checkWebsiteBtn) checkWebsiteBtn.style.display = websiteMode ? "" : "none";
+      applyStaticTexts();
 
       setStatusDot("");
       switchTab("unsupported");
     }
+  }
+
+  // The text of the "not supported" view: the website offer, the
+  // marketplace's own message, or the general one.
+  function unsupportedText(): string {
+    if (websiteMode) return tr(WEBSITE_TEXT);
+    return tr(unsupportedCustomMessage || UNSUPPORTED_TEXT);
+  }
+
+  function showSigninRequired(): void {
+    TAB_ORDER.forEach((id) => {
+      if (iconSlots[id]) iconSlots[id].style.display = "none";
+    });
+    unsupportedIcon.style.display = "none";
+    signinRequiredIcon.style.display = "flex";
+    analysisFailedIcon.style.display = "none";
+    scanLimitReachedIcon.style.display = "none";
+    if (usageLine) usageLine.style.display = "none";
+    setStatusDot("");
+    switchTab("signin-required");
+  }
+
+  // "Check this website": only ever runs after the buyer clicks the
+  // button (or Reload after it). Shows the same tabs and the same
+  // waiting view as a marketplace scan.
+  function runWebsiteCheck(): void {
+    lastScanKind = "website";
+    const requestUrl = window.location.href;
+    chrome.storage.local.get("safely_session_token", (result) => {
+      if (window.location.href !== requestUrl) return;
+      if (!result.safely_session_token) {
+        showSigninRequired();
+        return;
+      }
+      unsupportedIcon.style.display = "none";
+      signinRequiredIcon.style.display = "none";
+      analysisFailedIcon.style.display = "none";
+      scanLimitReachedIcon.style.display = "none";
+      renderFailedMessage = null;
+      renderScanLimitMessage = null;
+      buildQueuedTabsIfNeeded();
+      TAB_ORDER.forEach((id) => {
+        if (iconSlots[id] && tabTitles[id]) iconSlots[id].style.display = "flex";
+      });
+      if (tabIds.indexOf("risk") !== -1) switchTab("risk");
+      (window as any).__safelyResetState();
+      startChecking(WEBSITE_STEPS);
+      (window as any).__safelyAPI.checkWebsite();
+    });
   }
   // ── Waiting screen ──
   // While a scan runs, the checks Safely makes are listed one by one.
@@ -565,6 +633,17 @@ interface PendingTabRegistration {
     "Checking payment terms",
     "Working out the score",
   ];
+  // The same waiting view for "Check this website", with its own steps.
+  const WEBSITE_STEPS = [
+    "Reading the shop's pages",
+    "Checking the domain",
+    "Looking for the company behind it",
+    "Checking the shop's policies",
+    "Checking payment and prices",
+    "Checking official records",
+    "Working out the score",
+  ];
+  let currentSteps: string[] = CHECK_STEPS;
   const STEP_EVERY_MS = 1400;
   let checking = false;
   let checkingStep = 0;
@@ -587,10 +666,14 @@ interface PendingTabRegistration {
       ' 200"/></svg>' +
       '<div><div class="safely-wait-now" id="safely-wait-now"></div>' +
       '<div class="safely-wait-sub">' +
-      escapeHtml(tr("Checking this supplier. Usually a few seconds.")) +
+      escapeHtml(
+        currentSteps === WEBSITE_STEPS
+          ? tr("Checking this website. Usually 10 to 20 seconds.")
+          : tr("Checking this supplier. Usually a few seconds."),
+      ) +
       "</div></div></div>" +
       '<div class="safely-steps">' +
-      CHECK_STEPS.map(
+      currentSteps.map(
         (name) =>
           '<div class="safely-step"><span class="safely-step-dot"></span><span>' +
           escapeHtml(tr(name)) +
@@ -602,7 +685,7 @@ interface PendingTabRegistration {
 
   function showStep(): void {
     const nowEl = document.getElementById("safely-wait-now");
-    if (nowEl) nowEl.textContent = tr(CHECK_STEPS[checkingStep]);
+    if (nowEl) nowEl.textContent = tr(currentSteps[checkingStep]);
     checkingView.querySelectorAll<HTMLElement>(".safely-step").forEach((el, i) => {
       el.classList.toggle("safely-done", i < checkingStep);
       el.classList.toggle("safely-now", i === checkingStep);
@@ -611,8 +694,9 @@ interface PendingTabRegistration {
     });
   }
 
-  function startChecking(): void {
+  function startChecking(steps: string[]): void {
     stopChecking();
+    currentSteps = steps;
     checking = true;
     checkingStep = 0;
     scanStartedAt = Date.now();
@@ -622,7 +706,7 @@ interface PendingTabRegistration {
     checkingView.classList.add("safely-visible");
     renderChecking();
     checkingTimer = setInterval(() => {
-      if (checkingStep < CHECK_STEPS.length - 1) {
+      if (checkingStep < currentSteps.length - 1) {
         checkingStep += 1;
         showStep();
       }

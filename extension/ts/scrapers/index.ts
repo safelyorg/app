@@ -1356,4 +1356,225 @@ type DomainCheckResult = LegitimateDomainResult | SuspiciousDomainResult | null;
   (window as any).__safelyScrapers.globalsourcesTrimmed = globalsourcesTrimmed;
   (window as any).__safelyScrapers.globalsourcesExhibitorUrl = globalsourcesExhibitorUrl;
   (window as any).__safelyScrapers.fetchGlobalsourcesSupplierPages = fetchGlobalsourcesSupplierPages;
+
+  // ---- "Check this website": a shop's own website ----------------
+  //
+  // Runs ONLY after the buyer clicks "Check this website" in the panel
+  // (never on its own). Reads the page the buyer is on, then a few of
+  // the shop's own pages from the same site - home, About, Contact,
+  // shipping, returns, terms, privacy, legal notice - and sends their
+  // text to Safely (POST /api/v1/check-website). Only GET requests to
+  // the same site; never fills in a form, signs in, or adds to a cart.
+  // Pages the site's robots.txt closes to everyone are skipped.
+
+  /// Most pages read from one shop (backend MAX_PAGES).
+  const WEBSITE_MAX_PAGES = 12;
+  /// Most characters of text kept from one page, and most links.
+  const WEBSITE_MAX_TEXT = 20000;
+  const WEBSITE_MAX_LINKS = 300;
+  const WEBSITE_FETCH_MS = 8000;
+
+  interface WebsiteLink {
+    href: string;
+    text: string;
+  }
+  interface WebsitePage {
+    url: string;
+    title: string;
+    text: string;
+    links: WebsiteLink[];
+  }
+
+  /// Hosts that are Safely itself.
+  const SAFELY_HOSTS = ["safely.sh", "localhost"];
+
+  /// true on an ordinary website the button can check: http(s), not a
+  /// marketplace Safely reads as a listing, and not Safely itself.
+  function isWebsiteCheckable(): boolean {
+    const { protocol, hostname } = window.location;
+    if (protocol !== "http:" && protocol !== "https:") return false;
+    const host = hostname.replace(/^www\./, "");
+    if (SAFELY_HOSTS.some((h) => host === h || host.endsWith("." + h))) return false;
+    return detectPlatform() === "unknown";
+  }
+
+  function bareHost(hostname: string): string {
+    return hostname.toLowerCase().replace(/^www\./, "");
+  }
+
+  /// The visible text and the links of a page, cut to the limits above.
+  function websitePageFrom(doc: Document, url: string, visibleText?: string): WebsitePage {
+    let text = visibleText;
+    if (text === undefined) {
+      const body = doc.body ? (doc.body.cloneNode(true) as HTMLElement) : null;
+      if (body) {
+        body.querySelectorAll("script, style, noscript, template, svg, iframe").forEach((el) => el.remove());
+        // A space after each block, so words of two blocks never join.
+        body.querySelectorAll("p, div, li, br, h1, h2, h3, h4, h5, h6, td, th, footer, section, span, a").forEach((el) =>
+          el.append(" "),
+        );
+      }
+      text = body ? body.textContent || "" : "";
+    }
+    text = text.replace(/[ \t\r\f\v]+/g, " ").replace(/\s*\n\s*/g, "\n").trim();
+    if (text.length > WEBSITE_MAX_TEXT) text = text.slice(0, WEBSITE_MAX_TEXT);
+    const links: WebsiteLink[] = [];
+    const seen: Record<string, boolean> = {};
+    for (const a of Array.from(doc.querySelectorAll<HTMLAnchorElement>("a[href]"))) {
+      const raw = a.getAttribute("href") || "";
+      let href: string;
+      try {
+        href = /^(mailto|tel):/i.test(raw) ? raw : new URL(raw, url).href;
+      } catch {
+        continue;
+      }
+      if (seen[href]) continue;
+      seen[href] = true;
+      links.push({ href, text: (a.textContent || "").replace(/\s+/g, " ").trim().slice(0, 80) });
+      if (links.length >= WEBSITE_MAX_LINKS) break;
+    }
+    return { url, title: (doc.title || "").trim(), text, links };
+  }
+
+  /// The kinds of page read, and the words their address or link text
+  /// uses (English, Portuguese, French, Spanish, German).
+  const WEBSITE_PAGE_KINDS: [string, string[]][] = [
+    ["about", ["about", "sobre", "quem-somos", "quem somos", "a-propos", "à propos", "uber-uns", "über uns", "nosotros", "our-story", "our story"]],
+    ["contact", ["contact", "contato", "contacto", "kontakt", "fale-conosco", "fale conosco"]],
+    ["shipping", ["shipping", "delivery", "envio", "entrega", "livraison", "frete", "versand"]],
+    ["returns", ["return", "refund", "devolu", "reembolso", "troca", "retour", "rembourse", "widerruf"]],
+    ["terms", ["terms", "conditions", "termos", "cgv", "agb", "condiciones"]],
+    ["privacy", ["privacy", "privacidade", "confidentialit", "datenschutz", "privacidad"]],
+    ["legal", ["impressum", "mentions-legales", "mentions légales", "legal-notice", "legal notice", "aviso-legal", "imprint"]],
+  ];
+
+  /// Shopify shops keep their policies at fixed addresses.
+  const SHOPIFY_POLICIES = [
+    "/policies/shipping-policy",
+    "/policies/refund-policy",
+    "/policies/terms-of-service",
+    "/policies/privacy-policy",
+  ];
+
+  /// The same site's pages to read, from the links of the page the
+  /// buyer is on: the home page, then one page of each kind.
+  function websitePagesToRead(page: WebsitePage, isShopify: boolean): string[] {
+    const here = new URL(page.url);
+    const host = bareHost(here.hostname);
+    const clean = (href: string): string | null => {
+      try {
+        const u = new URL(href, page.url);
+        if (u.protocol !== "http:" && u.protocol !== "https:") return null;
+        if (bareHost(u.hostname) !== host) return null;
+        u.hash = "";
+        return u.href;
+      } catch {
+        return null;
+      }
+    };
+    const wanted: string[] = [];
+    const add = (href: string | null) => {
+      if (href && href !== clean(page.url) && wanted.indexOf(href) === -1) wanted.push(href);
+    };
+    add(clean(here.origin + "/"));
+    for (const [, words] of WEBSITE_PAGE_KINDS) {
+      const link = page.links.find((l) => {
+        const place = (l.href + " " + l.text).toLowerCase();
+        return clean(l.href) !== null && words.some((w) => place.indexOf(w) !== -1);
+      });
+      if (link) add(clean(link.href));
+    }
+    if (isShopify) SHOPIFY_POLICIES.forEach((path) => add(clean(here.origin + path)));
+    return wanted.slice(0, WEBSITE_MAX_PAGES - 1);
+  }
+
+  /// The address beginnings robots.txt closes to every robot
+  /// ("User-agent: *" then "Disallow: /checkout").
+  function robotsClosedPaths(robots: string): string[] {
+    const closed: string[] = [];
+    let forEveryone = false;
+    let lastWasAgent = false;
+    for (const raw of robots.split(/\r?\n/)) {
+      const line = raw.replace(/#.*$/, "").trim();
+      const m = line.match(/^([a-z-]+)\s*:\s*(.*)$/i);
+      if (!m) continue;
+      const key = m[1].toLowerCase();
+      const value = m[2].trim();
+      if (key === "user-agent") {
+        if (!lastWasAgent) forEveryone = false;
+        if (value === "*") forEveryone = true;
+        lastWasAgent = true;
+        continue;
+      }
+      lastWasAgent = false;
+      if (key === "disallow" && forEveryone && value) closed.push(value);
+    }
+    return closed;
+  }
+
+  /// true when robots.txt closes this page. "Disallow: /" closes the
+  /// whole site: then only the page the buyer is already on is read.
+  function isClosedByRobots(url: string, closed: string[]): boolean {
+    const path = new URL(url).pathname;
+    return closed.some((prefix) => path.indexOf(prefix.replace(/\*.*$/, "")) === 0);
+  }
+
+  /// GET one page of the same site, or null (error, not a web page,
+  /// too slow).
+  async function fetchSitePage(url: string): Promise<WebsitePage | null> {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), WEBSITE_FETCH_MS);
+    try {
+      const response = await fetch(url, {
+        method: "GET",
+        credentials: "same-origin",
+        redirect: "follow",
+        signal: controller.signal,
+      });
+      const type = response.headers.get("content-type") || "";
+      if (!response.ok || type.indexOf("text/html") === -1) return null;
+      if (bareHost(new URL(response.url || url).hostname) !== bareHost(window.location.hostname)) {
+        return null;
+      }
+      const html = await response.text();
+      const doc = new DOMParser().parseFromString(html, "text/html");
+      return websitePageFrom(doc, response.url || url);
+    } catch {
+      return null;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  /// The pages sent for "Check this website": the page the buyer is on
+  /// first, then the same site's other pages (at most WEBSITE_MAX_PAGES).
+  async function collectWebsitePages(): Promise<WebsitePage[]> {
+    const current = websitePageFrom(
+      document,
+      window.location.href,
+      document.body ? document.body.innerText : "",
+    );
+    const isShopify = !!(window as any).Shopify;
+    let closed: string[] = [];
+    try {
+      const robots = await fetch(window.location.origin + "/robots.txt", { credentials: "omit" });
+      if (robots.ok) closed = robotsClosedPaths(await robots.text());
+    } catch {
+      // No robots.txt: nothing is closed.
+    }
+    const urls = websitePagesToRead(current, isShopify).filter((u) => !isClosedByRobots(u, closed));
+    const pages = await Promise.all(urls.map(fetchSitePage));
+    const all: WebsitePage[] = [current];
+    for (const p of pages) {
+      if (p && !all.some((x) => x.url === p.url)) all.push(p);
+    }
+    return all.slice(0, WEBSITE_MAX_PAGES);
+  }
+
+  (window as any).__safelyScrapers.isWebsiteCheckable = isWebsiteCheckable;
+  (window as any).__safelyScrapers.websitePageFrom = websitePageFrom;
+  (window as any).__safelyScrapers.websitePagesToRead = websitePagesToRead;
+  (window as any).__safelyScrapers.robotsClosedPaths = robotsClosedPaths;
+  (window as any).__safelyScrapers.isClosedByRobots = isClosedByRobots;
+  (window as any).__safelyScrapers.collectWebsitePages = collectWebsitePages;
 })();

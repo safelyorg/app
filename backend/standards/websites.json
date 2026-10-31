@@ -1,7 +1,7 @@
 {
   "category": "websites",
-  "status": "planned",
-  "about": "A seller's own shop website (not a marketplace). The user presses 'Check this website' in the extension; Safely reads a few of the site's own pages plus outside records, then shows one card per check and a risk score. A check counts as one scan.",
+  "status": "live",
+  "about": "A seller's own shop website (not a marketplace). Build step 1 is live (POST /api/v1/check-website); steps 2-4 are planned. The user presses 'Check this website' in the extension; Safely reads a few of the site's own pages plus outside records, then shows one card per check and a risk score. A check counts as one scan.",
   "how_to_change": [
     "warning_points: how much a card adds to the score when it is a warning. Change the number, then deploy.",
     "points_when_value: a different number for one exact card value.",

@@ -112,6 +112,7 @@ function formatPlatformName(platform: string | null | undefined): string {
     wholesalecentral: "Wholesale Central",
     madeinchina: "Made-in-China",
     globalsources: "Global Sources",
+    website: "Website",
   };
   return names[platform] || platform;
 }
@@ -240,52 +241,127 @@ function formatPlatformName(platform: string | null | undefined): string {
       return null;
     }
   }
+  // Sends one scan (a marketplace listing or a website) and reads the
+  // answer: the result, or which error stopped it (signed out, scan
+  // limit, too many scans). null for any other failure.
+  async function postScan(path: string, body: unknown): Promise<AnalyzeResponse | null> {
+    try {
+      const authHeaders = await getAuthHeaders();
+      const response = await safelyFetch(API_BASE + path, {
+        method: "POST",
+        headers: Object.assign({ "Content-Type": "application/json" }, authHeaders),
+        body: JSON.stringify(body),
+      });
+      const rawText = await response.text();
+      if (!response.ok || rawText.startsWith("error")) {
+        console.error("Safely: backend error:", rawText.substring(0, 300));
+        if (response.status === 429) {
+          const match = rawText.match(/RATE_LIMITED:(\d+)/);
+          return {
+            error: "rate_limited",
+            retryAfterSeconds: match ? parseInt(match[1], 10) : null,
+          } as AnalyzeResponse;
+        }
+        if (response.status === 401) {
+          return { error: "unauthorized" } as AnalyzeResponse;
+        }
+        if (response.status === 402) {
+          try {
+            const parsed = JSON.parse(rawText);
+            if (parsed.error === "free_scan_limit_reached") {
+              return {
+                error: "free_scan_limit_reached",
+                scanLimit: parsed.limit || null,
+                resetsOn: parsed.resets_on || null,
+              } as AnalyzeResponse;
+            }
+            return { error: "scan_limit_reached", scanLimit: parsed.limit || null } as AnalyzeResponse;
+          } catch (e) {
+            return { error: "scan_limit_reached", scanLimit: null } as AnalyzeResponse;
+          }
+        }
+        return null;
+      }
+      return JSON.parse(rawText);
+    } catch (error: any) {
+      console.error("Safely: failed to fetch analysis", error.message, error.stack);
+      return null;
+    }
+  }
+
+  // Shows a scan's answer: the error that stopped it, or the result in
+  // the tabs (window.__safelyData, then "safely-data-ready"). Used by
+  // the marketplace scan and by "Check this website".
+  function publishResult(
+    data: AnalyzeResponse | null,
+    language: string,
+    fallbackPlatform: string,
+    lastActive: string | null,
+  ): void {
+    if (!data || data.error) {
+      window.dispatchEvent(
+        new CustomEvent("safely-analysis-finished", {
+          detail: {
+            error: data && data.error ? data.error : "generic",
+            retryAfterSeconds: data && data.retryAfterSeconds,
+            scanLimit: data && data.scanLimit,
+            resetsOn: data && data.resetsOn,
+          },
+        }),
+      );
+      return;
+    }
+    (window as any).__safelyData = {
+      analysisId: data.analysis_id,
+      // The language the reasons below are written in.
+      textLanguage: language,
+      riskScore: data.risk_score,
+      fraudReportCount: data.fraud_report_count,
+      reportedByYou: data.reported_by_you === true,
+      riskFactors: data.risk_factors || [],
+      sellerId: data.seller.id,
+      socialCandidates: data.social_candidates || [],
+      seller: {
+        name: data.seller.name || "Not found",
+        platform: formatPlatformName(data.seller.platform || fallbackPlatform),
+        platformId: data.seller.platform_id || null,
+        handle: data.seller.handle || "Not found",
+        phone: data.seller.phone || "Not found",
+        accountAge: data.seller.account_age || "Not found",
+        verification: data.seller.verification,
+        location: data.seller.location || "Not found",
+        lastActive: lastActive || data.seller.last_active || "Not found",
+        networkSummary: data.seller.network_summary,
+        monthlyActivity: data.seller.monthly_activity,
+      },
+      signals: data.signals.map((s: any) => ({
+        label: s.label,
+        sub: s.sub,
+        value: s.value,
+        type: s.type,
+      })),
+    };
+
+    window.dispatchEvent(new CustomEvent("safely-data-ready"));
+    window.dispatchEvent(new CustomEvent("safely-analysis-finished"));
+  }
+
   (window as any).__safelyAPI = {
     SITE_BASE,
 
     analyze: async function (scrapedData: AnalyzePayload): Promise<AnalyzeResponse | null> {
-      try {
-        const authHeaders = await getAuthHeaders();
-        const response = await safelyFetch(API_BASE + "/analyze", {
-          method: "POST",
-          headers: Object.assign({ "Content-Type": "application/json" }, authHeaders),
-          body: JSON.stringify(scrapedData),
-        });
-        const rawText = await response.text();
-        if (!response.ok || rawText.startsWith("error")) {
-          console.error("Safely: backend error:", rawText.substring(0, 300));
-          if (response.status === 429) {
-            const match = rawText.match(/RATE_LIMITED:(\d+)/);
-            return {
-              error: "rate_limited",
-              retryAfterSeconds: match ? parseInt(match[1], 10) : null,
-            } as AnalyzeResponse;
-          }
-          if (response.status === 401) {
-            return { error: "unauthorized" } as AnalyzeResponse;
-          }
-          if (response.status === 402) {
-            try {
-              const parsed = JSON.parse(rawText);
-              if (parsed.error === "free_scan_limit_reached") {
-                return {
-                  error: "free_scan_limit_reached",
-                  scanLimit: parsed.limit || null,
-                  resetsOn: parsed.resets_on || null,
-                } as AnalyzeResponse;
-              }
-              return { error: "scan_limit_reached", scanLimit: parsed.limit || null } as AnalyzeResponse;
-            } catch (e) {
-              return { error: "scan_limit_reached", scanLimit: null } as AnalyzeResponse;
-            }
-          }
-          return null;
-        }
-        return JSON.parse(rawText);
-      } catch (error: any) {
-        console.error("Safely: failed to fetch analysis", error.message, error.stack);
-        return null;
-      }
+      return postScan("/analyze", scrapedData);
+    },
+
+    // "Check this website": the shop's own pages (read in this browser
+    // after the buyer clicked the button), checked by Safely. The same
+    // answer and the same errors as a marketplace scan.
+    analyzeWebsite: async function (body: {
+      url: string;
+      language: string;
+      pages: unknown[];
+    }): Promise<AnalyzeResponse | null> {
+      return postScan("/check-website", body);
     },
 
     // The person's plan and scans used this month, for the small
@@ -601,52 +677,24 @@ function formatPlatformName(platform: string | null | undefined): string {
         return;
       }
 
-      if (!data || data.error) {
-        window.dispatchEvent(
-          new CustomEvent("safely-analysis-finished", {
-            detail: {
-              error: data && data.error ? data.error : "generic",
-              retryAfterSeconds: data && data.retryAfterSeconds,
-              scanLimit: data && data.scanLimit,
-              resetsOn: data && data.resetsOn,
-            },
-          }),
-        );
-        return;
-      }
-      (window as any).__safelyData = {
-        analysisId: data.analysis_id,
-        // The language the reasons below are written in.
-        textLanguage: language,
-        riskScore: data.risk_score,
-        fraudReportCount: data.fraud_report_count,
-        reportedByYou: data.reported_by_you === true,
-        riskFactors: data.risk_factors || [],
-        sellerId: data.seller.id,
-        socialCandidates: data.social_candidates || [],
-        seller: {
-          name: data.seller.name || "Not found",
-          platform: formatPlatformName(data.seller.platform || scraped.platform),
-          platformId: data.seller.platform_id || null,
-          handle: data.seller.handle || "Not found",
-          phone: data.seller.phone || "Not found",
-          accountAge: data.seller.account_age || "Not found",
-          verification: data.seller.verification,
-          location: data.seller.location || "Not found",
-          lastActive: scraped.seller_last_active || data.seller.last_active || "Not found",
-          networkSummary: data.seller.network_summary,
-          monthlyActivity: data.seller.monthly_activity,
-        },
-        signals: data.signals.map((s: any) => ({
-          label: s.label,
-          sub: s.sub,
-          value: s.value,
-          type: s.type,
-        })),
-      };
+      publishResult(data, language, scraped.platform, scraped.seller_last_active || null);
+    },
 
-      window.dispatchEvent(new CustomEvent("safely-data-ready"));
-      window.dispatchEvent(new CustomEvent("safely-analysis-finished"));
+    // "Check this website" (panel.ts runs it only after the buyer
+    // clicks the button): reads the shop's own pages here, in the
+    // buyer's browser, and sends them to Safely.
+    checkWebsite: async function (): Promise<void> {
+      const requestUrl = window.location.href;
+      const isStillCurrentPage = () => window.location.href === requestUrl;
+      const pages = await (window as any).__safelyScrapers.collectWebsitePages();
+      const language = await scanLanguage();
+      const data = await (window as any).__safelyAPI.analyzeWebsite({
+        url: requestUrl,
+        language,
+        pages,
+      });
+      if (!isStillCurrentPage()) return;
+      publishResult(data, language, "website", null);
     },
   };
 })();
