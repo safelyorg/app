@@ -244,14 +244,27 @@ function formatPlatformName(platform: string | null | undefined): string {
   // Sends one scan (a marketplace listing or a website) and reads the
   // answer: the result, or which error stopped it (signed out, scan
   // limit, too many scans). null for any other failure.
-  async function postScan(path: string, body: unknown): Promise<AnalyzeResponse | null> {
+  //
+  // stillWanted: false once the buyer has moved on (another listing, or
+  // another website). The scan is then stopped, so Safely's server gives
+  // it back instead of counting a result nobody will see (see
+  // safelyScanFetch in scrapers/index.ts).
+  async function postScan(
+    path: string,
+    body: unknown,
+    stillWanted: () => boolean = () => true,
+  ): Promise<AnalyzeResponse | null> {
     try {
       const authHeaders = await getAuthHeaders();
-      const response = await safelyFetch(API_BASE + path, {
+      const init: RequestInit = {
         method: "POST",
         headers: Object.assign({ "Content-Type": "application/json" }, authHeaders),
         body: JSON.stringify(body),
-      });
+      };
+      const scanFetch = (window as any).__safelyScanFetch;
+      const response: Response = scanFetch
+        ? await scanFetch(API_BASE + path, init, stillWanted)
+        : await safelyFetch(API_BASE + path, init);
       const rawText = await response.text();
       if (!response.ok || rawText.startsWith("error")) {
         console.error("Safely: backend error:", rawText.substring(0, 300));
@@ -349,19 +362,25 @@ function formatPlatformName(platform: string | null | undefined): string {
   (window as any).__safelyAPI = {
     SITE_BASE,
 
-    analyze: async function (scrapedData: AnalyzePayload): Promise<AnalyzeResponse | null> {
-      return postScan("/analyze", scrapedData);
+    analyze: async function (
+      scrapedData: AnalyzePayload,
+      stillWanted?: () => boolean,
+    ): Promise<AnalyzeResponse | null> {
+      return postScan("/analyze", scrapedData, stillWanted);
     },
 
     // "Check this website": the shop's own pages (read in this browser
     // after the buyer clicked the button), checked by Safely. The same
     // answer and the same errors as a marketplace scan.
-    analyzeWebsite: async function (body: {
-      url: string;
-      language: string;
-      pages: unknown[];
-    }): Promise<AnalyzeResponse | null> {
-      return postScan("/check-website", body);
+    analyzeWebsite: async function (
+      body: {
+        url: string;
+        language: string;
+        pages: unknown[];
+      },
+      stillWanted?: () => boolean,
+    ): Promise<AnalyzeResponse | null> {
+      return postScan("/check-website", body, stillWanted);
     },
 
     // The person's plan and scans used this month, for the small
@@ -671,7 +690,8 @@ function formatPlatformName(platform: string | null | undefined): string {
         extended_page_html: extendedPageHtml,
       };
 
-      const data = await (window as any).__safelyAPI.analyze(payload);
+      // Moving to another listing stops this scan (it is then not counted).
+      const data = await (window as any).__safelyAPI.analyze(payload, isStillCurrentPage);
 
       if (!isStillCurrentPage()) {
         return;
@@ -685,15 +705,23 @@ function formatPlatformName(platform: string | null | undefined): string {
     // buyer's browser, and sends them to Safely.
     checkWebsite: async function (): Promise<void> {
       const requestUrl = window.location.href;
-      const isStillCurrentPage = () => window.location.href === requestUrl;
+      // The check is about the whole site, so it stays wanted on any page
+      // of the same site. Many shops change their own address while you
+      // look ("?variant=..."), which used to throw the result away while
+      // the scan was still counted.
+      const requestHost = window.location.hostname;
+      const isStillOnSite = () => window.location.hostname === requestHost;
       const pages = await (window as any).__safelyScrapers.collectWebsitePages();
       const language = await scanLanguage();
-      const data = await (window as any).__safelyAPI.analyzeWebsite({
-        url: requestUrl,
-        language,
-        pages,
-      });
-      if (!isStillCurrentPage()) return;
+      const data = await (window as any).__safelyAPI.analyzeWebsite(
+        {
+          url: requestUrl,
+          language,
+          pages,
+        },
+        isStillOnSite,
+      );
+      if (!isStillOnSite()) return;
       publishResult(data, language, "website", null);
     },
   };

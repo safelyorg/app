@@ -141,14 +141,23 @@ function formatPlatformName(platform) {
     // Sends one scan (a marketplace listing or a website) and reads the
     // answer: the result, or which error stopped it (signed out, scan
     // limit, too many scans). null for any other failure.
-    async function postScan(path, body) {
+    //
+    // stillWanted: false once the buyer has moved on (another listing, or
+    // another website). The scan is then stopped, so Safely's server gives
+    // it back instead of counting a result nobody will see (see
+    // safelyScanFetch in scrapers/index.ts).
+    async function postScan(path, body, stillWanted = () => true) {
         try {
             const authHeaders = await getAuthHeaders();
-            const response = await safelyFetch(API_BASE + path, {
+            const init = {
                 method: "POST",
                 headers: Object.assign({ "Content-Type": "application/json" }, authHeaders),
                 body: JSON.stringify(body),
-            });
+            };
+            const scanFetch = window.__safelyScanFetch;
+            const response = scanFetch
+                ? await scanFetch(API_BASE + path, init, stillWanted)
+                : await safelyFetch(API_BASE + path, init);
             const rawText = await response.text();
             if (!response.ok || rawText.startsWith("error")) {
                 console.error("Safely: backend error:", rawText.substring(0, 300));
@@ -237,14 +246,14 @@ function formatPlatformName(platform) {
     }
     window.__safelyAPI = {
         SITE_BASE,
-        analyze: async function (scrapedData) {
-            return postScan("/analyze", scrapedData);
+        analyze: async function (scrapedData, stillWanted) {
+            return postScan("/analyze", scrapedData, stillWanted);
         },
         // "Check this website": the shop's own pages (read in this browser
         // after the buyer clicked the button), checked by Safely. The same
         // answer and the same errors as a marketplace scan.
-        analyzeWebsite: async function (body) {
-            return postScan("/check-website", body);
+        analyzeWebsite: async function (body, stillWanted) {
+            return postScan("/check-website", body, stillWanted);
         },
         // The person's plan and scans used this month, for the small
         // "63/5" line. Never blocks a scan - the server decides that.
@@ -564,7 +573,8 @@ function formatPlatformName(platform) {
                 company_page_html: companyPageHtml,
                 extended_page_html: extendedPageHtml,
             };
-            const data = await window.__safelyAPI.analyze(payload);
+            // Moving to another listing stops this scan (it is then not counted).
+            const data = await window.__safelyAPI.analyze(payload, isStillCurrentPage);
             if (!isStillCurrentPage()) {
                 return;
             }
@@ -575,15 +585,20 @@ function formatPlatformName(platform) {
         // buyer's browser, and sends them to Safely.
         checkWebsite: async function () {
             const requestUrl = window.location.href;
-            const isStillCurrentPage = () => window.location.href === requestUrl;
+            // The check is about the whole site, so it stays wanted on any page
+            // of the same site. Many shops change their own address while you
+            // look ("?variant=..."), which used to throw the result away while
+            // the scan was still counted.
+            const requestHost = window.location.hostname;
+            const isStillOnSite = () => window.location.hostname === requestHost;
             const pages = await window.__safelyScrapers.collectWebsitePages();
             const language = await scanLanguage();
             const data = await window.__safelyAPI.analyzeWebsite({
                 url: requestUrl,
                 language,
                 pages,
-            });
-            if (!isStillCurrentPage())
+            }, isStillOnSite);
+            if (!isStillOnSite())
                 return;
             publishResult(data, language, "website", null);
         },

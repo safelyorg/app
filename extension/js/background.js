@@ -118,13 +118,14 @@ function stopKeepAlive() {
         keepAlive = undefined;
     }
 }
-async function callSafelyApi(message) {
+async function callSafelyApi(message, signal) {
     startKeepAlive();
     try {
         const response = await fetch(message.url, {
             method: message.method,
             headers: message.headers,
             body: message.body,
+            signal,
         });
         return { status: response.status, text: await response.text() };
     }
@@ -146,11 +147,50 @@ function handleApiRequestMessage(message, sender, sendResponse) {
     return true;
 }
 chrome.runtime.onMessage.addListener(handleApiRequestMessage);
+// A scan (a listing or "Check this website") is sent on a port instead
+// (see safelyScanFetch in scrapers/index.ts). When the page that asked
+// goes away - the tab is closed or refreshed, the buyer opens another
+// page, or the page cancels it - the port closes and the call to Safely
+// is stopped. Safely's server then gives the scan back, so a scan whose
+// result was never shown is not counted. A call made with a plain
+// message (above) kept going after the page was gone.
+function handleScanPort(port) {
+    if (port.name !== "safely-scan")
+        return;
+    if (!port.sender || port.sender.id !== chrome.runtime.id) {
+        port.disconnect();
+        return;
+    }
+    const controller = new AbortController();
+    let answered = false;
+    port.onDisconnect.addListener(() => {
+        if (!answered)
+            controller.abort();
+    });
+    port.onMessage.addListener((message) => {
+        if (!message || message.type !== "SAFELY_API_REQUEST" || !isSafelyApiUrl(message.url)) {
+            answered = true;
+            port.postMessage({ networkError: "not allowed" });
+            return;
+        }
+        callSafelyApi(message, controller.signal).then((reply) => {
+            answered = true;
+            try {
+                port.postMessage(reply);
+            }
+            catch {
+                // The page is gone; nothing to answer.
+            }
+        });
+    });
+}
+chrome.runtime.onConnect.addListener(handleScanPort);
 // Exposed the same, safe way as every other testable function in this
 // codebase - never via `export`, since this file loads as a plain
 // script, not a module.
 globalThis.__safelyHandleSessionUpdateMessage = handleSessionUpdateMessage;
 globalThis.__safelyHandleApiRequestMessage = handleApiRequestMessage;
+globalThis.__safelyHandleScanPort = handleScanPort;
 globalThis.__safelyIsSafelyApiUrl = isSafelyApiUrl;
 globalThis.__safelyHandleFetchSupplierPageMessage = handleFetchSupplierPageMessage;
 globalThis.__safelyIsAllowedSupplierPage = isAllowedSupplierPage;

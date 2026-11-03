@@ -295,6 +295,7 @@ pub async fn check_website(
     let domain = normalize_domain(&request.url)
         .ok_or_else(|| AnalyzeError::ClaudeAnalysisFailed("Not a website address".to_string()))?;
     let pages = own_pages(&request.pages, &domain);
+    websites::save_pages_for_testing(&domain, &request.pages);
     if pages.is_empty() {
         return Err(AnalyzeError::ClaudeAnalysisFailed(
             "No page of the website was sent".to_string(),
@@ -378,7 +379,7 @@ pub async fn check_website(
         seller,
         fraud_count: resolved.fraud_count,
         network_summary: resolved.network_summary,
-        social_candidates: Vec::new(),
+        social_candidates: result.social_candidates,
     };
     let mut response = save_and_build_response(data).await?;
     scan_hold.finish();

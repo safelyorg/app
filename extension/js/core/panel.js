@@ -64,10 +64,23 @@
     const ICON_SIGNIN = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 012 2v14a2 2 0 01-2 2h-4"></path><polyline points="10 17 15 12 10 7"></polyline><line x1="15" y1="12" x2="3" y2="12"></line></svg>';
     const ICON_CLOCK = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M12 6v6l4 2"></path></svg>';
     const ICON_WARNING = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>';
-    // The same icon, larger, inside the message.
-    function stateIcon(svg) {
-        return ('<div class="safely-state-icon">' +
-            svg.replace(/width="16" height="16"/, 'width="22" height="22"') +
+    // Used instead of ICON_INFO whenever this "not supported" view is
+    // offering to check an ordinary website, so it reads as "search this
+    // site" rather than the marketplace "not a listing" note.
+    const ICON_SEARCH = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>';
+    // Swaps a 16px icon drawing for its 22px version (used inside a
+    // message, as opposed to a toolbar button).
+    function largeIcon(svg) {
+        return svg.replace(/width="16" height="16"/, 'width="22" height="22"');
+    }
+    // The same icon, larger, inside the message. `id` lets later code find
+    // and swap this one icon's drawing (the unsupported view reuses the
+    // same markup for both "not a listing" and "check this website").
+    function stateIcon(svg, id) {
+        return ('<div class="safely-state-icon"' +
+            (id ? ' id="' + id + '"' : "") +
+            ">" +
+            largeIcon(svg) +
             "</div>");
     }
     // Base DOM Structure — the unsupported notice exists from the start
@@ -94,7 +107,7 @@
             '<div class="safely-tabs-area" id="safely-tabs-area"></div>' +
             '<div class="safely-loading-overlay" id="safely-loading-overlay"><div class="safely-loading-dots"><span></span><span></span><span></span></div></div>' +
             '<div class="safely-tab-content safely-state" id="safely-tab-unsupported" style="display:none">' +
-            stateIcon(ICON_INFO) +
+            stateIcon(ICON_INFO, "safely-unsupported-state-icon") +
             '<div class="safely-state-title" id="safely-unsupported-title"></div>' +
             '<div class="safely-state-text" id="safely-unsupported-message"></div>' +
             '<button type="button" class="safely-btn safely-btn-dark safely-btn-full" id="safely-check-website-btn" style="display:none"></button>' +
@@ -159,6 +172,10 @@
     const unsupportedMessageEl = document.getElementById("safely-unsupported-message");
     const unsupportedTitleEl = document.getElementById("safely-unsupported-title");
     const checkWebsiteBtn = document.getElementById("safely-check-website-btn");
+    // The big icon inside the "not supported" message - swapped between
+    // ICON_INFO (not a listing) and ICON_SEARCH (check this website) in
+    // updateSupportState().
+    const unsupportedStateIcon = document.getElementById("safely-unsupported-state-icon");
     const signinRequiredContent = document.getElementById("safely-tab-signin-required");
     const signinText = document.getElementById("safely-signin-text");
     const signinBtn = document.getElementById("safely-signin-btn");
@@ -307,7 +324,7 @@
         if (scanLimitMessage && !renderScanLimitMessage) {
             scanLimitMessage.textContent = tr("You've used all your scans for this month.");
         }
-        unsupportedIcon.title = tr("Not a listing page");
+        unsupportedIcon.title = tr(websiteMode ? "Check this website" : "Not a listing page");
         signinRequiredIcon.title = tr("Sign in required");
         scanLimitReachedIcon.title = tr("Scan limit reached");
         analysisFailedIcon.title = tr("Couldn't analyze this listing");
@@ -519,6 +536,14 @@
                 !unsupportedCustomMessage && !!window.__safelyScrapers.isWebsiteCheckable?.();
             if (checkWebsiteBtn)
                 checkWebsiteBtn.style.display = websiteMode ? "" : "none";
+            // Checking an ordinary website gets its own icon (a magnifying
+            // glass) instead of the "i" used for a marketplace page that
+            // isn't a listing - the two meant different things but were
+            // showing the same mark.
+            if (unsupportedStateIcon) {
+                unsupportedStateIcon.innerHTML = largeIcon(websiteMode ? ICON_SEARCH : ICON_INFO);
+            }
+            unsupportedIcon.innerHTML = websiteMode ? ICON_SEARCH : ICON_INFO;
             applyStaticTexts();
             setStatusDot("");
             switchTab("unsupported");
@@ -970,10 +995,20 @@
     applyStaticTexts();
     updateSupportState();
     let lastUrl = window.location.href;
+    let lastHost = window.location.hostname;
     new MutationObserver(() => {
         const currentUrl = window.location.href;
         if (currentUrl !== lastUrl) {
             lastUrl = currentUrl;
+            // On a shop's own website the check is about the whole site, so
+            // another page of the same site (or the site adding "?variant=" to
+            // its address) keeps what is showing: the offer, the waiting screen
+            // or the result. Resetting here threw away the result being waited
+            // for, while the scan was still counted.
+            const sameSite = window.location.hostname === lastHost;
+            lastHost = window.location.hostname;
+            if (sameSite && websiteMode)
+                return;
             updateSupportState();
         }
     }).observe(document.body, { subtree: true, childList: true });

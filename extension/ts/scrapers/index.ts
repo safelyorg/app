@@ -69,6 +69,64 @@ type DomainCheckResult = LegitimateDomainResult | SuspiciousDomainResult | null;
 
   (window as any).__safelyFetch = safelyFetch;
 
+  /// The same as safelyFetch, for a scan (/analyze, /check-website): sent
+  /// on a port the background script watches (handleScanPort in
+  /// background.ts). If the buyer leaves the page (tab closed or
+  /// refreshed, another page opened), or stillWanted() turns false, the
+  /// call is stopped, so Safely's server gives the scan back instead of
+  /// counting a result nobody saw. It then fails with "cancelled". Never
+  /// sent a second time from here: that would run the scan twice.
+  function safelyScanFetch(
+    url: string,
+    init: RequestInit,
+    stillWanted: () => boolean,
+  ): Promise<Response> {
+    let port: chrome.runtime.Port;
+    try {
+      port = chrome.runtime.connect({ name: "safely-scan" });
+    } catch {
+      return safelyFetch(url, init);
+    }
+    return new Promise((resolve, reject) => {
+      let settled = false;
+      const finish = (): boolean => {
+        if (settled) return false;
+        settled = true;
+        clearInterval(watch);
+        return true;
+      };
+      const watch = setInterval(() => {
+        if (!stillWanted() && finish()) {
+          port.disconnect();
+          reject(new Error("cancelled"));
+        }
+      }, 500);
+      port.onMessage.addListener((reply: any) => {
+        if (!finish()) return;
+        port.disconnect();
+        if (!reply || reply.networkError) {
+          reject(new TypeError("Failed to fetch (" + ((reply && reply.networkError) || "no answer") + ")"));
+          return;
+        }
+        const noBody = [101, 204, 205, 304].indexOf(reply.status) !== -1;
+        resolve(new Response(noBody ? null : reply.text, { status: reply.status }));
+      });
+      port.onDisconnect.addListener(() => {
+        void chrome.runtime.lastError;
+        if (finish()) reject(new TypeError("Failed to fetch (the extension stopped)"));
+      });
+      port.postMessage({
+        type: "SAFELY_API_REQUEST",
+        url,
+        method: init.method || "GET",
+        headers: (init.headers as Record<string, string>) || {},
+        body: typeof init.body === "string" ? init.body : null,
+      });
+    });
+  }
+
+  (window as any).__safelyScanFetch = safelyScanFetch;
+
   let PROTECTED_DOMAINS: ProtectedDomain[] = [];
   const DOMAINS_CACHE_KEY = "safely_protected_domains_cache";
   const DOMAINS_CACHE_TIMESTAMP_KEY = "safely_protected_domains_cached_at";
@@ -1373,6 +1431,11 @@ type DomainCheckResult = LegitimateDomainResult | SuspiciousDomainResult | null;
   const WEBSITE_MAX_TEXT = 20000;
   const WEBSITE_MAX_LINKS = 300;
   const WEBSITE_FETCH_MS = 8000;
+  /// Most product photo addresses kept per page, for "Image
+  /// authenticity". The backend only sends up to 3 total to Claude
+  /// (services/sources/websites/mod.rs), so this just gives it a
+  /// reasonable pool to pick the first few from.
+  const WEBSITE_MAX_IMAGES = 8;
 
   interface WebsiteLink {
     href: string;
@@ -1383,6 +1446,70 @@ type DomainCheckResult = LegitimateDomainResult | SuspiciousDomainResult | null;
     title: string;
     text: string;
     links: WebsiteLink[];
+    images: string[];
+  }
+
+  /// src/alt fragments that mark an image as a logo, icon, badge or
+  /// tracking pixel rather than a product photo - these would only
+  /// confuse "Image authenticity", which judges product photos.
+  const NON_PRODUCT_IMAGE_WORDS = [
+    "logo",
+    "icon",
+    "sprite",
+    "favicon",
+    "badge",
+    "flag",
+    "avatar",
+    "payment",
+    "visa",
+    "mastercard",
+    "paypal",
+    "pixel",
+    "spacer",
+    "placeholder",
+  ];
+
+  /// The product photo addresses on a page: real <img> elements with a
+  /// real address, not inside Safely's own panel, not a tiny image (a
+  /// spacer or tracking pixel) when a size is given, and not matching
+  /// NON_PRODUCT_IMAGE_WORDS. At most WEBSITE_MAX_IMAGES, in the order
+  /// found on the page.
+  function websiteImagesOf(doc: Document, url: string): string[] {
+    if (!doc.body) return [];
+    const images: string[] = [];
+    const seen: Record<string, boolean> = {};
+    for (const img of Array.from(doc.body.querySelectorAll<HTMLImageElement>("img[src]"))) {
+      if (img.closest("#safely-root")) continue;
+      const raw = img.getAttribute("src") || "";
+      if (/^data:/i.test(raw)) continue;
+      let src: string;
+      try {
+        src = new URL(raw, url).href;
+      } catch {
+        continue;
+      }
+      if (seen[src]) continue;
+      // Vector drawings (.svg) are icons, never product photos, and the
+      // AI cannot read them; an image from a script address (.php) is a
+      // tracker.
+      const path = (() => {
+        try {
+          return new URL(src).pathname.toLowerCase();
+        } catch {
+          return "";
+        }
+      })();
+      if (/\.(svg|php)$/.test(path)) continue;
+      const haystack = (src + " " + (img.getAttribute("alt") || "")).toLowerCase();
+      if (NON_PRODUCT_IMAGE_WORDS.some((w) => haystack.indexOf(w) !== -1)) continue;
+      const width = parseInt(img.getAttribute("width") || "", 10);
+      const height = parseInt(img.getAttribute("height") || "", 10);
+      if ((width && width < 60) || (height && height < 60)) continue;
+      seen[src] = true;
+      images.push(src);
+      if (images.length >= WEBSITE_MAX_IMAGES) break;
+    }
+    return images;
   }
 
   /// Hosts that are Safely itself.
@@ -1433,7 +1560,8 @@ type DomainCheckResult = LegitimateDomainResult | SuspiciousDomainResult | null;
       links.push({ href, text: (a.textContent || "").replace(/\s+/g, " ").trim().slice(0, 80) });
       if (links.length >= WEBSITE_MAX_LINKS) break;
     }
-    return { url, title: (doc.title || "").trim(), text, links };
+    const images = websiteImagesOf(doc, url);
+    return { url, title: (doc.title || "").trim(), text, links, images };
   }
 
   /// The kinds of page read, and the words their address or link text
@@ -1445,6 +1573,7 @@ type DomainCheckResult = LegitimateDomainResult | SuspiciousDomainResult | null;
     ["returns", ["return", "refund", "devolu", "reembolso", "troca", "retour", "rembourse", "widerruf"]],
     ["terms", ["terms", "conditions", "termos", "cgv", "agb", "condiciones"]],
     ["privacy", ["privacy", "privacidade", "confidentialit", "datenschutz", "privacidad"]],
+    ["faq", ["faq", "perguntas-frequentes", "perguntas frequentes", "preguntas-frecuentes", "preguntas frecuentes"]],
     ["legal", ["impressum", "mentions-legales", "mentions légales", "legal-notice", "legal notice", "aviso-legal", "imprint"]],
   ];
 
@@ -1488,10 +1617,11 @@ type DomainCheckResult = LegitimateDomainResult | SuspiciousDomainResult | null;
     return wanted.slice(0, WEBSITE_MAX_PAGES - 1);
   }
 
-  /// The address beginnings robots.txt closes to every robot
-  /// ("User-agent: *" then "Disallow: /checkout").
-  function robotsClosedPaths(robots: string): string[] {
+  /// The rules robots.txt gives every robot ("User-agent: *"):
+  /// "Disallow" lines (closed) and "Allow" lines (open again).
+  function robotsRules(robots: string): { closed: string[]; open: string[] } {
     const closed: string[] = [];
+    const open: string[] = [];
     let forEveryone = false;
     let lastWasAgent = false;
     for (const raw of robots.split(/\r?\n/)) {
@@ -1507,16 +1637,49 @@ type DomainCheckResult = LegitimateDomainResult | SuspiciousDomainResult | null;
         continue;
       }
       lastWasAgent = false;
-      if (key === "disallow" && forEveryone && value) closed.push(value);
+      if (!forEveryone || !value) continue;
+      if (key === "disallow") closed.push(value);
+      if (key === "allow") open.push(value);
     }
-    return closed;
+    return { closed, open };
+  }
+
+  /// The address beginnings robots.txt closes to every robot
+  /// ("User-agent: *" then "Disallow: /checkout").
+  function robotsClosedPaths(robots: string): string[] {
+    return robotsRules(robots).closed;
+  }
+
+  /// The address beginnings robots.txt opens again ("Allow: /contact").
+  function robotsOpenPaths(robots: string): string[] {
+    return robotsRules(robots).open;
+  }
+
+  /// true when a robots.txt rule matches this address (path and query).
+  /// "*" stands for any text and a "$" at the end for the end of the
+  /// address, the way search engines read them: "/*?" matches only
+  /// addresses with a "?" (search results), never every page.
+  function robotsRuleMatches(rule: string, path: string): boolean {
+    const toEnd = rule.endsWith("$");
+    const body = toEnd ? rule.slice(0, -1) : rule;
+    const pattern = body
+      .split("*")
+      .map((part) => part.replace(/[.+?^${}()|[\]\\]/g, "\\$&"))
+      .join(".*");
+    return new RegExp("^" + pattern + (toEnd ? "$" : "")).test(path);
   }
 
   /// true when robots.txt closes this page. "Disallow: /" closes the
-  /// whole site: then only the page the buyer is already on is read.
-  function isClosedByRobots(url: string, closed: string[]): boolean {
-    const path = new URL(url).pathname;
-    return closed.some((prefix) => path.indexOf(prefix.replace(/\*.*$/, "")) === 0);
+  /// whole site: then only the page the buyer is already on is read. When
+  /// a Disallow and an Allow rule both match, the longer (more exact) one
+  /// wins, and Allow wins a tie - the way search engines read them.
+  function isClosedByRobots(url: string, closed: string[], open: string[] = []): boolean {
+    const u = new URL(url);
+    const path = u.pathname + u.search;
+    const longest = (rules: string[]) =>
+      rules.filter((r) => robotsRuleMatches(r, path)).reduce((n, r) => Math.max(n, r.length), -1);
+    const closedBy = longest(closed);
+    return closedBy >= 0 && closedBy > longest(open);
   }
 
   /// GET one page of the same site, or null (error, not a web page,
@@ -1546,23 +1709,45 @@ type DomainCheckResult = LegitimateDomainResult | SuspiciousDomainResult | null;
     }
   }
 
+  /// Tags whose text is never visible page text.
+  const HIDDEN_TEXT_TAGS = ["SCRIPT", "STYLE", "NOSCRIPT", "TEMPLATE", "SVG", "IFRAME"];
+
+  /// The visible text of an element, leaving out Safely's own panel
+  /// ("Reading the shop's pages...") so the checks read only the shop.
+  function innerTextWithout(el: Element, panel: Element): string {
+    if (el === panel || HIDDEN_TEXT_TAGS.indexOf(el.tagName.toUpperCase()) !== -1) return "";
+    const node = el as HTMLElement;
+    if (typeof (node as any).checkVisibility === "function" && !(node as any).checkVisibility()) return "";
+    if (!el.contains(panel)) return node.innerText || "";
+    return Array.from(el.children)
+      .map((child) => innerTextWithout(child, panel))
+      .filter((t) => t.trim() !== "")
+      .join("\n");
+  }
+
+  /// The visible text of the page the buyer is on, without Safely's panel.
+  function visibleTextWithoutPanel(): string {
+    const body = document.body;
+    if (!body) return "";
+    const panel = document.getElementById("safely-root");
+    return panel && body.contains(panel) ? innerTextWithout(body, panel) : body.innerText;
+  }
+
   /// The pages sent for "Check this website": the page the buyer is on
   /// first, then the same site's other pages (at most WEBSITE_MAX_PAGES).
   async function collectWebsitePages(): Promise<WebsitePage[]> {
-    const current = websitePageFrom(
-      document,
-      window.location.href,
-      document.body ? document.body.innerText : "",
-    );
+    const current = websitePageFrom(document, window.location.href, visibleTextWithoutPanel());
     const isShopify = !!(window as any).Shopify;
-    let closed: string[] = [];
+    let rules = { closed: [] as string[], open: [] as string[] };
     try {
       const robots = await fetch(window.location.origin + "/robots.txt", { credentials: "omit" });
-      if (robots.ok) closed = robotsClosedPaths(await robots.text());
+      if (robots.ok) rules = robotsRules(await robots.text());
     } catch {
       // No robots.txt: nothing is closed.
     }
-    const urls = websitePagesToRead(current, isShopify).filter((u) => !isClosedByRobots(u, closed));
+    const urls = websitePagesToRead(current, isShopify).filter(
+      (u) => !isClosedByRobots(u, rules.closed, rules.open),
+    );
     const pages = await Promise.all(urls.map(fetchSitePage));
     const all: WebsitePage[] = [current];
     for (const p of pages) {
@@ -1575,6 +1760,7 @@ type DomainCheckResult = LegitimateDomainResult | SuspiciousDomainResult | null;
   (window as any).__safelyScrapers.websitePageFrom = websitePageFrom;
   (window as any).__safelyScrapers.websitePagesToRead = websitePagesToRead;
   (window as any).__safelyScrapers.robotsClosedPaths = robotsClosedPaths;
+  (window as any).__safelyScrapers.robotsOpenPaths = robotsOpenPaths;
   (window as any).__safelyScrapers.isClosedByRobots = isClosedByRobots;
   (window as any).__safelyScrapers.collectWebsitePages = collectWebsitePages;
 })();

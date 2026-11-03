@@ -3,7 +3,7 @@ CREATE TYPE outcome_action AS ENUM ('proceeded', 'aborted');
 CREATE TABLE outcomes (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     analysis_id UUID NOT NULL REFERENCES analysis(id),
-    user_id UUID NOT NULL REFERENCES users(id),
+    user_id UUID REFERENCES users(id) ON DELETE SET NULL,
     action outcome_action NOT NULL,
     recorded_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

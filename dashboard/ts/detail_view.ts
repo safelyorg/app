@@ -292,6 +292,8 @@ const SOCIAL_PLATFORM_TRANSLATIONS: Record<string, string> = {
   "Contact (Facebook)": "dash.social.contact_facebook",
   "Contact (LinkedIn)": "dash.social.contact_linkedin",
   "Contact (Web)": "dash.social.contact_web",
+  "Google search": "dash.social.google_search",
+  "Complaint sites": "dash.social.complaint_sites",
 };
 
 function translateSocialPlatform(platform: string): string {
@@ -329,7 +331,19 @@ async function openDetail(analysisId: string): Promise<void> {
       return;
     }
     const data: DetailResponse = await res.json();
+    // Another result was opened while this one loaded.
+    if (currentAnalysisId !== analysisId) return;
     renderDetailBody(data);
+    // The result's own address (/dashboard/alibaba/<id>), so a refresh
+    // or a shared link opens it again (shared.ts).
+    const address = resultAddressFor(data.platform, analysisId);
+    if (window.location.pathname !== address) {
+      if (resultIdFromAddress(window.location.pathname) === analysisId) {
+        history.replaceState(null, "", address);
+      } else {
+        history.pushState(null, "", address);
+      }
+    }
     loading.classList.add("hidden");
     body.classList.remove("hidden");
   } catch (e) {
@@ -354,6 +368,7 @@ const CHEVRON =
 // Rows shown before "Show more".
 const FIRST_FINE = 2;
 const FIRST_PLATFORMS = 3;
+const FIRST_STEPS = 3;
 const MAX_FINDINGS = 3;
 
 const NOT_ENOUGH_INFORMATION = "not_enough_information";
@@ -779,7 +794,182 @@ function buildDetailsTab(data: DetailResponse): string {
       moreButton(fine.length - FIRST_FINE) +
       "</div>";
   }
-  return html + buildPresence(data.social_candidates || []);
+  const results = data.social_candidates || [];
+  return (
+    html +
+    buildPresence(results.filter((r) => WEB_SCAM_ROWS.indexOf(r.platform) === -1)) +
+    buildScamWarnings(results.filter((r) => WEB_SCAM_ROWS.indexOf(r.platform) !== -1)) +
+    buildBeforeYouPay(data)
+  );
+}
+
+// ---- Before you pay ---------------------------------------------------
+// The same steps and rules as the extension's Details tab (extension/
+// ts/tabs/intelligence.ts) and the PDF (backend pdf_report.rs): a
+// marketplace supplier gets the supplier steps, a shop's own website
+// ("Check this website") the consumer ones - change all three together.
+// Each step: [title key, English title, text key, English text].
+type PayCheck = [string, string, string, string];
+const PAY_CHECKS: Record<string, PayCheck> = {
+  buyer_protection: ["dash.before.buyer_protection", "Use buyer protection if the platform offers it", "dash.before.buyer_protection_text", "If the platform has protected payment (e.g. Trade Assurance on Alibaba), pay through it so the order is covered. If it has none, pay only by bank transfer to an account in the company's own name."],
+  licence_bank: ["dash.before.licence_bank", "Match the business licence to the bank account", "dash.before.licence_bank_text", "Ask for the business licence and check that the company name on it matches the listing and the name on the bank account exactly."],
+  confirm_bank: ["dash.before.confirm_bank", "Confirm bank details by phone or video", "dash.before.confirm_bank_text", "Before the first payment, and whenever bank details change, confirm them live with a contact you already know. Never act on changed details sent only by email."],
+  sample: ["dash.before.sample", "Order a sample first", "dash.before.sample_text", "Pay for a sample and check its quality before placing a bulk order."],
+  video_call: ["dash.before.video_call", "Ask for a live video call", "dash.before.video_call_text", "Ask the supplier to show where they work and your goods live: the production line if they are a factory, the warehouse or office if they are a trader or shipping company. This confirms they really operate where they say."],
+  risky_payment: ["dash.before.risky_payment", "Do not pay by Western Union, MoneyGram or crypto", "dash.before.risky_payment_text", "This supplier lists payment methods that cannot be reversed or traced to a company. Pay only by bank transfer to an account in the company's own name, or through the platform's protected payment."],
+  full_prepayment: ["dash.before.full_prepayment", "Don't pay everything before shipment", "dash.before.full_prepayment_text", "This supplier asks for the full price before the goods are shipped. Try to pay the balance only against a copy of the Bill of Lading, or use a Letter of Credit, and pay only to a bank account in the company's own name."],
+  regulated: ["dash.before.regulated", "Buy only from the brand owner or an authorised distributor", "dash.before.regulated_text", "This product needs a licence or prescription, and fakes of it can be dangerous. Ask the supplier for a letter from the brand owner showing they are an authorised distributor, and check it with the brand owner directly. You may also need your own import licence."],
+  licence: ["dash.before.licence", "Check the licences before you order", "dash.before.licence_text", "This product needs a licence to sell or import. Make sure you are allowed to import it into your country, and ask the supplier for its export licence and any end-user certificate the sale needs before you pay."],
+  commodity: ["dash.before.commodity", "Don't pay fees before an inspection", "dash.before.commodity_text", "Fake commodity sellers ask for fees, a deposit or document costs before anything ships. Pay nothing until the goods are inspected by a company you choose (such as SGS), and pay only by Letter of Credit."],
+  site_card: ["dash.before.site_card", "Pay by card or PayPal", "dash.before.site_card_text", "Card and PayPal payments can be disputed if the order never arrives or is not as described. Money sent by bank transfer, Pix, crypto or gift card cannot be got back."],
+  site_returns: ["dash.before.site_returns", "Read the return policy first", "dash.before.site_returns_text", "Check how returns and refunds work before you buy, and save a copy. If the shop has no clear return policy, ask before paying."],
+  site_small_order: ["dash.before.site_small_order", "Start with a small order", "dash.before.site_small_order_text", "Buy one item first and wait until it arrives as described before placing a bigger order."],
+  site_proof: ["dash.before.site_proof", "Keep proof of your order", "dash.before.site_proof_text", "Save screenshots of the product page, the price and your order confirmation. You will need them for a refund or a dispute."],
+  site_contact: ["dash.before.site_contact", "Contact the shop before a big order", "dash.before.site_contact_text", "Write to the email or phone number the shop gives and see if a real person answers. A shop that never replies is a warning sign."],
+  company_account: ["dash.before.company_account", "Pay only to the company's own bank account", "dash.before.company_account_text", "Pay by bank transfer only to an account in the company's own name, never to a person. Ask for the bank details in writing and check that the name matches the company."],
+  site_lookalike: ["dash.before.site_lookalike", "Buy only on the brand's real website", "dash.before.site_lookalike_text", "This address copies a famous brand's name, but it is not the brand's own website. Type the brand's real address yourself and buy there instead."],
+  site_risky_payment: ["dash.before.site_risky_payment", "Don't pay by bank transfer, Pix or crypto", "dash.before.site_risky_payment_text", "This shop only shows ways to pay that cannot be reversed. Pay only by card or PayPal. If the shop does not accept them, do not buy."],
+};
+const B2B_CHECK_IDS = ["buyer_protection", "licence_bank", "confirm_bank", "sample", "video_call"];
+const WEBSITE_CHECK_IDS = ["site_card", "site_returns", "site_small_order", "site_proof", "site_contact"];
+// A factory or supplier's own website: it sells by quote, so no prices
+// and no way to pay are shown. Its buyers pay by bank transfer, like a
+// marketplace supplier, so it gets supplier steps, not shop ones.
+const SUPPLIER_WEBSITE_CHECK_IDS = ["company_account", "licence_bank", "confirm_bank", "sample", "video_call"];
+
+function hasSignal(signals: DetailSignal[], label: string, test: (s: DetailSignal) => boolean): boolean {
+  return signals.some((s) => s.label === label && test(s));
+}
+
+// The steps for this scan: the special ones its checks call for first,
+// then the usual ones.
+function payCheckIds(data: DetailResponse): string[] {
+  const signals = data.signals || [];
+  if (data.platform === "website") {
+    const first: string[] = [];
+    if (
+      hasSignal(signals, "Domain check", (s) => s.type === "caution" && s.value.indexOf("Looks like") === 0)
+    ) {
+      first.push("site_lookalike");
+    }
+    if (hasSignal(signals, "Payment at checkout", (s) => s.value === "Risky methods only")) {
+      first.push("site_risky_payment");
+    }
+    const supplier =
+      hasSignal(signals, "Payment at checkout", (s) => s.value === "Not shown") &&
+      hasSignal(signals, "Prices", (s) => s.value === "Not shown");
+    return first.concat(supplier ? SUPPLIER_WEBSITE_CHECK_IDS : WEBSITE_CHECK_IDS);
+  }
+  const first: string[] = [];
+  if (hasSignal(signals, "Product range", (s) => s.value === "Commodity scam pattern")) {
+    first.push("commodity");
+  }
+  const regulated = signals.find((s) => s.label === "Regulated product" && s.type === "caution");
+  if (regulated) {
+    first.push(regulated.value === "Licence needed, not the maker" ? "regulated" : "licence");
+  }
+  const payment = signals.find((s) => s.label === "Advance payment request" && s.type === "caution");
+  if (payment) first.push(payment.value === "Full prepayment" ? "full_prepayment" : "risky_payment");
+  return first.concat(B2B_CHECK_IDS);
+}
+
+function buildBeforeYouPay(data: DetailResponse): string {
+  const ids = payCheckIds(data);
+  return (
+    '<div class="d-heading">' +
+    escapeHtml(t("dash.detail.before_you_pay", "Before you pay")) +
+    '</div><div class="d-rows">' +
+    ids
+      .map((id, i) => {
+        const [titleKey, title, textKey, text] = PAY_CHECKS[id];
+        return detailRow({
+          mark: '<span class="d-mark d-mark-none"></span>',
+          title: t(titleKey, title),
+          moreHTML: escapeHtml(t(textKey, text)),
+          extra: i >= FIRST_STEPS,
+        });
+      })
+      .join("") +
+    moreButton(ids.length - FIRST_STEPS) +
+    "</div>"
+  );
+}
+
+
+// The whole-web scam searches (backend osint.rs WEB_SCAM_SEARCH and
+// COMPLAINT_SITES), shown in their own "Scam warnings online" section -
+// the same as the extension (tabs/intelligence.ts).
+const WEB_SCAM_ROWS = ["Google search", "Complaint sites"];
+
+// Each search's links, one list per row name, without repeats.
+function groupLinks(results: PlatformCheckResult[]): Record<string, SocialCandidateLink[]> {
+  const grouped: Record<string, SocialCandidateLink[]> = {};
+  results.forEach((entry) => {
+    if (!(entry.platform in grouped)) grouped[entry.platform] = [];
+    entry.candidates.forEach((c) => {
+      if (!grouped[entry.platform].some((existing) => existing.url === c.url)) {
+        grouped[entry.platform].push(c);
+      }
+    });
+  });
+  return grouped;
+}
+
+function linksHTML(links: SocialCandidateLink[]): string {
+  return links
+    .map(
+      (link) =>
+        '<a href="' +
+        escapeAttr(link.url) +
+        '" target="_blank" rel="noopener noreferrer">' +
+        escapeHtml(link.title || link.url) +
+        "</a>",
+    )
+    .join("");
+}
+
+// Hidden when these searches did not run (older scans, or web search
+// switched off).
+function buildScamWarnings(results: PlatformCheckResult[]): string {
+  if (results.length === 0) return "";
+  const grouped = groupLinks(results);
+  const found = WEB_SCAM_ROWS.filter((p) => grouped[p] && grouped[p].length > 0);
+  const rows =
+    found.length === 0
+      ? detailRow({
+          mark: mark("ok"),
+          title: t("dash.detail.no_scam_warnings", "No scam warnings found for this name"),
+          quiet: true,
+        })
+      : found
+          .map((platform) =>
+            detailRow({
+              mark: mark("flag"),
+              title: translateSocialPlatform(platform),
+              value:
+                grouped[platform].length === 1
+                  ? t("dash.detail.one_link", "1 link")
+                  : t("dash.detail.links", "{n} links").replace(
+                      "{n}",
+                      String(grouped[platform].length),
+                    ),
+              moreHTML:
+                escapeHtml(
+                  t(
+                    "dash.detail.scam_warnings_note",
+                    "Read these before you pay. Some may be about something else.",
+                  ),
+                ) + linksHTML(grouped[platform]),
+            }),
+          )
+          .join("");
+  return (
+    '<div class="d-heading">' +
+    escapeHtml(t("dash.detail.scam_warnings", "Scam warnings online")) +
+    '</div><div class="d-rows">' +
+    rows +
+    "</div>"
+  );
 }
 
 const PLATFORM_ORDER = [
@@ -793,15 +983,7 @@ const PLATFORM_ORDER = [
 function buildPresence(results: PlatformCheckResult[]): string {
   if (!results || results.length === 0) return "";
 
-  const grouped: Record<string, SocialCandidateLink[]> = {};
-  results.forEach((entry) => {
-    if (!(entry.platform in grouped)) grouped[entry.platform] = [];
-    entry.candidates.forEach((c) => {
-      if (!grouped[entry.platform].some((existing) => existing.url === c.url)) {
-        grouped[entry.platform].push(c);
-      }
-    });
-  });
+  const grouped = groupLinks(results);
   const order = PLATFORM_ORDER.filter((p) => p in grouped).concat(
     Object.keys(grouped).filter((p) => PLATFORM_ORDER.indexOf(p) === -1),
   );
@@ -818,16 +1000,7 @@ function buildPresence(results: PlatformCheckResult[]): string {
           links.length === 1
             ? t("dash.detail.one_link", "1 link")
             : t("dash.detail.links", "{n} links").replace("{n}", String(links.length)),
-        moreHTML: links
-          .map(
-            (link) =>
-              '<a href="' +
-              escapeAttr(link.url) +
-              '" target="_blank" rel="noopener noreferrer">' +
-              escapeHtml(link.title || link.url) +
-              "</a>",
-          )
-          .join(""),
+        moreHTML: linksHTML(links),
         extra: i >= FIRST_PLATFORMS,
       });
     })
@@ -1020,4 +1193,14 @@ function switchDetailTab(tab: string): void {
 function closeDetailPanel(): void {
   const panel = document.getElementById("detail-view");
   if (panel) panel.classList.add("hidden");
+  // Leaving a result goes back to History's address (not while
+  // following Back / Forward, which already set the address).
+  if (dashboardFollowingAddress) {
+    currentAnalysisId = null;
+    return;
+  }
+  currentAnalysisId = null;
+  if (resultIdFromAddress(window.location.pathname)) {
+    history.pushState(null, "", dashboardAddressFor("view-history"));
+  }
 }

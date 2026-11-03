@@ -82,9 +82,12 @@ pub fn is_own_domain_email(email: &str, site_domain: &str) -> bool {
 }
 
 /// Phone numbers from tel: and WhatsApp links (text phone numbers are
-/// left to the AI: too many other numbers look like phones).
+/// left to the AI: too many other numbers look like phones). The same
+/// number written two ways ("+86 15920011371" and WhatsApp's
+/// "8615920011371") is listed once.
 pub fn phone_links(pages: &[WebsitePage]) -> Vec<String> {
     let mut found: Vec<String> = Vec::new();
+    let mut seen_digits: Vec<String> = Vec::new();
     for link in pages.iter().flat_map(|p| p.links.iter()) {
         let href = link.href.trim();
         let number = if let Some(n) = href.strip_prefix("tel:") {
@@ -93,16 +96,17 @@ pub fn phone_links(pages: &[WebsitePage]) -> Vec<String> {
             href.split("wa.me/")
                 .nth(1)
                 .unwrap_or("")
-                .split(['?', '/'])
+                .split(['?', '/', '&', '#'])
                 .next()
                 .unwrap_or("")
                 .to_string()
         } else {
             continue;
         };
-        let digits = number.chars().filter(char::is_ascii_digit).count();
         let number = number.trim().to_string();
-        if digits >= 7 && !found.contains(&number) {
+        let digits: String = number.chars().filter(char::is_ascii_digit).collect();
+        if digits.len() >= 7 && !seen_digits.contains(&digits) {
+            seen_digits.push(digits);
             found.push(number);
         }
     }
@@ -172,19 +176,48 @@ pub const POLICIES: [PolicyKind; 4] = [
 /// Shorter than this, a policy page is empty or only a heading.
 pub const MIN_POLICY_CHARS: usize = 400;
 
+/// The policies one page is: the ones its address names ("/privacy-
+/// policy/"). Only when the address names none, the ones its title
+/// names - a title can mention other words too ("Privacy Policy Data
+/// Protection Terms" on gloflux.com is only a privacy page).
+fn policies_of_page(page: &WebsitePage) -> Vec<&'static str> {
+    let matching = |place: &str| -> Vec<&'static str> {
+        let place = place.to_lowercase();
+        POLICIES
+            .iter()
+            .filter(|kind| kind.words.iter().any(|w| place.contains(w)))
+            .map(|kind| kind.name)
+            .collect()
+    };
+    // The address without the site's own name ("returnshop.com").
+    let path = page
+        .url
+        .split("://")
+        .nth(1)
+        .unwrap_or(&page.url)
+        .split_once('/')
+        .map(|(_, rest)| rest)
+        .unwrap_or("");
+    let from_address = matching(path);
+    if from_address.is_empty() {
+        matching(&page.title)
+    } else {
+        from_address
+    }
+}
+
 /// Which policies have a real page among the pages read: the page
-/// address or title names the policy, and it has real text.
+/// names the policy (see policies_of_page), and it has real text.
 pub fn policies_found(pages: &[WebsitePage]) -> Vec<&'static str> {
+    let real: Vec<&'static str> = pages
+        .iter()
+        .filter(|p| p.text.chars().count() >= MIN_POLICY_CHARS)
+        .flat_map(policies_of_page)
+        .collect();
     POLICIES
         .iter()
-        .filter(|kind| {
-            pages.iter().any(|p| {
-                let place = format!("{} {}", p.url, p.title).to_lowercase();
-                kind.words.iter().any(|w| place.contains(w))
-                    && p.text.chars().count() >= MIN_POLICY_CHARS
-            })
-        })
         .map(|kind| kind.name)
+        .filter(|name| real.contains(name))
         .collect()
 }
 
@@ -324,6 +357,7 @@ mod tests {
                     text: String::new(),
                 })
                 .collect(),
+            images: vec![],
         }
     }
 
@@ -386,6 +420,53 @@ mod tests {
         assert_eq!(
             policies_found(&pages),
             vec!["return / refund policy", "privacy policy"]
+        );
+    }
+
+    #[test]
+    fn a_title_word_does_not_make_a_second_policy() {
+        // Real page (gloflux.com, Nov 3): a privacy page whose title also
+        // says "Terms". The site has no terms page.
+        let long = "x".repeat(MIN_POLICY_CHARS);
+        let pages = [
+            page(
+                "https://www.gloflux.com/privacy-policy/",
+                "Lithium Battery Supplier Privacy Policy Data Protection Terms",
+                &long,
+                &[],
+            ),
+            // A page whose address names no policy is judged by its title.
+            page("https://shop.com/p/123", "Shipping & Returns", &long, &[]),
+            // The site's own name is not read as a policy.
+            page("https://returnshop.com/about", "About", &long, &[]),
+        ];
+        assert_eq!(
+            policies_found(&pages),
+            vec![
+                "shipping policy",
+                "return / refund policy",
+                "privacy policy"
+            ]
+        );
+    }
+
+    #[test]
+    fn the_same_phone_written_two_ways_is_listed_once() {
+        // Real links (gloflux.com, Nov 3).
+        let pages = [page(
+            "u",
+            "",
+            "",
+            &[
+                "tel:+86 15920011371  ",
+                "tel:+86 15889584950",
+                "https://wa.me/8615889584950?text=Hello",
+                "https://api.whatsapp.com/send?phone=https://wa.me/8615920011371&text=Hello",
+            ],
+        )];
+        assert_eq!(
+            phone_links(&pages),
+            vec!["+86 15920011371", "+86 15889584950"]
         );
     }
 

@@ -201,14 +201,17 @@ interface PlatformCheckResult {
     "Reviews", "Contact (Facebook)", "Contact (LinkedIn)", "Contact (Web)",
   ];
 
-  // One row per platform where something was found; it opens to show
-  // every link. The first 3 show, the rest sit under "Show more".
-  // Platforms with nothing found share one line at the end, always shown.
-  // The same platform can be searched under several names, so the
-  // results are merged first.
-  function buildPresence(): string {
-    const results: PlatformCheckResult[] = ((window as any).__safelyData || {}).socialCandidates || [];
-    if (results.length === 0) return "";
+  // The whole-web scam searches (backend osint.rs WEB_SCAM_SEARCH and
+  // COMPLAINT_SITES). They get their own "Scam warnings online" section
+  // instead of a row in "Online presence".
+  const WEB_SCAM_ROWS = ["Google search", "Complaint sites"];
+
+  function socialResults(): PlatformCheckResult[] {
+    return ((window as any).__safelyData || {}).socialCandidates || [];
+  }
+
+  // Each search's links, one list per row name, without repeats.
+  function groupLinks(results: PlatformCheckResult[]): Record<string, SocialCandidateLink[]> {
     const grouped: Record<string, SocialCandidateLink[]> = {};
     results.forEach((entry) => {
       if (!(entry.platform in grouped)) grouped[entry.platform] = [];
@@ -218,6 +221,70 @@ interface PlatformCheckResult {
         }
       });
     });
+    return grouped;
+  }
+
+  function linksHTML(links: SocialCandidateLink[]): string {
+    return links
+      .map(
+        (link) =>
+          '<a class="safely-link-out" href="' +
+          esc(link.url) +
+          '" target="_blank" rel="noopener noreferrer">' +
+          esc(link.title || link.url) +
+          "</a>",
+      )
+      .join("");
+  }
+
+  // "Scam warnings online": the name found next to scam words anywhere
+  // on the web, and on complaint sites. Hidden when these searches did
+  // not run (older scans, or web search switched off).
+  function buildScamWarnings(): string {
+    const results = socialResults().filter((r) => WEB_SCAM_ROWS.indexOf(r.platform) !== -1);
+    if (results.length === 0) return "";
+    const grouped = groupLinks(results);
+    const found = WEB_SCAM_ROWS.filter((p) => grouped[p] && grouped[p].length > 0);
+    const rows =
+      found.length === 0
+        ? '<div class="safely-row"><div class="safely-row-head"><span class="safely-mark safely-mark-ok">' +
+          SAFELY_CHECK_ICON +
+          '</span><span class="safely-row-title safely-row-quiet">' +
+          esc(tr("No scam warnings found for this name")) +
+          "</span></div></div>"
+        : found
+            .map((platform) =>
+              row({
+                mark: '<span class="safely-mark safely-mark-flag">!</span>',
+                title: tr(platform),
+                value:
+                  grouped[platform].length === 1
+                    ? tr("1 link")
+                    : tr("{n} links", { n: grouped[platform].length }),
+                moreHTML:
+                  esc(tr("Read these before you pay. Some may be about something else.")) +
+                  linksHTML(grouped[platform]),
+              }),
+            )
+            .join("");
+    return (
+      '<div class="safely-heading">' +
+      esc(tr("Scam warnings online")) +
+      '</div><div class="safely-rows">' +
+      rows +
+      "</div>"
+    );
+  }
+
+  // One row per platform where something was found; it opens to show
+  // every link. The first 3 show, the rest sit under "Show more".
+  // Platforms with nothing found share one line at the end, always shown.
+  // The same platform can be searched under several names, so the
+  // results are merged first.
+  function buildPresence(): string {
+    const results = socialResults().filter((r) => WEB_SCAM_ROWS.indexOf(r.platform) === -1);
+    if (results.length === 0) return "";
+    const grouped = groupLinks(results);
     const order = PLATFORM_ORDER.filter((p) => p in grouped).concat(
       Object.keys(grouped).filter((p) => PLATFORM_ORDER.indexOf(p) === -1),
     );
@@ -232,16 +299,7 @@ interface PlatformCheckResult {
           title: tr(platform),
           value:
             links.length === 1 ? tr("1 link") : tr("{n} links", { n: links.length }),
-          moreHTML: links
-            .map(
-              (link) =>
-                '<a class="safely-link-out" href="' +
-                esc(link.url) +
-                '" target="_blank" rel="noopener noreferrer">' +
-                esc(link.title || link.url) +
-                "</a>",
-            )
-            .join(""),
+          moreHTML: linksHTML(links),
         });
       })
       .join("");
@@ -309,6 +367,58 @@ interface PlatformCheckResult {
     "Fake commodity sellers ask for fees, a deposit or document costs before anything ships. Pay nothing until the goods are inspected by a company you choose (such as SGS), and pay only by Letter of Credit.",
   ];
 
+  // "Before you pay" on a shop's own website ("Check this website"):
+  // consumer steps, not the supplier ones above. The same list as the
+  // dashboard (ts/detail_view.ts) and the PDF (backend pdf_report.rs).
+  const WEBSITE_CHECKS: [string, string][] = [
+    ["Pay by card or PayPal", "Card and PayPal payments can be disputed if the order never arrives or is not as described. Money sent by bank transfer, Pix, crypto or gift card cannot be got back."],
+    ["Read the return policy first", "Check how returns and refunds work before you buy, and save a copy. If the shop has no clear return policy, ask before paying."],
+    ["Start with a small order", "Buy one item first and wait until it arrives as described before placing a bigger order."],
+    ["Keep proof of your order", "Save screenshots of the product page, the price and your order confirmation. You will need them for a refund or a dispute."],
+    ["Contact the shop before a big order", "Write to the email or phone number the shop gives and see if a real person answers. A shop that never replies is a warning sign."],
+  ];
+  // Shown first when the address copies a famous brand.
+  const WEBSITE_LOOKALIKE_CHECK: [string, string] = [
+    "Buy only on the brand's real website",
+    "This address copies a famous brand's name, but it is not the brand's own website. Type the brand's real address yourself and buy there instead.",
+  ];
+  // Shown first when the shop only shows ways to pay that can't be reversed.
+  const WEBSITE_RISKY_PAYMENT_CHECK: [string, string] = [
+    "Don't pay by bank transfer, Pix or crypto",
+    "This shop only shows ways to pay that cannot be reversed. Pay only by card or PayPal. If the shop does not accept them, do not buy.",
+  ];
+
+  // The steps for a shop's own website: the special ones its checks call
+  // for first, then the usual ones.
+  function websiteChecks(signals: SafelySignal[]): [string, string][] {
+    const lookalike = signals.some(
+      (s) => s.label === "Domain check" && s.type === "caution" && s.value.indexOf("Looks like") === 0,
+    );
+    const risky = signals.some(
+      (s) => s.label === "Payment at checkout" && s.value === "Risky methods only",
+    );
+    return (lookalike ? [WEBSITE_LOOKALIKE_CHECK] : [])
+      .concat(risky ? [WEBSITE_RISKY_PAYMENT_CHECK] : [])
+      .concat(isSupplierWebsite(signals) ? SUPPLIER_WEBSITE_CHECKS : WEBSITE_CHECKS);
+  }
+
+  // A factory or supplier's own website: it sells by quote, so no prices
+  // and no way to pay are shown. Its buyers pay by bank transfer, like a
+  // marketplace supplier, so it gets supplier steps, not shop ones.
+  const SUPPLIER_WEBSITE_CHECKS: [string, string][] = [
+    ["Pay only to the company's own bank account", "Pay by bank transfer only to an account in the company's own name, never to a person. Ask for the bank details in writing and check that the name matches the company."],
+  ].concat(B2B_CHECKS.slice(1)) as [string, string][];
+
+  function isSupplierWebsite(signals: SafelySignal[]): boolean {
+    const notShown = (label: string) =>
+      signals.some((s) => s.label === label && s.value === "Not shown");
+    return notShown("Payment at checkout") && notShown("Prices");
+  }
+
+  function isWebsiteScan(): boolean {
+    const data = (window as any).__safelyData || {};
+    return !!data.seller && data.seller.platform === "Website";
+  }
 
   function buildRecommendedChecks(signals: SafelySignal[]): string {
     const payment = signals.find(
@@ -335,7 +445,9 @@ interface PlatformCheckResult {
     )
       ? [B2B_COMMODITY_CHECK]
       : [];
-    const checks = commodityCheck.concat(regulatedCheck, paymentCheck, B2B_CHECKS);
+    const checks = isWebsiteScan()
+      ? websiteChecks(signals)
+      : commodityCheck.concat(regulatedCheck, paymentCheck, B2B_CHECKS);
     return (
       '<div class="safely-heading">' +
       esc(tr("Before you pay")) +
@@ -384,6 +496,7 @@ interface PlatformCheckResult {
       buildCounts(flagged, signals.length - flagged) +
       buildSignalLists(signals) +
       buildPresence() +
+      buildScamWarnings() +
       buildRecommendedChecks(signals)
     );
   }

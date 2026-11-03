@@ -180,7 +180,9 @@ describe("result page - Details tab", () => {
     );
     expect(tab.querySelectorAll(".d-count b")[0].textContent).toBe("1");
     expect(tab.querySelectorAll(".d-count b")[1].textContent).toBe("4");
-    expect(tab.querySelectorAll(".d-row.d-extra")).toHaveLength(2);
+    // The "Looks fine" list ("Before you pay" below has its own "Show more").
+    const fine = tab.querySelector("[data-more]")!.closest(".d-rows") as HTMLElement;
+    expect(fine.querySelectorAll(".d-row.d-extra")).toHaveLength(2);
     expect(tab.querySelector("[data-more]")?.textContent).toBe("Show 2 more");
   });
 
@@ -296,5 +298,82 @@ describe("result page - rows that open and Show more", () => {
     expect(more.textContent).toBe("Show less");
     more.click();
     expect(more.textContent).toBe("Show 1 more");
+  });
+});
+
+describe("result page - Scam warnings online", () => {
+  const search = (platform: string, links: Array<[string, string]>) => ({
+    platform,
+    variant_searched: "Acme",
+    found: links.length > 0,
+    candidates: links.map(([title, url]) => ({ platform, title, url })),
+  });
+
+  it("shows the Google and complaint-site links in their own section", () => {
+    const tab = html(
+      buildDetailsTab(
+        scan({
+          social_candidates: [
+            search("LinkedIn", [["Acme | LinkedIn", "https://linkedin.com/company/acme"]]),
+            search("Google search", [
+              ["Acme scam", "https://forum.example/acme"],
+              ["Acme scam", "https://forum.example/acme"],
+            ]),
+            search("Complaint sites", []),
+          ],
+        }),
+      ),
+    );
+    const headings = Array.from(tab.querySelectorAll(".d-heading")).map((h) => h.textContent);
+    expect(headings).toContain("Online presence");
+    expect(headings).toContain("Scam warnings online");
+    const warnings = Array.from(tab.querySelectorAll(".d-heading"))
+      .find((h) => h.textContent === "Scam warnings online")!
+      .nextElementSibling as HTMLElement;
+    expect(warnings.textContent).toContain("Google search");
+    expect(warnings.textContent).toContain("1 link");
+    expect(warnings.querySelectorAll("a")).toHaveLength(1);
+    expect(warnings.textContent).not.toContain("Complaint sites");
+  });
+
+  it("says when nothing was found, and is hidden when the searches did not run", () => {
+    const none = html(buildDetailsTab(scan({ social_candidates: [search("Google search", [])] })));
+    expect(none.textContent).toContain("No scam warnings found for this name");
+    const notRun = html(buildDetailsTab(scan({ social_candidates: [search("Facebook", [])] })));
+    expect(notRun.textContent).not.toContain("Scam warnings online");
+  });
+});
+
+describe("result page - Before you pay", () => {
+  const steps = (data: any) => global("payCheckIds")(data);
+
+  it("a marketplace supplier gets the supplier steps, with special ones first", () => {
+    expect(steps(scan())[0]).toBe("buyer_protection");
+    expect(steps(scan({ signals: [signal("Advance payment request", "Full prepayment", "caution")] }))[0]).toBe(
+      "full_prepayment",
+    );
+  });
+
+  it("a shop's website gets the shop steps", () => {
+    const ids = steps(scan({ platform: "website", signals: [signal("Prices", "normal", "good")] }));
+    expect(ids[0]).toBe("site_card");
+    expect(ids).not.toContain("sample");
+  });
+
+  it("a factory or supplier website (no prices, no way to pay) gets the supplier steps", () => {
+    const ids = steps(
+      scan({
+        platform: "website",
+        signals: [signal("Payment at checkout", "Not shown", "info"), signal("Prices", "Not shown", "info")],
+      }),
+    );
+    expect(ids).toEqual(["company_account", "licence_bank", "confirm_bank", "sample", "video_call"]);
+  });
+
+  it("shows 3 steps and the rest under 'Show more'", () => {
+    const tab = html(global("buildBeforeYouPay")(scan()));
+    expect(tab.querySelectorAll(".d-row")).toHaveLength(5);
+    expect(tab.querySelectorAll(".d-row.d-extra")).toHaveLength(2);
+    expect(tab.textContent).toContain("Use buyer protection if the platform offers it");
   });
 });

@@ -7,7 +7,9 @@ use crate::{
     },
     services::{
         features::auth::extract_user_id,
-        features::billing::{ScanCharge, ScanLimitError, give_back_scan, reserve_scan},
+        features::billing::{
+            ScanCharge, ScanLimitError, give_back_scan, reserve_scan, scan_ended, scan_started,
+        },
         features::fraud_reports::{
             already_reported, build_network_summary, count_fraud_reports, report_floor,
             report_points,
@@ -114,6 +116,9 @@ pub async fn authorize_request(
 pub struct ScanHold {
     pool: Pool<Postgres>,
     charge: Option<ScanCharge>,
+    /// Set by shown_after_result: the user whose scans-used number
+    /// leaves this scan out until it finishes.
+    shown_for: Option<Uuid>,
 }
 
 impl ScanHold {
@@ -121,27 +126,58 @@ impl ScanHold {
         ScanHold {
             pool,
             charge: Some(charge),
+            shown_for: None,
         }
     }
 
-    /// The scan finished: it stays counted.
+    /// The scans-used number the user sees (extension, dashboard) leaves
+    /// this scan out until its result is in, and never shows it if it is
+    /// given back. Only for a counted scan (an unlimited plan's scan is
+    /// not counted, so there is nothing to leave out).
+    pub fn shown_after_result(mut self, user_id: Uuid) -> Self {
+        if matches!(
+            self.charge,
+            Some(ScanCharge::Free { .. } | ScanCharge::Paid { .. })
+        ) {
+            scan_started(user_id);
+            self.shown_for = Some(user_id);
+        }
+        self
+    }
+
+    /// The scan finished: it stays counted, and now shows as used.
     pub fn finish(mut self) {
         self.charge = None;
+        if let Some(user_id) = self.shown_for.take() {
+            scan_ended(user_id);
+        }
     }
 }
 
 impl Drop for ScanHold {
     fn drop(&mut self) {
+        let shown_for = self.shown_for.take();
         let Some(charge) = self.charge.take() else {
             return;
         };
         let pool = self.pool.clone();
         // Drop can't wait, so the scan is given back in the background.
+        // It stays left out of the number until it is given back.
         match tokio::runtime::Handle::try_current() {
             Ok(runtime) => {
-                runtime.spawn(async move { give_back_scan(&pool, charge).await });
+                runtime.spawn(async move {
+                    give_back_scan(&pool, charge).await;
+                    if let Some(user_id) = shown_for {
+                        scan_ended(user_id);
+                    }
+                });
             }
-            Err(_) => eprintln!("Safely: could not give back an unfinished scan (no runtime)"),
+            Err(_) => {
+                if let Some(user_id) = shown_for {
+                    scan_ended(user_id);
+                }
+                eprintln!("Safely: could not give back an unfinished scan (no runtime)")
+            }
         }
     }
 }
@@ -169,7 +205,10 @@ pub async fn authorize_scan(
         }
     })?;
 
-    Ok((user_id, ScanHold::new(pool.clone(), charge)))
+    Ok((
+        user_id,
+        ScanHold::new(pool.clone(), charge).shown_after_result(user_id),
+    ))
 }
 
 /// Every time someone tries to use /analyze, this checks their notebook entry, lets them
@@ -649,8 +688,10 @@ fn b2b_risk_score(base_score: i16, serious_count: i16, compound_count: i16) -> i
 }
 
 /// Serper (web search for the social presence check) is only called
-/// when SERPER_ENABLED is set to "true" / "1". Default: off.
-fn serper_enabled() -> bool {
+/// when SERPER_ENABLED is set to "true" / "1". Default: off. Shared
+/// with the website check (sources/websites/mod.rs), which runs the
+/// same search.
+pub(crate) fn serper_enabled() -> bool {
     std::env::var("SERPER_ENABLED")
         .map(|v| matches!(v.trim().to_ascii_lowercase().as_str(), "true" | "1" | "yes"))
         .unwrap_or(false)

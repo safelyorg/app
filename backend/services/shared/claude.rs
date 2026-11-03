@@ -238,9 +238,12 @@ enum SendError {
     Failed(ClaudeError),
 }
 
-/// True when Claude's error says it could not load a photo from its
-/// link: "This URL is disallowed by the website's robots.txt file", a
-/// photo that could not be downloaded, or one in a format it can't read.
+/// True when Claude's error is about one of the photos: "This URL is
+/// disallowed by the website's robots.txt file", a photo that could not
+/// be downloaded, or one it can't read - e.g. "messages.0.content.1.
+/// image.source.base64.data: The file format is invalid or unsupported"
+/// (a shop page's tiny tracking image). The scan is then tried again
+/// without that kind of photo, instead of failing.
 fn is_photo_load_error(status: u16, body: &str) -> bool {
     let lower = body.to_lowercase();
     status == 400
@@ -249,7 +252,8 @@ fn is_photo_load_error(status: u16, body: &str) -> bool {
                 && (lower.contains("image")
                     || lower.contains("download")
                     || lower.contains("fetch")))
-            || lower.contains("could not process image"))
+            || lower.contains("could not process image")
+            || lower.contains("image.source"))
 }
 
 /// Sends one request to Claude and returns its answer text, without
@@ -323,6 +327,10 @@ async fn send_to_claude(content: Vec<ContentItem>) -> Result<String, SendError> 
 /// photo; base64 makes the data about a third bigger.
 const MAX_PHOTO_BYTES: usize = 3_500_000;
 
+/// Smaller than this, a file is a tracking pixel or a tiny icon, not a
+/// product photo (a real photo is many KB). Claude refuses some of them.
+const MIN_PHOTO_BYTES: usize = 2_000;
+
 /// The photo's real format from its first bytes (the link's ending is
 /// not reliable - ExportHub serves ".jpeg_.webp" files). Only formats
 /// Claude reads are accepted.
@@ -389,7 +397,7 @@ async fn download_photos(image_urls: &[String]) -> Vec<(String, String)> {
         let Ok(bytes) = response.bytes().await else {
             continue;
         };
-        if bytes.len() > MAX_PHOTO_BYTES {
+        if bytes.len() > MAX_PHOTO_BYTES || bytes.len() < MIN_PHOTO_BYTES {
             continue;
         }
         if let Some(media_type) = photo_media_type(&bytes) {
@@ -443,7 +451,11 @@ fn photos_need_download(image_urls: &[String]) -> bool {
 /// downloads the photos itself and sends their bytes, so the photos
 /// are still checked. Only if that fails too is the scan sent without
 /// photos; `prompt_without_photos` builds the text for that last try.
-async fn send_with_photo_fallback(
+///
+/// Shared with the website check (sources/websites/ai.rs and mod.rs),
+/// which sends product photos found on a shop's own pages the same
+/// way.
+pub(crate) async fn send_with_photo_fallback(
     prompt: String,
     image_urls: &[String],
     prompt_without_photos: impl FnOnce() -> String,
@@ -472,18 +484,6 @@ async fn send_with_photo_fallback(
         Ok(answer) => Ok(answer),
         Err(SendError::Failed(e)) => Err(e),
         // Cannot happen without photos; kept as a plain failure.
-        Err(SendError::PhotosBlocked) => Err(ClaudeError::ServiceUnavailable(400)),
-    }
-}
-
-/// Sends a text-only prompt and returns Claude's answer (a JSON text,
-/// without code fences). Used by the website check
-/// (sources/websites/ai.rs), which reads the answer itself.
-pub async fn ask_claude_text(prompt: String) -> Result<String, ClaudeError> {
-    match send_to_claude(build_content_blocks(prompt, &[])).await {
-        Ok(answer) => Ok(answer),
-        Err(SendError::Failed(e)) => Err(e),
-        // Cannot happen without photos.
         Err(SendError::PhotosBlocked) => Err(ClaudeError::ServiceUnavailable(400)),
     }
 }
@@ -1186,6 +1186,11 @@ mod photo_fallback_tests {
             r#"{"error":{"message":"max_tokens is too large"}}"#
         ));
         assert!(!is_photo_load_error(429, robots));
+        // Real error (Nov 3, a shop's own pages): a photo Claude can't read.
+        assert!(is_photo_load_error(
+            400,
+            r#"{"type":"error","error":{"type":"invalid_request_error","message":"messages.0.content.1.image.source.base64.data: The file format is invalid or unsupported"}}"#
+        ));
         assert!(!is_photo_load_error(401, "invalid x-api-key"));
     }
 }

@@ -97,7 +97,7 @@ describe("theme - logo", () => {
   });
 
   it("uses both logo pictures in the page", () => {
-    expect(page).toMatch(/src="images\/logo-dark\.png"[^>]*class="logo-for-light/);
-    expect(page).toMatch(/src="images\/logo-light\.png"[^>]*class="logo-for-dark/);
+    expect(page).toMatch(/src="\/dashboard\/images\/logo-dark\.png"[^>]*class="logo-for-light/);
+    expect(page).toMatch(/src="\/dashboard\/images\/logo-light\.png"[^>]*class="logo-for-dark/);
   });
 });

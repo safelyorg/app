@@ -3,8 +3,8 @@ use axum::serve;
 use axum::{Router, response::Redirect, routing::get};
 use backend::db::{bootstrap::run_grants, connection::load_pool};
 use backend::routes::{
-    analyze, auth, billing, dashboard, fraud_reports, outcomes, platform_domains, reviews,
-    subscribe, tool_api, tools,
+    analyze, auth, billing, dashboard, dashboard_pages, fraud_reports, outcomes, platform_domains,
+    reviews, subscribe, tool_api, tools,
 };
 use backend::services::shared::scraper_client::warn_if_scraperapi_key_missing;
 use dotenvy::dotenv;
@@ -59,16 +59,9 @@ fn build_router(app_pool: Pool<Postgres>) -> Router {
         .merge(reviews::reviews_routes())
         // The free tools' lookups, like /api/v1/tools/domain-age
         .merge(tool_api::tool_api_routes())
-        .route(
-            "/dashboard",
-            get(|| async { Redirect::permanent("/dashboard/") }),
-        )
-        .nest_service(
-            "/dashboard/",
-            ServeDir::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../dashboard"))
-                .append_index_html_on_directories(true)
-                .not_found_service(ServeFile::new(NOT_FOUND_FILE)),
-        )
+        // History, My Reports, Settings and one result's own page
+        // (routes/dashboard_pages.rs).
+        .merge(dashboard_pages::dashboard_pages_routes())
         .layer(SetResponseHeaderLayer::overriding(
             header::CACHE_CONTROL,
             HeaderValue::from_static("no-cache, no-store, must-revalidate"),

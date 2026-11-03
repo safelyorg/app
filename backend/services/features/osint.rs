@@ -114,6 +114,101 @@ const SCAM_PROOF_PHRASES: &[&str] = &[
 /// post where "golpe" means a hit) does not count.
 const SCAM_WORD_MAX_GAP: usize = 6;
 
+/// Row names of the whole-web scam searches. The extension (tabs/
+/// intelligence.ts) and the dashboard (ts/detail_view.ts) show these in
+/// their own "Scam warnings online" section, not in "Online presence" -
+/// change the names there too.
+pub const WEB_SCAM_SEARCH: &str = "Google search";
+pub const COMPLAINT_SITES: &str = "Complaint sites";
+
+/// Scam words for the whole-web search (not one site), in English and
+/// Portuguese. Each group is its own search.
+const WEB_SCAM_WORD_GROUPS: &[&str] = &[
+    "scam OR scammer OR fraud OR fraudulent",
+    "\"rip off\" OR ripoff OR beware OR complaint OR complaints",
+    "golpe OR golpista OR fraude OR estelionato",
+    "reclamação OR \"não entregou\" OR \"não recomendo\" OR picareta",
+];
+
+/// Sites where every page is a buyer's complaint.
+const COMPLAINT_SITE_FILTER: &str = "(site:ripoffreport.com OR site:complaintsboard.com)";
+
+/// Extra words that show a whole-web result is a complaint ("X
+/// complaints" on ComplaintsBoard). Only used for the whole-web
+/// searches; the social-site searches keep SCAM_PROOF_WORDS alone.
+const WEB_EXTRA_PROOF_WORDS: &[&str] = &[
+    "complaint",
+    "complaints",
+    "scams",
+    "fraudster",
+    "fraudsters",
+];
+
+/// "Is this site a scam?" checker sites write "scam" next to every
+/// name they list, so their pages are never a warning about the
+/// company.
+const SCAM_CHECKER_SITES: &[&str] = &[
+    "scamadviser.com",
+    "scam-detector.com",
+    "scamdoc.com",
+    "scamminder.com",
+    "gridinsoft.com",
+    "webparanoid.com",
+    "scamvoid.net",
+    "isitlegit",
+    "otrucking.com",
+];
+const SCAM_CHECKER_PHRASES: &[&str] = &[
+    "scam or legit",
+    "legit or scam",
+    "legit or a scam",
+    "check if site is",
+    "is it a scam",
+    // Fraud-check sites like otrucking.com. Not "legit?" on its own: a
+    // real warning often asks "Is X legit? They never shipped".
+    "fraud check",
+    "scam check",
+    "legit check",
+];
+
+/// True for a "Google search" / "Complaint sites" row.
+pub fn is_web_scam_row(platform: &str) -> bool {
+    platform == WEB_SCAM_SEARCH || platform == COMPLAINT_SITES
+}
+
+/// The whole-web scam searches for one company: its name next to each
+/// group of WEB_SCAM_WORD_GROUPS anywhere on the web, and its name on
+/// the complaint sites. Separate from build_osint_query_matrix, which
+/// searches the social sites and stays as it is.
+pub fn build_web_scam_queries(company_name: Option<&str>) -> Vec<(String, String, String)> {
+    let Some(name) = company_name.filter(|n| !n.trim().is_empty()) else {
+        return Vec::new();
+    };
+    let mut queries = Vec::new();
+    for variant in build_name_variants(name) {
+        for group in WEB_SCAM_WORD_GROUPS {
+            queries.push((
+                WEB_SCAM_SEARCH.to_string(),
+                format!("\"{variant}\" ({group})"),
+                variant.clone(),
+            ));
+        }
+        queries.push((
+            COMPLAINT_SITES.to_string(),
+            format!("\"{variant}\" {COMPLAINT_SITE_FILTER}"),
+            variant.clone(),
+        ));
+    }
+    queries
+}
+
+/// True for a page of a "scam or legit?" checker site.
+fn is_scam_checker_page(url: &str, text: &str) -> bool {
+    let url = url.to_lowercase();
+    SCAM_CHECKER_SITES.iter().any(|s| url.contains(s))
+        || SCAM_CHECKER_PHRASES.iter().any(|p| text.contains(p))
+}
+
 /// Lower-case words of a text, punctuation removed.
 fn words_of(text: &str) -> Vec<String> {
     text.to_lowercase()
@@ -152,11 +247,27 @@ pub fn scam_word_near_name(text: &str, name: &str) -> bool {
     }
     pieces
         .iter()
-        .any(|piece| scam_word_near_name_in(piece, name))
+        .any(|piece| scam_word_near_name_in(piece, name, &[]))
 }
 
-/// scam_word_near_name for one piece of text.
-fn scam_word_near_name_in(text: &str, name: &str) -> bool {
+/// scam_word_near_name for the whole-web searches: also counts the
+/// complaint words of WEB_EXTRA_PROOF_WORDS.
+fn web_scam_word_near_name(text: &str, name: &str) -> bool {
+    let mut pieces = vec![text.to_string()];
+    for mark in PIECE_BREAKS {
+        pieces = pieces
+            .iter()
+            .flat_map(|p| p.split(mark).map(str::to_string).collect::<Vec<_>>())
+            .collect();
+    }
+    pieces
+        .iter()
+        .any(|piece| scam_word_near_name_in(piece, name, WEB_EXTRA_PROOF_WORDS))
+}
+
+/// scam_word_near_name for one piece of text. `extra` adds words to
+/// SCAM_PROOF_WORDS.
+fn scam_word_near_name_in(text: &str, name: &str, extra: &[&str]) -> bool {
     let words = words_of(text);
     let name_words = words_of(name);
     let name_starts = word_run_positions(&words, &name_words);
@@ -167,7 +278,7 @@ fn scam_word_near_name_in(text: &str, name: &str) -> bool {
     let mut scam_spans: Vec<(usize, usize)> = words
         .iter()
         .enumerate()
-        .filter(|(_, w)| SCAM_PROOF_WORDS.contains(&w.as_str()))
+        .filter(|(_, w)| SCAM_PROOF_WORDS.contains(&w.as_str()) || extra.contains(&w.as_str()))
         .map(|(i, _)| (i, i))
         .collect();
     for phrase in SCAM_PROOF_PHRASES {
@@ -564,7 +675,8 @@ async fn run_query_batch(
     for (platform_label, query, variant) in queries {
         let permit_holder = semaphore.clone();
         let country_code = country_code.to_string();
-        let scam_mention = is_scam_word_query(&query);
+        let web_scam_row = is_web_scam_row(&platform_label);
+        let scam_mention = web_scam_row || is_scam_word_query(&query);
         join_set.spawn(async move {
             let _permit = permit_holder.acquire().await.ok();
             let real_results = run_serper_search(&query, Some(&country_code)).await;
@@ -585,7 +697,13 @@ async fn run_query_batch(
                     // itself talks about a scam or a complaint, close to
                     // the company's name.
                     if scam_mention {
-                        if !scam_word_near_name(&haystack, &variant) {
+                        let near = if web_scam_row {
+                            !is_scam_checker_page(&r.link, &haystack)
+                                && web_scam_word_near_name(&haystack, &variant)
+                        } else {
+                            scam_word_near_name(&haystack, &variant)
+                        };
+                        if !near {
                             continue;
                         }
                         eprintln!(
@@ -689,7 +807,7 @@ pub async fn build_social_presence_matrix(
     phone: Option<&str>,
     platform: &str,
 ) -> Result<(Signal, Vec<PlatformCheckResult>), String> {
-    let primary_queries = build_osint_query_matrix(company_name, contact_name, phone);
+    let mut primary_queries = build_osint_query_matrix(company_name, contact_name, phone);
     if primary_queries.is_empty() {
         return Ok((
             Signal {
@@ -713,6 +831,8 @@ pub async fn build_social_presence_matrix(
         _ => "us",
     };
 
+    // The whole-web scam searches run in the same batch.
+    primary_queries.extend(build_web_scam_queries(company_name));
     let total_primary = primary_queries.len();
     let (mut results, mut real_search_failures) =
         run_query_batch(primary_queries, country_code).await;
@@ -810,4 +930,90 @@ pub async fn verify_social_link(
         .map_err(|e| format!("Could not read the real, live page content: {}", e))?;
 
     Ok(score_identifier_match(seller, &page_text))
+}
+
+#[cfg(test)]
+mod web_scam_tests {
+    use super::*;
+
+    #[test]
+    fn web_scam_searches_cover_the_whole_web_and_the_complaint_sites() {
+        let q = build_web_scam_queries(Some("Loyal Vina Co., Ltd"));
+        // 2 name variants x (4 word groups + 1 complaint-site search).
+        assert_eq!(q.len(), 10);
+        assert!(q.iter().any(|(p, text, _)| p == WEB_SCAM_SEARCH
+            && text == "\"Loyal Vina\" (golpe OR golpista OR fraude OR estelionato)"));
+        assert!(
+            q.iter()
+                .any(|(p, text, _)| p == COMPLAINT_SITES && text.contains("site:ripoffreport.com"))
+        );
+        assert!(
+            q.iter()
+                .all(|(_, text, _)| !text.contains("site:facebook.com"))
+        );
+        assert!(build_web_scam_queries(None).is_empty());
+        assert!(build_web_scam_queries(Some("  ")).is_empty());
+    }
+
+    #[test]
+    fn the_social_site_searches_are_unchanged() {
+        assert_eq!(
+            build_osint_query_matrix(Some("Deva Inc"), None, None).len(),
+            37
+        );
+        assert!(
+            build_osint_query_matrix(Some("Deva Inc"), None, None)
+                .iter()
+                .all(|(p, _, _)| !is_web_scam_row(p))
+        );
+    }
+
+    #[test]
+    fn complaint_words_count_only_on_the_web_searches() {
+        let t = "palmer holland complaints - complaintsboard";
+        assert!(web_scam_word_near_name(t, "Palmer Holland"));
+        assert!(!scam_word_near_name(t, "Palmer Holland"));
+        assert!(web_scam_word_near_name(
+            "beware of acme shop, they never shipped",
+            "Acme Shop"
+        ));
+        assert!(!web_scam_word_near_name(
+            "acme shop new collection",
+            "Acme Shop"
+        ));
+    }
+
+    #[test]
+    fn scam_checker_sites_are_not_warnings() {
+        // Real result (Nov 3) that was wrongly counted as a scam mention.
+        assert!(is_scam_checker_page(
+            "https://otrucking.com/carrier/precision-wire-products-inc-dot-889973/",
+            "precision wire products inc — commerce, ca is precision wire products inc legitimate? safety & fraud check."
+        ));
+        assert!(is_scam_checker_page(
+            "https://example.org/x",
+            "is acme legit? fraud check"
+        ));
+        // A real warning that asks "legit?" is still a warning.
+        assert!(!is_scam_checker_page(
+            "https://www.reddit.com/r/scams/acme",
+            "is acme shop legit? they took my money and never shipped, total scam"
+        ));
+        assert!(!is_scam_checker_page(
+            "https://forum.example.com/t/1",
+            "is acme shop legitimate? beware, i was scammed"
+        ));
+        assert!(is_scam_checker_page(
+            "https://www.scamadviser.com/check-website/acme.com",
+            "acme.com reviews | check if site is scam or legit"
+        ));
+        assert!(is_scam_checker_page(
+            "https://x.com/a",
+            "is acme a scam or legit?"
+        ));
+        assert!(!is_scam_checker_page(
+            "https://www.ripoffreport.com/reports/acme",
+            "acme ripoff report: never delivered"
+        ));
+    }
 }

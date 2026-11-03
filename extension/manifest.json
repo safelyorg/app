@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Safely",
-  "version": "1.0.17",
+  "version": "1.0.18",
   "description": "Secure your online transactions. It checks the seller risk score and protect payment everywhere you shop.",
   "permissions": [
     "storage"

@@ -3,3 +3,4 @@
 /wasm/target
 node_modules/
 data/
+data/sanctions/

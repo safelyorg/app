@@ -1,7 +1,7 @@
 {
   "category": "websites",
   "status": "live",
-  "about": "A seller's own shop website (not a marketplace). Build step 1 is live (POST /api/v1/check-website); steps 2-4 are planned. The user presses 'Check this website' in the extension; Safely reads a few of the site's own pages plus outside records, then shows one card per check and a risk score. A check counts as one scan.",
+  "about": "A seller's own shop or supplier website (not a marketplace). Build step 1 is live (POST /api/v1/check-website). The user presses 'Check this website' in the extension; Safely reads a few of the site's own pages plus outside records, then shows one card per check and a risk score. A check counts as one scan, and only once a result is shown.",
   "how_to_change": [
     "warning_points: how much a card adds to the score when it is a warning. Change the number, then deploy.",
     "points_when_value: a different number for one exact card value.",
@@ -17,12 +17,13 @@
   },
   "pages_read": {
     "max_pages": 12,
-    "pages": ["home page", "About us", "Contact us", "Shipping policy", "Return / refund policy", "Terms", "Privacy policy", "1-2 product pages", "sitemap.xml (to find these pages)"],
-    "how": "Browser first: the extension loads the shop's own pages from the same site. ScraperAPI only when a page is missing or is a robot check."
+    "pages": ["the page the buyer is on", "home page", "About us", "Contact us", "Shipping policy", "Return / refund policy", "Terms", "Privacy policy", "FAQ", "Legal notice / imprint", "Shopify shops: their 4 fixed policy pages"],
+    "how": "The extension loads the pages in the buyer's own browser. It finds them from the links on the page the buyer is on, by their names (English, Portuguese, French, Spanish, German), and only on the same website. Pages closed by the site's robots.txt are skipped. Safely's own panel, hidden text, icons (.svg) and trackers are left out."
   },
   "reads": {
     "website": ["domain", "company name", "address", "phone", "email", "registration or tax number", "policies", "payment methods shown", "prices and discounts", "photos", "trust badges", "reviews on the site", "social links"],
-    "outside": ["WHOIS (domain age, owner hidden or not)", "DNS (email set up for the domain)", "certificate (when it was issued)", "online reviews", "safe-browsing lists", "website history (Wayback Machine)", "Safely's own history and buyer reports"]
+    "outside": ["RDAP (domain age)", "DNS (email set up for the domain)", "Google search (social sites, reviews, scam warnings, complaint sites)", "sanctions lists and company registers", "Safely's own history and buyer reports"],
+    "outside_planned": ["WHOIS owner hidden or not", "certificate (when it was issued)", "safe-browsing lists", "website history (Wayback Machine)"]
   },
   "rules": [
     "Follow robots.txt. Never fill in a form, sign in, add to a cart or buy anything.",
@@ -43,13 +44,14 @@
     { "card": "Prices", "step": 1, "enabled": true, "what_it_checks": "Prices that are too good to be true (for example 80% off everything).", "reads": ["product pages", "home page"], "warning_points": 15 },
     { "card": "Urgency language", "step": 1, "enabled": true, "what_it_checks": "Pressure tactics: countdown timers, 'only 2 left' on every product, 'offer ends today'.", "reads": ["home page", "product pages"], "warning_points": 15 },
     { "card": "Overall legitimacy check", "step": 1, "enabled": true, "what_it_checks": "Does this look like a real, operating shop (no made-up, impossible or self-contradicting details)?", "reads": ["all pages read"], "warning_points": 25 },
+    { "card": "Registration consistency", "step": 1, "enabled": true, "what_it_checks": "Does what the site states about itself (company name, founding date, claimed size or scale, country) hang together, the same check a marketplace scan runs on a supplier's profile.", "reads": ["all pages read"], "warning_points": 15 },
     { "card": "Owner and certificate", "step": 2, "enabled": true, "what_it_checks": "Domain owner hidden, and a certificate issued only days ago.", "reads": ["WHOIS", "certificate"], "warning_points": 10 },
     { "card": "Online reviews", "step": 2, "enabled": true, "what_it_checks": "Ratings and recent complaints on Trustpilot, Sitejabber, ScamAdviser, Reddit.", "reads": ["web search"], "warning_points": 25 },
     { "card": "Safe-browsing lists", "step": 2, "enabled": true, "what_it_checks": "The site is listed as phishing or malware (Google Safe Browsing and similar lists).", "reads": ["safe-browsing lists"], "warning_points": 25 },
-    { "card": "Social presence check", "step": 2, "enabled": true, "what_it_checks": "The shop's social pages exist and are real; scam mentions online.", "reads": ["social links on the site", "web search"], "warning_points": 15, "points_when_value": { "Scam mentions found": 25 } },
+    { "card": "Social presence check", "step": 1, "enabled": true, "what_it_checks": "The shop's name found on Facebook, LinkedIn, Instagram, TikTok, Reddit, Trustpilot and review sites, and scam mentions online: the same social sites with scam words, plus a whole-web Google search with scam words (English and Portuguese) and complaint sites (Ripoff Report, ComplaintsBoard). Scam-checker sites are not counted as scam mentions. Off unless SERPER_ENABLED=true (the same switch a marketplace scan uses).", "reads": ["web search (Serper)"], "warning_points": 15, "points_when_value": { "Scam mentions found": 25 } },
     { "card": "Trust badges", "step": 3, "enabled": true, "what_it_checks": "Security or 'verified' badges that are only a picture, not a real link to the badge company.", "reads": ["badges on the site"], "warning_points": 15 },
     { "card": "Reviews on the site", "step": 3, "enabled": true, "what_it_checks": "Reviews on the shop itself that look copied or fake.", "reads": ["product pages"], "warning_points": 15 },
-    { "card": "Image authenticity", "step": 4, "enabled": true, "what_it_checks": "Product photos found on other shops (copied photos).", "reads": ["product photos"], "warning_points": 15 },
+    { "card": "Image authenticity", "step": 1, "enabled": true, "what_it_checks": "Up to 3 product photos found on the shop's own pages look genuine, not stock or reused images. Logos, icons, badges and trackers are skipped. Reads 'not verified' (a note, not a warning) when no photos are found.", "reads": ["product photos on the pages read"], "warning_points": 15 },
     { "card": "Website history", "step": 4, "enabled": true, "what_it_checks": "When the site was first seen, and whether the domain sold something completely different before.", "reads": ["Wayback Machine"], "warning_points": 15 }
   ]
 }

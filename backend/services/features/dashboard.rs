@@ -2,13 +2,15 @@ use sqlx::{Error, Pool, Postgres, query, query_scalar};
 use uuid::Uuid;
 
 /// When someone deletes their account, this removes everything that's genuinely,
-/// only theirs — but keeps their fraud reports and analyses around (just disconnected from their name),
+/// only theirs — but keeps their fraud reports, analyses and "Go ahead / Walk
+/// away" choices around (just disconnected from their name),
 /// so deleting your account doesn't quietly weaken protection for everyone else.
 ///
 /// It starts a transaction, gets their email first, since it's needed later,
 /// disconnects their analyses from their identity, without deleting them and
-/// asks does the exact same thing for their fraud reports, genuinely deletes
-/// their sessions and deletes their magic links, matched by email, not user ID.
+/// does the exact same thing for their fraud reports and their "Go ahead /
+/// Walk away" choices (outcomes), genuinely deletes their sessions and
+/// deletes their magic links, matched by email, not user ID.
 /// It finally deletes the actual account row itself and commits by making
 /// everything above genuinely permanent, all at once.
 pub async fn delete_user_account(pool: &Pool<Postgres>, user_id: Uuid) -> Result<(), Error> {
@@ -25,6 +27,17 @@ pub async fn delete_user_account(pool: &Pool<Postgres>, user_id: Uuid) -> Result
         .await?;
 
     query("UPDATE fraud_reports SET user_id = NULL WHERE user_id = $1")
+        .bind(user_id)
+        .execute(&mut *tx)
+        .await?;
+
+    // Their "Go ahead / Walk away" choices are kept the same way - which
+    // scan, which choice, when - but no longer linked to them
+    // (migrations/0010_outcomes.sql allows a choice with no user). Before,
+    // that table needed a user on every row, so deleting an account that
+    // had ever pressed one of those buttons failed ("Could not delete your
+    // account").
+    query("UPDATE outcomes SET user_id = NULL WHERE user_id = $1")
         .bind(user_id)
         .execute(&mut *tx)
         .await?;

@@ -218,6 +218,11 @@
     "Needs a look": "Precisa de atenção",
     "Looks fine": "Parece bom",
     "Online presence": "Presença online",
+    "Scam warnings online": "Alertas de golpe na internet",
+    "Google search": "Pesquisa no Google",
+    "Complaint sites": "Sites de reclamação",
+    "No scam warnings found for this name": "Nenhum alerta de golpe encontrado para este nome",
+    "Read these before you pay. Some may be about something else.": "Leia antes de pagar. Alguns podem ser sobre outra coisa.",
     "1 link": "1 link",
     "{n} links": "{n} links",
     "Not found on {list}": "Não encontrado em {list}",
@@ -285,6 +290,32 @@
     "Check the licences before you order": "Confira as licenças antes de comprar",
     "This product needs a licence to sell or import. Make sure you are allowed to import it into your country, and ask the supplier for its export licence and any end-user certificate the sale needs before you pay.":
       "Este produto exige licença para ser vendido ou importado. Confirme que você pode importá-lo para o seu país e peça ao fornecedor a licença de exportação e qualquer certificado de usuário final exigido pela venda antes de pagar.",
+
+    // recommended checks: a shop's own website
+    "Pay only to the company's own bank account": "Pague só para a conta bancária da própria empresa",
+    "Pay by bank transfer only to an account in the company's own name, never to a person. Ask for the bank details in writing and check that the name matches the company.":
+      "Pague por transferência bancária só para uma conta no nome da própria empresa, nunca para uma pessoa. Peça os dados bancários por escrito e confira se o nome é o mesmo da empresa.",
+    "Pay by card or PayPal": "Pague com cartão ou PayPal",
+    "Card and PayPal payments can be disputed if the order never arrives or is not as described. Money sent by bank transfer, Pix, crypto or gift card cannot be got back.":
+      "Pagamentos com cartão e PayPal podem ser contestados se o pedido não chegar ou não for como descrito. Dinheiro enviado por transferência bancária, Pix, cripto ou cartão-presente não pode ser recuperado.",
+    "Read the return policy first": "Leia a política de devolução antes",
+    "Check how returns and refunds work before you buy, and save a copy. If the shop has no clear return policy, ask before paying.":
+      "Veja como funcionam as devoluções e os reembolsos antes de comprar e guarde uma cópia. Se a loja não tiver uma política de devolução clara, pergunte antes de pagar.",
+    "Start with a small order": "Comece com um pedido pequeno",
+    "Buy one item first and wait until it arrives as described before placing a bigger order.":
+      "Compre um item primeiro e espere chegar como descrito antes de fazer um pedido maior.",
+    "Keep proof of your order": "Guarde provas do seu pedido",
+    "Save screenshots of the product page, the price and your order confirmation. You will need them for a refund or a dispute.":
+      "Salve capturas de tela da página do produto, do preço e da confirmação do pedido. Você vai precisar delas para um reembolso ou uma contestação.",
+    "Contact the shop before a big order": "Fale com a loja antes de um pedido grande",
+    "Write to the email or phone number the shop gives and see if a real person answers. A shop that never replies is a warning sign.":
+      "Escreva para o e-mail ou telefone que a loja informa e veja se uma pessoa real responde. Uma loja que nunca responde é um sinal de alerta.",
+    "Buy only on the brand's real website": "Compre só no site oficial da marca",
+    "This address copies a famous brand's name, but it is not the brand's own website. Type the brand's real address yourself and buy there instead.":
+      "Este endereço copia o nome de uma marca famosa, mas não é o site oficial da marca. Digite você mesmo o endereço oficial da marca e compre lá.",
+    "Don't pay by bank transfer, Pix or crypto": "Não pague por transferência bancária, Pix ou cripto",
+    "This shop only shows ways to pay that cannot be reversed. Pay only by card or PayPal. If the shop does not accept them, do not buy.":
+      "Esta loja só mostra formas de pagamento que não podem ser estornadas. Pague só com cartão ou PayPal. Se a loja não aceitar, não compre.",
 
     // ---------- check names (signal labels) ----------
     "Domain check": "Verificação de domínio",

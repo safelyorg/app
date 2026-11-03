@@ -182,13 +182,20 @@ fn own_text_value(document: &Html, table_selector: &str, label: &str) -> Option<
     None
 }
 
-/// The company numbers in the "Legal information" table: "Registration
-/// No." and "VAT no" (free to see on many company pages). They are
-/// written into the description as "Registration number: X." and "VAT
-/// number: Y.", so the AI sees them and the number check reads them.
+/// The company numbers in the "Legal information" table. Kompass's own
+/// label for this row depends on the company's declared country: most
+/// countries get the generic "Registration No.", but a genuinely French
+/// company gets its real French labels, "SIREN" and "SIRET (Siège)",
+/// instead - never "Registration No." All of these are free to see on
+/// some company pages. They are written into the description as
+/// "Registration number: X." and "VAT number: Y.", so the AI sees them
+/// and the number check reads them (the check tells SIREN apart from
+/// SIRET by length, not by which label found it).
 fn add_company_numbers(supplier: &mut B2bSupplierProfile, document: &Html) {
     for (label, prefix) in [
         ("Registration No.", REGISTRATION_PREFIX),
+        ("SIREN", REGISTRATION_PREFIX),
+        ("SIRET (Siège)", REGISTRATION_PREFIX),
         ("VAT no", VAT_PREFIX),
     ] {
         let Some(number) = own_text_value(document, "table.tableInfoJuridic", label) else {
@@ -1090,6 +1097,17 @@ mod tests {
         <tr><th> VAT no</th><td> <a class=" no-information" href="https://www.kompass.com/login/easybusiness/ ">Information available as an option</a> </td></tr>
     </table></body></html>"#;
 
+    // Same shape as the real "Lg Technologies" (Saint-Quentin-Fallavier,
+    // France) company page (Nov 2026), but with the SIREN/SIRET made
+    // visible: a genuinely French company gets "SIREN" and "SIRET
+    // (Siège)" rows instead of the generic "Registration No." row other
+    // countries get. On the real page these were paywalled too.
+    const FRENCH_LEGAL_TABLE: &str = r#"<html><body><table class="tableInfoJuridic">
+        <tr><th> SIREN</th><td> 732 829 320</td></tr>
+        <tr><th> SIRET (Si&egrave;ge)</th><td> 732 829 320 00074</td></tr>
+        <tr><th> VAT no</th><td> FR44732829320</td></tr>
+    </table></body></html>"#;
+
     #[test]
     fn company_numbers_go_into_the_description_once() {
         let s = KompassScraper.parse_supplier(LEGAL_TABLE, "u");
@@ -1112,6 +1130,17 @@ mod tests {
         // Numbers behind the paid plan give nothing.
         let hidden = KompassScraper.parse_supplier(HIDDEN_LEGAL_TABLE, "u");
         assert_eq!(hidden.company_description, None);
+    }
+
+    #[test]
+    fn a_genuinely_french_companys_own_siren_and_siret_labels_are_read_too() {
+        let s = KompassScraper.parse_supplier(FRENCH_LEGAL_TABLE, "u");
+        let d = s.company_description.unwrap();
+        // SIREN is found first, so it is the one written (SIRET starts
+        // with the same SIREN, so either is enough to check and look up).
+        assert!(d.contains("Registration number: 732 829 320."), "{d}");
+        assert!(!d.contains("SIRET"), "{d}");
+        assert!(d.contains("VAT number: FR44732829320."), "{d}");
     }
 
     #[test]

@@ -14,7 +14,12 @@ use reqwest::Client;
 use serde_json::{Value, from_str, from_value, json};
 use sha2::Sha256;
 use sqlx::{Error, Pool, Postgres, query, query_scalar};
-use std::{env::var, str::from_utf8};
+use std::{
+    collections::HashMap,
+    env::var,
+    str::from_utf8,
+    sync::{Mutex, OnceLock},
+};
 use uuid::Uuid;
 
 type HmacSha256 = Hmac<Sha256>;
@@ -1119,10 +1124,46 @@ async fn free_resets_on(pool: &Pool<Postgres>, user_id: Uuid) -> Option<NaiveDat
     next.map(|d| d.date_naive())
 }
 
+/// Scans each user has running right now (counted when they started,
+/// see reserve_scan, but no result yet). The dashboard and the
+/// extension show only finished scans: get_scan_usage takes these off,
+/// so a scan appears as used only once its result is in, and a scan
+/// that fails is never shown as used. Kept in memory: the server
+/// starting again clears it, which is right - no scan is running then.
+static SCANS_RUNNING: OnceLock<Mutex<HashMap<Uuid, i32>>> = OnceLock::new();
+
+fn scans_running() -> std::sync::MutexGuard<'static, HashMap<Uuid, i32>> {
+    SCANS_RUNNING
+        .get_or_init(|| Mutex::new(HashMap::new()))
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+}
+
+/// A counted scan has started (analysis.rs ScanHold).
+pub fn scan_started(user_id: Uuid) {
+    *scans_running().entry(user_id).or_insert(0) += 1;
+}
+
+/// A counted scan has ended: its result is in, or it was given back.
+pub fn scan_ended(user_id: Uuid) {
+    let mut running = scans_running();
+    if let Some(n) = running.get_mut(&user_id) {
+        *n -= 1;
+        if *n <= 0 {
+            running.remove(&user_id);
+        }
+    }
+}
+
+fn scans_running_for(user_id: Uuid) -> i32 {
+    scans_running().get(&user_id).copied().unwrap_or(0)
+}
+
 /// What the dashboard and extension show: which plan's allowance is in
 /// use, monthly or yearly billing, how many scans are used this month,
 /// the limit (null = unlimited) and when the count resets. Read-only -
-/// never counts a scan.
+/// never counts a scan. Scans still running are not included (see
+/// SCANS_RUNNING).
 ///
 /// resets_on: Free - the next monthly anniversary of the sign-up date;
 /// monthly plan - its renewal date; yearly plan - the next monthly
@@ -1150,7 +1191,9 @@ pub async fn get_scan_usage(pool: &Pool<Postgres>, user_id: Uuid) -> Value {
         None
     });
 
+    let running = scans_running_for(user_id);
     if let Some((plan_name, interval, used, resets_on)) = paid {
+        let used = (used - running).max(0);
         return json!({
             "plan": plan_name,
             "interval": interval,
@@ -1181,7 +1224,7 @@ pub async fn get_scan_usage(pool: &Pool<Postgres>, user_id: Uuid) -> Value {
     });
 
     let (used, resets_on) = match free {
-        Some((used, resets_on)) => (used, Some(resets_on.date_naive())),
+        Some((used, resets_on)) => ((used - running).max(0), Some(resets_on.date_naive())),
         None => (0, None),
     };
 
@@ -1192,6 +1235,29 @@ pub async fn get_scan_usage(pool: &Pool<Postgres>, user_id: Uuid) -> Value {
         "limit": FREE_MONTHLY_SCANS,
         "resets_on": resets_on,
     })
+}
+
+#[cfg(test)]
+mod scans_running_tests {
+    use super::*;
+
+    #[test]
+    fn running_scans_are_counted_up_and_down_per_user() {
+        let a = Uuid::now_v7();
+        let b = Uuid::now_v7();
+        scan_started(a);
+        scan_started(a);
+        scan_started(b);
+        assert_eq!(scans_running_for(a), 2);
+        scan_ended(a);
+        assert_eq!(scans_running_for(a), 1);
+        scan_ended(a);
+        scan_ended(a); // never below 0
+        assert_eq!(scans_running_for(a), 0);
+        assert_eq!(scans_running_for(b), 1);
+        scan_ended(b);
+        assert_eq!(scans_running_for(b), 0);
+    }
 }
 
 #[cfg(test)]

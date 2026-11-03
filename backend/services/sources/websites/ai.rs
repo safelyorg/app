@@ -6,7 +6,7 @@
 
 use crate::{
     models::analysis::Signal,
-    services::shared::claude::{Finding, PriceAssessment},
+    services::shared::claude::{Finding, IMAGE_ANALYSIS_ENABLED, ImageAssessment, PriceAssessment},
 };
 use serde::Deserialize;
 
@@ -22,6 +22,16 @@ pub struct WebsiteClaudeAnalysis {
     pub pricing: PriceAssessment,
     pub urgency_language: Finding,
     pub business_legitimacy: Finding,
+    /// Does what the shop states about itself (company name, founding
+    /// date, claimed size/scale, country) hang together, the same
+    /// inconsistency check a marketplace scan runs on a supplier's
+    /// profile.
+    pub registration_consistency: Finding,
+    /// Whether product photos found on the shop's own pages look
+    /// genuine, the same check a marketplace scan runs on listing
+    /// photos. "not verified" when no photos were found, or when
+    /// IMAGE_ANALYSIS_ENABLED (services/shared/claude.rs) is off.
+    pub image_authenticity: ImageAssessment,
     /// The company behind the shop, as the site writes it ("" if none).
     #[serde(default)]
     pub company_name: String,
@@ -65,12 +75,62 @@ fn list(items: &[String]) -> String {
     }
 }
 
-pub fn website_prompt(pages: &[super::WebsitePage], facts: &KnownFacts) -> String {
+/// The "For image_authenticity: ..." instruction, matching the wording
+/// of the same check on a marketplace scan (services/shared/claude.rs)
+/// - "original" is good, "not verified" is a note, never a red flag on
+/// its own.
+fn image_context(image_urls: &[String], photos_blocked: bool) -> String {
+    if photos_blocked {
+        format!(
+            "{} product photo(s) were found on the shop's pages, but they could not be loaded, so you cannot view them - use \"not verified\" as the verdict and say in the reasoning that the photos could not be checked because they could not be loaded.",
+            image_urls.len().min(3)
+        )
+    } else if IMAGE_ANALYSIS_ENABLED && !image_urls.is_empty() {
+        format!(
+            "{} product photo(s) found on the shop's own pages are attached. Use \"original\" only if they look like genuine photos of this shop's own products; use \"not verified\" if they look like stock, catalogue or reused images, or if you cannot tell.",
+            image_urls.len().min(3)
+        )
+    } else if image_urls.is_empty() {
+        "no product photos were found on the pages read, so use \"not verified\" as the verdict, since authenticity cannot genuinely be assessed without any real images.".to_string()
+    } else {
+        format!(
+            "{} real product photo(s) were found on the shop's pages, but image sending is disabled for cost reasons, so you cannot directly view them - use \"not verified\" as the honest verdict, since authenticity cannot genuinely be assessed without actually viewing the real images.",
+            image_urls.len()
+        )
+    }
+}
+
+pub fn website_prompt(
+    pages: &[super::WebsitePage],
+    facts: &KnownFacts,
+    image_urls: &[String],
+) -> String {
+    website_prompt_with(pages, facts, image_urls, false)
+}
+
+/// The same prompt for the second try, when the shop's pages have
+/// photos but Claude was not allowed to load them (mirrors
+/// services/shared/claude.rs's b2b_content_photos_blocked).
+pub fn website_prompt_photos_blocked(
+    pages: &[super::WebsitePage],
+    facts: &KnownFacts,
+    image_urls: &[String],
+) -> String {
+    website_prompt_with(pages, facts, image_urls, true)
+}
+
+fn website_prompt_with(
+    pages: &[super::WebsitePage],
+    facts: &KnownFacts,
+    image_urls: &[String],
+    photos_blocked: bool,
+) -> String {
     let policies = if facts.policies.is_empty() {
         "none found".to_string()
     } else {
         facts.policies.join(", ")
     };
+    let image_context = image_context(image_urls, photos_blocked);
     format!(
         r#"
 You are checking an online shop's own website for a buyer who wants to know
@@ -122,6 +182,20 @@ template text, an address that is a different country than everything
 else, copied policies naming another shop). Missing details alone are not
 a red flag - list them in the evidence instead.
 
+For registration_consistency: found = true if what the site states about
+itself (company name, founding date, claimed size or scale, country)
+hangs together coherently; false ONLY if you can name a real, concrete
+inconsistency - e.g. a founding date contradicted elsewhere on the site, a
+claimed scale ("the world's largest supplier", "serving millions of
+customers", "since 1990") for a shop that elsewhere says it was only
+founded this year or last year, or a registered address in a different
+country than everything else on the site. Missing details alone are not
+an inconsistency - do not set this to false just because a founding date
+or company size is not given.
+
+For image_authenticity: {image_context}
+Verdict must be exactly "original" or "not verified" - no other words.
+
 company_name: the company behind the shop as the site writes it (legal
 name if shown), or "". country: the country of the company's address,
 or "". phone: one phone number shown on the site, or "".
@@ -134,6 +208,8 @@ Return JSON in exactly this shape:
 "pricing": {{ "verdict": "normal", "reasoning": "" }},
 "urgency_language": {{ "found": false, "evidence": "" }},
 "business_legitimacy": {{ "found": true, "evidence": "" }},
+"registration_consistency": {{ "found": true, "evidence": "" }},
+"image_authenticity": {{ "verdict": "not verified", "reasoning": "" }},
 "company_name": "",
 "country": "",
 "phone": "",
@@ -149,6 +225,7 @@ THE SHOP'S PAGES:
         phones = list(facts.phones),
         numbers = list(facts.company_numbers),
         policies = policies,
+        image_context = image_context,
         pages = pages_text(pages),
     )
 }
@@ -162,6 +239,36 @@ fn card(label: &str, value: &str, signal_type: &str, sub: &str, category: &str) 
         category: category.to_string(),
         check_type: "existence".to_string(),
     }
+}
+
+/// "Image authenticity" card. While IMAGE_ANALYSIS_ENABLED
+/// (services/shared/claude.rs) is off, Claude never sees the photos, so
+/// "not verified" says nothing about the shop - the card then reads
+/// "Not checked" and does not count against it. With image checking
+/// on, "original" is good; "not verified" (no photos found, or Claude
+/// could not confirm they are the shop's own) is only informational,
+/// the same as the marketplace card.
+fn image_authenticity_card(a: &ImageAssessment) -> Signal {
+    if !IMAGE_ANALYSIS_ENABLED {
+        return card(
+            "Image authenticity",
+            "Not checked",
+            "info",
+            "Image checking is switched off in Safely for now, so this shop's photos were not reviewed. This does not count against the shop.",
+            "website",
+        );
+    }
+    card(
+        "Image authenticity",
+        &a.verdict,
+        if a.verdict == "original" {
+            "good"
+        } else {
+            "info"
+        },
+        &a.reasoning,
+        "website",
+    )
 }
 
 /// The cards the AI answers (names as in standards/websites.json).
@@ -212,6 +319,18 @@ pub fn ai_cards(a: &WebsiteClaudeAnalysis) -> Vec<Signal> {
             &a.business_legitimacy.evidence,
             "company",
         ),
+        card(
+            "Registration consistency",
+            if a.registration_consistency.found {
+                "Confirmed"
+            } else {
+                "Not confirmed"
+            },
+            good_bad(a.registration_consistency.found),
+            &a.registration_consistency.evidence,
+            "company",
+        ),
+        image_authenticity_card(&a.image_authenticity),
     ];
     let payment = match a.payment_methods.verdict.as_str() {
         "risky only" => ("Risky methods only", "caution"),
@@ -252,6 +371,7 @@ mod tests {
             title: "Shop".into(),
             text: "Welcome to Shop. 80% off everything!".into(),
             links: vec![],
+            images: vec![],
         }];
         let p = website_prompt(
             &pages,
@@ -262,6 +382,7 @@ mod tests {
                 company_numbers: &[],
                 policies: &["privacy policy"],
             },
+            &[],
         );
         assert!(p.contains("Shop domain: shop.com"));
         assert!(p.contains("- emails: sales@shop.com"));
@@ -269,6 +390,30 @@ mod tests {
         assert!(p.contains("- shop policy pages with real text: privacy policy"));
         assert!(p.contains("--- PAGE: https://shop.com/ (Shop)"));
         assert!(p.contains("A contact form alone is NOT a contact channel"));
+        assert!(p.contains("no product photos were found on the pages read"));
+    }
+
+    #[test]
+    fn the_image_context_reflects_what_was_found() {
+        let pages = vec![WebsitePage {
+            url: "https://shop.com/".into(),
+            title: "Shop".into(),
+            text: "Welcome".into(),
+            links: vec![],
+            images: vec![],
+        }];
+        let facts = KnownFacts {
+            domain: "shop.com",
+            emails: &[],
+            phones: &[],
+            company_numbers: &[],
+            policies: &[],
+        };
+        let urls = vec!["https://shop.com/a.jpg".to_string()];
+        let with_photos = website_prompt(&pages, &facts, &urls);
+        assert!(with_photos.contains("1 product photo(s) found on the shop's own pages"));
+        let blocked = website_prompt_photos_blocked(&pages, &facts, &urls);
+        assert!(blocked.contains("could not be loaded, so you cannot view them"));
     }
 
     #[test]
@@ -278,6 +423,7 @@ mod tests {
             title: "t".into(),
             text: "a".repeat(MAX_PAGE_CHARS * 2),
             links: vec![],
+            images: vec![],
         };
         let text = pages_text(&[
             page.clone(),
@@ -303,6 +449,8 @@ mod tests {
             "pricing": {"verdict": "suspiciously low", "reasoning": "iPhone 16 at US$199."},
             "urgency_language": {"found": true, "evidence": "Countdown timer."},
             "business_legitimacy": {"found": true, "evidence": ""},
+            "registration_consistency": {"found": false, "evidence": "Says founded this year but claims to serve millions of customers since 1990."},
+            "image_authenticity": {"verdict": "not verified", "reasoning": "No product photos were found."},
             "company_name": "Loja X LTDA", "country": "Brazil"
         }"#,
         )
@@ -315,6 +463,25 @@ mod tests {
         assert_eq!(get("Prices").value, "suspiciously low");
         assert_eq!(get("Urgency language").signal_type, "caution");
         assert_eq!(get("Overall legitimacy check").value, "Confirmed");
+        assert_eq!(get("Registration consistency").value, "Not confirmed");
+        assert_eq!(get("Registration consistency").signal_type, "caution");
+        assert_eq!(get("Image authenticity").value, "not verified");
+        assert_eq!(get("Image authenticity").signal_type, "info");
         assert_eq!(a.phone, "");
+    }
+
+    #[test]
+    fn image_authenticity_card_reads_originals_as_good() {
+        // IMAGE_ANALYSIS_ENABLED is currently true; while it is, an
+        // "original" verdict is a good card, not a caution or a note.
+        if IMAGE_ANALYSIS_ENABLED {
+            let a = ImageAssessment {
+                verdict: "original".to_string(),
+                reasoning: "Looks genuine.".to_string(),
+            };
+            let c = image_authenticity_card(&a);
+            assert_eq!(c.value, "original");
+            assert_eq!(c.signal_type, "good");
+        }
     }
 }

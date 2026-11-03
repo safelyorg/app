@@ -558,3 +558,141 @@ button.safely-row-head:hover {
 .safely-state .safely-retry-btn {
     display: none;
 }
+
+/* ── Keep Safely's own look on every website ──
+   "Check this website" opens Safely on ordinary shop websites, and
+   some of them style every button on their page (a blue background
+   and hover colour, a dashed outline when clicked, text kept on one
+   line, a fixed height) and every bold text (blue). The id and
+   !important make these rules win over the site's, so the panel looks
+   the same as on a marketplace. Same values as the rules above -
+   change both together. */
+#safely-root button,
+#safely-root button * {
+    text-transform: none !important;
+    letter-spacing: normal !important;
+    white-space: normal !important;
+    text-shadow: none !important;
+}
+#safely-root button {
+    min-width: 0 !important;
+    min-height: 0 !important;
+    max-height: none !important;
+}
+#safely-root button:focus {
+    outline: none !important;
+}
+#safely-root button:focus-visible {
+    outline: 2px solid var(--ink) !important;
+    outline-offset: 2px !important;
+}
+
+/* Risk / Details switch */
+#safely-root .safely-panel-tab,
+#safely-root .safely-panel-tab:hover,
+#safely-root .safely-panel-tab:focus {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+}
+#safely-root .safely-panel-tab {
+    color: var(--mute) !important;
+}
+#safely-root .safely-panel-tab:hover {
+    color: var(--ink) !important;
+}
+#safely-root .safely-panel-tab.safely-active,
+#safely-root .safely-panel-tab.safely-active:hover,
+#safely-root .safely-panel-tab.safely-active:focus {
+    background: var(--bg) !important;
+    color: var(--ink) !important;
+    box-shadow:
+        0 1px 2px rgba(23, 23, 26, 0.08),
+        0 0 0 1px rgba(23, 23, 26, 0.04) !important;
+}
+
+/* Rows that open, and "Show more" */
+#safely-root button.safely-row-head,
+#safely-root button.safely-row-head:focus {
+    display: flex !important;
+    align-items: flex-start !important;
+    width: 100% !important;
+    height: auto !important;
+    padding: 12px !important;
+    border: none !important;
+    border-radius: 0 !important;
+    background: none !important;
+    box-shadow: none !important;
+    color: var(--ink) !important;
+    text-align: left !important;
+    overflow: visible !important;
+}
+#safely-root button.safely-row-head:hover {
+    background: #fafafa !important;
+}
+#safely-root .safely-row-more {
+    display: grid !important;
+    grid-template-rows: 0fr !important;
+}
+#safely-root .safely-open .safely-row-more {
+    grid-template-rows: 1fr !important;
+}
+#safely-root .safely-more-btn,
+#safely-root .safely-more-btn:hover,
+#safely-root .safely-more-btn:focus {
+    height: auto !important;
+    border: none !important;
+    border-top: 1px solid var(--line) !important;
+    border-radius: 0 !important;
+    background: none !important;
+    box-shadow: none !important;
+    color: var(--ink-2) !important;
+}
+
+/* Header language button */
+#safely-root .safely-lang-btn,
+#safely-root .safely-lang-btn:focus {
+    border: none !important;
+    background: var(--surface) !important;
+    box-shadow: none !important;
+    color: var(--ink-2) !important;
+}
+#safely-root .safely-lang-btn:hover {
+    background: var(--line) !important;
+}
+
+/* Dark, outlined and text buttons */
+#safely-root .safely-btn-dark,
+#safely-root .safely-btn-dark:hover,
+#safely-root .safely-btn-dark:focus {
+    border: none !important;
+    background: var(--ink) !important;
+    box-shadow: none !important;
+}
+#safely-root .safely-btn-line,
+#safely-root .safely-btn-line:focus {
+    border: none !important;
+    background: var(--bg) !important;
+    box-shadow: inset 0 0 0 1px var(--line) !important;
+    color: var(--ink) !important;
+}
+#safely-root .safely-btn-line:hover {
+    background: var(--surface) !important;
+}
+#safely-root .safely-link,
+#safely-root .safely-link:hover,
+#safely-root .safely-link:focus {
+    border: none !important;
+    background: none !important;
+    box-shadow: none !important;
+    color: var(--ink) !important;
+}
+
+/* Bold numbers and texts */
+#safely-root .safely-count b,
+#safely-root .safely-sheet-done b {
+    color: var(--ink) !important;
+}
+#safely-root .safely-ring-number {
+    color: var(--on-ink) !important;
+}

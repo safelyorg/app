@@ -4,6 +4,10 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   if ((window as any).safelyAuth && (window as any).safelyAuth.getToken()) {
     loadDashboardData();
+    // Opened at a result's own address (/dashboard/alibaba/<id>): show
+    // that result. Signed out, the sign-in page shows instead.
+    const resultId = resultIdFromAddress(window.location.pathname);
+    if (resultId) openDetail(resultId);
   }
 
   // Event delegation for history row clicks - works correctly however
@@ -432,8 +436,10 @@ document.addEventListener("DOMContentLoaded", async () => {
   const billingParams = new URLSearchParams(window.location.search);
   if (billingParams.get("manage_billing") === "1") {
     (document.getElementById("view-settings") as HTMLInputElement).checked = true;
+    if (!settingsLoaded) loadSettingsData();
     togglePlanSection(true);
-    history.replaceState(null, "", window.location.pathname);
+    // Settings has its own address now, so a refresh stays on it.
+    history.replaceState(null, "", dashboardAddressFor("view-settings"));
   }
 
   // Detect a successful checkout redirect, show a friendly

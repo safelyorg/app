@@ -42,6 +42,15 @@ export async function loadScript(file: string): Promise<void> {
   (0, eval)(js);
 }
 
+// Several files run together, as the page runs them. Needed when one
+// file uses another's `const` or `let` (API_BASE in shared.ts): run one
+// at a time, those stay inside their own file.
+export async function loadScripts(files: string[]): Promise<void> {
+  const parts: string[] = [];
+  for (const file of files) parts.push(await toJavaScript(await readText(file), file));
+  (0, eval)(parts.join("\n;\n"));
+}
+
 export function global<T = any>(name: string): T {
   return (globalThis as any)[name];
 }
