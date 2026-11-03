@@ -7,6 +7,7 @@ use crate::services::features::fraud_reports::{
 use crate::services::features::network_memory::fraud_report_history;
 use crate::services::features::risk_factors::{derive_risk_factors, not_enough_information_factor};
 use crate::services::features::sellers::find_seller;
+use crate::services::sources::websites::website_score_from_signals;
 use crate::{errors::fraud_reports::FraudReportError, models::fraud_reports::FraudReportsRequest};
 use axum::{Json, extract::State, http::HeaderMap};
 use serde_json::{Value, from_value, json, to_value};
@@ -63,7 +64,18 @@ fn is_company_page_note(signal: &Signal) -> bool {
 /// check results with the new report count - exactly the score a new
 /// scan would give. A scan whose checks can't be read gets the old score
 /// plus what this one report adds, and at least the report minimum.
-fn new_score(old_score: i16, signals: Option<&[Signal]>, total_reports: i64) -> i16 {
+///
+/// `platform` picks the points table: a scan of a seller's own website
+/// (platform "website") is scored with the website points
+/// (standards/websites.json), every other platform with the B2B points -
+/// the same split `handlers/analyze.rs` makes between `analyze()` and
+/// `check_website()`.
+fn new_score(
+    old_score: i16,
+    signals: Option<&[Signal]>,
+    total_reports: i64,
+    platform: &str,
+) -> i16 {
     match signals {
         Some(signals) => {
             let scored: Vec<Signal> = signals
@@ -71,7 +83,11 @@ fn new_score(old_score: i16, signals: Option<&[Signal]>, total_reports: i64) -> 
                 .filter(|s| !is_company_page_note(s))
                 .cloned()
                 .collect();
-            b2b_score_from_signals(&scored, total_reports)
+            if platform == crate::services::sources::websites::PLATFORM {
+                website_score_from_signals(&scored, total_reports)
+            } else {
+                b2b_score_from_signals(&scored, total_reports)
+            }
         }
         None => {
             let added = report_points(total_reports) - report_points(total_reports - 1);
@@ -95,8 +111,8 @@ async fn refresh_seller_scans(
     total_reports: i64,
 ) -> Result<Option<(i16, RiskLevel)>, FraudReportError> {
     let internal = |e: String| FraudReportError::InternalError(e);
-    let scans: Vec<(Uuid, Option<Uuid>, i16, Value)> = query_as(
-        "SELECT a.id, a.user_id, a.risk_score, a.signals
+    let scans: Vec<(Uuid, Option<Uuid>, i16, Value, String)> = query_as(
+        "SELECT a.id, a.user_id, a.risk_score, a.signals, l.platform
          FROM analysis a
          JOIN listings l ON a.listing_id = l.id
          WHERE l.seller_id = $1
@@ -108,7 +124,7 @@ async fn refresh_seller_scans(
     .map_err(|e| internal(e.to_string()))?;
 
     let mut latest = None;
-    for (id, scan_user, old_score, signals_json) in scans {
+    for (id, scan_user, old_score, signals_json, platform) in scans {
         // A scan whose saved checks can't be read keeps its checks and
         // reasons; only its score changes.
         let mut parsed: Option<Vec<Signal>> = from_value(signals_json).ok();
@@ -117,7 +133,7 @@ async fn refresh_seller_scans(
         if let Some(signals) = parsed.as_mut() {
             refresh_report_history(signals, total_reports);
         }
-        let score = new_score(old_score, parsed.as_deref(), total_reports);
+        let score = new_score(old_score, parsed.as_deref(), total_reports, &platform);
         let level = risk_level_for(score);
 
         if let Some(signals) = parsed {
@@ -279,7 +295,7 @@ mod tests {
     fn supplier_scores_follow_the_report_table() {
         // A clean supplier with only the history line.
         let signals = vec![sig("Safely history", "No scam reports", "info")];
-        let score = |n| new_score(0, Some(&signals), n);
+        let score = |n| new_score(0, Some(&signals), n, "alibaba");
         // One report adds a little, never a jump.
         assert!(score(1) >= score(0) && score(1) <= score(0) + 5);
         // Then the minimum rises step by step.
@@ -292,8 +308,8 @@ mod tests {
             sig("Payment terms", "Western Union only", "bad"),
             sig("Safely history", "No scam reports", "info"),
         ];
-        let before = new_score(0, Some(&signals), 0);
-        assert!(new_score(0, Some(&signals), 2) >= before.max(35));
+        let before = new_score(0, Some(&signals), 0, "alibaba");
+        assert!(new_score(0, Some(&signals), 2, "alibaba") >= before.max(35));
     }
 
     #[test]
@@ -302,15 +318,38 @@ mod tests {
         let mut with_note = plain.clone();
         with_note.push(sig("Company details", "Couldn't be loaded", "info"));
         assert_eq!(
-            new_score(0, Some(&plain), 1),
-            new_score(0, Some(&with_note), 1)
+            new_score(0, Some(&plain), 1, "alibaba"),
+            new_score(0, Some(&with_note), 1, "alibaba")
         );
     }
 
     #[test]
     fn unreadable_supplier_checks_still_reach_the_minimum() {
-        assert_eq!(new_score(20, None, 2), 35);
-        assert_eq!(new_score(20, None, 1), 25);
+        assert_eq!(new_score(20, None, 2, "alibaba"), 35);
+        assert_eq!(new_score(20, None, 1, "alibaba"), 25);
+    }
+
+    #[test]
+    fn a_website_scan_is_scored_with_website_points_not_b2b_points() {
+        // "Payment at checkout" is a website-only card (standards/websites.json
+        // gives it 25 warning points); standards/b2b.json has no such
+        // card, so it scores 0 points there. Enough other signals are
+        // included so confidence stays above "low" (which would otherwise
+        // force both scores to the same not-enough-information floor) -
+        // this checks the website points table is actually used for
+        // platform "website", not the B2B one.
+        let signals = vec![
+            sig("Payment at checkout", "Risky methods only", "caution"),
+            sig("Business details", "Shown", "good"),
+            sig("Contact info", "Given", "good"),
+            sig("Overall legitimacy check", "Confirmed", "good"),
+            sig("Urgency language", "None found", "good"),
+            sig("Prices", "normal", "good"),
+            sig("Safely history", "No scam reports", "info"),
+        ];
+        let website_score = new_score(0, Some(&signals), 0, "website");
+        let b2b_score = new_score(0, Some(&signals), 0, "alibaba");
+        assert_ne!(website_score, b2b_score);
     }
 
     #[test]
