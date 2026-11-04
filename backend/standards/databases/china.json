@@ -51,12 +51,12 @@
     {
       "id": "canton_fair",
       "name": "Canton Fair exhibitors",
-      "url": "https://www.cantonfair.org.cn/",
-      "what_it_does": "Did the company have a booth at China's biggest fair?",
-      "access": "scrape",
+      "url": "https://365.cantonfair.org.cn/",
+      "what_it_does": "Did the company have a booth at China's biggest fair? The fair's own exhibitor search (POST appbuyerapi/exhibition/queryshop, as 365.cantonfair.org.cn uses it). Card 'Canton Fair'.",
+      "access": "api",
       "cost": "free",
       "step": 4,
-      "status": "planned"
+      "status": "live"
     },
     {
       "id": "ccpit",

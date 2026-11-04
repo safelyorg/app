@@ -12,7 +12,7 @@
 //! for every seller, and one file per country (china.json, usa.json...)
 //! for what only that country has (standards::databases_for_country).
 //! Checks for every country are files here (sanctions.rs, gleif.rs,
-//! numbers.rs, eu_vat.rs, chambers.rs, website_records.rs). Checks for one country are in a file
+//! numbers.rs, eu_vat.rs, chambers.rs, trade_shows.rs, website_records.rs). Checks for one country are in a file
 //! of that country's name (china.rs, brazil.rs, france.rs, usa.rs; USA's SAM.gov
 //! is in sam_gov.rs); when a country gets several
 //! sources, its file becomes a folder (databases/china/), like
@@ -30,6 +30,7 @@ pub mod gleif;
 pub mod numbers;
 pub mod sam_gov;
 pub mod sanctions;
+pub mod trade_shows;
 pub mod usa;
 pub mod website_records;
 
@@ -52,6 +53,10 @@ pub struct SellerFacts {
     /// China's 18-character code). Which kind is checked depends on the
     /// country.
     pub company_numbers: Vec<String>,
+    /// What the seller writes about itself (a company description, the
+    /// text of its own website), to spot claims like "Canton Fair
+    /// exhibitor" that a check can confirm or not.
+    pub about: Option<String>,
 }
 
 /// Runs every outside-records check that is built and returns its
@@ -60,7 +65,7 @@ pub async fn check_outside_records(facts: &SellerFacts) -> Vec<Signal> {
     let mut cards = Vec::new();
     let name = facts.company_name.as_deref();
     let country = facts.country.as_deref();
-    let (sanctions, register, numbers, vat, stock_market, government, chamber, website) = tokio::join!(
+    let (sanctions, register, numbers, vat, stock_market, government, chamber, canton, website) = tokio::join!(
         sanctions::sanctions_signal(name),
         gleif::gleif_signal(name, country),
         company_number_cards(facts),
@@ -68,6 +73,7 @@ pub async fn check_outside_records(facts: &SellerFacts) -> Vec<Signal> {
         usa::sec_signal(name, country),
         sam_gov::sam_signal(name, country),
         chambers::chamber_signal(name, country, facts.website.as_deref()),
+        trade_shows::canton_signal(name, country, facts.about.as_deref()),
         website_records::website_record_cards(facts.website.as_deref()),
     );
     cards.extend(sanctions);
@@ -77,6 +83,7 @@ pub async fn check_outside_records(facts: &SellerFacts) -> Vec<Signal> {
     cards.extend(stock_market);
     cards.extend(government);
     cards.extend(chamber);
+    cards.extend(canton);
     cards.extend(website);
     cards
 }

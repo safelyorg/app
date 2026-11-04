@@ -573,6 +573,13 @@ pub async fn build_website_analysis(
         country: country.clone(),
         website: Some(domain.to_string()),
         company_numbers: numbers,
+        about: Some(
+            pages
+                .iter()
+                .map(|p| p.text.as_str())
+                .collect::<Vec<_>>()
+                .join("\n"),
+        ),
     };
     signals.extend(check_outside_records(&facts).await);
     keep_enabled_cards(&mut signals);

@@ -948,6 +948,7 @@ pub async fn build_b2b_analysis_path(
             .as_deref()
             .map(company_numbers_in)
             .unwrap_or_default(),
+        about: supplier.company_description.clone(),
     };
     signals.extend(check_outside_records(&facts).await);
     keep_enabled_cards(&mut signals);
