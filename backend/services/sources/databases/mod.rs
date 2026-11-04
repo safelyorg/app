@@ -12,7 +12,7 @@
 //! for every seller, and one file per country (china.json, usa.json...)
 //! for what only that country has (standards::databases_for_country).
 //! Checks for every country are files here (sanctions.rs, gleif.rs,
-//! numbers.rs). Checks for one country are in a file of that country's
+//! numbers.rs, website_records.rs). Checks for one country are in a file of that country's
 //! name (china.rs, brazil.rs, france.rs); when a country gets several
 //! sources, its file becomes a folder (databases/china/), like
 //! sources/b2b/{country}/.
@@ -26,6 +26,7 @@ pub mod france;
 pub mod gleif;
 pub mod numbers;
 pub mod sanctions;
+pub mod website_records;
 
 use crate::{models::analysis::Signal, services::shared::standards::databases_for_country};
 
@@ -53,14 +54,16 @@ pub struct SellerFacts {
 pub async fn check_outside_records(facts: &SellerFacts) -> Vec<Signal> {
     let mut cards = Vec::new();
     let name = facts.company_name.as_deref();
-    let (sanctions, register, numbers) = tokio::join!(
+    let (sanctions, register, numbers, website) = tokio::join!(
         sanctions::sanctions_signal(name),
         gleif::gleif_signal(name, facts.country.as_deref()),
         company_number_cards(facts),
+        website_records::website_record_cards(facts.website.as_deref()),
     );
     cards.extend(sanctions);
     cards.extend(register);
     cards.extend(numbers);
+    cards.extend(website);
     cards
 }
 

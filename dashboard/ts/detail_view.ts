@@ -89,6 +89,10 @@ const SIGNAL_LABEL_TRANSLATIONS: Record<string, string> = {
   "Product range": "dash.label.product_range",
   Certificates: "dash.label.certificates",
   "Social presence check": "dash.detail.social_presence",
+  // Outside records about a website (Wayback Machine, Tranco, crt.sh).
+  "Website history": "dash.label.website_history",
+  "Website traffic": "dash.label.website_traffic",
+  "Security certificate": "dash.label.security_certificate",
   // Title of the risk factor shown when Safely could check too little.
   "Not enough information": "dash.label.not_enough_information",
 };
@@ -160,6 +164,14 @@ const SIGNAL_VALUE_TRANSLATIONS: Record<string, string> = {
   "Couldn't be loaded": "dash.value.couldnt_be_loaded",
   "New to Safely": "dash.value.new_to_safely",
   "Checked once before": "dash.value.checked_once",
+  "Online for years": "dash.value.online_for_years",
+  "New online": "dash.value.new_online",
+  "Not in the archive": "dash.value.not_in_archive",
+  "Top 1 million site": "dash.value.top_million_site",
+  "Not in the top 1 million": "dash.value.not_in_top_million",
+  "Certificate for years": "dash.value.certificate_for_years",
+  "First certificate recent": "dash.value.first_certificate_recent",
+  "No certificate found": "dash.value.no_certificate_found",
 };
 
 // Results that carry a number ("3/9 fields provided", "Checked 4 times

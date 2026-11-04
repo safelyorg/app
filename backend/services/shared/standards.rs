@@ -534,11 +534,14 @@ mod tests {
 
     /// Every outside-records card the code can make. A new card must be
     /// added to a databases file too (with its points), or this fails.
-    const DATABASE_CARDS: [&str; 4] = [
+    const DATABASE_CARDS: [&str; 7] = [
         "Sanctions lists",
         "Company register (GLEIF)",
         "Company number",
         "Official register",
+        "Website history",
+        "Website traffic",
+        "Security certificate",
     ];
 
     #[test]

@@ -32,12 +32,12 @@
     {
       "id": "sanctions_eu",
       "name": "EU sanctions list",
-      "url": "https://data.europa.eu/data/datasets/consolidated-list-of-persons-groups-and-entities-subject-to-eu-financial-sanctions",
-      "what_it_does": "Is the company on the EU banned list?",
+      "url": "https://www.sanctionsmap.eu/",
+      "what_it_does": "Is the company on the EU banned list? Downloaded once a day with the US and UN lists (same switch, SANCTIONS_CHECK_ENABLED); only companies, whole names.",
       "access": "download",
       "cost": "free",
       "step": 2,
-      "status": "planned"
+      "status": "live"
     },
     {
       "id": "gleif",
@@ -53,31 +53,31 @@
       "id": "wayback",
       "name": "Wayback Machine",
       "url": "https://web.archive.org/",
-      "what_it_does": "Since when the website has existed with real content.",
+      "what_it_does": "Since when the website has been saved by the Wayback Machine. Card \"Website history\"; needs WEBSITE_RECORDS_CHECK_ENABLED=true.",
       "access": "api",
       "cost": "free",
       "step": 2,
-      "status": "planned"
+      "status": "live"
     },
     {
       "id": "tranco",
       "name": "Tranco list",
       "url": "https://tranco-list.eu/",
-      "what_it_does": "Is the website in the top 1 million sites (real traffic)?",
-      "access": "download",
+      "what_it_does": "Is the website among the 1 million most visited websites? Card \"Website traffic\"; needs WEBSITE_RECORDS_CHECK_ENABLED=true.",
+      "access": "api",
       "cost": "free",
       "step": 2,
-      "status": "planned"
+      "status": "live"
     },
     {
       "id": "crtsh",
       "name": "crt.sh",
       "url": "https://crt.sh/",
-      "what_it_does": "When the website first got a security certificate.",
+      "what_it_does": "When the website got its first security certificate. Card \"Security certificate\"; needs WEBSITE_RECORDS_CHECK_ENABLED=true.",
       "access": "api",
       "cost": "free",
       "step": 2,
-      "status": "planned"
+      "status": "live"
     },
     {
       "id": "opencorporates",
@@ -127,7 +127,7 @@
     {
       "card": "Sanctions lists",
       "group": "outside_records",
-      "what_it_checks": "Whether a company with exactly the seller's name is on the US (OFAC) or UN sanctions lists. A match is a warning (it may be another company with the same name); no match is a good sign but says nothing more. Needs SANCTIONS_CHECK_ENABLED=true in .env.",
+      "what_it_checks": "Whether a company with exactly the seller's name is on the US (OFAC), UN or EU sanctions lists. A match is a warning (it may be another company with the same name); no match is a good sign but says nothing more. Needs SANCTIONS_CHECK_ENABLED=true in .env.",
       "reads": [
         "Company name"
       ],
@@ -166,6 +166,30 @@
       "points_when_value": {
         "Closed": 25
       }
+    },
+    {
+      "card": "Website history",
+      "group": "outside_records",
+      "what_it_checks": "Since when the Wayback Machine (web.archive.org) has saved the seller's own website. Saved over a year ago is a good sign; newer or never saved is information only and never adds to the score (a brand-new domain is already warned about by 'Website age'). Needs WEBSITE_RECORDS_CHECK_ENABLED=true in .env.",
+      "reads": [
+        "Website"
+      ]
+    },
+    {
+      "card": "Website traffic",
+      "group": "outside_records",
+      "what_it_checks": "Whether the seller's own website is among the world's 1 million most visited websites (Tranco list). In the list is a good sign; not in it is information only (normal for small companies). Needs WEBSITE_RECORDS_CHECK_ENABLED=true in .env.",
+      "reads": [
+        "Website"
+      ]
+    },
+    {
+      "card": "Security certificate",
+      "group": "outside_records",
+      "what_it_checks": "When the seller's own website got its first security certificate (crt.sh, the public log of certificates). Over a year ago is a good sign; recent or none found is information only. Needs WEBSITE_RECORDS_CHECK_ENABLED=true in .env.",
+      "reads": [
+        "Website"
+      ]
     }
   ]
 }

@@ -1,9 +1,9 @@
 //! Sanctions lists: is the company on a government "banned" list?
 //!
-//! Lists read now: the US OFAC list of blocked companies (SDN) and its
-//! other lists (consolidated, non-SDN), and the UN Security Council
-//! list. The EU list comes later ("sanctions_eu" in
-//! standards/databases/global.json).
+//! Lists read: the US OFAC list of blocked companies (SDN) and its other
+//! lists (consolidated, non-SDN), the UN Security Council list, and the
+//! EU's consolidated financial sanctions list ("sanctions_us_un" and
+//! "sanctions_eu" in standards/databases/global.json).
 //!
 //! The lists are downloaded into SANCTIONS_DIR (default
 //! "data/sanctions") at most once a day, in the background, and kept in
@@ -36,10 +36,20 @@ pub const NOT_LISTED_VALUE: &str = "Not on the lists";
 /// How old the downloaded lists may get before they are downloaded again.
 const MAX_AGE: Duration = Duration::from_secs(24 * 60 * 60);
 
+/// After a download, the next one waits at least this long, even when a
+/// list failed (a list that keeps failing is not asked for on every scan).
+const RETRY_AFTER: Duration = Duration::from_secs(60 * 60);
+
 const OFAC: &str = "https://sanctionslistservice.ofac.treas.gov/api/PublicationPreview/exports";
 
+/// The EU's consolidated financial sanctions list (XML, version 1.1), as
+/// the EU's own download feed gives it
+/// (webgate.ec.europa.eu/fsd/fsf/public/rss). The token is the public
+/// one written in that feed, not a key.
+const EU: &str = "https://webgate.ec.europa.eu/fsd/fsf/public/files/xmlFullSanctionsList_1_1/content?token=dG9rZW4tMjAxNw";
+
 /// (file saved in SANCTIONS_DIR, where it is downloaded from)
-const LIST_FILES: [(&str, &str); 5] = [
+const LIST_FILES: [(&str, &str); 6] = [
     ("ofac_sdn.csv", "SDN.CSV"),
     ("ofac_sdn_alt.csv", "ALT.CSV"),
     ("ofac_cons_prim.csv", "CONS_PRIM.CSV"),
@@ -48,11 +58,13 @@ const LIST_FILES: [(&str, &str); 5] = [
         "un.xml",
         "https://scsanctions.un.org/resources/xml/en/consolidated.xml",
     ),
+    ("eu.xml", EU),
 ];
 
 const OFAC_SDN_LIST: &str = "US OFAC list of blocked companies (SDN)";
 const OFAC_OTHER_LIST: &str = "US OFAC sanctions lists (non-SDN)";
 const UN_LIST: &str = "UN Security Council sanctions list";
+const EU_LIST: &str = "EU sanctions list";
 
 /// Legal forms left out before names are compared ("Co., Ltd.", "LLC",
 /// "S.A.", Russian "OOO"...), so "Acme Trading Co., Ltd." and "ACME
@@ -117,6 +129,8 @@ pub struct SanctionsIndex {
     by_name: HashMap<String, Vec<ListedCompany>>,
     /// When the oldest list file was downloaded.
     pub updated: Option<SystemTime>,
+    /// The lists read, as the card names them ("US (OFAC)", "UN", "EU").
+    pub sources: Vec<&'static str>,
 }
 
 impl SanctionsIndex {
@@ -293,6 +307,79 @@ fn add_un(index: &mut SanctionsIndex, xml: &str) {
     }
 }
 
+/// The value of `attribute="..."` inside one tag's text, or "".
+fn xml_attribute<'a>(tag: &'a str, attribute: &str) -> &'a str {
+    let key = format!(" {attribute}=\"");
+    tag.find(&key)
+        .map(|start| &tag[start + key.len()..])
+        .and_then(|rest| rest.find('"').map(|end| &rest[..end]))
+        .unwrap_or("")
+}
+
+/// The text of every <tag ...> opening tag (up to its ">") in `xml`.
+fn xml_tags<'a>(xml: &'a str, tag: &str) -> Vec<&'a str> {
+    let open = format!("<{tag}");
+    let mut tags = Vec::new();
+    let mut rest = xml;
+    while let Some(start) = rest.find(&open) {
+        let after = &rest[start + open.len()..];
+        // "<nameAliasX" is another tag.
+        if !after.starts_with([' ', '>', '/', '\n', '\r', '\t']) {
+            rest = after;
+            continue;
+        }
+        let end = after.find('>').unwrap_or(after.len());
+        tags.push(&after[..end]);
+        rest = &after[end..];
+    }
+    tags
+}
+
+/// Adds the companies of the EU list. Each <sanctionEntity> is one
+/// listed person or company; <subjectType code="enterprise"> marks a
+/// company (people are "person"). Its names are the wholeName of its
+/// <nameAlias> tags (the first is the main name), its programme the
+/// programme of its <regulation> ("RUS", "IRN", "DPRK"...).
+fn add_eu(index: &mut SanctionsIndex, xml: &str) {
+    let mut rest = xml;
+    while let Some(start) = rest.find("<sanctionEntity") {
+        let after = &rest[start..];
+        let end = after
+            .find("</sanctionEntity>")
+            .map(|e| e + "</sanctionEntity>".len())
+            .unwrap_or(after.len());
+        let entity = &after[..end];
+        rest = &after[end..];
+        let is_company = xml_tags(entity, "subjectType")
+            .iter()
+            .any(|t| xml_attribute(t, "code") == "enterprise");
+        if !is_company {
+            continue;
+        }
+        let names: Vec<String> = xml_tags(entity, "nameAlias")
+            .iter()
+            .map(|t| xml_text(xml_attribute(t, "wholeName")))
+            .filter(|n| !n.is_empty())
+            .collect();
+        let Some(main) = names.first() else {
+            continue;
+        };
+        let company = ListedCompany {
+            name: main.clone(),
+            list: EU_LIST,
+            program: xml_tags(entity, "regulation")
+                .iter()
+                .map(|t| xml_attribute(t, "programme"))
+                .find(|p| !p.is_empty())
+                .unwrap_or("")
+                .to_string(),
+        };
+        for name in &names {
+            index.add(name, company.clone());
+        }
+    }
+}
+
 /// Reads every downloaded list in `dir`. None when none is there yet.
 fn load(dir: &Path) -> Option<SanctionsIndex> {
     let read = |file: &str| std::fs::read_to_string(dir.join(file)).ok();
@@ -305,11 +392,29 @@ fn load(dir: &Path) -> Option<SanctionsIndex> {
         if let Some(main) = read(main) {
             add_ofac(&mut index, &main, &read(other).unwrap_or_default(), list);
             found = true;
+            if !index.sources.contains(&"US (OFAC)") {
+                index.sources.push("US (OFAC)");
+            }
         }
     }
     if let Some(xml) = read("un.xml") {
         add_un(&mut index, &xml);
         found = true;
+        index.sources.push("UN");
+    }
+    if let Some(xml) = read("eu.xml") {
+        let before = index.len();
+        add_eu(&mut index, &xml);
+        // Logged so the first real download shows the EU file was read
+        // (0 means the EU changed its file's layout).
+        eprintln!(
+            "Safely: EU sanctions list read ({} company names)",
+            index.len() - before
+        );
+        if index.len() > before {
+            found = true;
+            index.sources.push("EU");
+        }
     }
     index.updated = LIST_FILES
         .iter()
@@ -345,6 +450,20 @@ fn enabled() -> bool {
 
 static INDEX: RwLock<Option<Arc<SanctionsIndex>>> = RwLock::new(None);
 static DOWNLOADING: AtomicBool = AtomicBool::new(false);
+/// When the last download started (see RETRY_AFTER).
+static LAST_DOWNLOAD: std::sync::Mutex<Option<std::time::Instant>> = std::sync::Mutex::new(None);
+
+/// true when no download started in the last RETRY_AFTER; marks now.
+fn may_download_now() -> bool {
+    let Ok(mut last) = LAST_DOWNLOAD.lock() else {
+        return false;
+    };
+    if last.is_some_and(|t| t.elapsed() < RETRY_AFTER) {
+        return false;
+    }
+    *last = Some(std::time::Instant::now());
+    true
+}
 
 /// Downloads every list again. A list that fails keeps its last copy.
 async fn download(dir: PathBuf) {
@@ -359,6 +478,9 @@ async fn download(dir: PathBuf) {
     let client = match reqwest::Client::builder()
         .timeout(Duration::from_secs(120))
         .user_agent("Safely sanctions check (safely.sh)")
+        // The EU's download page sets a cookie and sends the browser to
+        // the same address again; without cookies that never ends.
+        .cookie_store(true)
         .build()
     {
         Ok(c) => c,
@@ -442,7 +564,7 @@ async fn current_index() -> Option<Arc<SanctionsIndex>> {
             .await
             .unwrap_or(false)
     };
-    if !fresh && !DOWNLOADING.swap(true, Ordering::SeqCst) {
+    if !fresh && !DOWNLOADING.swap(true, Ordering::SeqCst) && may_download_now() {
         tokio::spawn(async move {
             download(dir).await;
             DOWNLOADING.store(false, Ordering::SeqCst);
@@ -465,7 +587,12 @@ pub async fn sanctions_signal(company_name: Option<&str>) -> Option<Signal> {
         return None;
     };
     let matches = index.find(name);
-    Some(sanctions_card(name, &matches, index.updated))
+    Some(sanctions_card(
+        name,
+        &matches,
+        index.updated,
+        &index.sources,
+    ))
 }
 
 /// The card itself. A match is a warning; no match is a good sign.
@@ -473,6 +600,7 @@ pub fn sanctions_card(
     company_name: &str,
     matches: &[&ListedCompany],
     updated: Option<SystemTime>,
+    sources: &[&str],
 ) -> Signal {
     let date = updated.map(|t| {
         chrono::DateTime::<chrono::Utc>::from(t)
@@ -496,9 +624,10 @@ pub fn sanctions_card(
                 MATCH_VALUE,
                 "caution",
                 format!(
-                    "A company named \"{}\" is on the {}. It may be a different company with the same name, but do not pay or ship anything until you have checked it on the official list (sanctionssearch.ofac.treas.gov). Paying a sanctioned company can be against the law.",
+                    "A company named \"{}\" is on the {}. It may be a different company with the same name, but do not pay or ship anything until you have checked it on the official list ({}). Paying a sanctioned company can be against the law.",
                     first.name,
-                    lists.join(", ")
+                    lists.join(", "),
+                    official_search(first.list),
                 ),
             )
         }
@@ -506,8 +635,9 @@ pub fn sanctions_card(
             NOT_LISTED_VALUE,
             "good",
             format!(
-                "\"{}\" is not on the US (OFAC) or UN sanctions lists{}. This only shows the company is not banned - not that it is real or safe.",
+                "\"{}\" is not on the {} sanctions lists{}. This only shows the company is not banned - not that it is real or safe.",
                 company_name,
+                lists_in_words(sources),
                 date.map(|d| format!(" (lists of {d})")).unwrap_or_default()
             ),
         ),
@@ -519,6 +649,29 @@ pub fn sanctions_card(
         signal_type: signal_type.to_string(),
         category: OUTSIDE_RECORDS.to_string(),
         check_type: "existence".to_string(),
+    }
+}
+
+/// Where a buyer can check a match on the official list.
+fn official_search(list: &str) -> &'static str {
+    match list {
+        EU_LIST => "the EU Sanctions Map, sanctionsmap.eu",
+        UN_LIST => "the UN Security Council Consolidated List, un.org",
+        _ => "sanctionssearch.ofac.treas.gov",
+    }
+}
+
+/// "US (OFAC) or UN", "US (OFAC), UN or EU".
+fn lists_in_words(sources: &[&str]) -> String {
+    let sources: Vec<&str> = if sources.is_empty() {
+        vec!["US (OFAC)", "UN"]
+    } else {
+        sources.to_vec()
+    };
+    match sources.split_last() {
+        Some((last, [])) => last.to_string(),
+        Some((last, rest)) => format!("{} or {}", rest.join(", "), last),
+        None => String::new(),
     }
 }
 
@@ -536,11 +689,69 @@ mod tests {
 2674,221,\"aka\",\"ABU ABBAS TRADING\",-0- \r\n";
     const UN: &str = r#"<CONSOLIDATED_LIST><INDIVIDUALS><INDIVIDUAL><FIRST_NAME>JOHN</FIRST_NAME></INDIVIDUAL></INDIVIDUALS><ENTITIES><ENTITY><DATAID>1</DATAID><FIRST_NAME>KOREA MINING DEVELOPMENT TRADING CORPORATION</FIRST_NAME><UN_LIST_TYPE>DPRK</UN_LIST_TYPE><ENTITY_ALIAS><QUALITY>Good</QUALITY><ALIAS_NAME>CHANGGWANG SINYONG CORPORATION</ALIAS_NAME></ENTITY_ALIAS></ENTITY><ENTITY><DATAID>2</DATAID><FIRST_NAME>AL &amp; NOOR EXCHANGE</FIRST_NAME><UN_LIST_TYPE>Al-Qaida</UN_LIST_TYPE></ENTITY></ENTITIES></CONSOLIDATED_LIST>"#;
 
+    // The EU file's layout (XML version 1.1), trimmed; made-up records.
+    const EU_XML: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
+<export xmlns="http://eu.europa.ec/fpi/fsd/export" generationDate="2026-11-03T10:00:00.000+01:00">
+<sanctionEntity designationDetails="" unitedNationId="" euReferenceNumber="EU.1.1" logicalId="101">
+<regulation regulationType="regulation" programme="RUS" logicalId="1"/>
+<subjectType code="enterprise" classificationCode="E"/>
+<nameAlias firstName="" middleName="" lastName="" wholeName="Rosoboronexport OJSC" function="" gender="" title="" nameLanguage="" strong="true" logicalId="11"/>
+<nameAlias wholeName="ROE" strong="false" logicalId="12"/>
+<nameAlias wholeName="Russian Defence Export &amp; Import Company" logicalId="13"/>
+</sanctionEntity>
+<sanctionEntity euReferenceNumber="EU.2.2" logicalId="102">
+<regulation programme="IRN" logicalId="2"/>
+<subjectType code="person" classificationCode="P"/>
+<nameAlias firstName="Ali" lastName="Example" wholeName="Ali Example Trading" logicalId="21"/>
+</sanctionEntity>
+</export>"#;
+
     fn index() -> SanctionsIndex {
         let mut i = SanctionsIndex::default();
         add_ofac(&mut i, SDN, SDN_ALT, OFAC_SDN_LIST);
         add_un(&mut i, UN);
+        add_eu(&mut i, EU_XML);
         i
+    }
+
+    #[test]
+    fn eu_companies_and_their_other_names_are_read_people_are_not() {
+        let i = index();
+        let m = i.find("Rosoboronexport");
+        assert_eq!(m.len(), 1);
+        assert_eq!(m[0].name, "Rosoboronexport OJSC");
+        assert_eq!(m[0].list, EU_LIST);
+        assert_eq!(m[0].program, "RUS");
+        assert_eq!(
+            i.find("Russian Defence Export & Import Company")[0].name,
+            "Rosoboronexport OJSC"
+        );
+        // "ROE" is too short to compare safely; people never match.
+        assert!(i.find("ROE").is_empty());
+        assert!(i.find("Ali Example Trading").is_empty());
+    }
+
+    #[test]
+    fn an_eu_match_points_to_the_eu_list_and_the_lists_read_are_named() {
+        let i = index();
+        let m = i.find("Rosoboronexport");
+        let card = sanctions_card("Rosoboronexport", &m, None, &["US (OFAC)", "UN", "EU"]);
+        assert_eq!(card.value, MATCH_VALUE);
+        assert!(card.sub.contains("is on the EU sanctions list (RUS)"));
+        assert!(card.sub.contains("sanctionsmap.eu"));
+        let clean = sanctions_card("Acme Widgets", &[], None, &["US (OFAC)", "UN", "EU"]);
+        assert!(
+            clean
+                .sub
+                .contains("is not on the US (OFAC), UN or EU sanctions lists")
+        );
+        assert_eq!(lists_in_words(&["UN"]), "UN");
+    }
+
+    #[test]
+    fn a_failing_list_is_not_asked_for_again_within_the_hour() {
+        assert!(may_download_now());
+        assert!(!may_download_now());
     }
 
     #[test]
@@ -598,7 +809,7 @@ mod tests {
     fn a_match_is_a_warning_and_no_match_a_good_sign() {
         let i = index();
         let m = i.find("Anglo-Caribbean Co Ltd");
-        let card = sanctions_card("Anglo-Caribbean Co Ltd", &m, None);
+        let card = sanctions_card("Anglo-Caribbean Co Ltd", &m, None, &["US (OFAC)", "UN"]);
         assert_eq!(card.label, LABEL);
         assert_eq!(card.value, MATCH_VALUE);
         assert_eq!(card.signal_type, "caution");
@@ -611,6 +822,7 @@ mod tests {
             "Guangdong Boyue Trading Co., Ltd.",
             &[],
             Some(SystemTime::UNIX_EPOCH + Duration::from_secs(1_793_448_000)),
+            &["US (OFAC)", "UN"],
         );
         assert_eq!(card.value, NOT_LISTED_VALUE);
         assert_eq!(card.signal_type, "good");
@@ -634,11 +846,17 @@ mod tests {
         assert_eq!(i.find("Banco Nacional de Cuba").len(), 1);
         assert_eq!(i.find("Korea Mining Development Trading").len(), 1);
         assert!(i.updated.is_some());
-        // Two files are still missing.
+        assert_eq!(i.sources, ["US (OFAC)", "UN"]);
+        // Three files are still missing.
         assert!(!lists_are_fresh(&dir));
         std::fs::write(dir.join("ofac_cons_prim.csv"), "").unwrap();
         std::fs::write(dir.join("ofac_cons_alt.csv"), "").unwrap();
+        assert!(!lists_are_fresh(&dir));
+        std::fs::write(dir.join("eu.xml"), EU_XML).unwrap();
         assert!(lists_are_fresh(&dir));
+        let i = load(&dir).unwrap();
+        assert_eq!(i.sources, ["US (OFAC)", "UN", "EU"]);
+        assert_eq!(i.find("Rosoboronexport")[0].list, EU_LIST);
         let _ = std::fs::remove_dir_all(&dir);
     }
 

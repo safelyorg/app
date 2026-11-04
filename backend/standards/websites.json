@@ -22,8 +22,8 @@
   },
   "reads": {
     "website": ["domain", "company name", "address", "phone", "email", "registration or tax number", "policies", "payment methods shown", "prices and discounts", "photos", "trust badges", "reviews on the site", "social links"],
-    "outside": ["RDAP (domain age)", "DNS (email set up for the domain)", "Google search (social sites, reviews, scam warnings, complaint sites)", "sanctions lists and company registers", "Safely's own history and buyer reports"],
-    "outside_planned": ["WHOIS owner hidden or not", "certificate (when it was issued)", "safe-browsing lists", "website history (Wayback Machine)"]
+    "outside": ["RDAP (domain age)", "DNS (email set up for the domain)", "Google search (social sites, reviews, scam warnings, complaint sites)", "sanctions lists (US, UN, EU) and company registers", "website history (Wayback Machine), traffic (Tranco) and first certificate (crt.sh): see standards/databases/global.json", "Safely's own history and buyer reports"],
+    "outside_planned": ["WHOIS owner hidden or not", "safe-browsing lists"]
   },
   "rules": [
     "Follow robots.txt. Never fill in a form, sign in, add to a cart or buy anything.",
@@ -51,7 +51,6 @@
     { "card": "Social presence check", "step": 1, "enabled": true, "what_it_checks": "The shop's name found on Facebook, LinkedIn, Instagram, TikTok, Reddit, Trustpilot and review sites, and scam mentions online: the same social sites with scam words, plus a whole-web Google search with scam words (English and Portuguese) and complaint sites (Ripoff Report, ComplaintsBoard). Scam-checker sites are not counted as scam mentions. Off unless SERPER_ENABLED=true (the same switch a marketplace scan uses).", "reads": ["web search (Serper)"], "warning_points": 15, "points_when_value": { "Scam mentions found": 25 } },
     { "card": "Trust badges", "step": 3, "enabled": true, "what_it_checks": "Security or 'verified' badges that are only a picture, not a real link to the badge company.", "reads": ["badges on the site"], "warning_points": 15 },
     { "card": "Reviews on the site", "step": 3, "enabled": true, "what_it_checks": "Reviews on the shop itself that look copied or fake.", "reads": ["product pages"], "warning_points": 15 },
-    { "card": "Image authenticity", "step": 1, "enabled": true, "what_it_checks": "Up to 3 product photos found on the shop's own pages look genuine, not stock or reused images. Logos, icons, badges and trackers are skipped. Reads 'not verified' (a note, not a warning) when no photos are found.", "reads": ["product photos on the pages read"], "warning_points": 15 },
-    { "card": "Website history", "step": 4, "enabled": true, "what_it_checks": "When the site was first seen, and whether the domain sold something completely different before.", "reads": ["Wayback Machine"], "warning_points": 15 }
+    { "card": "Image authenticity", "step": 1, "enabled": true, "what_it_checks": "Up to 3 product photos found on the shop's own pages look genuine, not stock or reused images. Logos, icons, badges and trackers are skipped. Reads 'not verified' (a note, not a warning) when no photos are found.", "reads": ["product photos on the pages read"], "warning_points": 15 }
   ]
 }
