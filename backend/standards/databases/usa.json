@@ -15,11 +15,11 @@
       "id": "sec_edgar",
       "name": "SEC EDGAR",
       "url": "https://www.sec.gov/edgar",
-      "what_it_does": "Companies listed on the US stock market.",
+      "what_it_does": "Companies listed on the US stock market. Card 'US stock market (SEC)'; needs SEC_CONTACT_EMAIL in .env.",
       "access": "api",
       "cost": "free",
       "step": 3,
-      "status": "planned"
+      "status": "live"
     },
     {
       "id": "sam_gov",

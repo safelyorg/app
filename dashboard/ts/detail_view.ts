@@ -93,6 +93,8 @@ const SIGNAL_LABEL_TRANSLATIONS: Record<string, string> = {
   "Website history": "dash.label.website_history",
   "Website traffic": "dash.label.website_traffic",
   "Security certificate": "dash.label.security_certificate",
+  "EU VAT number": "dash.label.eu_vat_number",
+  "US stock market (SEC)": "dash.label.us_stock_market",
   // Title of the risk factor shown when Safely could check too little.
   "Not enough information": "dash.label.not_enough_information",
 };
@@ -172,6 +174,11 @@ const SIGNAL_VALUE_TRANSLATIONS: Record<string, string> = {
   "Certificate for years": "dash.value.certificate_for_years",
   "First certificate recent": "dash.value.first_certificate_recent",
   "No certificate found": "dash.value.no_certificate_found",
+  "Active VAT number": "dash.value.active_vat_number",
+  "VAT number of another company": "dash.value.vat_of_another_company",
+  "VAT number not active": "dash.value.vat_not_active",
+  "Listed company": "dash.value.listed_company",
+  "Not on the stock market": "dash.value.not_on_stock_market",
 };
 
 // Results that carry a number ("3/9 fields provided", "Checked 4 times

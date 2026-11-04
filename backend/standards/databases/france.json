@@ -56,11 +56,11 @@
       "id": "eu_vies",
       "name": "EU VIES",
       "url": "https://ec.europa.eu/taxation_customs/vies/",
-      "what_it_does": "Is the EU VAT number real and active? Works for every EU country.",
+      "what_it_does": "Is the EU VAT number real and active? Works for every EU country. Card 'EU VAT number' (global.json).",
       "access": "api",
       "cost": "free",
       "step": 3,
-      "status": "planned"
+      "status": "live"
     },
     {
       "id": "cci",

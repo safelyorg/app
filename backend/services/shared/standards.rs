@@ -534,11 +534,13 @@ mod tests {
 
     /// Every outside-records card the code can make. A new card must be
     /// added to a databases file too (with its points), or this fails.
-    const DATABASE_CARDS: [&str; 7] = [
+    const DATABASE_CARDS: [&str; 9] = [
         "Sanctions lists",
         "Company register (GLEIF)",
         "Company number",
         "Official register",
+        "EU VAT number",
+        "US stock market (SEC)",
         "Website history",
         "Website traffic",
         "Security certificate",
@@ -566,6 +568,14 @@ mod tests {
             40
         );
         assert_eq!(database_warning_points("Official register", "Closed"), 25);
+        assert_eq!(
+            database_warning_points("EU VAT number", "VAT number of another company"),
+            40
+        );
+        assert_eq!(
+            database_warning_points("EU VAT number", "VAT number not active"),
+            20
+        );
         assert_eq!(database_warning_points("Not a card", "x"), 15);
         assert!(database_card_enabled("Sanctions lists"));
         // An outside-records card never shares a name with a B2B card.

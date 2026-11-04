@@ -225,7 +225,7 @@ pub fn policies_found(pages: &[WebsitePage]) -> Vec<&'static str> {
 /// of the countries Safely checks numbers for.
 static NUMBER_LABEL: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(
-        r"(?i:\b(?:CNPJ|SIREN|SIRET|TVA(?:\s+intracommunautaire)?|N°\s*TVA|VAT(?:\s+(?:no|number|id))?|USCC|Unified Social Credit Code|统一社会信用代码|Company (?:registration )?(?:no|number)))\.?\s*[:：#]?\s*((?:[A-Z]{2}\s?)?[0-9A-Z]*[0-9][0-9A-Z]*(?:[./-][0-9A-Z]+| [0-9][0-9A-Z]*)*)",
+        r"(?i:\b(?:CNPJ|SIREN|SIRET|TVA(?:\s+intracommunautaire)?|N°\s*TVA|VAT(?:\s+(?:no|number|id|reg(?:istration)?\s+no))?|USt-?IdNr|Umsatzsteuer-ID|Partita\s+IVA|P\.\s?IVA|BTW(?:-nummer)?|USCC|Unified Social Credit Code|统一社会信用代码|Company (?:registration )?(?:no|number)))\.?\s*[:：#]?\s*((?:[A-Z]{2}\s?)?[0-9A-Z]*[0-9][0-9A-Z]*(?:[./-][0-9A-Z]+| [0-9][0-9A-Z]*)*)",
     )
     .unwrap()
 });
@@ -442,11 +442,7 @@ mod tests {
         ];
         assert_eq!(
             policies_found(&pages),
-            vec![
-                "shipping policy",
-                "return / refund policy",
-                "privacy policy"
-            ]
+            vec!["shipping policy", "return / refund policy", "privacy policy"]
         );
     }
 
@@ -481,6 +477,17 @@ mod tests {
         assert_eq!(
             company_numbers(&pages),
             vec!["11.222.333/0001-81", "732 829 320 00074", "FR44732829320"]
+        );
+        // Other EU countries' VAT labels.
+        let pages = [page(
+            "u",
+            "",
+            "Muster GmbH · USt-IdNr.: DE123456789 · Rossi Srl P.IVA IT01234567890 · BTW-nummer NL123456789B01",
+            &[],
+        )];
+        assert_eq!(
+            company_numbers(&pages),
+            vec!["DE123456789", "IT01234567890", "NL123456789B01"]
         );
     }
 
