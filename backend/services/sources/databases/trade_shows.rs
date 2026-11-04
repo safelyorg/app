@@ -13,6 +13,16 @@
 //! Asked for China and Hong Kong sellers, and for any seller that says
 //! "Canton Fair" about itself.
 //!
+//! Also the HKTDC fairs (Hong Kong Trade Development Council). Each
+//! fair's exhibitor search is an ordinary page whose address holds the
+//! search (free, no key):
+//! https://www.hktdc.com/event/{fair code}/en/exhibitor-search/{name}
+//! and the page carries its results as data (the "__NEXT_DATA__"
+//! script): name, booth, and the HKTDC fairs the company exhibited at
+//! in recent years. Asked for China and Hong Kong sellers, one request
+//! per fair in HKTDC_FAIRS. Only a good sign: HKTDC runs many fairs and
+//! Safely reads only some, so a claim that is not found is not a warning.
+//!
 //! An exhibitor counts only when its WHOLE name is the seller's name
 //! (legal forms and punctuation left out).
 //!
@@ -32,6 +42,9 @@ use std::time::Duration;
 pub const CANTON_LABEL: &str = "Canton Fair";
 pub const EXHIBITOR: &str = "Canton Fair exhibitor";
 pub const CLAIM_NOT_FOUND: &str = "Claim not confirmed";
+
+/// The browser the fairs' own pages are made for.
+const BROWSER: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36";
 
 const CANTON_SEARCH: &str = "https://www.cantonfair.org.cn/appbuyerapi/exhibition/queryshop";
 const CANTON_SHOP: &str = "https://365.cantonfair.org.cn/en-US/shops?id=";
@@ -292,7 +305,7 @@ fn device_id() -> &'static str {
 async fn search_canton(company_name: &str) -> Option<Vec<CantonExhibitor>> {
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(10))
-        .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36")
+        .user_agent(BROWSER)
         .build()
         .ok()?;
     let response = client
@@ -356,6 +369,219 @@ pub async fn canton_signal(
     compared_name(name)?;
     let found = search_canton(name).await?;
     canton_card(name, claims, canton_match(name, &found))
+}
+
+// ---------------------------------------------------------------------
+// HKTDC fairs
+// ---------------------------------------------------------------------
+
+/// The card's name, as in standards/databases/global.json.
+pub const HKTDC_LABEL: &str = "HKTDC fair";
+pub const HKTDC_EXHIBITOR: &str = "HKTDC exhibitor";
+
+/// The HKTDC fairs searched, by the code in their address. Add a fair
+/// by adding its code (the part after /event/ in its exhibitor list's
+/// address).
+pub const HKTDC_FAIRS: &[&str] = &["hkelectronicsfairse"];
+
+/// Most fairs written out from the "exhibited in recent years" list.
+const MAX_PAST_FAIRS: usize = 4;
+
+/// One HKTDC exhibitor.
+#[derive(Debug, Clone, PartialEq)]
+pub struct HktdcExhibitor {
+    pub name: String,
+    /// "1S005V6OU" - its page is /exhibitor/{urn}.
+    pub urn: String,
+    pub fair_code: String,
+    /// "HKTDC Hong Kong Electronics Fair (Spring Edition)".
+    pub fair_name: String,
+    /// "1D-C01".
+    pub booths: String,
+    /// "Chinese Mainland".
+    pub country: String,
+    /// "HKTDC Hong Kong Electronics Fair 2026 (Autumn Edition)", ...
+    pub past_fairs: Vec<String>,
+}
+
+impl HktdcExhibitor {
+    pub fn page(&self) -> String {
+        format!(
+            "https://www.hktdc.com/event/{0}/en/exhibitor/{1}?fairCode={0}",
+            self.fair_code, self.urn
+        )
+    }
+}
+
+/// The search page's address for a company name. Only letters, digits
+/// and spaces are kept ("/" or "?" would break the address).
+pub fn hktdc_search_url(fair_code: &str, company_name: &str) -> String {
+    let words: String = company_name
+        .chars()
+        .map(|c| if c.is_alphanumeric() { c } else { ' ' })
+        .collect();
+    let words = words.split_whitespace().collect::<Vec<_>>().join(" ");
+    format!(
+        "https://www.hktdc.com/event/{fair_code}/en/exhibitor-search/{}",
+        urlencoding::encode(&words)
+    )
+}
+
+/// The exhibitors in a search page (its "__NEXT_DATA__" script), or
+/// None when the page has no such data (another page, or HKTDC changed it).
+pub fn hktdc_exhibitors(page: &str) -> Option<Vec<HktdcExhibitor>> {
+    let start = page.find("id=\"__NEXT_DATA__\"")?;
+    let open = start + page[start..].find('>')? + 1;
+    let close = open + page[open..].find("</script>")?;
+    let data: Value = serde_json::from_str(page[open..close].trim()).ok()?;
+    let props = data.pointer("/props/pageProps")?;
+    let list = props.pointer("/exhibitorListData/data")?.as_array()?;
+    let fair_name = props
+        .pointer("/fairOption/fairName")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string();
+    Some(
+        list.iter()
+            .filter_map(|item| {
+                let name = text(item, "exhibitorName");
+                if name.is_empty() {
+                    return None;
+                }
+                let mut past_fairs: Vec<String> = Vec::new();
+                for detail in item
+                    .get("supplierSriDetail")
+                    .and_then(Value::as_array)
+                    .into_iter()
+                    .flatten()
+                {
+                    let fair = text(detail, "supplierRefValue");
+                    if text(detail, "supplierRefKey").starts_with("Exhibited in HKTDC")
+                        && !fair.is_empty()
+                        && !past_fairs.contains(&fair)
+                    {
+                        past_fairs.push(fair);
+                    }
+                }
+                Some(HktdcExhibitor {
+                    name,
+                    urn: text(item, "exhibitorUrn"),
+                    fair_code: text(item, "fairSymbol"),
+                    fair_name: fair_name.clone(),
+                    booths: text(item, "boothNumbers"),
+                    country: text(item, "countryDesc"),
+                    past_fairs,
+                })
+            })
+            .collect(),
+    )
+}
+
+/// The exhibitor whose whole name is the seller's name.
+pub fn hktdc_match<'a>(
+    company_name: &str,
+    found: &'a [HktdcExhibitor],
+) -> Option<&'a HktdcExhibitor> {
+    let wanted = compared_name(company_name)?;
+    found
+        .iter()
+        .find(|e| compared_name(&e.name).as_deref() == Some(wanted.as_str()))
+}
+
+/// The card for an HKTDC exhibitor.
+pub fn hktdc_card(e: &HktdcExhibitor) -> Signal {
+    let fair = if e.fair_name.is_empty() {
+        "an HKTDC fair".to_string()
+    } else {
+        e.fair_name.clone()
+    };
+    let booth = if e.booths.is_empty() {
+        String::new()
+    } else {
+        format!(" (booth {})", e.booths)
+    };
+    let past = if e.past_fairs.is_empty() {
+        String::new()
+    } else {
+        let more = e.past_fairs.len().saturating_sub(MAX_PAST_FAIRS);
+        let shown = e
+            .past_fairs
+            .iter()
+            .take(MAX_PAST_FAIRS)
+            .cloned()
+            .collect::<Vec<_>>()
+            .join("; ");
+        let more = if more > 0 {
+            format!("; and {more} more")
+        } else {
+            String::new()
+        };
+        format!(" HKTDC lists it at these fairs in recent years: {shown}{more}.")
+    };
+    Signal {
+        label: HKTDC_LABEL.to_string(),
+        sub: format!(
+            "\"{}\" is an exhibitor at {fair}{booth}.{past} HKTDC checks its exhibitors, so this is a good sign - but it does not prove that this listing is the company's own. Exhibitor page: {}",
+            e.name,
+            e.page()
+        ),
+        value: HKTDC_EXHIBITOR.to_string(),
+        signal_type: "good".to_string(),
+        category: OUTSIDE_RECORDS.to_string(),
+        check_type: "existence".to_string(),
+    }
+}
+
+async fn search_hktdc(fair_code: &str, company_name: &str) -> Option<Vec<HktdcExhibitor>> {
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(12))
+        .user_agent(BROWSER)
+        .build()
+        .ok()?;
+    let url = hktdc_search_url(fair_code, company_name);
+    match client
+        .get(&url)
+        .header("Accept", "text/html,application/xhtml+xml")
+        .header("Accept-Language", "en-US,en;q=0.9")
+        .send()
+        .await
+    {
+        Ok(r) if r.status().is_success() => {
+            let page = r.text().await.ok()?;
+            let found = hktdc_exhibitors(&page);
+            if found.is_none() {
+                eprintln!("Safely: HKTDC page had no exhibitor data: {url}");
+            }
+            found
+        }
+        Ok(r) => {
+            eprintln!("Safely: HKTDC answered {}: {url}", r.status());
+            None
+        }
+        Err(e) => {
+            eprintln!("Safely: HKTDC could not be reached: {}", e);
+            None
+        }
+    }
+}
+
+/// The "HKTDC fair" card, or None when the check is off, the seller is
+/// not Chinese, or it is not an exhibitor at the fairs Safely reads.
+pub async fn hktdc_signal(company_name: Option<&str>, country: Option<&str>) -> Option<Signal> {
+    let name = company_name.map(str::trim).filter(|n| !n.is_empty())?;
+    if !enabled() || !is_chinese_seller(country) {
+        return None;
+    }
+    compared_name(name)?;
+    // One fair after another, stopping at the first match (few fairs).
+    for fair in HKTDC_FAIRS {
+        if let Some(found) = search_hktdc(fair, name).await
+            && let Some(e) = hktdc_match(name, &found)
+        {
+            return Some(hktdc_card(e));
+        }
+    }
+    None
 }
 
 #[cfg(test)]
@@ -447,6 +673,84 @@ mod tests {
         assert_eq!(card.value, EXHIBITOR);
         assert!(card.sub.contains("booth 2.2B08-12，2.2A13-17"));
         assert!(card.sub.contains("shops?id=0796200728"));
+    }
+
+    /// The parts of the real HKTDC search page Bilal saved on Nov 4
+    /// ("Shenzhen" at the Electronics Fair, Spring Edition).
+    fn hktdc_page() -> String {
+        let data = json!({
+          "props": { "pageProps": {
+            "fairOption": { "fairName": "HKTDC Hong Kong Electronics Fair (Spring Edition)",
+                            "fairCode": "hkelectronicsfairse" },
+            "exhibitorListData": { "from": 0, "size": 10, "totalSize": 213, "searchKeyword": "Shenzhen",
+              "data": [
+                { "exhibitorName": "SHENZHEN TRENDWOO TECH CO LTD", "boothNumbers": "1D-C01",
+                  "countryDesc": "Chinese Mainland", "exhibitorUrn": "1S005V6OU",
+                  "fairSymbol": "hkelectronicsfairse",
+                  "supplierSriDetail": [
+                    { "supplierRefKey": "Exhibited in HKTDC Event(s) in recent years",
+                      "supplierRefValue": "HKTDC Hong Kong Electronics Fair 2026 (Autumn Edition)" },
+                    { "supplierRefKey": "Exhibited in HKTDC Event(s) in recent years",
+                      "supplierRefValue": "HKTDC Hong Kong Electronics Fair (Spring Edition) 2026" },
+                    { "supplierRefKey": "Exhibited in HKTDC Event(s) in recent years",
+                      "supplierRefValue": "HKTDC Hong Kong Electronics Fair 2025 (Autumn Edition)" },
+                    { "supplierRefKey": "Exhibited in HKTDC Event(s) in recent years",
+                      "supplierRefValue": "HKTDC Hong Kong Electronics Fair (Spring Edition) 2025" },
+                    { "supplierRefKey": "Exhibited in HKTDC Event(s) in recent years",
+                      "supplierRefValue": "HKTDC Hong Kong Electronics Fair 2024 (Autumn Edition)" }
+                  ] },
+                { "exhibitorName": "Shenzhen Kingstar Technology Co., Ltd.", "boothNumbers": "1CON-S003, 1E-A01",
+                  "exhibitorUrn": "1S005W1N2", "fairSymbol": "hkelectronicsfairse" }
+              ] } } },
+          "page": "/[fairCode]/[locale]/exhibitor-search/[[...exhibitorSlug]]"
+        });
+        format!(
+            "<!DOCTYPE html><html><head></head><body><div id=\"__next\"></div><script id=\"__NEXT_DATA__\" type=\"application/json\">{data}</script></body></html>"
+        )
+    }
+
+    #[test]
+    fn an_hktdc_search_page_is_read() {
+        let found = hktdc_exhibitors(&hktdc_page()).unwrap();
+        assert_eq!(found.len(), 2);
+        let e = &found[0];
+        assert_eq!(
+            e.fair_name,
+            "HKTDC Hong Kong Electronics Fair (Spring Edition)"
+        );
+        assert_eq!(e.booths, "1D-C01");
+        assert_eq!(e.past_fairs.len(), 5);
+        assert_eq!(
+            e.page(),
+            "https://www.hktdc.com/event/hkelectronicsfairse/en/exhibitor/1S005V6OU?fairCode=hkelectronicsfairse"
+        );
+        assert!(hktdc_exhibitors("<html><body>No data</body></html>").is_none());
+    }
+
+    #[test]
+    fn hktdc_whole_names_and_card() {
+        let found = hktdc_exhibitors(&hktdc_page()).unwrap();
+        let e = hktdc_match("Shenzhen Trendwoo Tech Co., Ltd.", &found).unwrap();
+        let card = hktdc_card(e);
+        assert_eq!(
+            (card.value.as_str(), card.signal_type.as_str()),
+            (HKTDC_EXHIBITOR, "good")
+        );
+        assert!(
+            card.sub
+                .contains("HKTDC Hong Kong Electronics Fair (Spring Edition) (booth 1D-C01)")
+        );
+        assert!(card.sub.contains("; and 1 more."));
+        assert!(hktdc_match("Shenzhen Trendwoo", &found).is_none());
+        assert!(hktdc_match("Trendwoo Trading Co., Ltd.", &found).is_none());
+    }
+
+    #[test]
+    fn the_hktdc_address_holds_the_name() {
+        assert_eq!(
+            hktdc_search_url("hkelectronicsfairse", "Shenzhen Trendwoo Tech Co., Ltd./HK"),
+            "https://www.hktdc.com/event/hkelectronicsfairse/en/exhibitor-search/Shenzhen%20Trendwoo%20Tech%20Co%20Ltd%20HK"
+        );
     }
 
     #[test]

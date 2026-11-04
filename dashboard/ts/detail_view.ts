@@ -98,6 +98,7 @@ const SIGNAL_LABEL_TRANSLATIONS: Record<string, string> = {
   "US government register (SAM.gov)": "dash.label.us_government_register",
   "Chamber of commerce": "dash.label.chamber_of_commerce",
   "Canton Fair": "dash.label.canton_fair",
+  "HKTDC fair": "dash.label.hktdc_fair",
   // Title of the risk factor shown when Safely could check too little.
   "Not enough information": "dash.label.not_enough_information",
 };
@@ -190,6 +191,7 @@ const SIGNAL_VALUE_TRANSLATIONS: Record<string, string> = {
   "Same name, other website": "dash.value.same_name_other_website",
   "Canton Fair exhibitor": "dash.value.canton_fair_exhibitor",
   "Claim not confirmed": "dash.value.claim_not_confirmed",
+  "HKTDC exhibitor": "dash.value.hktdc_exhibitor",
 };
 
 // Results that carry a number ("3/9 fields provided", "Checked 4 times

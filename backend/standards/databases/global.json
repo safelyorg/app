@@ -221,6 +221,15 @@
       "warning_points": 20
     },
     {
+      "card": "HKTDC fair",
+      "group": "outside_records",
+      "what_it_checks": "Whether a company with exactly the seller's name is an exhibitor at the HKTDC fairs Safely reads (HKTDC_FAIRS in trade_shows.rs; now the Hong Kong Electronics Fair, Spring Edition). Each fair's exhibitor search page is opened with the name and its data read: booth, and the HKTDC fairs the company exhibited at in recent years. Asked for China and Hong Kong sellers. An exhibitor is a good sign; not found shows no card (HKTDC runs many fairs, so it is never a warning). Needs TRADE_SHOWS_CHECK_ENABLED=true in .env.",
+      "reads": [
+        "Company name",
+        "Country"
+      ]
+    },
+    {
       "card": "Website history",
       "group": "outside_records",
       "what_it_checks": "Since when the Wayback Machine (web.archive.org) has saved the seller's own website. Saved over a year ago is a good sign; newer or never saved is information only and never adds to the score (a brand-new domain is already warned about by 'Website age'). Needs WEBSITE_RECORDS_CHECK_ENABLED=true in .env.",

@@ -29,12 +29,12 @@
     {
       "id": "hktdc",
       "name": "HKTDC fairs",
-      "url": "https://www.hktdc.com/",
-      "what_it_does": "Hong Kong Trade Development Council fair exhibitors.",
+      "url": "https://www.hktdc.com/event/hkelectronicsfairse/en/exhibitor-list",
+      "what_it_does": "HKTDC fair exhibitors: each fair's exhibitor search page (/event/{fair code}/en/exhibitor-search/{name}) carries its results as data. Card 'HKTDC fair'. Fairs read: HKTDC_FAIRS in trade_shows.rs.",
       "access": "scrape",
       "cost": "free",
       "step": 4,
-      "status": "planned"
+      "status": "live"
     },
     {
       "id": "hkgcc",

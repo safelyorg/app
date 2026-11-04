@@ -65,7 +65,18 @@ pub async fn check_outside_records(facts: &SellerFacts) -> Vec<Signal> {
     let mut cards = Vec::new();
     let name = facts.company_name.as_deref();
     let country = facts.country.as_deref();
-    let (sanctions, register, numbers, vat, stock_market, government, chamber, canton, website) = tokio::join!(
+    let (
+        sanctions,
+        register,
+        numbers,
+        vat,
+        stock_market,
+        government,
+        chamber,
+        canton,
+        hktdc,
+        website,
+    ) = tokio::join!(
         sanctions::sanctions_signal(name),
         gleif::gleif_signal(name, country),
         company_number_cards(facts),
@@ -74,6 +85,7 @@ pub async fn check_outside_records(facts: &SellerFacts) -> Vec<Signal> {
         sam_gov::sam_signal(name, country),
         chambers::chamber_signal(name, country, facts.website.as_deref()),
         trade_shows::canton_signal(name, country, facts.about.as_deref()),
+        trade_shows::hktdc_signal(name, country),
         website_records::website_record_cards(facts.website.as_deref()),
     );
     cards.extend(sanctions);
@@ -84,6 +96,7 @@ pub async fn check_outside_records(facts: &SellerFacts) -> Vec<Signal> {
     cards.extend(government);
     cards.extend(chamber);
     cards.extend(canton);
+    cards.extend(hktdc);
     cards.extend(website);
     cards
 }
