@@ -66,7 +66,7 @@
       "id": "cci",
       "name": "CCI France",
       "url": "https://www.cci.fr/",
-      "what_it_does": "Chamber of commerce. Access to be checked.",
+      "what_it_does": "Chamber of commerce. Not built: every registered French company belongs to its CCI by law, so membership says nothing more than the register ('Official register' card).",
       "access": "scrape",
       "cost": "free",
       "step": 4,

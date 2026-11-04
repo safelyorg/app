@@ -49,7 +49,7 @@
       "id": "acsp",
       "name": "ACSP and local commercial associations",
       "url": "https://acsp.com.br/",
-      "what_it_does": "Chamber membership. Access to be checked.",
+      "what_it_does": "Chamber membership. Checked Nov 4: no public member list found, so not built.",
       "access": "scrape",
       "cost": "free",
       "step": 4,

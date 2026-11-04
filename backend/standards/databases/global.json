@@ -200,6 +200,16 @@
       "warning_points": 40
     },
     {
+      "card": "Chamber of commerce",
+      "group": "outside_records",
+      "what_it_checks": "Whether a company with exactly the seller's name is a member of a chamber of commerce whose member pages are public: the Hong Kong General Chamber of Commerce (HKGCC, for Hong Kong and China sellers) or the thousands of local chambers on ChamberMaster / GrowthZone (for US sellers and sellers with no country file). One Google search (Serper) finds the member page, which is then opened to read the name. A member is a good sign; a member whose website differs from the seller's is information only (maybe another company with the same name); not a member shows no card. Needs CHAMBERS_CHECK_ENABLED=true and SERPER_API_KEY in .env.",
+      "reads": [
+        "Company name",
+        "Country",
+        "Website"
+      ]
+    },
+    {
       "card": "Website history",
       "group": "outside_records",
       "what_it_checks": "Since when the Wayback Machine (web.archive.org) has saved the seller's own website. Saved over a year ago is a good sign; newer or never saved is information only and never adds to the score (a brand-new domain is already warned about by 'Website age'). Needs WEBSITE_RECORDS_CHECK_ENABLED=true in .env.",

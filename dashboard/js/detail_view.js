@@ -38,6 +38,7 @@ const SIGNAL_LABEL_TRANSLATIONS = {
     "EU VAT number": "dash.label.eu_vat_number",
     "US stock market (SEC)": "dash.label.us_stock_market",
     "US government register (SAM.gov)": "dash.label.us_government_register",
+    "Chamber of commerce": "dash.label.chamber_of_commerce",
     // Title of the risk factor shown when Safely could check too little.
     "Not enough information": "dash.label.not_enough_information",
 };
@@ -124,6 +125,8 @@ const SIGNAL_VALUE_TRANSLATIONS = {
     "Excluded by the US government": "dash.value.excluded_us_government",
     "Registration expired": "dash.value.registration_expired",
     "Not registered": "dash.value.not_registered",
+    "Chamber member": "dash.value.chamber_member",
+    "Same name, other website": "dash.value.same_name_other_website",
 };
 // Results that carry a number ("3/9 fields provided", "Checked 4 times
 // before", "Gold member").

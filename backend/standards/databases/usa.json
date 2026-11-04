@@ -55,12 +55,12 @@
     {
       "id": "us_chambers",
       "name": "Local chambers (GrowthZone / ChamberMaster)",
-      "url": "",
-      "what_it_does": "Chamber membership.",
+      "url": "https://www.growthzone.com/",
+      "what_it_does": "Chamber membership: thousands of local chambers (USA, Canada, UK...) use this directory software, so one Google search (Serper) finds a member page '/list/member/...'. Card 'Chamber of commerce'; asked for US sellers and sellers with no country file.",
       "access": "scrape",
       "cost": "free",
       "step": 4,
-      "status": "planned"
+      "status": "live"
     },
     {
       "id": "us_fairs",

@@ -40,11 +40,11 @@
       "id": "hkgcc",
       "name": "Hong Kong General Chamber of Commerce",
       "url": "https://www.chamber.org.hk/",
-      "what_it_does": "Chamber member directory.",
+      "what_it_does": "Chamber member directory, open to everyone (directory_detail.aspx pages). Found with one Google search (Serper). Card 'Chamber of commerce'; asked for Hong Kong and China sellers.",
       "access": "scrape",
       "cost": "free",
       "step": 4,
-      "status": "planned"
+      "status": "live"
     }
   ],
   "cards": []

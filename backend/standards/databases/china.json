@@ -62,7 +62,7 @@
       "id": "ccpit",
       "name": "CCPIT",
       "url": "https://en.ccpit.org/",
-      "what_it_does": "China's trade chamber (China Council for the Promotion of International Trade). Access to be checked.",
+      "what_it_does": "China's trade chamber (China Council for the Promotion of International Trade). Checked Nov 4: no public member list, so not built. Chinese sellers are searched in the Hong Kong chamber (HKGCC) instead.",
       "access": "scrape",
       "cost": "free",
       "step": 4,
