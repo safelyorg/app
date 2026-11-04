@@ -157,7 +157,7 @@
     {
       "card": "Official register",
       "group": "outside_records",
-      "what_it_checks": "What the country's own register says about the company number (Brazil: Receita Federal via BrasilAPI; France: recherche-entreprises.api.gouv.fr). Active under the same name is a good sign; another company's name is a warning; closed is a warning; not found is information only. Needs REGISTERS_CHECK_ENABLED=true in .env.",
+      "what_it_checks": "What the country's own register says about the company number (Brazil: Receita Federal via BrasilAPI; France: recherche-entreprises.api.gouv.fr, and INSEE's Sirene API when that does not answer and INSEE_API_KEY is set). Active under the same name is a good sign; another company's name is a warning; closed is a warning; not found is information only. Needs REGISTERS_CHECK_ENABLED=true in .env.",
       "reads": [
         "Company number",
         "Company name"
@@ -188,6 +188,16 @@
         "Company name",
         "Country"
       ]
+    },
+    {
+      "card": "US government register (SAM.gov)",
+      "group": "outside_records",
+      "what_it_checks": "For US sellers only: whether a company with exactly the seller's name (legal or trade name) is registered with the US government in SAM.gov. Active is a good sign; excluded by the US government (barred from government work) is a warning; expired or not registered is information only. A basic key allows 10 lookups a day, so each answer is kept for 7 days and at most SAM_GOV_DAILY_LIMIT (10 when not set) lookups are made a day. Needs REGISTERS_CHECK_ENABLED=true and SAM_GOV_API_KEY in .env (the key expires after about 90 days).",
+      "reads": [
+        "Company name",
+        "Country"
+      ],
+      "warning_points": 40
     },
     {
       "card": "Website history",

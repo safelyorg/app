@@ -95,6 +95,7 @@ const SIGNAL_LABEL_TRANSLATIONS: Record<string, string> = {
   "Security certificate": "dash.label.security_certificate",
   "EU VAT number": "dash.label.eu_vat_number",
   "US stock market (SEC)": "dash.label.us_stock_market",
+  "US government register (SAM.gov)": "dash.label.us_government_register",
   // Title of the risk factor shown when Safely could check too little.
   "Not enough information": "dash.label.not_enough_information",
 };
@@ -179,6 +180,10 @@ const SIGNAL_VALUE_TRANSLATIONS: Record<string, string> = {
   "VAT number not active": "dash.value.vat_not_active",
   "Listed company": "dash.value.listed_company",
   "Not on the stock market": "dash.value.not_on_stock_market",
+  "Registered with the US government": "dash.value.registered_us_government",
+  "Excluded by the US government": "dash.value.excluded_us_government",
+  "Registration expired": "dash.value.registration_expired",
+  "Not registered": "dash.value.not_registered",
 };
 
 // Results that carry a number ("3/9 fields provided", "Checked 4 times

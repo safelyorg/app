@@ -6,6 +6,9 @@
 //!
 //! The official register is read through the government's free search
 //! (no key): https://recherche-entreprises.api.gouv.fr/search?q={siren}
+//! When that search does not answer, INSEE's own Sirene API is asked
+//! instead (free, needs INSEE_API_KEY in .env):
+//! https://api.insee.fr/api-sirene/3.11/siren/{siren}
 
 use crate::services::sources::databases::numbers::{
     NumberCheck, RegisterEntry, normalize, register_client,
@@ -14,6 +17,7 @@ use serde_json::Value;
 
 pub const REGISTER: &str = "French company register (INSEE / data.gouv.fr)";
 const SEARCH_URL: &str = "https://recherche-entreprises.api.gouv.fr/search";
+const INSEE_URL: &str = "https://api.insee.fr/api-sirene/3.11/siren";
 
 /// Luhn check, used by SIREN and SIRET.
 fn luhn_ok(digits: &str) -> bool {
@@ -143,8 +147,16 @@ pub fn entry_from(answer: &Value, siren: &str) -> Option<RegisterEntry> {
 }
 
 /// Looks the SIREN up. Some(None): the register has no such company;
-/// None: the register did not answer (no card is shown).
+/// None: no register answered (no card is shown).
 pub async fn look_up(siren: &str) -> Option<Option<RegisterEntry>> {
+    match search_look_up(siren).await {
+        Some(found) => Some(found),
+        None => insee_look_up(siren).await,
+    }
+}
+
+/// The government's free search (no key).
+async fn search_look_up(siren: &str) -> Option<Option<RegisterEntry>> {
     let response = register_client()?
         .get(format!("{SEARCH_URL}?q={siren}&page=1&per_page=5"))
         .send()
@@ -163,6 +175,109 @@ pub async fn look_up(siren: &str) -> Option<Option<RegisterEntry>> {
         }
         Err(e) => {
             eprintln!("Safely: French register could not be reached: {}", e);
+            None
+        }
+    }
+}
+
+/// The register entry in an INSEE Sirene answer
+/// ({"uniteLegale": {"siren", "dateCreationUniteLegale",
+/// "periodesUniteLegale": [{"dateFin": null, "etatAdministratifUniteLegale": "A",
+/// "denominationUniteLegale": ...}]}}). The current period is the one
+/// with no end date (INSEE puts it first).
+pub fn insee_entry_from(answer: &Value, siren: &str) -> Option<RegisterEntry> {
+    let unit = answer.get("uniteLegale")?;
+    let text = |v: &Value, key: &str| {
+        v.get(key)
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .unwrap_or("")
+            .to_string()
+    };
+    if text(unit, "siren") != siren {
+        return None;
+    }
+    let periods = unit.get("periodesUniteLegale").and_then(Value::as_array);
+    let current = periods
+        .and_then(|p| {
+            p.iter()
+                .find(|x| x.get("dateFin").is_none_or(Value::is_null))
+                .or_else(|| p.first())
+        })
+        .cloned()
+        .unwrap_or(Value::Null);
+    // A company's name, or a person's (sole traders): "Jean DUPONT".
+    let person = [
+        text(unit, "prenom1UniteLegale"),
+        text(&current, "nomUniteLegale"),
+    ]
+    .into_iter()
+    .filter(|p| !p.is_empty())
+    .collect::<Vec<_>>()
+    .join(" ");
+    let mut names: Vec<String> = Vec::new();
+    for name in [
+        text(&current, "denominationUniteLegale"),
+        text(&current, "denominationUsuelle1UniteLegale"),
+        text(unit, "sigleUniteLegale"),
+        person,
+    ] {
+        if !name.is_empty() && !names.contains(&name) {
+            names.push(name);
+        }
+    }
+    Some(RegisterEntry {
+        register: REGISTER,
+        number: siren.to_string(),
+        names,
+        // "A" active, "C" closed (cessée).
+        active: text(&current, "etatAdministratifUniteLegale") == "A",
+        opened: text(unit, "dateCreationUniteLegale"),
+        place: String::new(),
+    })
+}
+
+fn insee_key() -> Option<String> {
+    std::env::var("INSEE_API_KEY")
+        .ok()
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty())
+}
+
+/// INSEE's Sirene API, the backup. Needs INSEE_API_KEY.
+async fn insee_look_up(siren: &str) -> Option<Option<RegisterEntry>> {
+    let key = insee_key()?;
+    let response = register_client()?
+        .get(format!("{INSEE_URL}/{siren}"))
+        // INSEE's guide writes the header both ways; sending both is harmless.
+        .header("X-INSEE-Api-Key-Integration", &key)
+        .header("X-INSEE-ApiKey-Integration", &key)
+        .header("Accept", "application/json")
+        .send()
+        .await;
+    match response {
+        Ok(r) if r.status().is_success() => match r.json::<Value>().await {
+            Ok(answer) => Some(insee_entry_from(&answer, siren)),
+            Err(e) => {
+                eprintln!("Safely: INSEE answer could not be read: {}", e);
+                None
+            }
+        },
+        // 404: INSEE has no company with this SIREN.
+        Ok(r) if r.status().as_u16() == 404 => Some(None),
+        Ok(r) => {
+            let status = r.status();
+            if status.as_u16() == 401 || status.as_u16() == 403 {
+                eprintln!(
+                    "Safely: INSEE refused the key ({status}) - check INSEE_API_KEY and the API Sirene subscription"
+                );
+            } else {
+                eprintln!("Safely: INSEE answered {status}");
+            }
+            None
+        }
+        Err(e) => {
+            eprintln!("Safely: INSEE could not be reached: {}", e);
             None
         }
     }
@@ -207,5 +322,34 @@ mod tests {
         assert!(e.active);
         assert_eq!(e.place, "LYON 69002");
         assert!(entry_from(&answer, "542065479").is_none());
+    }
+
+    #[test]
+    fn the_insee_answer_is_read_from_the_current_period() {
+        let answer = json!({ "uniteLegale": {
+            "siren": "732829320", "dateCreationUniteLegale": "1973-01-01", "sigleUniteLegale": "AO",
+            "periodesUniteLegale": [
+                { "dateFin": null, "etatAdministratifUniteLegale": "A",
+                  "denominationUniteLegale": "ACME OUTILS", "nomUniteLegale": null },
+                { "dateFin": "2001-12-31", "etatAdministratifUniteLegale": "A",
+                  "denominationUniteLegale": "ACME ANCIEN NOM" }
+            ]
+        }});
+        let e = insee_entry_from(&answer, "732829320").unwrap();
+        assert_eq!(e.names, vec!["ACME OUTILS", "AO"]);
+        assert!(e.active);
+        assert_eq!(e.opened, "1973-01-01");
+        assert!(insee_entry_from(&answer, "542065479").is_none());
+
+        // A sole trader, closed.
+        let person = json!({ "uniteLegale": {
+            "siren": "123456782", "prenom1UniteLegale": "JEAN",
+            "periodesUniteLegale": [
+                { "dateFin": null, "etatAdministratifUniteLegale": "C", "nomUniteLegale": "DUPONT" }
+            ]
+        }});
+        let e = insee_entry_from(&person, "123456782").unwrap();
+        assert_eq!(e.names, vec!["JEAN DUPONT"]);
+        assert!(!e.active);
     }
 }

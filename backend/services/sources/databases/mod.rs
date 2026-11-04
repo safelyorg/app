@@ -13,7 +13,8 @@
 //! for what only that country has (standards::databases_for_country).
 //! Checks for every country are files here (sanctions.rs, gleif.rs,
 //! numbers.rs, eu_vat.rs, website_records.rs). Checks for one country are in a file
-//! of that country's name (china.rs, brazil.rs, france.rs, usa.rs); when a country gets several
+//! of that country's name (china.rs, brazil.rs, france.rs, usa.rs; USA's SAM.gov
+//! is in sam_gov.rs); when a country gets several
 //! sources, its file becomes a folder (databases/china/), like
 //! sources/b2b/{country}/.
 //!
@@ -26,6 +27,7 @@ pub mod eu_vat;
 pub mod france;
 pub mod gleif;
 pub mod numbers;
+pub mod sam_gov;
 pub mod sanctions;
 pub mod usa;
 pub mod website_records;
@@ -57,12 +59,13 @@ pub async fn check_outside_records(facts: &SellerFacts) -> Vec<Signal> {
     let mut cards = Vec::new();
     let name = facts.company_name.as_deref();
     let country = facts.country.as_deref();
-    let (sanctions, register, numbers, vat, stock_market, website) = tokio::join!(
+    let (sanctions, register, numbers, vat, stock_market, government, website) = tokio::join!(
         sanctions::sanctions_signal(name),
         gleif::gleif_signal(name, country),
         company_number_cards(facts),
         eu_vat::vat_signal(name, &facts.company_numbers),
         usa::sec_signal(name, country),
+        sam_gov::sam_signal(name, country),
         website_records::website_record_cards(facts.website.as_deref()),
     );
     cards.extend(sanctions);
@@ -70,6 +73,7 @@ pub async fn check_outside_records(facts: &SellerFacts) -> Vec<Signal> {
     cards.extend(numbers);
     cards.extend(vat);
     cards.extend(stock_market);
+    cards.extend(government);
     cards.extend(website);
     cards
 }

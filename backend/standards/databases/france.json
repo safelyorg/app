@@ -45,11 +45,11 @@
       "id": "insee_sirene",
       "name": "INSEE SIRENE",
       "url": "https://www.insee.fr/",
-      "what_it_does": "The same register with more detail.",
+      "what_it_does": "The same register, asked when recherche-entreprises does not answer (backup for the 'Official register' card). Needs INSEE_API_KEY.",
       "access": "api",
       "cost": "free",
       "step": 3,
-      "status": "planned",
+      "status": "live",
       "key_env": "INSEE_API_KEY"
     },
     {

@@ -534,13 +534,14 @@ mod tests {
 
     /// Every outside-records card the code can make. A new card must be
     /// added to a databases file too (with its points), or this fails.
-    const DATABASE_CARDS: [&str; 9] = [
+    const DATABASE_CARDS: [&str; 10] = [
         "Sanctions lists",
         "Company register (GLEIF)",
         "Company number",
         "Official register",
         "EU VAT number",
         "US stock market (SEC)",
+        "US government register (SAM.gov)",
         "Website history",
         "Website traffic",
         "Security certificate",
@@ -575,6 +576,13 @@ mod tests {
         assert_eq!(
             database_warning_points("EU VAT number", "VAT number not active"),
             20
+        );
+        assert_eq!(
+            database_warning_points(
+                "US government register (SAM.gov)",
+                "Excluded by the US government"
+            ),
+            40
         );
         assert_eq!(database_warning_points("Not a card", "x"), 15);
         assert!(database_card_enabled("Sanctions lists"));

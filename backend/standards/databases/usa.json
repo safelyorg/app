@@ -25,11 +25,11 @@
       "id": "sam_gov",
       "name": "SAM.gov",
       "url": "https://sam.gov/",
-      "what_it_does": "Companies registered to sell to the US government.",
+      "what_it_does": "Companies registered to sell to the US government. Card 'US government register (SAM.gov)', US sellers only; needs SAM_GOV_API_KEY (10 lookups a day on a basic key).",
       "access": "api",
       "cost": "free",
       "step": 3,
-      "status": "planned",
+      "status": "live",
       "key_env": "SAM_GOV_API_KEY"
     },
     {
