@@ -952,6 +952,10 @@ pub async fn reserve_scan(
     pool: &Pool<Postgres>,
     user_id: Uuid,
 ) -> Result<ScanCharge, ScanLimitError> {
+    // The owner's own test account(s): never limited, never counted.
+    if is_unlimited_user(pool, user_id).await {
+        return Ok(ScanCharge::NotCounted);
+    }
     let paid: Option<(Uuid, String)> = sqlx::query_as(
         "SELECT id, plan_name FROM subscriptions
          WHERE user_id = $1 AND status = 'active'
@@ -1010,6 +1014,43 @@ pub async fn give_back_scan(pool: &Pool<Postgres>, charge: ScanCharge) {
     if let Err(e) = result {
         eprintln!("Safely: could not give back an unfinished scan: {}", e);
     }
+}
+
+/// Email addresses that are never limited and never counted, from
+/// SAFELY_UNLIMITED_EMAILS in .env (comma-separated, e.g.
+/// "me@example.com, test@example.com"): the owner's own test accounts,
+/// on localhost and in production. Empty or missing: nobody.
+pub fn unlimited_emails() -> Vec<String> {
+    emails_in(&var("SAFELY_UNLIMITED_EMAILS").unwrap_or_default())
+}
+
+/// The addresses in SAFELY_UNLIMITED_EMAILS's text, lower-case.
+pub fn emails_in(text: &str) -> Vec<String> {
+    text.split([',', ';', ' ', '\n'])
+        .map(|e| e.trim().to_lowercase())
+        .filter(|e| e.contains('@'))
+        .collect()
+}
+
+/// True when this user's email is in SAFELY_UNLIMITED_EMAILS. No
+/// database call when the list is empty (every normal setup).
+pub async fn is_unlimited_user(pool: &Pool<Postgres>, user_id: Uuid) -> bool {
+    let emails = unlimited_emails();
+    if emails.is_empty() {
+        return false;
+    }
+    let email: Option<String> = query_scalar("SELECT email FROM users WHERE id = $1")
+        .bind(user_id)
+        .fetch_optional(pool)
+        .await
+        .unwrap_or_else(|e| {
+            eprintln!(
+                "Failed to read the user's email for the unlimited check: {}",
+                e
+            );
+            None
+        });
+    email.is_some_and(|e| emails.contains(&e.trim().to_lowercase()))
 }
 
 /// One scan on an active Team / Enterprise plan. A single UPDATE adds
@@ -1169,6 +1210,19 @@ fn scans_running_for(user_id: Uuid) -> i32 {
 /// monthly plan - its renewal date; yearly plan - the next monthly
 /// anniversary of when it was bought (never later than its renewal).
 pub async fn get_scan_usage(pool: &Pool<Postgres>, user_id: Uuid) -> Value {
+    let mut usage = plan_scan_usage(pool, user_id).await;
+    // A test account (SAFELY_UNLIMITED_EMAILS): its plan's name, nothing
+    // used, no limit - the extension shows "0/Unlimited".
+    if is_unlimited_user(pool, user_id).await {
+        usage["used"] = json!(0);
+        usage["limit"] = Value::Null;
+        usage["resets_on"] = Value::Null;
+    }
+    usage
+}
+
+/// get_scan_usage for an ordinary account.
+async fn plan_scan_usage(pool: &Pool<Postgres>, user_id: Uuid) -> Value {
     let paid: Option<(String, String, i32, Option<DateTime<Utc>>)> = sqlx::query_as(concat!(
         "SELECT plan_name, billing_interval,
              CASE WHEN ",
@@ -1257,6 +1311,21 @@ mod scans_running_tests {
         assert_eq!(scans_running_for(b), 1);
         scan_ended(b);
         assert_eq!(scans_running_for(b), 0);
+    }
+}
+
+#[cfg(test)]
+mod unlimited_tests {
+    use super::emails_in;
+
+    #[test]
+    fn the_unlimited_list_reads_any_separator_and_ignores_case() {
+        assert_eq!(
+            emails_in(" Me@Example.com, test@example.com;x@y.io "),
+            vec!["me@example.com", "test@example.com", "x@y.io"]
+        );
+        assert!(emails_in("").is_empty());
+        assert!(emails_in("not-an-email").is_empty());
     }
 }
 
