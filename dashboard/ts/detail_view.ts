@@ -803,8 +803,162 @@ function signalRow(s: DetailSignal, extra: boolean): string {
   });
 }
 
+// ---- Outside records ---------------------------------------------------
+// What official lists, trade fairs and review sites say about the seller
+// (backend services/sources/databases/). Their own section, in groups,
+// instead of sitting between the listing's own checks. The same groups
+// and order as the extension (extension/ts/tabs/intelligence.ts) -
+// change both together.
+const OUTSIDE_GROUPS: [string, string, string[]][] = [
+  [
+    "dash.outside.official_lists",
+    "Official lists",
+    [
+      "Sanctions lists",
+      "Company register (GLEIF)",
+      "Company number",
+      "Official register",
+      "EU VAT number",
+      "US stock market (SEC)",
+      "US government register (SAM.gov)",
+      "China Customs AEO",
+    ],
+  ],
+  ["dash.outside.reputation", "Reputation", ["Reclame Aqui", "BBB rating"]],
+  [
+    "dash.outside.trade_shows",
+    "Trade shows and chambers",
+    [
+      "Canton Fair",
+      "HKTDC fair",
+      "US trade show",
+      "Brazil trade show",
+      "France trade show",
+      "Chamber of commerce",
+    ],
+  ],
+  [
+    "dash.outside.website_history",
+    "Website history",
+    ["Website history", "Website traffic", "Security certificate"],
+  ],
+];
+
+function isOutsideRecord(s: DetailSignal): boolean {
+  return OUTSIDE_GROUPS.some(([, , labels]) => labels.indexOf(s.label) !== -1);
+}
+
+// Warnings first, then good signs, then notes.
+function outsideOrder(s: DetailSignal): number {
+  return isFlagged(s.type) ? 0 : s.type === "good" ? 1 : 2;
+}
+
+// The web addresses in a check's text, and the text without them
+// ("... Exhibitor page: https://..." -> "..."): each address becomes a
+// button instead.
+function splitLinks(text: string): { text: string; links: string[] } {
+  const links = (text.match(/https?:\/\/[^\s)]+/g) || []).map((u) => u.replace(/[.,;]+$/, ""));
+  let rest = text.replace(/:?\s*https?:\/\/[^\s)]+/g, "").trim();
+  // A label left alone at the end ("... own. Exhibitor page").
+  rest = rest.replace(/([.!?])\s+[^.!?]{1,40}$/, "$1");
+  return { text: rest, links: links.filter((u, i) => links.indexOf(u) === i) };
+}
+
+function siteName(url: string): string {
+  return url
+    .replace(/^https?:\/\//, "")
+    .split(/[/?#]/)[0]
+    .replace(/^www\./, "");
+}
+
+const OUT_ICON =
+  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17L17 7"/><path d="M8 7h9v9"/></svg>';
+
+function sourceButtons(links: string[]): string {
+  if (links.length === 0) return "";
+  return (
+    '<span class="d-sources">' +
+    links
+      .map(
+        (url) =>
+          '<a class="d-source-btn" href="' +
+          escapeHtml(url) +
+          '" target="_blank" rel="noopener noreferrer">' +
+          escapeHtml(t("dash.outside.open_on", "Open on {site}").replace("{site}", siteName(url))) +
+          OUT_ICON +
+          "</a>",
+      )
+      .join("") +
+    "</span>"
+  );
+}
+
+function outsideRow(s: DetailSignal): string {
+  const type = isFlagged(s.type) ? "flag" : s.type === "info" ? "info" : "ok";
+  const { text, links } = splitLinks(capitalizeFirst((s.sub || "").trim()));
+  return detailRow({
+    mark: mark(type),
+    title: translateSignalLabel(s.label),
+    value: translateSignalValue(s.value),
+    moreHTML: text || links.length ? escapeHtml(text) + sourceButtons(links) : "",
+  });
+}
+
+// "1 warning · 3 good signs · 2 notes".
+function outsideSummary(records: DetailSignal[]): string {
+  const warnings = records.filter((s) => isFlagged(s.type)).length;
+  const good = records.filter((s) => s.type === "good").length;
+  const notes = records.length - warnings - good;
+  const count = (n: number, oneKey: string, one: string, manyKey: string, many: string) =>
+    n === 1 ? t(oneKey, one) : t(manyKey, many).replace("{n}", String(n));
+  const parts: string[] = [];
+  if (warnings > 0)
+    parts.push(count(warnings, "dash.outside.one_warning", "1 warning", "dash.outside.warnings", "{n} warnings"));
+  if (good > 0)
+    parts.push(count(good, "dash.outside.one_good", "1 good sign", "dash.outside.good", "{n} good signs"));
+  if (notes > 0) parts.push(count(notes, "dash.outside.one_note", "1 note", "dash.outside.notes", "{n} notes"));
+  return parts.join(" · ");
+}
+
+function buildOutsideRecords(signals: DetailSignal[]): string {
+  const records = signals.filter(isOutsideRecord);
+  if (records.length === 0) return "";
+  const groups = OUTSIDE_GROUPS.map(([key, name, labels]) => {
+    const inGroup = records
+      .filter((s) => labels.indexOf(s.label) !== -1)
+      .sort((a, b) => outsideOrder(a) - outsideOrder(b));
+    if (inGroup.length === 0) return "";
+    return (
+      '<div class="d-subheading">' +
+      escapeHtml(t(key, name)) +
+      '</div><div class="d-rows">' +
+      inGroup.map(outsideRow).join("") +
+      "</div>"
+    );
+  }).join("");
+  return (
+    '<div class="d-outside">' +
+    '<div class="d-heading">' +
+    escapeHtml(t("dash.outside.title", "Outside records")) +
+    '</div><div class="d-section-note">' +
+    escapeHtml(
+      t(
+        "dash.outside.note",
+        "What official lists, trade fairs and review sites say about this seller.",
+      ),
+    ) +
+    '</div><div class="d-section-summary">' +
+    escapeHtml(outsideSummary(records)) +
+    "</div>" +
+    groups +
+    "</div>"
+  );
+}
+
 function buildDetailsTab(data: DetailResponse): string {
-  const signals = data.signals || [];
+  const all = data.signals || [];
+  // The listing's own checks; outside records have their own section.
+  const signals = all.filter((s) => !isOutsideRecord(s));
   const flagged = signals.filter((s) => isFlagged(s.type));
   const fine = signals.filter((s) => !isFlagged(s.type));
 
@@ -849,6 +1003,7 @@ function buildDetailsTab(data: DetailResponse): string {
   const results = data.social_candidates || [];
   return (
     html +
+    buildOutsideRecords(all) +
     buildPresence(results.filter((r) => WEB_SCAM_ROWS.indexOf(r.platform) === -1)) +
     buildScamWarnings(results.filter((r) => WEB_SCAM_ROWS.indexOf(r.platform) !== -1)) +
     buildBeforeYouPay(data)

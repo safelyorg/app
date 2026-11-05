@@ -110,6 +110,132 @@
             extra,
         });
     }
+    // ── Outside records ──
+    // What official lists, trade fairs and review sites say about the
+    // seller (backend services/sources/databases/). They get their own
+    // section, in groups, instead of sitting between the listing's own
+    // checks. The same groups and order as the dashboard
+    // (dashboard/ts/detail_view.ts) - change both together.
+    const OUTSIDE_GROUPS = [
+        [
+            "Official lists",
+            [
+                "Sanctions lists",
+                "Company register (GLEIF)",
+                "Company number",
+                "Official register",
+                "EU VAT number",
+                "US stock market (SEC)",
+                "US government register (SAM.gov)",
+                "China Customs AEO",
+            ],
+        ],
+        ["Reputation", ["Reclame Aqui", "BBB rating"]],
+        [
+            "Trade shows and chambers",
+            [
+                "Canton Fair",
+                "HKTDC fair",
+                "US trade show",
+                "Brazil trade show",
+                "France trade show",
+                "Chamber of commerce",
+            ],
+        ],
+        ["Website history", ["Website history", "Website traffic", "Security certificate"]],
+    ];
+    function isOutsideRecord(s) {
+        return OUTSIDE_GROUPS.some(([, labels]) => labels.indexOf(s.label) !== -1);
+    }
+    // Warnings first, then good signs, then notes.
+    function outsideOrder(s) {
+        return isFlagged(s.type) ? 0 : s.type === "good" ? 1 : 2;
+    }
+    // The web addresses in a check's text, and the text without them
+    // ("... Exhibitor page: https://..." -> "..."): each address becomes
+    // a button instead.
+    function splitLinks(text) {
+        const links = (text.match(/https?:\/\/[^\s)]+/g) || []).map((u) => u.replace(/[.,;]+$/, ""));
+        let rest = text.replace(/:?\s*https?:\/\/[^\s)]+/g, "").trim();
+        // A label left alone at the end ("... own. Exhibitor page").
+        rest = rest.replace(/([.!?])\s+[^.!?]{1,40}$/, "$1");
+        return { text: rest, links: links.filter((u, i) => links.indexOf(u) === i) };
+    }
+    function siteName(url) {
+        const host = url.replace(/^https?:\/\//, "").split(/[/?#]/)[0];
+        return host.replace(/^www\./, "");
+    }
+    const OUT_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17L17 7"/><path d="M8 7h9v9"/></svg>';
+    function sourceButtons(links) {
+        if (links.length === 0)
+            return "";
+        return ('<span class="safely-sources">' +
+            links
+                .map((url) => '<a class="safely-source-btn" href="' +
+                esc(url) +
+                '" target="_blank" rel="noopener noreferrer">' +
+                esc(tr("Open on {site}", { site: siteName(url) })) +
+                OUT_ICON +
+                "</a>")
+                .join("") +
+            "</span>");
+    }
+    function outsideRow(s) {
+        const flagged = isFlagged(s.type);
+        const { text, links } = splitLinks(capitalizeFirst((s.sub || "").trim()));
+        return row({
+            mark: '<span class="safely-mark ' +
+                (flagged ? "safely-mark-flag" : "safely-mark-ok") +
+                '">' +
+                (flagged ? "!" : s.type === "info" ? "i" : SAFELY_CHECK_ICON) +
+                "</span>",
+            title: tr(s.label),
+            value: tr(capitalizeFirst(s.value)),
+            moreHTML: text || links.length ? esc(text) + sourceButtons(links) : "",
+        });
+    }
+    // "1 warning · 3 good signs · 2 notes".
+    function outsideSummary(records) {
+        const warnings = records.filter((s) => isFlagged(s.type)).length;
+        const good = records.filter((s) => s.type === "good").length;
+        const notes = records.length - warnings - good;
+        const parts = [];
+        if (warnings > 0)
+            parts.push(warnings === 1 ? tr("1 warning") : tr("{n} warnings", { n: warnings }));
+        if (good > 0)
+            parts.push(good === 1 ? tr("1 good sign") : tr("{n} good signs", { n: good }));
+        if (notes > 0)
+            parts.push(notes === 1 ? tr("1 note") : tr("{n} notes", { n: notes }));
+        return parts.join(" · ");
+    }
+    function buildOutsideRecords(signals) {
+        const records = signals.filter(isOutsideRecord);
+        if (records.length === 0)
+            return "";
+        const groups = OUTSIDE_GROUPS.map(([name, labels]) => {
+            const inGroup = records
+                .filter((s) => labels.indexOf(s.label) !== -1)
+                .sort((a, b) => outsideOrder(a) - outsideOrder(b));
+            if (inGroup.length === 0)
+                return "";
+            return ('<div class="safely-subheading">' +
+                esc(tr(name)) +
+                '</div><div class="safely-rows">' +
+                inGroup.map(outsideRow).join("") +
+                "</div>");
+        }).join("");
+        return ('<div class="safely-section safely-outside">' +
+            '<div class="safely-heading">' +
+            esc(tr("Outside records")) +
+            "</div>" +
+            '<div class="safely-section-note">' +
+            esc(tr("What official lists, trade fairs and review sites say about this seller.")) +
+            '</div><div class="safely-section-summary">' +
+            esc(outsideSummary(records)) +
+            "</div>" +
+            groups +
+            "</div>");
+    }
     function buildCounts(flagged, fine) {
         return ('<div class="safely-counts">' +
             '<div class="safely-count' +
@@ -395,9 +521,12 @@
     });
     function buildDetailsTab() {
         const signals = (window.__safelyData || {}).signals || [];
-        const flagged = signals.filter((s) => isFlagged(s.type)).length;
-        return (buildCounts(flagged, signals.length - flagged) +
-            buildSignalLists(signals) +
+        // The listing's own checks; outside records have their own section.
+        const own = signals.filter((s) => !isOutsideRecord(s));
+        const flagged = own.filter((s) => isFlagged(s.type)).length;
+        return (buildCounts(flagged, own.length - flagged) +
+            buildSignalLists(own) +
+            buildOutsideRecords(signals) +
             buildPresence() +
             buildScamWarnings() +
             buildRecommendedChecks(signals));

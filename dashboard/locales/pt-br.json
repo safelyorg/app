@@ -383,5 +383,18 @@
   "dash.before.site_risky_payment": "Não pague por transferência bancária, Pix ou cripto",
   "dash.before.site_risky_payment_text": "Esta loja só mostra formas de pagamento que não podem ser estornadas. Pague só com cartão ou PayPal. Se a loja não aceitar, não compre.",
   "dash.before.company_account": "Pague só para a conta bancária da própria empresa",
-  "dash.before.company_account_text": "Pague por transferência bancária só para uma conta no nome da própria empresa, nunca para uma pessoa. Peça os dados bancários por escrito e confira se o nome é o mesmo da empresa."
+  "dash.before.company_account_text": "Pague por transferência bancária só para uma conta no nome da própria empresa, nunca para uma pessoa. Peça os dados bancários por escrito e confira se o nome é o mesmo da empresa.",
+  "dash.outside.title": "Registros externos",
+  "dash.outside.note": "O que listas oficiais, feiras e sites de avaliação dizem sobre este vendedor.",
+  "dash.outside.official_lists": "Listas oficiais",
+  "dash.outside.reputation": "Reputação",
+  "dash.outside.trade_shows": "Feiras e câmaras de comércio",
+  "dash.outside.website_history": "Histórico do site",
+  "dash.outside.open_on": "Abrir em {site}",
+  "dash.outside.one_warning": "1 alerta",
+  "dash.outside.warnings": "{n} alertas",
+  "dash.outside.one_good": "1 bom sinal",
+  "dash.outside.good": "{n} bons sinais",
+  "dash.outside.one_note": "1 observação",
+  "dash.outside.notes": "{n} observações"
 }

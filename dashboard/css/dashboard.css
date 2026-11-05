@@ -528,3 +528,63 @@ button.d-row-head:hover {
         transition-duration: 0.01ms !important;
     }
 }
+
+/* ── Outside records (official lists, fairs, review sites) ── */
+.d-outside {
+    margin-top: 26px;
+    padding-top: 4px;
+    border-top: 1px solid rgb(var(--c-line));
+}
+.d-outside > .d-heading {
+    margin-bottom: 2px;
+}
+.d-section-note {
+    font-size: 13px;
+    line-height: 1.45;
+    color: rgb(var(--c-muted));
+}
+.d-section-summary {
+    display: inline-block;
+    margin-top: 8px;
+    padding: 3px 10px;
+    border-radius: 999px;
+    background: rgb(var(--c-surface3));
+    font-size: 12px;
+    font-weight: 600;
+    color: rgb(var(--c-ink) / 0.85);
+}
+.d-subheading {
+    margin: 16px 0 8px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: rgb(var(--c-muted));
+}
+.d-sources {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 8px;
+}
+.d-text a.d-source-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 10px;
+    border-radius: 999px;
+    box-shadow: inset 0 0 0 1px rgb(var(--c-line));
+    background: rgb(var(--c-surface));
+    font-size: 12px;
+    font-weight: 600;
+    color: rgb(var(--c-ink));
+    text-decoration: none;
+    transition: box-shadow 0.15s ease;
+}
+.d-text a.d-source-btn:hover {
+    box-shadow: inset 0 0 0 1.5px rgb(var(--c-ink));
+}
+.d-source-btn svg {
+    width: 12px;
+    height: 12px;
+}

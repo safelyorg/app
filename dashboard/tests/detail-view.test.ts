@@ -209,6 +209,62 @@ describe("result page - Details tab", () => {
   });
 });
 
+describe("result page - outside records", () => {
+  it("is left out when there are no outside records", () => {
+    const tab = html(buildDetailsTab(scan({ signals: [signal("Phone", "Missing", "caution")] })));
+    expect(tab.querySelector(".d-outside")).toBeNull();
+  });
+
+  it("keeps them out of the counts and puts them in groups, warnings first", () => {
+    const tab = html(
+      buildDetailsTab(
+        scan({
+          signals: [
+            signal("Phone", "Missing", "caution"),
+            signal("Canton Fair", "Canton Fair exhibitor", "good"),
+            signal("Company number", "Not found", "info"),
+            signal("EU VAT number", "VAT number not active", "caution"),
+          ],
+        }),
+      ),
+    );
+    expect(tab.querySelectorAll(".d-count b")[0].textContent).toBe("1");
+    expect(tab.querySelectorAll(".d-count b")[1].textContent).toBe("0");
+    const outside = tab.querySelector(".d-outside")!;
+    const subs = Array.from(outside.querySelectorAll(".d-subheading")).map((el) => el.textContent);
+    expect(subs).toEqual(["Official lists", "Trade shows and chambers"]);
+    const first = outside.querySelector(".d-subheading + .d-rows")!;
+    expect(first.querySelector(".d-row .d-mark-flag")).not.toBeNull();
+    expect(first.querySelector(".d-title")!.firstChild!.textContent).toBe("EU VAT number");
+    expect(outside.querySelector(".d-section-summary")!.textContent).toBe(
+      "1 warning · 1 good sign · 1 note",
+    );
+  });
+
+  it("turns a link in the text into an 'Open on' button", () => {
+    const tab = html(
+      buildDetailsTab(
+        scan({
+          signals: [
+            signal(
+              "Canton Fair",
+              "Canton Fair exhibitor",
+              "good",
+              "Listed at the Canton Fair. Exhibitor page: https://www.cantonfair.org.cn/en-US/shops/123",
+            ),
+          ],
+        }),
+      ),
+    );
+    const btn = tab.querySelector("a.d-source-btn") as HTMLAnchorElement;
+    expect(btn.href).toBe("https://www.cantonfair.org.cn/en-US/shops/123");
+    expect(btn.textContent).toBe("Open on cantonfair.org.cn");
+    expect(tab.querySelector(".d-outside .d-text")!.textContent).toBe(
+      "Listed at the Canton Fair.Open on cantonfair.org.cn",
+    );
+  });
+});
+
 describe("result page - online presence", () => {
   const found = (platform: string, urls: string[]) => ({
     platform,

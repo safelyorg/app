@@ -50,3 +50,69 @@
 .safely-ticked .safely-row-title {
     color: var(--mute);
 }
+
+/* ── Outside records (official lists, fairs, review sites) ── */
+.safely-outside {
+    margin-top: 24px;
+    padding-top: 4px;
+    border-top: 1px solid var(--line);
+}
+.safely-outside > .safely-heading {
+    margin-bottom: 2px;
+}
+.safely-section-note {
+    font-size: 12px;
+    line-height: 1.45;
+    color: var(--mute);
+}
+.safely-section-summary {
+    display: inline-block;
+    margin-top: 8px;
+    padding: 3px 10px;
+    border-radius: 999px;
+    background: var(--surface);
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--ink-2);
+}
+.safely-subheading {
+    margin: 14px 0 6px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--mute);
+}
+.safely-sources {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 8px;
+}
+.safely-source-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 10px;
+    border-radius: 999px;
+    box-shadow: inset 0 0 0 1px var(--line);
+    background: var(--bg);
+    font-size: 12px;
+    font-weight: 600;
+    text-decoration: none;
+    transition: box-shadow 0.15s ease;
+}
+.safely-source-btn svg {
+    width: 12px;
+    height: 12px;
+}
+.safely-source-btn:hover {
+    box-shadow: inset 0 0 0 1.5px var(--ink);
+}
+/* The host page's own link colours must not win. */
+#safely-root a.safely-source-btn,
+#safely-root a.safely-source-btn:link,
+#safely-root a.safely-source-btn:visited {
+    color: var(--ink) !important;
+    text-decoration: none !important;
+}
