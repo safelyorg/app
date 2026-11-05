@@ -9,7 +9,7 @@
     "cost: 'free', 'small_fee' or 'paid'. key_env: the name of the key in .env on the server (the key itself is never written here).",
     "step: the build step that adds the source (see claude/databases-plan.md in the Safely project).",
     "cards: same as b2b.json (warning_points, points_when_value, enabled). Every database card has group 'outside_records', so the extension and dashboard can show them in their own section.",
-    "Found = a good sign. Not found = NOT a warning. Only a false claim (fake company number, fake fair) or a sanctions match is a warning."
+    "Found = a good sign. Not found = NOT a warning: a 'Not found' card (information only, no points) when the check really ran, no card when a site did not answer. Only a false claim (fake company number, fake fair) or a sanctions match is a warning."
   ],
   "scoring": {
     "default_warning_points": 15,
@@ -202,7 +202,7 @@
     {
       "card": "Chamber of commerce",
       "group": "outside_records",
-      "what_it_checks": "Whether a company with exactly the seller's name is a member of a chamber of commerce whose member pages are public: the Hong Kong General Chamber of Commerce (HKGCC, for Hong Kong and China sellers) or the thousands of local chambers on ChamberMaster / GrowthZone (for US sellers and sellers with no country file). One Google search (Serper) finds the member page, which is then opened to read the name. A member is a good sign; a member whose website differs from the seller's is information only (maybe another company with the same name); not a member shows no card. Needs CHAMBERS_CHECK_ENABLED=true and SERPER_API_KEY in .env.",
+      "what_it_checks": "Whether a company with exactly the seller's name is a member of a chamber of commerce whose member pages are public: the Hong Kong General Chamber of Commerce (HKGCC, for Hong Kong and China sellers) or the thousands of local chambers on ChamberMaster / GrowthZone (for US sellers and sellers with no country file). One Google search (Serper) finds the member page, which is then opened to read the name. A member is a good sign; a member whose website differs from the seller's is information only (maybe another company with the same name); not a member is 'Not found' (information only, never a warning; no card when a member page could not be opened). Needs CHAMBERS_CHECK_ENABLED=true and SERPER_API_KEY in .env. Only searched for US and Canada sellers (ChamberMaster) and China / Hong Kong sellers (HKGCC); for every other country, or when the page gives no country, nothing is searched and the card says 'Not checked' (information only).",
       "reads": [
         "Company name",
         "Country",
@@ -212,7 +212,7 @@
     {
       "card": "Canton Fair",
       "group": "outside_records",
-      "what_it_checks": "Whether a company with exactly the seller's name is an exhibitor at the current Canton Fair session (the fair's own exhibitor search, as 365.cantonfair.org.cn uses it; free, no key). Asked for China and Hong Kong sellers, and for any seller that says 'Canton Fair' about itself. An exhibitor is a good sign (shows session, phase, section and booth). A seller that claims the fair but is not in this session's list is a warning; otherwise not an exhibitor shows no card. Needs TRADE_SHOWS_CHECK_ENABLED=true in .env.",
+      "what_it_checks": "Whether a company with exactly the seller's name is an exhibitor at the current Canton Fair session (the fair's own exhibitor search, as 365.cantonfair.org.cn uses it; free, no key). Asked for China and Hong Kong sellers, and for any seller that says 'Canton Fair' about itself. An exhibitor is a good sign (shows session, phase, section and booth). A seller that claims the fair but is not in this session's list is a warning; otherwise not an exhibitor is 'Not found' (information only). Needs TRADE_SHOWS_CHECK_ENABLED=true in .env.",
       "reads": [
         "Company name",
         "Country",
@@ -232,7 +232,7 @@
     {
       "card": "HKTDC fair",
       "group": "outside_records",
-      "what_it_checks": "Whether a company with exactly the seller's name is an exhibitor at the HKTDC fairs Safely reads (HKTDC_FAIRS in trade_shows.rs; now the Hong Kong Electronics Fair, Spring Edition). Each fair's exhibitor search page is opened with the name and its data read: booth, and the HKTDC fairs the company exhibited at in recent years. Asked for China and Hong Kong sellers. An exhibitor is a good sign; not found shows no card (HKTDC runs many fairs, so it is never a warning). Needs TRADE_SHOWS_CHECK_ENABLED=true in .env.",
+      "what_it_checks": "Whether a company with exactly the seller's name is an exhibitor at the HKTDC fairs Safely reads (HKTDC_FAIRS in trade_shows.rs; now the Hong Kong Electronics Fair, Spring Edition). Each fair's exhibitor search page is opened with the name and its data read: booth, and the HKTDC fairs the company exhibited at in recent years. Asked for China and Hong Kong sellers. An exhibitor is a good sign; not found is 'Not found' (information only - HKTDC runs many fairs, so it is never a warning). Needs TRADE_SHOWS_CHECK_ENABLED=true in .env.",
       "reads": [
         "Company name",
         "Country"
@@ -241,7 +241,7 @@
     {
       "card": "US trade show",
       "group": "outside_records",
-      "what_it_checks": "Whether a company with exactly the seller's name is an exhibitor at the US fairs on Map Your Show that Safely reads (MYS_SHOWS in trade_shows.rs; now CES). The show's own exhibitor search (ajax/remote-proxy.cfm?action=search) is asked with the name. Asked for every seller. An exhibitor is a good sign (show, year, booths, link); not found shows no card. Needs TRADE_SHOWS_CHECK_ENABLED=true in .env.",
+      "what_it_checks": "Whether a company with exactly the seller's name is an exhibitor at the US fairs on Map Your Show that Safely reads (MYS_SHOWS in trade_shows.rs; now CES). The show's own exhibitor search (ajax/remote-proxy.cfm?action=search) is asked with the name. Asked for every seller. An exhibitor is a good sign (show, year, booths, link); not found is 'Not found' (information only), shown to US sellers only. Needs TRADE_SHOWS_CHECK_ENABLED=true in .env.",
       "reads": [
         "Company name"
       ]
@@ -249,7 +249,7 @@
     {
       "card": "Brazil trade show",
       "group": "outside_records",
-      "what_it_checks": "Whether a company with exactly the seller's name is an exhibitor at the Brazil fairs Safely reads (in trade_shows.rs): on Informa's Swapcard platform (SWAPCARD_FAIRS: Hospitalar 2027, Fispal Tecnologia 2026, Fispal Food Service 2026 - each whole list read once a day) and on RX's Algolia search (ALGOLIA_FAIRS: Feicon 2027 - one search per scan, with the public search key the fair's page gives every visitor). Asked for every seller. An exhibitor is a good sign (fair, booth, link to the list); not found shows no card. Needs TRADE_SHOWS_CHECK_ENABLED=true in .env.",
+      "what_it_checks": "Whether a company with exactly the seller's name is an exhibitor at the Brazil fairs Safely reads (in trade_shows.rs): on Informa's Swapcard platform (SWAPCARD_FAIRS: Hospitalar 2027, Fispal Tecnologia 2026, Fispal Food Service 2026 - each whole list read once a day) and on RX's Algolia search (ALGOLIA_FAIRS: Feicon 2027 - one search per scan, with the public search key the fair's page gives every visitor). Asked for every seller. An exhibitor is a good sign (fair, booth, link to the list); not found is one 'Not found' card naming every Brazil fair searched (information only), shown to Brazil sellers only. Needs TRADE_SHOWS_CHECK_ENABLED=true in .env.",
       "reads": [
         "Company name"
       ]
@@ -257,15 +257,24 @@
     {
       "card": "France trade show",
       "group": "outside_records",
-      "what_it_checks": "Whether a company with exactly the seller's name (Maison&Objet: the company or its brand) is an exhibitor at the French fairs Safely reads (ALGOLIA_FAIRS in trade_shows.rs; now SIAL Paris 2026 and Maison&Objet Paris, searched on Algolia with the public search key the fair's page gives every visitor). One search per scan. Asked for every seller. An exhibitor is a good sign (fair, stand, link to its exhibitor page); not found shows no card. Needs TRADE_SHOWS_CHECK_ENABLED=true in .env.",
+      "what_it_checks": "Whether a company with exactly the seller's name (Maison&Objet: the company or its brand) is an exhibitor at the French fairs Safely reads (ALGOLIA_FAIRS in trade_shows.rs; now SIAL Paris 2026 and Maison&Objet Paris, searched on Algolia with the public search key the fair's page gives every visitor). One search per scan. Asked for every seller. An exhibitor is a good sign (fair, stand, link to its exhibitor page); not found is one 'Not found' card naming every French fair searched (information only), shown to France sellers only. Needs TRADE_SHOWS_CHECK_ENABLED=true in .env.",
       "reads": [
         "Company name"
       ]
     },
     {
+      "card": "Trade shows",
+      "group": "outside_records",
+      "what_it_checks": "Shown when Safely reads no trade fair lists for the seller's country (only China/Hong Kong, the USA, Brazil and France have them): 'Not checked', information only, never a warning and no points. It says so plainly and adds how many fairs in other countries were looked at without finding the name. Not shown when a fair in another country lists the seller (that fair's own card shows instead). Needs TRADE_SHOWS_CHECK_ENABLED=true in .env.",
+      "reads": [
+        "Company name",
+        "Country"
+      ]
+    },
+    {
       "card": "Reclame Aqui",
       "group": "outside_records",
-      "what_it_checks": "The seller's reputation on Reclame Aqui, Brazil's biggest complaint site. One Google search (Serper) finds the company's page (reclameaqui.com.br/empresa/...), which is read through ScraperAPI from a Brazilian address (the site refuses many other countries); the grade, score, complaints and answered/solved rates are in the page's own tags. The page counts only when its CNPJ is the seller's, or (no CNPJ given) its whole name is the seller's. 'Não recomendada' is a warning, 'Ruim' a smaller one; 'Regular' or no grade yet is information only; 'Bom', 'Ótimo' and 'RA1000' are good signs; not on Reclame Aqui shows no card. Asked for Brazil sellers and any seller that gives a CNPJ; answers kept 7 days. Needs RECLAME_AQUI_CHECK_ENABLED=true, SERPER_API_KEY and SCRAPERAPI_KEY in .env.",
+      "what_it_checks": "The seller's reputation on Reclame Aqui, Brazil's biggest complaint site. One Google search (Serper) finds the company's page (reclameaqui.com.br/empresa/...), which is read through ScraperAPI from a Brazilian address (the site refuses many other countries); the grade, score, complaints and answered/solved rates are in the page's own tags. The page counts only when its CNPJ is the seller's, or (no CNPJ given) its whole name is the seller's. 'Não recomendada' is a warning, 'Ruim' a smaller one; 'Regular' or no grade yet is information only; 'Bom', 'Ótimo' and 'RA1000' are good signs; not on Reclame Aqui is 'Not found' (information only; no card when a page could not be read). Asked for Brazil sellers and any seller that gives a CNPJ; answers kept 7 days. Needs RECLAME_AQUI_CHECK_ENABLED=true, SERPER_API_KEY and SCRAPERAPI_KEY in .env.",
       "reads": [
         "Company name",
         "Country",
@@ -279,7 +288,7 @@
     {
       "card": "BBB rating",
       "group": "outside_records",
-      "what_it_checks": "The seller's rating (A+ to F) and accreditation at the Better Business Bureau. BBB's search page (bbb.org/search?find_text={name}&find_country=USA) carries its results as data in the page (__PRELOADED_STATE__); it is read through ScraperAPI from the USA (BBB blocks many visitors with a robot check). A business counts only when its whole name is the seller's. F is a warning, D a smaller one; A+ to A- a good sign; B, C or not rated information only; not on BBB shows no card. Asked for US sellers; answers kept 7 days. Needs BBB_CHECK_ENABLED=true and SCRAPERAPI_KEY in .env.",
+      "what_it_checks": "The seller's rating (A+ to F) and accreditation at the Better Business Bureau. BBB's search page (bbb.org/search?find_text={name}&find_country=USA) carries its results as data in the page (__PRELOADED_STATE__); it is read through ScraperAPI from the USA (BBB blocks many visitors with a robot check). A business counts only when its whole name is the seller's. F is a warning, D a smaller one; A+ to A- a good sign; B, C or not rated information only; not on BBB is 'Not found' (information only). Asked for US sellers; answers kept 7 days. Needs BBB_CHECK_ENABLED=true and SCRAPERAPI_KEY in .env.",
       "reads": [
         "Company name",
         "Country"

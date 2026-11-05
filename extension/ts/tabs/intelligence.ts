@@ -184,6 +184,7 @@ interface PlatformCheckResult {
         "US trade show",
         "Brazil trade show",
         "France trade show",
+        "Trade shows",
         "Chamber of commerce",
       ],
     ],
@@ -253,18 +254,6 @@ interface PlatformCheckResult {
     });
   }
 
-  // "1 warning · 3 good signs · 2 notes".
-  function outsideSummary(records: SafelySignal[]): string {
-    const warnings = records.filter((s) => isFlagged(s.type)).length;
-    const good = records.filter((s) => s.type === "good").length;
-    const notes = records.length - warnings - good;
-    const parts: string[] = [];
-    if (warnings > 0) parts.push(warnings === 1 ? tr("1 warning") : tr("{n} warnings", { n: warnings }));
-    if (good > 0) parts.push(good === 1 ? tr("1 good sign") : tr("{n} good signs", { n: good }));
-    if (notes > 0) parts.push(notes === 1 ? tr("1 note") : tr("{n} notes", { n: notes }));
-    return parts.join(" · ");
-  }
-
   function buildOutsideRecords(signals: SafelySignal[]): string {
     const records = signals.filter(isOutsideRecord);
     if (records.length === 0) return "";
@@ -288,8 +277,6 @@ interface PlatformCheckResult {
       "</div>" +
       '<div class="safely-section-note">' +
       esc(tr("What official lists, trade fairs and review sites say about this seller.")) +
-      '</div><div class="safely-section-summary">' +
-      esc(outsideSummary(records)) +
       "</div>" +
       groups +
       "</div>"

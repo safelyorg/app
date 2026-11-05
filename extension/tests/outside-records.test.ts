@@ -43,7 +43,7 @@ describe("Details tab - outside records", () => {
     expect(outside()?.textContent).toContain("BBB rating");
   });
 
-  it("puts records in groups, warnings first, with a summary", () => {
+  it("puts records in groups, warnings first, notes last", () => {
     showResult(
       supplierData({
         signals: [
@@ -62,9 +62,11 @@ describe("Details tab - outside records", () => {
     );
     expect(titles[0]).toBe("EU VAT number");
     expect(titles[titles.length - 1]).toBe("Company number");
-    expect(outside()!.querySelector(".safely-section-summary")?.textContent).toBe(
-      "1 warning · 2 good signs · 1 note",
-    );
+    // No count line: each row speaks for itself.
+    expect(outside()!.querySelector(".safely-section-summary")).toBeNull();
+    // A check that found nothing still shows, as a note at the end.
+    const notFound = Array.from(firstGroup.querySelectorAll(".safely-row")).pop()!;
+    expect(notFound.querySelector(".safely-mark-ok")?.textContent).toBe("i");
   });
 
   it("turns a link in the text into an 'Open on' button", () => {

@@ -20,6 +20,13 @@
 //!
 //! Found = a good sign. Not found = not a warning. Only a false claim or
 //! a sanctions match is a warning.
+//!
+//! A check that ran and found nothing gives a "Not found" card
+//! (information only, no points), so the buyer sees what was looked at.
+//! A check that could not finish (a site did not answer) gives no card:
+//! "not found" must only mean the list really was searched. A check
+//! Safely has no list for in the seller's country (chambers, trade
+//! fairs) gives a "Not checked" card that says so - never "Not found".
 
 pub mod bbb;
 pub mod brazil;
@@ -40,6 +47,85 @@ use crate::{models::analysis::Signal, services::shared::standards::databases_for
 
 /// The category of every outside-records card.
 pub const OUTSIDE_RECORDS: &str = "outside_records";
+
+/// The value of a check that ran and found nothing.
+pub const NOT_FOUND: &str = "Not found";
+/// The value of a check Safely has no list for in the seller's country.
+pub const NOT_CHECKED: &str = "Not checked";
+
+/// A "Not found" card: information only, never adds to the score
+/// (analysis.rs and websites/mod.rs leave outside "info" cards out).
+pub fn not_found_card(label: &str, sub: String) -> Signal {
+    Signal {
+        label: label.to_string(),
+        sub,
+        value: NOT_FOUND.to_string(),
+        signal_type: "info".to_string(),
+        category: OUTSIDE_RECORDS.to_string(),
+        check_type: "existence".to_string(),
+    }
+}
+
+/// A "Not checked" card: Safely has nothing to search for this seller's
+/// country. Information only, no points.
+pub fn not_checked_card(label: &str, sub: String) -> Signal {
+    Signal {
+        value: NOT_CHECKED.to_string(),
+        ..not_found_card(label, sub)
+    }
+}
+
+/// The seller's country in words for a card: the country file's name
+/// ("Brazil"), else the last part of what the page wrote ("Naju-si,
+/// South Korea" -> "South Korea"). None when the page gives none.
+pub fn country_in_words(country: Option<&str>) -> Option<String> {
+    let location = country.map(str::trim).filter(|c| !c.is_empty())?;
+    if let Some(file) = databases_for_country(location) {
+        return Some(file.name.clone());
+    }
+    location
+        .rsplit([',', '|', '/', ';'])
+        .map(str::trim)
+        .find(|p| !p.is_empty())
+        .map(str::to_string)
+}
+
+/// "for South Korea", or "for this seller's country" when the page
+/// does not say.
+pub fn for_country(country: Option<&str>) -> String {
+    match country_in_words(country) {
+        Some(c) => format!("for {c}"),
+        None => "for this seller's country (the page does not say which)".to_string(),
+    }
+}
+
+/// The name the lists are searched with. A short code in front of the
+/// full name in brackets ("AT(Korea Agro-Fisheries & Food Trade
+/// Corporation)", Kompass) or after it ("Korea ... Corporation (aT)")
+/// gives the full name; anything else is kept as written ("Huawei
+/// Technologies (Shenzhen) Co., Ltd.", "ABC (Hong Kong)").
+pub fn name_for_lists(name: &str) -> &str {
+    let name = name.trim();
+    let Some(open) = name.find('(') else {
+        return name;
+    };
+    let Some(inner) = name.strip_suffix(')').map(|n| &n[open + 1..]) else {
+        return name;
+    };
+    let (outer, inner) = (name[..open].trim(), inner.trim());
+    if inner.contains(['(', ')']) {
+        return name;
+    }
+    let is_code = |s: &str| !s.is_empty() && s.chars().count() <= 6 && !s.contains(' ');
+    let is_full = |s: &str| s.split_whitespace().count() >= 3;
+    if is_code(outer) && is_full(inner) {
+        inner
+    } else if is_code(inner) && is_full(outer) {
+        outer
+    } else {
+        name
+    }
+}
 
 /// What a scan knows about the seller. Every field is optional: each
 /// check uses what it needs and is skipped without it.
@@ -65,7 +151,7 @@ pub struct SellerFacts {
 /// cards. A check with nothing to go on returns no card.
 pub async fn check_outside_records(facts: &SellerFacts) -> Vec<Signal> {
     let mut cards = Vec::new();
-    let name = facts.company_name.as_deref();
+    let name = facts.company_name.as_deref().map(name_for_lists);
     let country = facts.country.as_deref();
     let (
         sanctions,
@@ -93,7 +179,7 @@ pub async fn check_outside_records(facts: &SellerFacts) -> Vec<Signal> {
         chambers::chamber_signal(name, country, facts.website.as_deref()),
         trade_shows::canton_signal(name, country, facts.about.as_deref()),
         trade_shows::hktdc_signal(name, country),
-        trade_shows::mys_signal(name),
+        trade_shows::mys_signal(name, country),
         trade_shows::swapcard_signal(name),
         trade_shows::algolia_signal(name),
         reclame_aqui::ra_signal(name, country, &facts.company_numbers),
@@ -108,10 +194,11 @@ pub async fn check_outside_records(facts: &SellerFacts) -> Vec<Signal> {
     cards.extend(government);
     cards.extend(chamber);
     cards.extend(canton);
-    cards.extend(hktdc);
-    cards.extend(us_show);
-    cards.extend(swapcard);
-    cards.extend(algolia);
+    cards.extend(trade_shows::fair_cards(
+        name,
+        country,
+        vec![hktdc, us_show, swapcard, algolia],
+    ));
     cards.extend(complaints);
     cards.extend(bbb_rating);
     cards.extend(website);
@@ -139,7 +226,7 @@ async fn company_number_cards(facts: &SellerFacts) -> Vec<Signal> {
     let Some(valid) = checks.iter().find(|c| c.valid) else {
         return cards;
     };
-    let name = facts.company_name.as_deref();
+    let name = facts.company_name.as_deref().map(name_for_lists);
     let register = match country.country.as_str() {
         "brazil" => brazil::look_up(&valid.number).await.map(|entry| {
             numbers::register_card(name, &valid.number, brazil::REGISTER, entry.as_ref())
@@ -154,4 +241,45 @@ async fn company_number_cards(facts: &SellerFacts) -> Vec<Signal> {
     };
     cards.extend(register);
     cards
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_short_code_with_the_full_name_in_brackets_gives_the_full_name() {
+        assert_eq!(
+            name_for_lists("AT(Korea Agro-Fisheries & Food Trade Corporation)"),
+            "Korea Agro-Fisheries & Food Trade Corporation"
+        );
+        assert_eq!(
+            name_for_lists("Korea Agro-Fisheries & Food Trade Corporation (aT)"),
+            "Korea Agro-Fisheries & Food Trade Corporation"
+        );
+        for kept in [
+            "Huawei Technologies (Shenzhen) Co., Ltd.",
+            "ABC (Hong Kong)",
+            "Baseativa (Brazil)",
+            "Guangdong Boyue Trading Co., Ltd.",
+            "Baseativa",
+        ] {
+            assert_eq!(name_for_lists(kept), kept);
+        }
+    }
+
+    #[test]
+    fn the_country_in_words() {
+        assert_eq!(
+            country_in_words(Some("Caxias do Sul / Rio Grande do Sul | Brazil")).as_deref(),
+            Some("Brazil")
+        );
+        assert_eq!(
+            country_in_words(Some("Naju-si, South Korea")).as_deref(),
+            Some("South Korea")
+        );
+        assert_eq!(country_in_words(Some("  ")), None);
+        assert_eq!(for_country(Some("Pakistan")), "for Pakistan");
+        assert!(for_country(None).contains("the page does not say"));
+    }
 }

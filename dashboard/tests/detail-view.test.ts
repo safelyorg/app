@@ -236,9 +236,7 @@ describe("result page - outside records", () => {
     const first = outside.querySelector(".d-subheading + .d-rows")!;
     expect(first.querySelector(".d-row .d-mark-flag")).not.toBeNull();
     expect(first.querySelector(".d-title")!.firstChild!.textContent).toBe("EU VAT number");
-    expect(outside.querySelector(".d-section-summary")!.textContent).toBe(
-      "1 warning · 1 good sign · 1 note",
-    );
+    expect(outside.querySelector(".d-section-summary")).toBeNull();
   });
 
   it("turns a link in the text into an 'Open on' button", () => {

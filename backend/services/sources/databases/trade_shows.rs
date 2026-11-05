@@ -1,8 +1,10 @@
 //! Trade shows: did the seller really have a booth at a fair? A booth
 //! is a good sign (the fair checks its exhibitors and the company paid
-//! for a stand). Not being an exhibitor says nothing, so then no card -
+//! for a stand). Not being an exhibitor says nothing: a "Not found"
+//! card (information only) for the fairs of the seller's own country -
 //! UNLESS the seller says it exhibits there: a claim the fair's own list
-//! does not confirm is a warning (a common lie).
+//! does not confirm is a warning (a common lie). Fairs that did not
+//! answer are left out of "Not found" (fair_cards).
 //!
 //! Built so far: the Canton Fair (China Import and Export Fair, the
 //! biggest fair for Chinese suppliers). Its exhibitor search, the one
@@ -28,7 +30,7 @@
 //! page uses (free, no key):
 //! GET {show}/ajax/remote-proxy.cfm?action=search&search={name}&searchtype=keyword&show=all
 //! Asked for every seller (CES has many Chinese, Korean and US
-//! exhibitors). Only a good sign; not found shows no card.
+//! exhibitors). Only a good sign; not found is a note for sellers of the fair's country.
 //!
 //! And fairs on Swapcard, the event platform Informa uses (Hospitalar
 //! and Fispal Tecnologia / Food Service in Brazil...). Each fair's exhibitor list is read the way its own
@@ -38,7 +40,7 @@
 //!   "extensions": {"persistedQuery": {"version": 1, "sha256Hash": ...}}}]
 //! 50 exhibitors a page. The whole list (Hospitalar 2027: 568) is read
 //! once a day and kept in memory, so a scan adds no request. Asked for
-//! every seller. Only a good sign; not found shows no card.
+//! every seller. Only a good sign; not found is a note for sellers of the fair's country.
 //!
 //! And fairs searched on Algolia (RX's Feicon in Brazil, Comexposium's
 //! SIAL Paris and Maison&Objet in France...). Their exhibitor lists are searched
@@ -47,7 +49,7 @@
 //! POST https://{app}-dsn.algolia.net/1/indexes/{index}/query
 //!   {"params": "query={name}&filters=recordType:exhibitor AND locale:pt-br AND eventEditionId:{edition}&typoTolerance=false"}
 //! One request per fair per scan. Asked for every seller. Only a good
-//! sign; not found shows no card.
+//! sign; not found is a note for sellers of the fair's country.
 //!
 //! An exhibitor counts only when its WHOLE name is the seller's name
 //! (legal forms and punctuation left out).
@@ -58,7 +60,10 @@ use crate::{
     models::analysis::Signal,
     services::{
         shared::standards::databases_for_country,
-        sources::databases::{OUTSIDE_RECORDS, sanctions::compared_name},
+        sources::databases::{
+            OUTSIDE_RECORDS, for_country, not_checked_card, not_found_card,
+            sanctions::compared_name,
+        },
     },
 };
 use serde_json::{Value, json};
@@ -227,7 +232,7 @@ fn ordinal(number: &str) -> String {
 }
 
 /// The card: an exhibitor is a good sign; a claim the list does not
-/// confirm is a warning; otherwise no card.
+/// confirm is a warning; otherwise "Not found" (information only).
 pub fn canton_card(
     company_name: &str,
     claims: bool,
@@ -292,7 +297,14 @@ pub fn canton_card(
                 "The supplier says it exhibits at the Canton Fair, but \"{company_name}\" is not in the fair's own list of exhibitors for this session. It may have exhibited before, or the claim may be false - ask for its booth number and check it on 365.cantonfair.org.cn before paying."
             ),
         ),
-        None => return None,
+        None => {
+            return Some(not_found_card(
+                CANTON_LABEL,
+                format!(
+                    "\"{company_name}\" is not in the Canton Fair's own list of exhibitors for this session. Many real factories do not exhibit there, so this is not a warning."
+                ),
+            ));
+        }
     };
     Some(Signal {
         label: CANTON_LABEL.to_string(),
@@ -637,23 +649,37 @@ async fn search_hktdc(fair_code: &str, company_name: &str) -> Option<Vec<HktdcEx
     }
 }
 
-/// The "HKTDC fair" card, or None when the check is off, the seller is
-/// not Chinese, or it is not an exhibitor at the fairs Safely reads.
-pub async fn hktdc_signal(company_name: Option<&str>, country: Option<&str>) -> Option<Signal> {
-    let name = company_name.map(str::trim).filter(|n| !n.is_empty())?;
-    if !enabled() || !is_chinese_seller(country) {
-        return None;
+/// The "HKTDC fair" card and the fairs searched. Nothing when the check
+/// is off or the seller is not Chinese.
+pub async fn hktdc_signal(company_name: Option<&str>, country: Option<&str>) -> FairsChecked {
+    let mut checked = FairsChecked::default();
+    let Some(name) = company_name.map(str::trim).filter(|n| !n.is_empty()) else {
+        return checked;
+    };
+    if !enabled() || !is_chinese_seller(country) || compared_name(name).is_none() {
+        return checked;
     }
-    compared_name(name)?;
     // One fair after another, stopping at the first match (few fairs).
     for fair in HKTDC_FAIRS {
-        if let Some(found) = search_hktdc(fair, name).await
-            && let Some(e) = hktdc_match(name, &found)
-        {
-            return Some(hktdc_card(e));
+        let Some(found) = search_hktdc(fair, name).await else {
+            continue;
+        };
+        if let Some(e) = hktdc_match(name, &found) {
+            checked.card = Some(hktdc_card(e));
+            return checked;
         }
+        checked.searched.push((HKTDC_LABEL, hktdc_fair_name(fair)));
     }
-    None
+    checked
+}
+
+/// The fair's name for a buyer ("hkelectronicsfairse" -> "HKTDC Hong
+/// Kong Electronics Fair"); the code itself when Safely has no name.
+fn hktdc_fair_name(code: &str) -> String {
+    match code {
+        "hkelectronicsfairse" => "HKTDC Hong Kong Electronics Fair".to_string(),
+        other => format!("HKTDC fair \"{other}\""),
+    }
 }
 
 // ---------------------------------------------------------------------
@@ -837,22 +863,28 @@ async fn search_mys(show: &str, base: &str, company_name: &str) -> Option<Vec<My
     }
 }
 
-/// The "US trade show" card, or None when the check is off or the
-/// seller is not an exhibitor at the Map Your Show fairs Safely reads.
-pub async fn mys_signal(company_name: Option<&str>) -> Option<Signal> {
-    let name = company_name.map(str::trim).filter(|n| !n.is_empty())?;
-    if !enabled() {
-        return None;
+/// The "US trade show" card and the shows searched. Every seller is
+/// searched (any country exhibits at CES); "Not found" is only shown to
+/// US sellers (fair_cards). `country` is kept for that.
+pub async fn mys_signal(company_name: Option<&str>, _country: Option<&str>) -> FairsChecked {
+    let mut checked = FairsChecked::default();
+    let Some(name) = company_name.map(str::trim).filter(|n| !n.is_empty()) else {
+        return checked;
+    };
+    if !enabled() || compared_name(name).is_none() {
+        return checked;
     }
-    compared_name(name)?;
     for (show, base) in MYS_SHOWS {
-        if let Some(found) = search_mys(show, base, name).await
-            && let Some(e) = mys_match(name, &found)
-        {
-            return Some(mys_card(e));
+        let Some(found) = search_mys(show, base, name).await else {
+            continue;
+        };
+        if let Some(e) = mys_match(name, &found) {
+            checked.card = Some(mys_card(e));
+            return checked;
         }
+        checked.searched.push((MYS_LABEL, (*show).to_string()));
     }
-    None
+    checked
 }
 
 // ---------------------------------------------------------------------
@@ -1107,22 +1139,27 @@ async fn swapcard_list(fair: &SwapcardFair) -> Option<std::sync::Arc<Vec<Swapcar
     (!list.is_empty()).then_some(list)
 }
 
-/// The Swapcard fairs' card (the first fair the seller exhibits at), or
-/// None when the check is off or it exhibits at none of them.
-pub async fn swapcard_signal(company_name: Option<&str>) -> Option<Signal> {
-    let name = company_name.map(str::trim).filter(|n| !n.is_empty())?;
-    if !enabled() {
-        return None;
+/// The Swapcard fairs' card (the first fair the seller exhibits at) and
+/// the fairs searched. Nothing when the check is off.
+pub async fn swapcard_signal(company_name: Option<&str>) -> FairsChecked {
+    let mut checked = FairsChecked::default();
+    let Some(name) = company_name.map(str::trim).filter(|n| !n.is_empty()) else {
+        return checked;
+    };
+    if !enabled() || compared_name(name).is_none() {
+        return checked;
     }
-    compared_name(name)?;
     for fair in SWAPCARD_FAIRS {
-        if let Some(list) = swapcard_list(fair).await
-            && let Some(e) = swapcard_match(name, &list)
-        {
-            return Some(swapcard_card(fair, e));
+        let Some(list) = swapcard_list(fair).await else {
+            continue;
+        };
+        if let Some(e) = swapcard_match(name, &list) {
+            checked.card = Some(swapcard_card(fair, e));
+            return checked;
         }
+        checked.searched.push((fair.label, fair.name.to_string()));
     }
-    None
+    checked
 }
 
 // ---------------------------------------------------------------------
@@ -1390,21 +1427,25 @@ async fn search_algolia(fair: &AlgoliaFair, company_name: &str) -> Option<Value>
     }
 }
 
-/// The RX fairs' card (the first fair the seller exhibits at), or None
-/// when the check is off or it exhibits at none of them.
-pub async fn algolia_signal(company_name: Option<&str>) -> Option<Signal> {
-    let name = company_name.map(str::trim).filter(|n| !n.is_empty())?;
-    if !enabled() {
-        return None;
+/// The Algolia fairs' card (the first fair the seller exhibits at) and
+/// the fairs searched. Nothing when the check is off.
+pub async fn algolia_signal(company_name: Option<&str>) -> FairsChecked {
+    let mut checked = FairsChecked::default();
+    let Some(name) = company_name.map(str::trim).filter(|n| !n.is_empty()) else {
+        return checked;
+    };
+    if !enabled() || compared_name(name).is_none() {
+        return checked;
     }
-    compared_name(name)?;
     for fair in ALGOLIA_FAIRS {
         let Some(answer) = search_algolia(fair, name).await else {
             continue;
         };
         if let Some(e) = algolia_match_in(name, &answer, fair.name_fields) {
-            return Some(algolia_card(fair, &e));
+            checked.card = Some(algolia_card(fair, &e));
+            return checked;
         }
+        checked.searched.push((fair.label, fair.name.to_string()));
         // Found something but no field with the name: the fair's record
         // has changed shape. Logged with the field names only.
         if let Some(first) = answer.pointer("/hits/0").and_then(Value::as_object)
@@ -1417,7 +1458,105 @@ pub async fn algolia_signal(company_name: Option<&str>) -> Option<Signal> {
             );
         }
     }
-    None
+    checked
+}
+
+// ---------------------------------------------------------------------
+// All fairs together
+// ---------------------------------------------------------------------
+
+/// "Not checked": no fair lists for the seller's country, and what was
+/// looked at elsewhere.
+pub fn not_checked_text(country: Option<&str>, checked: &[FairsChecked]) -> String {
+    let elsewhere = checked.iter().map(|c| c.searched.len()).sum::<usize>();
+    let also = match elsewhere {
+        0 => String::new(),
+        1 => {
+            " The one fair it reads in another country does not list this name either.".to_string()
+        }
+        n => format!(" The {n} fairs it reads in other countries do not list this name either."),
+    };
+    format!(
+        "Not searched: Safely does not read any trade fair lists {} yet. This says nothing good or bad about the seller.{also}",
+        for_country(country)
+    )
+}
+
+/// What one group of fairs gave: the card when the seller exhibits, and
+/// the fairs whose lists were really searched (card label, fair name).
+/// A fair that did not answer is not in `searched`.
+#[derive(Debug, Clone, Default)]
+pub struct FairsChecked {
+    pub card: Option<Signal>,
+    pub searched: Vec<(&'static str, String)>,
+}
+
+/// The card for a country whose fairs Safely does not read.
+pub const OTHER_FAIRS_LABEL: &str = "Trade shows";
+
+/// The fair cards Safely reads for the seller's country: China and Hong
+/// Kong -> HKTDC, USA -> US trade show, Brazil -> Brazil trade show,
+/// France -> France trade show.
+fn home_fair_label(country: Option<&str>) -> Option<&'static str> {
+    match country.and_then(databases_for_country)?.country.as_str() {
+        "china" | "hong_kong" => Some(HKTDC_LABEL),
+        "usa" => Some(MYS_LABEL),
+        "brazil" => Some(BRAZIL_LABEL),
+        "france" => Some(FRANCE_LABEL),
+        _ => None,
+    }
+}
+
+/// Every fair card found (any country's fairs), plus one "Not found"
+/// card for the seller's own country's fairs when they were searched and
+/// it is in none of them ("not in the exhibitor lists of Hospitalar
+/// 2027, Fispal Tecnologia 2026 and Feicon 2027").
+pub fn fair_cards(
+    company_name: Option<&str>,
+    country: Option<&str>,
+    checked: Vec<FairsChecked>,
+) -> Vec<Signal> {
+    let mut cards: Vec<Signal> = checked.iter().filter_map(|c| c.card.clone()).collect();
+    let Some(name) = company_name.map(str::trim).filter(|n| !n.is_empty()) else {
+        return cards;
+    };
+    let Some(label) = home_fair_label(country) else {
+        // No fairs read for this country: say so, unless a fair in
+        // another country already lists the seller. Never "Not found".
+        if enabled() && cards.is_empty() {
+            cards.push(not_checked_card(
+                OTHER_FAIRS_LABEL,
+                not_checked_text(country, &checked),
+            ));
+        }
+        return cards;
+    };
+    if cards.iter().any(|c| c.label == label) {
+        return cards;
+    }
+    let mut fairs: Vec<&str> = Vec::new();
+    for (l, fair) in checked.iter().flat_map(|c| c.searched.iter()) {
+        if *l == label && !fairs.contains(&fair.as_str()) {
+            fairs.push(fair);
+        }
+    }
+    if let Some((last, rest)) = fairs.split_last() {
+        let (list, fairs) = if rest.is_empty() {
+            (format!("the exhibitor list of {last}"), "this fair")
+        } else {
+            (
+                format!("the exhibitor lists of {} and {last}", rest.join(", ")),
+                "these fairs",
+            )
+        };
+        cards.push(not_found_card(
+            label,
+            format!(
+                "\"{name}\" is not in {list}. Most companies do not exhibit at {fairs}, so this is not a warning."
+            ),
+        ));
+    }
+    cards
 }
 
 #[cfg(test)]
@@ -1923,7 +2062,12 @@ mod tests {
             (card.value.as_str(), card.signal_type.as_str()),
             (CLAIM_NOT_FOUND, "caution")
         );
-        assert!(canton_card("Golden Fans Co., Ltd.", false, None).is_none());
+        let card = canton_card("Golden Fans Co., Ltd.", false, None).unwrap();
+        assert_eq!(
+            (card.value.as_str(), card.signal_type.as_str()),
+            (crate::services::sources::databases::NOT_FOUND, "info")
+        );
+        assert!(card.sub.contains("not a warning"));
         assert_eq!(ordinal("141"), "141st");
         assert_eq!(ordinal("112"), "112th");
     }
@@ -1941,6 +2085,108 @@ mod tests {
                 .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit())
         );
         assert_eq!(id, device_id());
+    }
+
+    fn searched(pairs: &[(&'static str, &str)]) -> FairsChecked {
+        FairsChecked {
+            card: None,
+            searched: pairs.iter().map(|(l, f)| (*l, f.to_string())).collect(),
+        }
+    }
+
+    #[test]
+    fn not_found_names_the_home_fairs_searched() {
+        let cards = fair_cards(
+            Some("Baseativa"),
+            Some("Caxias do Sul, Brazil"),
+            vec![
+                searched(&[
+                    (BRAZIL_LABEL, "Hospitalar 2027"),
+                    (BRAZIL_LABEL, "Fispal Tecnologia 2026"),
+                ]),
+                searched(&[
+                    (BRAZIL_LABEL, "Feicon 2027"),
+                    (FRANCE_LABEL, "SIAL Paris 2026"),
+                ]),
+                searched(&[(MYS_LABEL, "CES")]),
+            ],
+        );
+        assert_eq!(cards.len(), 1);
+        let c = &cards[0];
+        assert_eq!(
+            (c.label.as_str(), c.value.as_str(), c.signal_type.as_str()),
+            (BRAZIL_LABEL, "Not found", "info")
+        );
+        assert!(c.sub.contains(
+            "\"Baseativa\" is not in the exhibitor lists of Hospitalar 2027, Fispal Tecnologia 2026 and Feicon 2027."
+        ));
+        assert!(!c.sub.contains("SIAL"));
+    }
+
+    #[test]
+    fn a_found_fair_wins_and_unanswered_fairs_say_nothing() {
+        let found = FairsChecked {
+            card: Some(not_found_card(BRAZIL_LABEL, String::new())).map(|mut c| {
+                c.value = "Trade show exhibitor".into();
+                c.signal_type = "good".into();
+                c
+            }),
+            searched: Vec::new(),
+        };
+        let cards = fair_cards(
+            Some("Acme"),
+            Some("São Paulo, Brazil"),
+            vec![searched(&[(BRAZIL_LABEL, "Hospitalar 2027")]), found],
+        );
+        assert_eq!(cards.len(), 1);
+        assert_eq!(cards[0].signal_type, "good");
+        // Nothing searched (fairs off or not answering): no card at all.
+        assert!(
+            fair_cards(Some("Acme"), Some("São Paulo, Brazil"), vec![searched(&[])]).is_empty()
+        );
+        // A seller from a country without fairs: never "Not found";
+        // "Not checked" when the fair check is on.
+        let other = fair_cards(
+            Some("Acme"),
+            Some("Karachi, Pakistan"),
+            vec![searched(&[(BRAZIL_LABEL, "Hospitalar 2027")])],
+        );
+        assert!(other.iter().all(|c| c.value != "Not found"));
+        if enabled() {
+            assert_eq!(other[0].label, OTHER_FAIRS_LABEL);
+            assert_eq!(other[0].value, "Not checked");
+        } else {
+            assert!(other.is_empty());
+        }
+        // One fair: "the exhibitor list of".
+        let one = fair_cards(
+            Some("Acme Inc"),
+            Some("Texas, USA"),
+            vec![searched(&[(MYS_LABEL, "CES")])],
+        );
+        assert!(one[0].sub.contains("is not in the exhibitor list of CES."));
+        assert!(one[0].sub.contains("do not exhibit at this fair,"));
+    }
+
+    #[test]
+    fn countries_without_fairs_are_not_checked_never_not_found() {
+        let t = not_checked_text(
+            Some("Naju-si, South Korea"),
+            &[
+                searched(&[(MYS_LABEL, "CES")]),
+                searched(&[
+                    (BRAZIL_LABEL, "Hospitalar 2027"),
+                    (FRANCE_LABEL, "SIAL Paris 2026"),
+                ]),
+            ],
+        );
+        assert!(t.starts_with(
+            "Not searched: Safely does not read any trade fair lists for South Korea yet."
+        ));
+        assert!(
+            t.contains("The 3 fairs it reads in other countries do not list this name either.")
+        );
+        assert!(!not_checked_text(Some("Pakistan"), &[]).contains("other countries"));
     }
 
     #[tokio::test]

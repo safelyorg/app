@@ -21,7 +21,8 @@
 //! - "Não recomendada": a warning. "Ruim": a smaller warning.
 //! - "Regular", or too few reviews to have a grade: information only.
 //! - "Bom", "Ótimo", "RA1000": a good sign.
-//! - Not on Reclame Aqui: no card (many real companies are not there).
+//! - Not on Reclame Aqui: "Not found", information only (many real
+//!   companies are not there). Only when every page found could be read.
 //!
 //! Asked for Brazil sellers and for any seller that gives a CNPJ. Each
 //! answer is kept 7 days. Off unless RECLAME_AQUI_CHECK_ENABLED is
@@ -38,7 +39,7 @@ use crate::{
             standards::databases_for_country,
         },
         sources::databases::{
-            OUTSIDE_RECORDS, brazil,
+            OUTSIDE_RECORDS, brazil, not_found_card,
             numbers::{normalize, without_accents},
             sanctions::compared_name,
         },
@@ -275,8 +276,10 @@ async fn look_up(name: &str, cnpjs: &[String]) -> Option<Option<Signal>> {
         .filter(|l| is_company_page(l))
         .take(3)
         .collect();
+    let mut all_read = true;
     for link in links {
         let Some(page) = open_page(&link).await else {
+            all_read = false;
             continue;
         };
         match read_page(&link, &page) {
@@ -284,10 +287,25 @@ async fn look_up(name: &str, cnpjs: &[String]) -> Option<Option<Signal>> {
                 return Some(Some(ra_card(&company)));
             }
             Some(_) => {}
-            None => eprintln!("Safely: Reclame Aqui page had no company data: {link}"),
+            None => {
+                all_read = false;
+                eprintln!("Safely: Reclame Aqui page had no company data: {link}");
+            }
         }
     }
-    Some(None)
+    // A page that could not be read might have been the seller's: no
+    // card, and not kept, so the next scan tries again.
+    if !all_read {
+        return None;
+    }
+    Some(Some(not_found_card(LABEL, not_found_text(name))))
+}
+
+/// "Not found" on Reclame Aqui.
+pub fn not_found_text(company_name: &str) -> String {
+    format!(
+        "\"{company_name}\" has no company page on Reclame Aqui. Many companies, mostly those that do not sell to shoppers, are not there, so this is not a warning."
+    )
 }
 
 /// The "Reclame Aqui" card, or None when the check is off, the seller is
@@ -435,6 +453,13 @@ mod tests {
                 "{status}"
             );
         }
+    }
+
+    #[test]
+    fn not_found_is_a_note() {
+        let t = not_found_text("Baseativa");
+        assert!(t.starts_with("\"Baseativa\" has no company page on Reclame Aqui."));
+        assert!(t.contains("not a warning"));
     }
 
     #[tokio::test]

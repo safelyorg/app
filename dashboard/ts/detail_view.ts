@@ -102,6 +102,7 @@ const SIGNAL_LABEL_TRANSLATIONS: Record<string, string> = {
   "US trade show": "dash.label.us_trade_show",
   "Brazil trade show": "dash.label.brazil_trade_show",
   "France trade show": "dash.label.france_trade_show",
+  "Trade shows": "dash.label.trade_shows",
   "Reclame Aqui": "dash.label.reclame_aqui",
   "BBB rating": "dash.label.bbb_rating",
   "China Customs AEO": "dash.label.china_customs_aeo",
@@ -834,6 +835,7 @@ const OUTSIDE_GROUPS: [string, string, string[]][] = [
       "US trade show",
       "Brazil trade show",
       "France trade show",
+      "Trade shows",
       "Chamber of commerce",
     ],
   ],
@@ -904,22 +906,6 @@ function outsideRow(s: DetailSignal): string {
   });
 }
 
-// "1 warning · 3 good signs · 2 notes".
-function outsideSummary(records: DetailSignal[]): string {
-  const warnings = records.filter((s) => isFlagged(s.type)).length;
-  const good = records.filter((s) => s.type === "good").length;
-  const notes = records.length - warnings - good;
-  const count = (n: number, oneKey: string, one: string, manyKey: string, many: string) =>
-    n === 1 ? t(oneKey, one) : t(manyKey, many).replace("{n}", String(n));
-  const parts: string[] = [];
-  if (warnings > 0)
-    parts.push(count(warnings, "dash.outside.one_warning", "1 warning", "dash.outside.warnings", "{n} warnings"));
-  if (good > 0)
-    parts.push(count(good, "dash.outside.one_good", "1 good sign", "dash.outside.good", "{n} good signs"));
-  if (notes > 0) parts.push(count(notes, "dash.outside.one_note", "1 note", "dash.outside.notes", "{n} notes"));
-  return parts.join(" · ");
-}
-
 function buildOutsideRecords(signals: DetailSignal[]): string {
   const records = signals.filter(isOutsideRecord);
   if (records.length === 0) return "";
@@ -947,8 +933,6 @@ function buildOutsideRecords(signals: DetailSignal[]): string {
         "What official lists, trade fairs and review sites say about this seller.",
       ),
     ) +
-    '</div><div class="d-section-summary">' +
-    escapeHtml(outsideSummary(records)) +
     "</div>" +
     groups +
     "</div>"

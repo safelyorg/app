@@ -1,14 +1,16 @@
 //! Chambers of commerce: is the seller a member? Being a member is a
 //! small good sign (the chamber knows the company). Not being a member
-//! says nothing, so then no card is shown.
+//! says nothing: a "Not found" card (information only), shown only when
+//! every member page found could be opened. For any other country (no
+//! chamber member list Safely can search) nothing is searched and a
+//! "Not checked" card says so.
 //!
 //! Two kinds of chamber can be searched, both through one Google search
 //! (Serper, SERPER_API_KEY) that finds the member's own page, which is
 //! then opened to read the exact name:
 //! - ChamberMaster / GrowthZone: the directory software of thousands of
 //!   local chambers (USA, Canada, UK...). Every member page is
-//!   ".../list/member/<name>-<number>". Asked for US sellers and sellers
-//!   whose country Safely has no file for.
+//!   ".../list/member/<name>-<number>". Asked for US and Canada sellers.
 //! - HKGCC, the Hong Kong General Chamber of Commerce: member pages are
 //!   chamber.org.hk/en/membership/directory_detail.aspx?...&id=<number>,
 //!   open to everyone. Asked for Hong Kong and China sellers.
@@ -30,7 +32,10 @@ use crate::{
     services::{
         features::{domain_age::normalize_domain, osint::run_serper_search},
         shared::standards::databases_for_country,
-        sources::databases::{OUTSIDE_RECORDS, sanctions::compared_name},
+        sources::databases::{
+            OUTSIDE_RECORDS, for_country, not_checked_card, not_found_card,
+            sanctions::compared_name,
+        },
     },
 };
 use regex::Regex;
@@ -54,13 +59,16 @@ pub enum Directory {
 
 /// The directory for a seller's country, or None (no chamber to search).
 pub fn directory_for(country: Option<&str>) -> Option<Directory> {
-    match country
-        .and_then(databases_for_country)
-        .map(|c| c.country.as_str())
-    {
+    let location = country?;
+    match databases_for_country(location).map(|c| c.country.as_str()) {
         Some("hong_kong") | Some("china") => Some(Directory::Hkgcc),
-        Some("usa") | None => Some(Directory::ChamberMaster),
+        Some("usa") => Some(Directory::ChamberMaster),
         Some(_) => None,
+        // No country file: only Canada, where ChamberMaster is common.
+        None => location
+            .split([',', '|', '/', ';', '(', ')'])
+            .any(|p| p.trim().eq_ignore_ascii_case("canada"))
+            .then_some(Directory::ChamberMaster),
     }
 }
 
@@ -312,7 +320,9 @@ pub async fn chamber_signal(
         return None;
     }
     compared_name(name)?;
-    let directory = directory_for(country)?;
+    let Some(directory) = directory_for(country) else {
+        return Some(not_checked_card(LABEL, not_checked_text(country)));
+    };
     let found = run_serper_search(&search_query(directory, name), None).await?;
     let links: Vec<String> = found
         .organic
@@ -321,8 +331,10 @@ pub async fn chamber_signal(
         .filter(|l| is_member_page(directory, l))
         .take(MAX_PAGES)
         .collect();
+    let mut all_read = true;
     for link in links {
         let Some(page) = open_page(&link).await else {
+            all_read = false;
             continue;
         };
         let read = match directory {
@@ -333,7 +345,35 @@ pub async fn chamber_signal(
             return Some(chamber_card(seller_website, &member));
         }
     }
-    None
+    // A member page that did not open might have been the seller's.
+    all_read.then(|| not_found_card(LABEL, not_found_text(directory, name)))
+}
+
+/// "Not checked": why no chamber was searched.
+pub fn not_checked_text(country: Option<&str>) -> String {
+    if country
+        .and_then(databases_for_country)
+        .is_some_and(|c| c.country == "france")
+    {
+        return "Not searched: in France every company belongs to its chamber of commerce (CCI) by law, so membership would say nothing more than the company register.".to_string();
+    }
+    format!(
+        "Not searched: Safely has no chamber of commerce member list {} yet. This says nothing good or bad about the seller.",
+        for_country(country)
+    )
+}
+
+/// "Not found": which chambers were searched.
+pub fn not_found_text(directory: Directory, company_name: &str) -> String {
+    let searched = match directory {
+        Directory::Hkgcc => "the member list of the Hong Kong General Chamber of Commerce",
+        Directory::ChamberMaster => {
+            "the member lists of local chambers of commerce in the USA and Canada that Safely can search"
+        }
+    };
+    format!(
+        "\"{company_name}\" was not found in {searched}. Many real companies are not members, so this is not a warning."
+    )
 }
 
 #[cfg(test)]
@@ -385,7 +425,8 @@ mod tests {
             directory_for(Some("Ontario, Canada")),
             Some(Directory::ChamberMaster)
         );
-        assert_eq!(directory_for(None), Some(Directory::ChamberMaster));
+        assert_eq!(directory_for(None), None);
+        assert_eq!(directory_for(Some("Naju-si, South Korea")), None);
         assert_eq!(directory_for(Some("Paris, France")), None);
         assert_eq!(directory_for(Some("São Paulo, Brazil")), None);
     }
@@ -469,6 +510,24 @@ mod tests {
             (OTHER_WEBSITE, "info")
         );
         assert!(card.sub.contains("swire.com, not swire-deals.shop"));
+    }
+
+    #[test]
+    fn not_checked_says_why() {
+        assert!(not_checked_text(Some("Naju-si, South Korea")).starts_with(
+            "Not searched: Safely has no chamber of commerce member list for South Korea yet."
+        ));
+        assert!(not_checked_text(Some("São Paulo, Brazil")).contains("for Brazil yet"));
+        assert!(not_checked_text(Some("Lyon, France")).contains("(CCI) by law"));
+        assert!(not_checked_text(None).contains("the page does not say which"));
+    }
+
+    #[test]
+    fn not_found_says_which_chambers_were_searched() {
+        let hk = not_found_text(Directory::Hkgcc, "Acme Ltd");
+        assert!(hk.contains("\"Acme Ltd\" was not found in the member list of the Hong Kong General Chamber of Commerce"));
+        assert!(hk.contains("not a warning"));
+        assert!(not_found_text(Directory::ChamberMaster, "Acme").contains("local chambers"));
     }
 
     #[tokio::test]

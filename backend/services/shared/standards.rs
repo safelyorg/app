@@ -290,12 +290,16 @@ pub fn database_countries() -> &'static [CountryStandards] {
 }
 
 /// The country file for a seller's country as the page writes it
-/// ("Guangdong, China", "Shenzhen, CN", "Brasil"). Each part between
-/// commas is compared with the file's "names", ignoring case. None: no
+/// ("Guangdong, China", "Shenzhen, CN", "Brasil", "Caxias do Sul / RS |
+/// Brazil"). Each part between commas, "|", "/", ";", brackets or " - "
+/// is compared with the file's "names", ignoring case. None: no
 /// file for that country (only global.json is used).
 pub fn databases_for_country(location: &str) -> Option<&'static CountryStandards> {
+    // Places are written many ways: "São Paulo, Brazil", "Caxias do
+    // Sul / Rio Grande do Sul | Brazil" (B2Brazil), "Shenzhen - China".
     let parts: Vec<String> = std::iter::once(location)
-        .chain(location.split(','))
+        .chain(location.split([',', '|', '/', ';', '(', ')']))
+        .chain(location.split(" - "))
         .map(|p| p.trim().to_lowercase())
         .filter(|p| !p.is_empty())
         .collect();
@@ -534,7 +538,7 @@ mod tests {
 
     /// Every outside-records card the code can make. A new card must be
     /// added to a databases file too (with its points), or this fails.
-    const DATABASE_CARDS: [&str; 19] = [
+    const DATABASE_CARDS: [&str; 20] = [
         "Sanctions lists",
         "Company register (GLEIF)",
         "Company number",
@@ -549,6 +553,7 @@ mod tests {
         "US trade show",
         "Brazil trade show",
         "France trade show",
+        "Trade shows",
         "Reclame Aqui",
         "BBB rating",
         "Website history",
@@ -628,6 +633,17 @@ mod tests {
         assert_eq!(country("Paris, France"), Some("france"));
         assert_eq!(country("New York, USA"), Some("usa"));
         assert_eq!(country("united states"), Some("usa"));
+        // B2Brazil writes "city / state | country" (Baseativa, Nov 5).
+        assert_eq!(
+            country("Caxias do Sul / Rio Grande do Sul | Brazil"),
+            Some("brazil")
+        );
+        assert_eq!(
+            country("Kirchheimbolanden / Rheinland-Pfalz | Germany"),
+            None
+        );
+        assert_eq!(country("Shenzhen - China"), Some("china"));
+        assert_eq!(country("Lyon (France)"), Some("france"));
         // Only whole parts count: "Chinatown" is not China.
         assert_eq!(country("Chinatown, Singapore"), None);
         assert_eq!(country("Pakistan"), None);

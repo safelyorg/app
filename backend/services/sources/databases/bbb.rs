@@ -15,7 +15,7 @@
 //! - F: a warning. D: a smaller warning.
 //! - A+ to A-: a good sign (more so when accredited).
 //! - B and C, or not rated: information only.
-//! - Not on BBB: no card (most companies outside the USA are not there).
+//! - Not on BBB: "Not found", information only (asked for US sellers only).
 //!
 //! Asked for US sellers. Each answer is kept 7 days. Off unless
 //! BBB_CHECK_ENABLED is "true" in .env.
@@ -29,7 +29,9 @@ use crate::{
             },
             standards::databases_for_country,
         },
-        sources::databases::{OUTSIDE_RECORDS, numbers::without_accents, sanctions::compared_name},
+        sources::databases::{
+            OUTSIDE_RECORDS, not_found_card, numbers::without_accents, sanctions::compared_name,
+        },
     },
 };
 use serde_json::Value;
@@ -247,7 +249,14 @@ async fn look_up(name: &str) -> Option<Option<Signal>> {
         eprintln!("Safely: BBB page had no results data (robot check?): {url}");
         return None;
     };
-    Some(find(name, &found).map(bbb_card))
+    Some(Some(find(name, &found).map(bbb_card).unwrap_or_else(|| {
+        not_found_card(
+            LABEL,
+            format!(
+                "\"{name}\" has no Better Business Bureau profile. Many real companies are not listed there, so this is not a warning."
+            ),
+        )
+    })))
 }
 
 /// The "BBB rating" card, or None when the check is off, the seller is
