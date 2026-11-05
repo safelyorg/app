@@ -32,7 +32,7 @@
                 }
             </style></noscript
         >
-        <link rel="stylesheet" href="css/base.css?v=20261006a" />
+        <link rel="stylesheet" href="css/base.css?v=20261105a" />
         <link rel="stylesheet" href="css/nav.css?v=20261006a" />
         <link rel="stylesheet" href="css/hero.css?v=20261006a" />
         <link rel="stylesheet" href="css/how_it_works.css?v=20261006a" />
@@ -45,6 +45,7 @@
         <link rel="stylesheet" href="css/responsive.css?v=20261006a" />
         <link rel="stylesheet" href="css/marquee.css?v=20261006a">
         <link rel="stylesheet" href="css/reviews.css?v=20261015a" />
+        <link rel="stylesheet" href="css/records.css?v=20261105a" />
         <!-- Meta Pixel Code (Safely Pixel). Not loaded when this page is
              shown inside another page (the sign-in box on the home page),
              so one visit counts as one PageView. -->
@@ -754,7 +755,7 @@
                         </ol>
                     </div>
                     </div>
-                    <div class="sigx-foot" data-i18n="features.sigx.extra">Plus, when relevant: regulated product check and social presence check.</div>
+                    <div class="sigx-foot"><span data-i18n="features.sigx.extra">Plus, when relevant: regulated product check and social presence check.</span> <a class="sigx-soon" href="#records" data-i18n="features.sigx.soon">New: seller websites · Soon: official records →</a></div>
                 </div>
 
                 <!-- bento -->
@@ -944,6 +945,160 @@
                             </p>
                         </div>
                     </article>
+                </div>
+            </div>
+        </section>
+
+        <!-- ============ OUTSIDE RECORDS (coming soon) ============ -->
+        <section class="sec rec-sec" id="records">
+            <div class="wv down" aria-hidden="true">
+                <svg viewBox="0 0 1440 80" preserveAspectRatio="none">
+                    <path
+                        d="M0,40 C 240,75 480,5 720,28 C 960,50 1200,80 1440,38 L1440,80 L0,80 Z"
+                        fill="#f1ebda"
+                    />
+                </svg>
+            </div>
+            <div class="wrap">
+                <div class="head">
+                    <span class="badge o reveal"
+                        ><span class="bd"></span><span data-i18n="records.badge">Coming soon · Beyond the listing</span></span
+                    >
+                    <h2 class="disp gasoek reveal d1" data-i18n="records.title">Checked against the real world.</h2>
+                    <p class="reveal d2" data-i18n="records.sub">
+                        A listing only tells you what the seller wants you to see. Safely will also look the
+                        company up on government registers, trade-fair exhibitor lists and review sites, and
+                        show what it finds in its own section.
+                    </p>
+                </div>
+
+                <div class="rec-grid">
+                    <!-- example panel -->
+                    <div class="rec-panel reveal" aria-hidden="true">
+                        <div class="rec-panel-head">
+                            <span class="rec-dots"><i></i><i></i><i></i></span>
+                            <span class="rec-panel-t" data-i18n="records.mock.title">Outside records</span>
+                            <span class="rec-panel-pill" data-i18n="records.mock.summary">1 warning · 4 good signs</span>
+                        </div>
+                        <div class="rec-panel-body">
+                            <div class="rec-sub" data-i18n="records.g1.title">Official lists</div>
+                            <div class="rec-row"><span class="rec-mk ok"><svg viewBox="0 0 24 24" fill="none"><path d="M6 12.5l4 4 8-9" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="rec-l" data-i18n="records.mock.r1">Sanctions lists</span><span class="rec-v ok" data-i18n="records.mock.v1">Not listed</span></div>
+                            <div class="rec-row"><span class="rec-mk ok"><svg viewBox="0 0 24 24" fill="none"><path d="M6 12.5l4 4 8-9" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="rec-l" data-i18n="records.mock.r2">EU VAT number</span><span class="rec-v ok" data-i18n="records.mock.v2">Active</span></div>
+                            <div class="rec-row"><span class="rec-mk ok"><svg viewBox="0 0 24 24" fill="none"><path d="M6 12.5l4 4 8-9" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="rec-l" data-i18n="records.mock.r3">China Customs AEO</span><span class="rec-v ok" data-i18n="records.mock.v3">Certified</span></div>
+                            <div class="rec-sub" data-i18n="records.g2.title">Trade shows and chambers</div>
+                            <div class="rec-row"><span class="rec-mk ok"><svg viewBox="0 0 24 24" fill="none"><path d="M6 12.5l4 4 8-9" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="rec-l" data-i18n="records.mock.r4">Canton Fair</span><span class="rec-v ok" data-i18n="records.mock.v4">Exhibitor</span></div>
+                            <div class="rec-sub" data-i18n="records.g3.title">Reputation</div>
+                            <div class="rec-row is-flag"><span class="rec-mk flag">!</span><span class="rec-l" data-i18n="records.mock.r5">Online complaints</span><span class="rec-v flag" data-i18n="records.mock.v5">Not recommended</span></div>
+                            <div class="rec-src"><span data-i18n="records.mock.open">Open the source</span><svg viewBox="0 0 24 24" fill="none"><path d="M7 17L17 7M8 7h9v9" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+                        </div>
+                    </div>
+
+                    <!-- the four groups -->
+                    <div class="rec-cards">
+                        <div class="rec-card reveal" style="--c: var(--sky-card)">
+                            <span class="rec-ic"><svg viewBox="0 0 24 24" fill="none"><path d="M4 10h16M6 10v8m4-8v8m4-8v8m4-8v8M3 21h18M12 3l9 5H3l9-5z" stroke="#161616" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+                            <h3 data-i18n="records.g1.title">Official lists</h3>
+                            <p data-i18n="records.g1.text">Is the company real, registered and not under sanctions?</p>
+                            <ul class="rec-tags">
+                                <li data-i18n="records.t.sanctions">Sanctions (US, EU, UN)</li>
+                                <li data-i18n="records.t.registers">Company registers</li>
+                                <li data-i18n="records.t.vat">EU VAT</li>
+                                <li data-i18n="records.t.sec">US stock market</li>
+                                <li data-i18n="records.t.sam">US government (SAM)</li>
+                                <li data-i18n="records.t.aeo">China Customs AEO</li>
+                            </ul>
+                        </div>
+                        <div class="rec-card reveal d1" style="--c: var(--sun-2)">
+                            <span class="rec-ic"><svg viewBox="0 0 24 24" fill="none"><path d="M3 21h18M5 21V9l7-5 7 5v12M9 21v-6h6v6" stroke="#161616" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+                            <h3 data-i18n="records.g2.title">Trade shows and chambers</h3>
+                            <p data-i18n="records.g2.text">Did the seller really exhibit at the fair, or join the chamber it claims?</p>
+                            <ul class="rec-tags">
+                                <li>Canton Fair</li>
+                                <li>HKTDC</li>
+                                <li>CES</li>
+                                <li>Hospitalar · Fispal · Feicon</li>
+                                <li>SIAL · Maison&amp;Objet</li>
+                                <li data-i18n="records.t.chambers">Chambers of commerce</li>
+                            </ul>
+                        </div>
+                        <div class="rec-card reveal" style="--c: var(--coral-card)">
+                            <span class="rec-ic"><svg viewBox="0 0 24 24" fill="none"><path d="M12 3l2.6 5.6 6.1.7-4.5 4.2 1.2 6L12 16.6 6.6 19.5l1.2-6-4.5-4.2 6.1-.7L12 3z" stroke="#161616" stroke-width="2" stroke-linejoin="round"/></svg></span>
+                            <h3 data-i18n="records.g3.title">Reputation</h3>
+                            <p data-i18n="records.g3.text">What do real customers say on the big complaint sites?</p>
+                            <ul class="rec-tags">
+                                <li>Reclame Aqui</li>
+                                <li>BBB</li>
+                            </ul>
+                        </div>
+                        <div class="rec-card reveal d1" style="--c: var(--mint)">
+                            <span class="rec-ic"><svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="#161616" stroke-width="2"/><path d="M12 7v5l3 2" stroke="#161616" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+                            <h3 data-i18n="records.g4.title">Website history</h3>
+                            <p data-i18n="records.g4.text">How old is the website, does it get visitors, is it secure?</p>
+                            <ul class="rec-tags">
+                                <li data-i18n="records.t.archive">Web archive</li>
+                                <li data-i18n="records.t.traffic">Traffic rank</li>
+                                <li data-i18n="records.t.ssl">Security certificate</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="rec-countries reveal">
+                    <span class="rec-countries-l" data-i18n="records.countries">Country checks first in</span>
+                    <span class="rec-cc">China</span><span class="rec-cc">Hong Kong</span><span class="rec-cc" data-i18n="records.cc.us">USA</span><span class="rec-cc" data-i18n="records.cc.br">Brazil</span><span class="rec-cc" data-i18n="records.cc.fr">France</span>
+                    <span class="rec-countries-l" data-i18n="records.countries2">· sanctions and registers worldwide</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- ============ SELLER WEBSITES (coming soon) ============ -->
+        <section class="sec web-sec" id="websites" style="background: var(--cream-2)">
+            <div class="wv down" aria-hidden="true">
+                <svg viewBox="0 0 1440 80" preserveAspectRatio="none">
+                    <path
+                        d="M0,40 C 240,75 480,5 720,28 C 960,50 1200,80 1440,38 L1440,80 L0,80 Z"
+                        fill="#fbf7ed"
+                    />
+                </svg>
+            </div>
+            <div class="wrap web-grid">
+                <div class="web-copy">
+                    <span class="badge reveal"
+                        ><span class="bd"></span><span data-i18n="sites.badge">Live now · Beyond marketplaces</span></span
+                    >
+                    <h2 class="disp gasoek reveal d1" data-i18n="sites.title">Check a seller's own website too.</h2>
+                    <p class="web-lead reveal d2" data-i18n="sites.sub">
+                        Many sellers skip the marketplace and sell from their own site. Open it, click
+                        <b>Check this website</b>, and Safely reads the pages a careful buyer would read first.
+                    </p>
+                    <ul class="web-list reveal d2">
+                        <li><span class="web-n">01</span><span><b data-i18n="sites.l1.t">The key pages</b><small data-i18n="sites.l1.d">Home, about, contact, shipping, returns, terms and privacy</small></span></li>
+                        <li><span class="web-n">02</span><span><b data-i18n="sites.l2.t">How you pay</b><small data-i18n="sites.l2.d">Card and PayPal, or only bank transfer, Pix and crypto</small></span></li>
+                        <li><span class="web-n">03</span><span><b data-i18n="sites.l3.t">The website itself</b><small data-i18n="sites.l3.d">Domain age, lookalike names, security certificate, history</small></span></li>
+                        <li><span class="web-n">04</span><span><b data-i18n="sites.l4.t">The rest of the web</b><small data-i18n="sites.l4.d">Reviews, scam reports, social pages and copied photos</small></span></li>
+                    </ul>
+                </div>
+
+                <div class="web-mock reveal d1" aria-hidden="true">
+                    <div class="web-browser">
+                        <div class="web-bar"><span class="rec-dots"><i></i><i></i><i></i></span><span class="web-url">bestdeals-tools-store.com</span></div>
+                        <div class="web-page">
+                            <div class="web-hero-ph"></div>
+                            <div class="web-lines"><i style="width: 70%"></i><i style="width: 46%"></i></div>
+                            <div class="web-prods"><i></i><i></i><i></i></div>
+                        </div>
+                    </div>
+                    <span class="web-btn"><span class="web-btn-dot"></span><span data-i18n="sites.mock.button">Check this website</span></span>
+                    <div class="web-result">
+                        <div class="web-result-top">
+                            <span class="web-score">74<small>/100</small></span>
+                            <span class="web-risk" data-i18n="sites.mock.risk">High risk</span>
+                        </div>
+                        <div class="rec-row is-flag"><span class="rec-mk flag">!</span><span class="rec-l" data-i18n="sites.mock.r1">Website age</span><span class="rec-v flag" data-i18n="sites.mock.v1">3 weeks</span></div>
+                        <div class="rec-row is-flag"><span class="rec-mk flag">!</span><span class="rec-l" data-i18n="sites.mock.r2">Payment</span><span class="rec-v flag" data-i18n="sites.mock.v2">Bank transfer only</span></div>
+                        <div class="rec-row is-flag"><span class="rec-mk flag">!</span><span class="rec-l" data-i18n="sites.mock.r3">Return policy</span><span class="rec-v flag" data-i18n="sites.mock.v3">Not found</span></div>
+                        <div class="rec-row"><span class="rec-mk ok"><svg viewBox="0 0 24 24" fill="none"><path d="M6 12.5l4 4 8-9" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="rec-l" data-i18n="sites.mock.r4">Security certificate</span><span class="rec-v ok" data-i18n="sites.mock.v4">Valid</span></div>
+                    </div>
                 </div>
             </div>
         </section>
@@ -1412,6 +1567,40 @@
                                 <span data-platforms="names">Alibaba, Made-in-China, Global Sources, TradeWheel, ExportHub, B2Brazil, ThomasNet, B2BMap, Kompass, Wholesale Central</span>.
                                 <span data-i18n="faq.q7.a2">Safely only activates on individual listing pages — simply browsing a platform's homepage or search results won't trigger an analysis. We're continuously adding support for more B2B platforms.</span>
                             </p>
+                        </div>
+                    </details>
+                    <details class="acc" name="faq">
+                        <summary><span class="qn">08</span>
+                            <span data-i18n="faq.q8.q">Will Safely check official records about a seller?</span><span
+                                class="ic"
+                                ><svg viewBox="0 0 24 24" fill="none">
+                                    <path
+                                        d="M12 5v14M5 12h14"
+                                        stroke="#161616"
+                                        stroke-width="2.6"
+                                        stroke-linecap="round"
+                                    /></svg
+                            ></span>
+                        </summary>
+                        <div class="ans">
+                            <p data-i18n="faq.q8.a">Yes, this is coming soon. Safely will look the company up on sanctions lists, company registers, the EU VAT system, US government and stock-market records, trade-fair exhibitor lists (like the Canton Fair), chambers of commerce, and complaint sites like Reclame Aqui and BBB. It starts with China, Hong Kong, the USA, Brazil and France. What it finds shows in its own "Outside records" section, with a link to each source.</p>
+                        </div>
+                    </details>
+                    <details class="acc" name="faq">
+                        <summary><span class="qn">09</span>
+                            <span data-i18n="faq.q9.q">Can Safely check a seller's own website?</span><span
+                                class="ic"
+                                ><svg viewBox="0 0 24 24" fill="none">
+                                    <path
+                                        d="M12 5v14M5 12h14"
+                                        stroke="#161616"
+                                        stroke-width="2.6"
+                                        stroke-linecap="round"
+                                    /></svg
+                            ></span>
+                        </summary>
+                        <div class="ans">
+                            <p data-i18n="faq.q9.a">Yes. Open the seller's website and click "Check this website". Safely reads the main pages (about, contact, shipping, returns, terms, privacy), looks at how you can pay, checks the domain age, lookalike names and security certificate, and searches the web for reviews and scam reports. A website check counts as one scan.</p>
                         </div>
                     </details>
                 </div>

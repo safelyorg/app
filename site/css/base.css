@@ -365,3 +365,18 @@ summary:focus-visible {
     opacity: 0;
     transition: opacity 0.3s ease;
 }
+
+/* ---------- finishing touches ---------- */
+h1,
+h2,
+h3 {
+    text-wrap: balance;
+}
+p,
+li {
+    text-wrap: pretty;
+}
+::selection {
+    background: var(--sun);
+    color: var(--ink);
+}
