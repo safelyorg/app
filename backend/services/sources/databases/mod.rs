@@ -21,6 +21,7 @@
 //! Found = a good sign. Not found = not a warning. Only a false claim or
 //! a sanctions match is a warning.
 
+pub mod bbb;
 pub mod brazil;
 pub mod chambers;
 pub mod china;
@@ -80,6 +81,7 @@ pub async fn check_outside_records(facts: &SellerFacts) -> Vec<Signal> {
         swapcard,
         algolia,
         complaints,
+        bbb_rating,
         website,
     ) = tokio::join!(
         sanctions::sanctions_signal(name),
@@ -95,6 +97,7 @@ pub async fn check_outside_records(facts: &SellerFacts) -> Vec<Signal> {
         trade_shows::swapcard_signal(name),
         trade_shows::algolia_signal(name),
         reclame_aqui::ra_signal(name, country, &facts.company_numbers),
+        bbb::bbb_signal(name, country),
         website_records::website_record_cards(facts.website.as_deref()),
     );
     cards.extend(sanctions);
@@ -110,6 +113,7 @@ pub async fn check_outside_records(facts: &SellerFacts) -> Vec<Signal> {
     cards.extend(swapcard);
     cards.extend(algolia);
     cards.extend(complaints);
+    cards.extend(bbb_rating);
     cards.extend(website);
     cards
 }

@@ -534,7 +534,7 @@ mod tests {
 
     /// Every outside-records card the code can make. A new card must be
     /// added to a databases file too (with its points), or this fails.
-    const DATABASE_CARDS: [&str; 17] = [
+    const DATABASE_CARDS: [&str; 18] = [
         "Sanctions lists",
         "Company register (GLEIF)",
         "Company number",
@@ -549,6 +549,7 @@ mod tests {
         "Brazil trade show",
         "France trade show",
         "Reclame Aqui",
+        "BBB rating",
         "Website history",
         "Website traffic",
         "Security certificate",
@@ -596,6 +597,8 @@ mod tests {
             database_warning_points("Reclame Aqui", "Bad reputation"),
             20
         );
+        assert_eq!(database_warning_points("BBB rating", "F rating"), 40);
+        assert_eq!(database_warning_points("BBB rating", "D rating"), 20);
         assert_eq!(
             database_warning_points(
                 "US government register (SAM.gov)",

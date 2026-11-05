@@ -46,11 +46,11 @@
       "id": "bbb",
       "name": "Better Business Bureau",
       "url": "https://www.bbb.org/",
-      "what_it_does": "Business rating and complaints. No public API.",
+      "what_it_does": "Business rating (A+ to F) and accreditation. BBB's search page carries its results as data (__PRELOADED_STATE__); read through ScraperAPI from the USA. Card 'BBB rating'.",
       "access": "scrape",
       "cost": "free",
       "step": 4,
-      "status": "planned"
+      "status": "live"
     },
     {
       "id": "us_chambers",

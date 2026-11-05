@@ -268,6 +268,19 @@
       }
     },
     {
+      "card": "BBB rating",
+      "group": "outside_records",
+      "what_it_checks": "The seller's rating (A+ to F) and accreditation at the Better Business Bureau. BBB's search page (bbb.org/search?find_text={name}&find_country=USA) carries its results as data in the page (__PRELOADED_STATE__); it is read through ScraperAPI from the USA (BBB blocks many visitors with a robot check). A business counts only when its whole name is the seller's. F is a warning, D a smaller one; A+ to A- a good sign; B, C or not rated information only; not on BBB shows no card. Asked for US sellers; answers kept 7 days. Needs BBB_CHECK_ENABLED=true and SCRAPERAPI_KEY in .env.",
+      "reads": [
+        "Company name",
+        "Country"
+      ],
+      "warning_points": 40,
+      "points_when_value": {
+        "D rating": 20
+      }
+    },
+    {
       "card": "Website history",
       "group": "outside_records",
       "what_it_checks": "Since when the Wayback Machine (web.archive.org) has saved the seller's own website. Saved over a year ago is a good sign; newer or never saved is information only and never adds to the score (a brand-new domain is already warned about by 'Website age'). Needs WEBSITE_RECORDS_CHECK_ENABLED=true in .env.",

@@ -231,7 +231,9 @@ fn is_brazil_seller(country: Option<&str>) -> bool {
 
 /// Answers kept 7 days: (when, the card or None when not found).
 const KEEP_FOR: Duration = Duration::from_secs(7 * 24 * 60 * 60);
-static KEPT: Mutex<Option<HashMap<String, (Instant, Option<Signal>)>>> = Mutex::new(None);
+/// One kept answer: when, and the card (None: not found).
+type Kept = (Instant, Option<Signal>);
+static KEPT: Mutex<Option<HashMap<String, Kept>>> = Mutex::new(None);
 
 async fn open_page(url: &str) -> Option<String> {
     let response = build_scraper_client()

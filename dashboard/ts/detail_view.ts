@@ -103,6 +103,7 @@ const SIGNAL_LABEL_TRANSLATIONS: Record<string, string> = {
   "Brazil trade show": "dash.label.brazil_trade_show",
   "France trade show": "dash.label.france_trade_show",
   "Reclame Aqui": "dash.label.reclame_aqui",
+  "BBB rating": "dash.label.bbb_rating",
   // Title of the risk factor shown when Safely could check too little.
   "Not enough information": "dash.label.not_enough_information",
 };
@@ -203,6 +204,12 @@ const SIGNAL_VALUE_TRANSLATIONS: Record<string, string> = {
   "Great reputation": "dash.value.ra_great",
   "RA1000 reputation": "dash.value.ra_ra1000",
   "Not enough reviews": "dash.value.ra_no_grade",
+  "A rating": "dash.value.bbb_a",
+  "B rating": "dash.value.bbb_b",
+  "C rating": "dash.value.bbb_c",
+  "D rating": "dash.value.bbb_d",
+  "F rating": "dash.value.bbb_f",
+  "Not rated": "dash.value.bbb_not_rated",
 };
 
 // Results that carry a number ("3/9 fields provided", "Checked 4 times

@@ -67,6 +67,8 @@ pub fn country_code_for_platform(platform: &str) -> Option<&'static str> {
         // Reclame Aqui refuses many non-Brazilian visitors (Bilal could
         // only open it through a VPN, Nov 5), so it is read from Brazil.
         "reclameaqui" => Some("br"),
+        // BBB rates US businesses; read from the USA.
+        "bbb" => Some("us"),
         _ => None,
     }
 }
@@ -92,6 +94,9 @@ pub fn country_code_for_platform(platform: &str) -> Option<&'static str> {
 const NO_RENDER_PLATFORMS: &[&str] = &[
     // reclameaqui: the reputation is in the page's own <meta> tags.
     "reclameaqui",
+    // bbb: the search results are in the page's own data
+    // (__PRELOADED_STATE__), no JavaScript needed.
+    "bbb",
     "thomasnet",
     "kompass",
     "exporthub",
