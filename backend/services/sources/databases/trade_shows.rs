@@ -31,7 +31,7 @@
 //! exhibitors). Only a good sign; not found shows no card.
 //!
 //! And fairs on Swapcard, the event platform Informa uses (Hospitalar
-//! in Brazil...). Each fair's exhibitor list is read the way its own
+//! and Fispal Tecnologia / Food Service in Brazil...). Each fair's exhibitor list is read the way its own
 //! page reads it (free, no key):
 //! POST {host}/api/graphql  [{"operationName": "EventExhibitorListViewConnectionQuery",
 //!   "variables": {"withEvent": true, "viewId": ..., "eventId": ..., "endCursor": ...},
@@ -825,14 +825,33 @@ pub struct SwapcardFair {
 
 /// The Swapcard fairs read. Add a fair by adding its line (its viewId
 /// and eventId are in the payload of its list's "graphql" request).
-pub const SWAPCARD_FAIRS: &[SwapcardFair] = &[SwapcardFair {
-    name: "Hospitalar 2027",
-    label: BRAZIL_LABEL,
-    host: "https://app.informamarkets.com.br",
-    view_id: "RXZlbnRWaWV3XzE4OTYxMTQ=",
-    event_id: "RXZlbnRfNDUzNDA5Mw==",
-    list_page: "https://www.hospitalar.com/en/i-want-to-visit/exhibitor-list/",
-}];
+pub const SWAPCARD_FAIRS: &[SwapcardFair] = &[
+    SwapcardFair {
+        name: "Hospitalar 2027",
+        label: BRAZIL_LABEL,
+        host: "https://app.informamarkets.com.br",
+        view_id: "RXZlbnRWaWV3XzE4OTYxMTQ=",
+        event_id: "RXZlbnRfNDUzNDA5Mw==",
+        list_page: "https://www.hospitalar.com/en/i-want-to-visit/exhibitor-list/",
+    },
+    SwapcardFair {
+        name: "Fispal Tecnologia 2026",
+        label: BRAZIL_LABEL,
+        host: "https://app.informamarkets.com.br",
+        view_id: "RXZlbnRWaWV3XzEyMzc0MjI=",
+        event_id: "RXZlbnRfMzg5NTY2Mw==",
+        list_page: "https://www.fispaltecnologia.com.br/expor/lista-de-expositores/",
+    },
+    SwapcardFair {
+        name: "Fispal Food Service 2026",
+        label: BRAZIL_LABEL,
+        host: "https://app.informamarkets.com.br",
+        // Written without the "=" at the end, as the fair's own page sends it.
+        view_id: "RXZlbnRWaWV3XzEyNDY3NDA",
+        event_id: "RXZlbnRfNDMxNzQyOQ==",
+        list_page: "https://www.fispalfoodservice.com.br/quero-visitar/lista-de-expositores/",
+    },
+];
 
 /// The fingerprint of the list question Swapcard's server already knows.
 const SWAPCARD_LIST_QUERY: &str =
@@ -1301,6 +1320,23 @@ mod tests {
             "nodes": [ { "name": "PHILIPS" } ], "pageInfo": { "hasNextPage": false, "endCursor": "x" } } } } }]);
         assert_eq!(swapcard_page(&last).unwrap().1, None);
         assert!(swapcard_page(&json!([{ "errors": [ { "message": "no" } ] }])).is_none());
+    }
+
+    #[test]
+    fn the_brazil_swapcard_fairs_are_listed_with_their_own_codes() {
+        let names: Vec<&str> = SWAPCARD_FAIRS.iter().map(|f| f.name).collect();
+        assert_eq!(
+            names,
+            vec![
+                "Hospitalar 2027",
+                "Fispal Tecnologia 2026",
+                "Fispal Food Service 2026"
+            ]
+        );
+        // Each fair's codes as Bilal captured them (Nov 5).
+        assert_eq!(SWAPCARD_FAIRS[1].event_id, "RXZlbnRfMzg5NTY2Mw==");
+        assert_eq!(SWAPCARD_FAIRS[2].view_id, "RXZlbnRWaWV3XzEyNDY3NDA");
+        assert_eq!(SWAPCARD_FAIRS[2].event_id, "RXZlbnRfNDMxNzQyOQ==");
     }
 
     #[test]

@@ -22,7 +22,7 @@
   },
   "reads": {
     "website": ["domain", "company name", "address", "phone", "email", "registration or tax number", "policies", "payment methods shown", "prices and discounts", "photos", "trust badges", "reviews on the site", "social links"],
-    "outside": ["RDAP (domain age)", "DNS (email set up for the domain)", "Google search (social sites, reviews, scam warnings, complaint sites)", "sanctions lists (US, UN, EU), company registers, EU VAT numbers (VIES) the US stock market (SEC EDGAR) the US government register (SAM.gov) chambers of commerce (HKGCC, ChamberMaster) the Canton Fair, HKTDC fairs, CES and Brazil fairs (Hospitalar)", "website history (Wayback Machine), traffic (Tranco) and first certificate (crt.sh): see standards/databases/global.json", "Safely's own history and buyer reports"],
+    "outside": ["RDAP (domain age)", "DNS (email set up for the domain)", "Google search (social sites, reviews, scam warnings, complaint sites)", "sanctions lists (US, UN, EU), company registers, EU VAT numbers (VIES) the US stock market (SEC EDGAR) the US government register (SAM.gov) chambers of commerce (HKGCC, ChamberMaster) the Canton Fair, HKTDC fairs, CES and Brazil fairs (Hospitalar, Fispal)", "website history (Wayback Machine), traffic (Tranco) and first certificate (crt.sh): see standards/databases/global.json", "Safely's own history and buyer reports"],
     "outside_planned": ["WHOIS owner hidden or not", "safe-browsing lists"]
   },
   "rules": [
