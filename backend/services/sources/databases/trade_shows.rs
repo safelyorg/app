@@ -40,6 +40,14 @@
 //! once a day and kept in memory, so a scan adds no request. Asked for
 //! every seller. Only a good sign; not found shows no card.
 //!
+//! And RX fairs (Feicon in Brazil...). Their exhibitor lists are searched
+//! on Algolia, with the public search key each fair's page gives every
+//! visitor's browser (it can only read the public exhibitor list):
+//! POST https://{app}-dsn.algolia.net/1/indexes/{index}/query
+//!   {"params": "query={name}&filters=recordType:exhibitor AND locale:pt-br AND eventEditionId:{edition}&typoTolerance=false"}
+//! One request per fair per scan. Asked for every seller. Only a good
+//! sign; not found shows no card.
+//!
 //! An exhibitor counts only when its WHOLE name is the seller's name
 //! (legal forms and punctuation left out).
 //!
@@ -1070,6 +1078,190 @@ pub async fn swapcard_signal(company_name: Option<&str>) -> Option<Signal> {
     None
 }
 
+// ---------------------------------------------------------------------
+// RX fairs on Algolia (Feicon...)
+// ---------------------------------------------------------------------
+
+/// One RX fair, as its exhibitor list page searches it (seen in Bilal's
+/// browser, Nov 5).
+#[derive(Debug, Clone, Copy)]
+pub struct AlgoliaFair {
+    /// "Feicon 2027".
+    pub name: &'static str,
+    pub label: &'static str,
+    /// Algolia's application ("XD0U5M6Y4R").
+    pub app_id: &'static str,
+    /// The fair's PUBLIC search key, the one its page gives every
+    /// visitor's browser. Not a secret and not Safely's own key.
+    pub search_key: &'static str,
+    pub index: &'static str,
+    pub event_edition_id: &'static str,
+    pub locale: &'static str,
+    pub list_page: &'static str,
+}
+
+/// The RX fairs searched. Add a fair by adding its line (all the codes
+/// are in the Request URL and Payload of its list's Algolia "query").
+pub const ALGOLIA_FAIRS: &[AlgoliaFair] = &[AlgoliaFair {
+    name: "Feicon 2027",
+    label: BRAZIL_LABEL,
+    app_id: "XD0U5M6Y4R",
+    search_key: "d5cd7d4ec26134ff4a34d736a7f9ad47",
+    index: "evt-515eaf3f-a833-42fe-bb67-c1cd154e6401-index",
+    event_edition_id: "eve-72df616a-7258-48e7-909e-51b2b53cf9c4",
+    locale: "pt-br",
+    list_page: "https://www.feicon.com.br/pt-br/Expositores.html",
+}];
+
+/// What is sent: the seller's name, only this fair's exhibitors, no
+/// typo tolerance (the same choices the fair's own page makes).
+pub fn algolia_request(fair: &AlgoliaFair, company_name: &str) -> Value {
+    let filters = format!(
+        "recordType:exhibitor AND locale:{} AND eventEditionId:{}",
+        fair.locale, fair.event_edition_id
+    );
+    json!({
+        "params": format!(
+            "query={}&hitsPerPage=20&filters={}&typoTolerance=false",
+            urlencoding::encode(company_name.trim()),
+            urlencoding::encode(&filters)
+        )
+    })
+}
+
+/// Every text (or list of texts) in a record whose field name contains
+/// one of `words` ("name", "stand"...). The fair's records are read this
+/// way so a renamed field does not break the check.
+fn texts_where(record: &Value, words: &[&str]) -> Vec<String> {
+    let mut found: Vec<String> = Vec::new();
+    let Some(fields) = record.as_object() else {
+        return found;
+    };
+    for (key, value) in fields {
+        let key = key.to_ascii_lowercase();
+        if !words.iter().any(|w| key.contains(w)) {
+            continue;
+        }
+        let mut add = |t: &str| {
+            let t = t.split_whitespace().collect::<Vec<_>>().join(" ");
+            if !t.is_empty() && !found.contains(&t) {
+                found.push(t);
+            }
+        };
+        match value {
+            Value::String(t) => add(t),
+            Value::Array(items) => items.iter().filter_map(Value::as_str).for_each(&mut add),
+            _ => {}
+        }
+    }
+    found
+}
+
+/// One RX exhibitor found.
+#[derive(Debug, Clone, PartialEq)]
+pub struct AlgoliaExhibitor {
+    pub name: String,
+    pub booths: Vec<String>,
+}
+
+/// The exhibitor in an Algolia answer whose whole name (any field with
+/// "name" in it) is the seller's name. None when there is none; the
+/// answer not being a search answer is None too.
+pub fn algolia_match(company_name: &str, answer: &Value) -> Option<AlgoliaExhibitor> {
+    let wanted = compared_name(company_name)?;
+    let hits = answer.get("hits")?.as_array()?;
+    hits.iter().find_map(|hit| {
+        let name = texts_where(hit, &["name"])
+            .into_iter()
+            .find(|n| compared_name(n).as_deref() == Some(wanted.as_str()))?;
+        Some(AlgoliaExhibitor {
+            name,
+            booths: texts_where(hit, &["stand", "booth"]),
+        })
+    })
+}
+
+/// The card for an RX exhibitor.
+pub fn algolia_card(fair: &AlgoliaFair, e: &AlgoliaExhibitor) -> Signal {
+    let booths = match e.booths.len() {
+        0 => String::new(),
+        1 => format!(" (booth {})", e.booths[0]),
+        _ => format!(" (booths {})", e.booths.join(", ")),
+    };
+    Signal {
+        label: fair.label.to_string(),
+        sub: format!(
+            "\"{}\" is an exhibitor at {}{booths}. The fair checks its exhibitors, so this is a good sign - but it does not prove that this listing is the company's own. Exhibitor list: {}",
+            e.name, fair.name, fair.list_page
+        ),
+        value: MYS_EXHIBITOR.to_string(),
+        signal_type: "good".to_string(),
+        category: OUTSIDE_RECORDS.to_string(),
+        check_type: "existence".to_string(),
+    }
+}
+
+async fn search_algolia(fair: &AlgoliaFair, company_name: &str) -> Option<Value> {
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(8))
+        .user_agent(BROWSER)
+        .build()
+        .ok()?;
+    let url = format!(
+        "https://{}-dsn.algolia.net/1/indexes/{}/query",
+        fair.app_id.to_ascii_lowercase(),
+        fair.index
+    );
+    match client
+        .post(url)
+        .header("X-Algolia-Application-Id", fair.app_id)
+        .header("X-Algolia-API-Key", fair.search_key)
+        .json(&algolia_request(fair, company_name))
+        .send()
+        .await
+    {
+        Ok(r) if r.status().is_success() => r.json::<Value>().await.ok(),
+        Ok(r) => {
+            eprintln!("Safely: {} search answered {}", fair.name, r.status());
+            None
+        }
+        Err(e) => {
+            eprintln!("Safely: {} search could not be reached: {}", fair.name, e);
+            None
+        }
+    }
+}
+
+/// The RX fairs' card (the first fair the seller exhibits at), or None
+/// when the check is off or it exhibits at none of them.
+pub async fn algolia_signal(company_name: Option<&str>) -> Option<Signal> {
+    let name = company_name.map(str::trim).filter(|n| !n.is_empty())?;
+    if !enabled() {
+        return None;
+    }
+    compared_name(name)?;
+    for fair in ALGOLIA_FAIRS {
+        let Some(answer) = search_algolia(fair, name).await else {
+            continue;
+        };
+        if let Some(e) = algolia_match(name, &answer) {
+            return Some(algolia_card(fair, &e));
+        }
+        // Found something but no field with the name: the fair's record
+        // has changed shape. Logged with the field names only.
+        if let Some(first) = answer.pointer("/hits/0").and_then(Value::as_object)
+            && texts_where(&Value::Object(first.clone()), &["name"]).is_empty()
+        {
+            eprintln!(
+                "Safely: {} answer has no name field; fields: {}",
+                fair.name,
+                first.keys().cloned().collect::<Vec<_>>().join(", ")
+            );
+        }
+    }
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1379,6 +1571,53 @@ mod tests {
         );
         assert!(swapcard_match("Ningbo David Medical Device Co., Ltd", &found).is_some());
         assert!(swapcard_match("Accumed", &found).is_none());
+    }
+
+    #[test]
+    fn the_algolia_search_is_the_fairs_own() {
+        let fair = &ALGOLIA_FAIRS[0];
+        let body = algolia_request(fair, "MarGirius Continental");
+        let params = body["params"].as_str().unwrap();
+        assert!(params.starts_with("query=MarGirius%20Continental&"));
+        assert!(params.contains("typoTolerance=false"));
+        // The same filter the fair's page sends (Bilal's capture, Nov 5).
+        assert!(params.contains(
+            "filters=recordType%3Aexhibitor%20AND%20locale%3Apt-br%20AND%20eventEditionId%3Aeve-72df616a-7258-48e7-909e-51b2b53cf9c4"
+        ));
+    }
+
+    #[test]
+    fn an_algolia_answer_is_read_by_its_name_fields() {
+        let answer = json!({ "nbHits": 2, "hits": [
+            { "objectID": "exh-1_pt-br", "companyName": "MarGirius Continental", "standReference": "G050" },
+            { "objectID": "exh-2_pt-br", "name": "BRANCO MOTORES LTDA", "stands": ["E230", "E231"] }
+        ]});
+        let e = algolia_match("Margirius Continental Ltda", &answer).unwrap();
+        assert_eq!(e.booths, vec!["G050"]);
+        let card = algolia_card(&ALGOLIA_FAIRS[0], &e);
+        assert_eq!(
+            (
+                card.label.as_str(),
+                card.value.as_str(),
+                card.signal_type.as_str()
+            ),
+            (BRAZIL_LABEL, MYS_EXHIBITOR, "good")
+        );
+        assert!(card.sub.contains("exhibitor at Feicon 2027 (booth G050)"));
+        let e = algolia_match("Branco Motores", &answer).unwrap();
+        assert_eq!(e.booths, vec!["E230", "E231"]);
+        assert!(algolia_match("MarGirius", &answer).is_none());
+        // Only an ID came back (what the page itself asks for): no match.
+        let ids_only =
+            json!({ "hits": [ { "objectID": "exh-ad0b9a02-2f64-48ff-8a32-03128c7e2b7b_pt-br" } ] });
+        assert!(algolia_match("MarGirius Continental", &ids_only).is_none());
+        assert!(
+            algolia_match(
+                "MarGirius Continental",
+                &json!({ "message": "Invalid API key" })
+            )
+            .is_none()
+        );
     }
 
     #[test]

@@ -240,7 +240,7 @@
     {
       "card": "Brazil trade show",
       "group": "outside_records",
-      "what_it_checks": "Whether a company with exactly the seller's name is an exhibitor at the Brazil fairs Safely reads (SWAPCARD_FAIRS in trade_shows.rs; now Hospitalar 2027, Fispal Tecnologia 2026 and Fispal Food Service 2026, on Informa's Swapcard platform). Each fair's whole exhibitor list is read once a day, page by page, the way its own page reads it, so a scan adds no request. Asked for every seller. An exhibitor is a good sign (fair, booth, link to the list); not found shows no card. Needs TRADE_SHOWS_CHECK_ENABLED=true in .env.",
+      "what_it_checks": "Whether a company with exactly the seller's name is an exhibitor at the Brazil fairs Safely reads (in trade_shows.rs): on Informa's Swapcard platform (SWAPCARD_FAIRS: Hospitalar 2027, Fispal Tecnologia 2026, Fispal Food Service 2026 - each whole list read once a day) and on RX's Algolia search (ALGOLIA_FAIRS: Feicon 2027 - one search per scan, with the public search key the fair's page gives every visitor). Asked for every seller. An exhibitor is a good sign (fair, booth, link to the list); not found shows no card. Needs TRADE_SHOWS_CHECK_ENABLED=true in .env.",
       "reads": [
         "Company name"
       ]

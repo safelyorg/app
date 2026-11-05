@@ -77,6 +77,7 @@ pub async fn check_outside_records(facts: &SellerFacts) -> Vec<Signal> {
         hktdc,
         us_show,
         swapcard,
+        algolia,
         website,
     ) = tokio::join!(
         sanctions::sanctions_signal(name),
@@ -90,6 +91,7 @@ pub async fn check_outside_records(facts: &SellerFacts) -> Vec<Signal> {
         trade_shows::hktdc_signal(name, country),
         trade_shows::mys_signal(name),
         trade_shows::swapcard_signal(name),
+        trade_shows::algolia_signal(name),
         website_records::website_record_cards(facts.website.as_deref()),
     );
     cards.extend(sanctions);
@@ -103,6 +105,7 @@ pub async fn check_outside_records(facts: &SellerFacts) -> Vec<Signal> {
     cards.extend(hktdc);
     cards.extend(us_show);
     cards.extend(swapcard);
+    cards.extend(algolia);
     cards.extend(website);
     cards
 }
