@@ -218,6 +218,122 @@ fn words_of(text: &str) -> Vec<String> {
         .collect()
 }
 
+/// The words of a text as written (case kept), split like words_of.
+fn words_as_written(text: &str) -> Vec<&str> {
+    text.split(|c: char| !(c.is_alphanumeric() || c == '-'))
+        .filter(|w| !w.is_empty())
+        .collect()
+}
+
+/// Words that may stand right before the company's name without making
+/// it another company's name ("beware of Fusion Inc", "review: Acme").
+const NAME_LEAD_WORDS: &[&str] = &[
+    "a",
+    "an",
+    "the",
+    "of",
+    "by",
+    "from",
+    "about",
+    "against",
+    "on",
+    "at",
+    "for",
+    "to",
+    "in",
+    "with",
+    "and",
+    "or",
+    "vs",
+    "versus",
+    "is",
+    "are",
+    "was",
+    "were",
+    "my",
+    "our",
+    "their",
+    "avoid",
+    "beware",
+    "review",
+    "reviews",
+    "report",
+    "reports",
+    "complaint",
+    "complaints",
+    "lawsuit",
+    "sued",
+    "sues",
+    "company",
+    "supplier",
+    "seller",
+    "vendor",
+    "factory",
+    "re",
+    "contra",
+    "sobre",
+    "da",
+    "do",
+    "de",
+    "empresa",
+    "fornecedor",
+    "golpe",
+    "scam",
+    "fraud",
+    "fraude",
+    "warning",
+    "alert",
+    "why",
+    "how",
+    "what",
+    "when",
+    "who",
+    "another",
+    "new",
+    "latest",
+    "this",
+    "that",
+    "these",
+    "those",
+    "i",
+    "we",
+    "you",
+    "they",
+    "did",
+    "does",
+    "has",
+    "have",
+    "watch",
+    "out",
+    "stay",
+    "away",
+    "real",
+    "fake",
+    "true",
+    "story",
+    "stories",
+    "customers",
+    "customer",
+    "buyers",
+    "buyer",
+    "victims",
+    "warn",
+    "warns",
+    "exposed",
+    "exposing",
+];
+
+/// True when the name at `start` is part of a longer name: the word
+/// right before it is written with a capital and is not a small lead
+/// word ("Talk Fusion, Inc." is not "Fusion, Inc."; ThomasNet, Nov 5).
+fn inside_longer_name(written: &[&str], start: usize) -> bool {
+    let Some(before) = start.checked_sub(1).and_then(|i| written.get(i)) else {
+        return false;
+    };
+    before.chars().next().is_some_and(char::is_uppercase)
+        && !NAME_LEAD_WORDS.contains(&before.to_lowercase().as_str())
+}
+
 /// Start positions of `needle` (a run of words) inside `words`.
 fn word_run_positions(words: &[String], needle: &[String]) -> Vec<usize> {
     if needle.is_empty() || needle.len() > words.len() {
@@ -269,8 +385,12 @@ fn web_scam_word_near_name(text: &str, name: &str) -> bool {
 /// SCAM_PROOF_WORDS.
 fn scam_word_near_name_in(text: &str, name: &str, extra: &[&str]) -> bool {
     let words = words_of(text);
+    let written = words_as_written(text);
     let name_words = words_of(name);
-    let name_starts = word_run_positions(&words, &name_words);
+    let name_starts: Vec<usize> = word_run_positions(&words, &name_words)
+        .into_iter()
+        .filter(|&i| written.len() != words.len() || !inside_longer_name(&written, i))
+        .collect();
     if name_starts.is_empty() {
         return false;
     }
@@ -966,6 +1086,30 @@ mod web_scam_tests {
                 .iter()
                 .all(|(p, _, _)| !is_web_scam_row(p))
         );
+    }
+
+    #[test]
+    fn another_company_with_a_longer_name_is_not_a_scam_mention() {
+        // ThomasNet, Nov 5: "Fusion, Inc." is not "Talk Fusion, Inc.".
+        assert!(!web_scam_word_near_name(
+            "Talk Fusion, Inc. class-action complaint filed in court",
+            "Fusion, Inc."
+        ));
+        assert!(!scam_word_near_name("Talk Fusion scam exposed", "Fusion"));
+        // The seller's own name next to a scam word still counts.
+        assert!(scam_word_near_name(
+            "Beware of Fusion, Inc. - a scam",
+            "Fusion, Inc."
+        ));
+        assert!(scam_word_near_name(
+            "Why Fusion Inc Scammed Me",
+            "Fusion Inc"
+        ));
+        assert!(scam_word_near_name("fusion inc is a scam", "Fusion Inc"));
+        assert!(web_scam_word_near_name(
+            "Fusion, Inc. complaints",
+            "Fusion, Inc."
+        ));
     }
 
     #[test]

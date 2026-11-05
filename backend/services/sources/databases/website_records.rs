@@ -251,7 +251,12 @@ pub fn latest_rank(text: &str) -> Option<Option<(u64, String)>> {
     )
 }
 
+/// The Tranco list Safely names is the top 1 million; Tranco's lookup
+/// also gives ranks below it (fusion-inc.com: 4551288, Nov 5).
+const TOP_LIST_SIZE: u64 = 1_000_000;
+
 pub fn traffic_card(domain: &str, rank: Option<(u64, String)>) -> Signal {
+    let rank = rank.filter(|(r, _)| *r <= TOP_LIST_SIZE);
     match rank {
         Some((rank, date)) => card(
             TRAFFIC_LABEL,
@@ -395,6 +400,19 @@ mod tests {
         assert_eq!(
             (none.value.as_str(), none.signal_type.as_str()),
             (HISTORY_NONE, "info")
+        );
+    }
+
+    #[test]
+    fn a_rank_below_the_top_million_is_not_top_million() {
+        let card = traffic_card("fusion-inc.com", Some((4_551_288, "2026-10-19".into())));
+        assert_eq!(card.value, TRAFFIC_NONE);
+        assert!(!card.sub.contains("4551288"));
+        let top = traffic_card("at.or.kr", Some((628_973, "2026-11-04".into())));
+        assert_eq!(top.value, TRAFFIC_TOP);
+        assert_eq!(
+            traffic_card("x.com", Some((1_000_000, "d".into()))).value,
+            TRAFFIC_TOP
         );
     }
 
