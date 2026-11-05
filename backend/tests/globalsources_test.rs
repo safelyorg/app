@@ -400,6 +400,12 @@ fn the_page_data_gives_the_website_address_and_registration() {
     assert!(d.contains(
         "Official registration in China (shown by Global Sources): name 惠州市博新电子有限公司; number 91441303594089865C; address 惠州市惠城区水口街道."
     ));
+    // The number on its own line, so the "Company number" check reads it
+    // (Fujian New Century Communications, Nov 5: it was never checked).
+    assert_eq!(
+        backend::services::sources::databases::numbers::company_numbers_in(&d),
+        vec!["91441303594089865C".to_string()]
+    );
 }
 
 #[test]
@@ -414,6 +420,12 @@ fn a_global_sources_page_is_never_the_suppliers_website_and_hidden_numbers_are_m
             .unwrap()
             .contains("number 91440605MACJQBGXXX (partly hidden by Global Sources)")
     );
+    // A partly hidden number is never checked.
+    let d = scraper
+        .parse_supplier(&page, PRODUCT_URL)
+        .company_description
+        .unwrap();
+    assert!(backend::services::sources::databases::numbers::company_numbers_in(&d).is_empty());
 }
 
 #[test]
@@ -428,6 +440,17 @@ fn the_supplier_page_data_fills_a_missing_website() {
         s.company_description
             .unwrap()
             .matches("Official registration")
+            .count(),
+        1
+    );
+    let s = scraper.enrich_from_company_profile(
+        scraper.parse_supplier(&product_page(), PRODUCT_URL),
+        &supplier,
+    );
+    assert_eq!(
+        s.company_description
+            .unwrap()
+            .matches("Registration number: ")
             .count(),
         1
     );
@@ -588,11 +611,14 @@ fn the_exhibitor_page_is_found_and_gives_the_price() {
 }
 
 #[test]
-fn an_unchecked_exhibitor_has_no_verified_badge() {
+fn an_unchecked_exhibitor_is_a_trade_show_exhibitor_not_verified() {
     let scraper = get_scraper_for_platform("globalsources").unwrap();
     let s = scraper.parse_supplier(&show_product(false), SHOW_PRODUCT_URL);
     assert!(!s.platform_verified_badge);
-    assert_eq!(s.badge_honorific, None);
+    // It rents a booth at the fair (the show site lists only exhibitors):
+    // "Trade show exhibitor", a note - as on the main site - never
+    // "Unverified" (AAA Tablet PC Technology, Nov 5).
+    assert_eq!(s.badge_honorific.as_deref(), Some("Trade show exhibitor"));
     assert!(!s.company_description.unwrap().contains("Addcredit"));
 }
 

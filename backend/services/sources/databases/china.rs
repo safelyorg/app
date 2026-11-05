@@ -71,4 +71,11 @@ mod tests {
         assert!(checks[0].valid);
         assert_eq!(checks[0].kind, KIND);
     }
+
+    #[test]
+    fn real_codes_from_global_sources_pass() {
+        // Fujian New Century Communications (Nov 5) and Boxin (Huizhou).
+        assert!(uscc_is_valid("913505037513705716"));
+        assert!(uscc_is_valid("91441303594089865C"));
+    }
 }

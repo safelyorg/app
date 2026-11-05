@@ -29,8 +29,8 @@
 // so `super` is globalsources.rs and its helpers can be used directly.
 use super::{
     B2bListingProfile, B2bSupplierProfile, OTHER_NAMES_PREFIX, OWN_TEXT_PREFIX, PLATFORM,
-    PLATFORM_NAME, PLATFORM_PREFIX, PRODUCT_DETAILS_PREFIX, SupplierRecord, absolute_url, cut,
-    other_company_names, selector, squash,
+    PLATFORM_NAME, PLATFORM_PREFIX, PRODUCT_DETAILS_PREFIX, SupplierRecord, TRADE_SHOW_ONLY,
+    absolute_url, cut, other_company_names, selector, squash,
 };
 use regex::Regex;
 use scraper::Html;
@@ -44,6 +44,19 @@ static STATED_YEAR: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(
         r"(?i)\b(?:established|founded|set up|operating since|since)\s+(?:in\s+)?((?:19|20)\d\d)\b",
     )
+    .unwrap()
+});
+/// A company's registration written with a full date next to it, in
+/// either order: "registered on 04 December 2014", or (as AAA Tablet's
+/// translated text has it) "... on 04 December 2014. The Shenzhen market
+/// supervision Bureau was established with a registered capital ...".
+/// Only a full date counts here, so a plain year next to the word
+/// ("2025 award ... established") is never read as the founding year.
+static DATED_REGISTRATION: LazyLock<Regex> = LazyLock::new(|| {
+    let date = r"\b\d{1,2}(?:st|nd|rd|th)?\s+(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+((?:19|20)\d\d)\b";
+    Regex::new(&format!(
+        r"(?i)\b(?:registered|incorporated|established|founded)\b[^.]{{0,150}}?{date}|{date}\.?[^.]{{0,120}}\b(?:registered|incorporated|established|founded)\b"
+    ))
     .unwrap()
 });
 static PRODUCT_ID: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"_(\d+)/?(?:[?#].*)?$").unwrap());
@@ -257,9 +270,7 @@ impl ShowPage {
 
     /// The year the company says it was founded, from its own text.
     fn stated_year(&self) -> Option<String> {
-        STATED_YEAR
-            .captures(&self.profile_text()?)
-            .map(|c| c[1].to_string())
+        year_in(&self.profile_text()?)
     }
 
     /// "https://www.globalsources.com/exhibitors/HK/anhui-dujia-..._2008801135123/".
@@ -367,7 +378,10 @@ impl ShowPage {
             platform_verified_badge: self.badge().is_some(),
             profile_url: profile_url.to_string(),
             source_platform: PLATFORM.to_string(),
-            badge_honorific: self.badge(),
+            // Every supplier on the show site rents a booth at Global
+            // Sources' Hong Kong fairs: "Trade show exhibitor" (a note),
+            // as on the main site, unless its registration was checked.
+            badge_honorific: self.badge().or_else(|| Some(TRADE_SHOW_ONLY.to_string())),
             company_description: (!lines.is_empty()).then(|| lines.join("\n")),
             ..Default::default()
         }
@@ -499,6 +513,18 @@ impl ShowPage {
     }
 }
 
+/// The founding year a company's own text gives: "established in 2021",
+/// or a registration with a full date (DATED_REGISTRATION).
+fn year_in(text: &str) -> Option<String> {
+    if let Some(c) = STATED_YEAR.captures(text) {
+        return Some(c[1].to_string());
+    }
+    DATED_REGISTRATION
+        .captures(text)
+        .and_then(|c| c.get(1).or_else(|| c.get(2)))
+        .map(|m| m.as_str().to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -533,5 +559,29 @@ mod tests {
             Some("2021")
         );
         assert!(STATED_YEAR.captures("We have 2021 workers").is_none());
+    }
+
+    #[test]
+    fn a_registration_date_gives_the_year() {
+        // AAA Tablet PC Technology's own text on its exhibitor page (Nov 5).
+        let aaa = "AAA Tablet PC Technology Co., Ltd is located in China Special Economic Zone, Shenzhen Bao'an District Xixiang Street Yu Sheng Industrial Zone Seventh 6 Story A, on 04 December 2014. The Shenzhen market supervision and Management Bureau was established with a registered capital of $160,000.";
+        assert_eq!(year_in(aaa).as_deref(), Some("2014"));
+        assert_eq!(
+            year_in("The company was registered on 3rd March 2009 in Ningbo.").as_deref(),
+            Some("2009")
+        );
+        assert_eq!(
+            year_in("Established in 2021, we make bags").as_deref(),
+            Some("2021")
+        );
+        // A plain year, or a date with no registration word near it: nothing.
+        assert_eq!(
+            year_in("We won an award in 2025. We were established long ago."),
+            None
+        );
+        assert_eq!(
+            year_in("Our next show is on 18 October 2026 in Hong Kong."),
+            None
+        );
     }
 }

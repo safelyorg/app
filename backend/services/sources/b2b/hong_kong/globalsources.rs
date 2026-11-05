@@ -41,8 +41,9 @@
 #[path = "globalsources_show.rs"]
 mod show;
 
-use crate::services::sources::b2b::{
-    B2bListingProfile, B2bScraper, B2bSupplierProfile, SupplierRecord,
+use crate::services::sources::{
+    b2b::{B2bListingProfile, B2bScraper, B2bSupplierProfile, SupplierRecord},
+    databases::numbers::REGISTRATION_PREFIX,
 };
 use regex::Regex;
 use scraper::{ElementRef, Html, Node, Selector};
@@ -482,6 +483,17 @@ fn contact_lines(c: &SupplierContact) -> Vec<String> {
             "Official registration in China (shown by Global Sources): {}.",
             registration.join("; ")
         ));
+    }
+    // The number again on its own line, the way the outside-records
+    // checks read company numbers ("Company number" card: China's
+    // 18-character code). Not when Global Sources hides part of it.
+    if let Some(n) = c
+        .register_number
+        .as_deref()
+        .map(str::trim)
+        .filter(|n| !n.is_empty() && !n.to_uppercase().contains("XXX"))
+    {
+        lines.push(format!("{REGISTRATION_PREFIX}{n}."));
     }
     lines
 }
