@@ -41,7 +41,7 @@
 //! every seller. Only a good sign; not found shows no card.
 //!
 //! And fairs searched on Algolia (RX's Feicon in Brazil, Comexposium's
-//! SIAL Paris in France...). Their exhibitor lists are searched
+//! SIAL Paris and Maison&Objet in France...). Their exhibitor lists are searched
 //! on Algolia, with the public search key each fair's page gives every
 //! visitor's browser (it can only read the public exhibitor list):
 //! POST https://{app}-dsn.algolia.net/1/indexes/{index}/query
@@ -1101,8 +1101,12 @@ pub struct AlgoliaFair {
     pub filters: &'static str,
     pub list_page: &'static str,
     /// The address of one exhibitor's page, "{slug}" replaced by the
-    /// record's slug; empty when the fair has none (the list is linked).
+    /// record's slug, or "{query}" by the company's name; empty when the
+    /// fair has none (the list is linked).
     pub exhibitor_page: &'static str,
+    /// Where the names are in a record ("/exhibitor/name"); empty: any
+    /// top-level field with "name" in it.
+    pub name_fields: &'static [&'static str],
 }
 
 /// The card's name for French fairs.
@@ -1120,6 +1124,7 @@ pub const ALGOLIA_FAIRS: &[AlgoliaFair] = &[
         filters: "recordType:exhibitor AND locale:pt-br AND eventEditionId:eve-72df616a-7258-48e7-909e-51b2b53cf9c4",
         list_page: "https://www.feicon.com.br/pt-br/Expositores.html",
         exhibitor_page: "",
+        name_fields: &[],
     },
     AlgoliaFair {
         name: "SIAL Paris 2026",
@@ -1130,6 +1135,20 @@ pub const ALGOLIA_FAIRS: &[AlgoliaFair] = &[
         filters: "",
         list_page: "https://www.sialparis.com/en/exhibitors-2026",
         exhibitor_page: "https://www.sialparis.com/en/exhibitors-2026/exhibitor/{slug}",
+        name_fields: &[],
+    },
+    AlgoliaFair {
+        name: "Maison&Objet Paris",
+        label: FRANCE_LABEL,
+        app_id: "LPN4STGLQG",
+        search_key: "3dfb0b32b6d93bd5a34dceabcc437108",
+        index: "InsertionProduct_hall_asc",
+        // Exhibitor records only (products are tagged "product").
+        filters: "_tags:insertion",
+        list_page: "https://www.maison-objet.com/en/paris/exhibitors",
+        exhibitor_page: "https://www.maison-objet.com/en/paris/exhibitors?query={query}",
+        // The company, and the brand it shows under.
+        name_fields: &["/exhibitor/name", "/brand/name"],
     },
 ];
 
@@ -1211,10 +1230,30 @@ pub struct AlgoliaExhibitor {
 /// "name" in it) is the seller's name. None when there is none; the
 /// answer not being a search answer is None too.
 pub fn algolia_match(company_name: &str, answer: &Value) -> Option<AlgoliaExhibitor> {
+    algolia_match_in(company_name, answer, &[])
+}
+
+/// The same, reading the names at `name_fields` (JSON pointers) when
+/// given.
+pub fn algolia_match_in(
+    company_name: &str,
+    answer: &Value,
+    name_fields: &[&str],
+) -> Option<AlgoliaExhibitor> {
     let wanted = compared_name(company_name)?;
     let hits = answer.get("hits")?.as_array()?;
     hits.iter().find_map(|hit| {
-        let name = texts_where(hit, &["name"])
+        let names = if name_fields.is_empty() {
+            texts_where(hit, &["name"])
+        } else {
+            name_fields
+                .iter()
+                .filter_map(|f| hit.pointer(f).and_then(Value::as_str))
+                .map(|n| n.split_whitespace().collect::<Vec<_>>().join(" "))
+                .filter(|n| !n.is_empty())
+                .collect()
+        };
+        let name = names
             .into_iter()
             .find(|n| compared_name(n).as_deref() == Some(wanted.as_str()))?;
         let mut booths = texts_where(hit, &["stand", "booth"]);
@@ -1228,13 +1267,26 @@ pub fn algolia_match(company_name: &str, answer: &Value) -> Option<AlgoliaExhibi
             Some(v) => text(v, "value"),
             None => String::new(),
         };
+        // Maison&Objet: the hall, when given.
+        if booths.is_empty() {
+            let hall = text(hit, "hall");
+            if !hall.is_empty() {
+                booths.push(format!("hall {hall}"));
+            }
+        }
         Some(AlgoliaExhibitor { name, booths, slug })
     })
 }
 
 /// The card for an RX exhibitor.
 pub fn algolia_card(fair: &AlgoliaFair, e: &AlgoliaExhibitor) -> Signal {
-    let link = if fair.exhibitor_page.is_empty() || e.slug.is_empty() {
+    let link = if fair.exhibitor_page.contains("{query}") {
+        format!(
+            "Exhibitor list: {}",
+            fair.exhibitor_page
+                .replace("{query}", &urlencoding::encode(&e.name))
+        )
+    } else if fair.exhibitor_page.is_empty() || e.slug.is_empty() {
         format!("Exhibitor list: {}", fair.list_page)
     } else {
         format!(
@@ -1304,7 +1356,7 @@ pub async fn algolia_signal(company_name: Option<&str>) -> Option<Signal> {
         let Some(answer) = search_algolia(fair, name).await else {
             continue;
         };
-        if let Some(e) = algolia_match(name, &answer) {
+        if let Some(e) = algolia_match_in(name, &answer, fair.name_fields) {
             return Some(algolia_card(fair, &e));
         }
         // Found something but no field with the name: the fair's record
@@ -1723,6 +1775,44 @@ mod tests {
         let e = algolia_match("Barkat Rice Mills (Pvt) Ltd", &sial_answer()).unwrap();
         assert_eq!(e.booths, vec!["4 L195"]);
         assert!(algolia_match("Baika Foods", &sial_answer()).is_none());
+    }
+
+    /// Part of Bilal's real Maison&Objet answer for "hamam suite" (Nov 5).
+    fn mo_answer() -> Value {
+        json!({ "hits": [
+          { "name_fr": null, "name_en": null,
+            "brand": { "id": 111303, "name": "HAMAM SUITE", "slug": "hamam-suite" },
+            "exhibitor": { "name": "VERITAS TEKSTIL KON. PAZ. SAN. TIC. A.S.", "country_code": "TR", "country_en": "Türkiye" },
+            "hall": null, "stands": null, "sector": "DECOR & DESIGN", "_tags": ["insertion"],
+            "objectID": "insertion_111303" },
+          { "name_en": "Bed Collections", "brand": { "name": "HAMAM", "slug": "hamam" },
+            "exhibitor": { "country_code": "TR" }, "_tags": ["product"] }
+        ]})
+    }
+
+    #[test]
+    fn a_maison_objet_answer_is_read_by_company_or_brand() {
+        let mo = &ALGOLIA_FAIRS[2];
+        assert_eq!(mo.name, "Maison&Objet Paris");
+        assert_eq!(
+            algolia_request(mo, "Hamam Suite")["params"],
+            "query=Hamam%20Suite&hitsPerPage=20&filters=_tags%3Ainsertion&typoTolerance=false"
+        );
+        let by_company = algolia_match_in(
+            "Veritas Tekstil Kon. Paz. San. Tic. A.S.",
+            &mo_answer(),
+            mo.name_fields,
+        )
+        .unwrap();
+        assert_eq!(by_company.name, "VERITAS TEKSTIL KON. PAZ. SAN. TIC. A.S.");
+        let by_brand = algolia_match_in("Hamam Suite", &mo_answer(), mo.name_fields).unwrap();
+        assert_eq!(by_brand.name, "HAMAM SUITE");
+        let card = algolia_card(mo, &by_brand);
+        assert_eq!(card.label, FRANCE_LABEL);
+        assert!(card.sub.contains("exhibitor at Maison&Objet Paris."));
+        assert!(card.sub.contains("exhibitors?query=HAMAM%20SUITE"));
+        // A product's own name is not a company.
+        assert!(algolia_match_in("Bed Collections", &mo_answer(), mo.name_fields).is_none());
     }
 
     #[test]

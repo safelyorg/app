@@ -76,7 +76,7 @@
       "id": "fr_fairs",
       "name": "Trade fairs (SIAL Paris, Maison&Objet, Who's Next)",
       "url": "",
-      "what_it_does": "Trade fair exhibitors. Built: SIAL Paris (Comexposium, Algolia search; card 'France trade show'). Maison&Objet, Who's Next: being added (Nov 5).",
+      "what_it_does": "Trade fair exhibitors. Built: SIAL Paris (Comexposium) and Maison&Objet (both Algolia search; card 'France trade show'). Who's Next: being added (Nov 5).",
       "access": "scrape",
       "cost": "free",
       "step": 4,

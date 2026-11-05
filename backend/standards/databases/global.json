@@ -248,7 +248,7 @@
     {
       "card": "France trade show",
       "group": "outside_records",
-      "what_it_checks": "Whether a company with exactly the seller's name is an exhibitor at the French fairs Safely reads (ALGOLIA_FAIRS in trade_shows.rs; now SIAL Paris 2026, searched on Algolia with the public search key the fair's page gives every visitor). One search per scan. Asked for every seller. An exhibitor is a good sign (fair, stand, link to its exhibitor page); not found shows no card. Needs TRADE_SHOWS_CHECK_ENABLED=true in .env.",
+      "what_it_checks": "Whether a company with exactly the seller's name (Maison&Objet: the company or its brand) is an exhibitor at the French fairs Safely reads (ALGOLIA_FAIRS in trade_shows.rs; now SIAL Paris 2026 and Maison&Objet Paris, searched on Algolia with the public search key the fair's page gives every visitor). One search per scan. Asked for every seller. An exhibitor is a good sign (fair, stand, link to its exhibitor page); not found shows no card. Needs TRADE_SHOWS_CHECK_ENABLED=true in .env.",
       "reads": [
         "Company name"
       ]
