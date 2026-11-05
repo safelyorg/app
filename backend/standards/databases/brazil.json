@@ -59,11 +59,11 @@
       "id": "br_fairs",
       "name": "Trade fairs (Fenatran, Feicon, FIEE, Hospitalar, Fispal)",
       "url": "",
-      "what_it_does": "Trade fair exhibitors.",
+      "what_it_does": "Trade fair exhibitors. Built: Hospitalar (Informa, Swapcard list read daily; card 'Brazil trade show'). Fispal, Feicon, FIEE, Fenatran: being added one by one (Nov 5).",
       "access": "scrape",
       "cost": "free",
       "step": 4,
-      "status": "planned"
+      "status": "live"
     }
   ],
   "cards": []

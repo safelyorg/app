@@ -30,6 +30,16 @@
 //! Asked for every seller (CES has many Chinese, Korean and US
 //! exhibitors). Only a good sign; not found shows no card.
 //!
+//! And fairs on Swapcard, the event platform Informa uses (Hospitalar
+//! in Brazil...). Each fair's exhibitor list is read the way its own
+//! page reads it (free, no key):
+//! POST {host}/api/graphql  [{"operationName": "EventExhibitorListViewConnectionQuery",
+//!   "variables": {"withEvent": true, "viewId": ..., "eventId": ..., "endCursor": ...},
+//!   "extensions": {"persistedQuery": {"version": 1, "sha256Hash": ...}}}]
+//! 50 exhibitors a page. The whole list (Hospitalar 2027: 568) is read
+//! once a day and kept in memory, so a scan adds no request. Asked for
+//! every seller. Only a good sign; not found shows no card.
+//!
 //! An exhibitor counts only when its WHOLE name is the seller's name
 //! (legal forms and punctuation left out).
 //!
@@ -790,6 +800,257 @@ pub async fn mys_signal(company_name: Option<&str>) -> Option<Signal> {
     None
 }
 
+// ---------------------------------------------------------------------
+// Swapcard fairs (Informa: Hospitalar...)
+// ---------------------------------------------------------------------
+
+/// The card's name, as in standards/databases/global.json.
+pub const BRAZIL_LABEL: &str = "Brazil trade show";
+
+/// One fair on Swapcard, as its exhibitor list page asks for it (seen
+/// in Bilal's browser, Nov 5).
+#[derive(Debug, Clone, Copy)]
+pub struct SwapcardFair {
+    /// "Hospitalar 2027".
+    pub name: &'static str,
+    /// The card it gives.
+    pub label: &'static str,
+    /// "https://app.informamarkets.com.br".
+    pub host: &'static str,
+    pub view_id: &'static str,
+    pub event_id: &'static str,
+    /// The fair's own exhibitor list page, linked from the card.
+    pub list_page: &'static str,
+}
+
+/// The Swapcard fairs read. Add a fair by adding its line (its viewId
+/// and eventId are in the payload of its list's "graphql" request).
+pub const SWAPCARD_FAIRS: &[SwapcardFair] = &[SwapcardFair {
+    name: "Hospitalar 2027",
+    label: BRAZIL_LABEL,
+    host: "https://app.informamarkets.com.br",
+    view_id: "RXZlbnRWaWV3XzE4OTYxMTQ=",
+    event_id: "RXZlbnRfNDUzNDA5Mw==",
+    list_page: "https://www.hospitalar.com/en/i-want-to-visit/exhibitor-list/",
+}];
+
+/// The fingerprint of the list question Swapcard's server already knows.
+const SWAPCARD_LIST_QUERY: &str =
+    "589c0fbaa483a657bad0a0af1e5a088746c200f0b1c7dd8520c869aeaba28867";
+
+/// Most pages read for one fair (50 exhibitors each).
+const SWAPCARD_MAX_PAGES: usize = 40;
+
+/// One Swapcard exhibitor.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SwapcardExhibitor {
+    pub name: String,
+    pub booths: Vec<String>,
+}
+
+/// What is sent for one page of the list.
+pub fn swapcard_request(fair: &SwapcardFair, end_cursor: Option<&str>) -> Value {
+    let mut variables = json!({
+        "withEvent": true,
+        "viewId": fair.view_id,
+        "eventId": fair.event_id
+    });
+    if let Some(cursor) = end_cursor {
+        variables["endCursor"] = json!(cursor);
+    }
+    json!([{
+        "operationName": "EventExhibitorListViewConnectionQuery",
+        "variables": variables,
+        "extensions": { "persistedQuery": { "version": 1, "sha256Hash": SWAPCARD_LIST_QUERY } }
+    }])
+}
+
+/// One page of the answer: its exhibitors and the cursor of the next
+/// page (None on the last page). None when the answer is not a list.
+pub fn swapcard_page(answer: &Value) -> Option<(Vec<SwapcardExhibitor>, Option<String>)> {
+    let connection = answer
+        .get(0)
+        .unwrap_or(answer)
+        .pointer("/data/view/exhibitors")?;
+    let exhibitors = connection
+        .get("nodes")?
+        .as_array()?
+        .iter()
+        .filter_map(|node| {
+            let name = text(node, "name");
+            if name.is_empty() {
+                return None;
+            }
+            let booths = node
+                .pointer("/withEvent/booths")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .map(|b| text(b, "name"))
+                .filter(|b| !b.is_empty())
+                .collect();
+            Some(SwapcardExhibitor { name, booths })
+        })
+        .collect();
+    let page_info = connection.get("pageInfo").unwrap_or(&Value::Null);
+    let next = page_info
+        .get("hasNextPage")
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
+        .then(|| text(page_info, "endCursor"))
+        .filter(|c| !c.is_empty());
+    Some((exhibitors, next))
+}
+
+/// The exhibitor whose whole name is the seller's name.
+pub fn swapcard_match<'a>(
+    company_name: &str,
+    found: &'a [SwapcardExhibitor],
+) -> Option<&'a SwapcardExhibitor> {
+    let wanted = compared_name(company_name)?;
+    found
+        .iter()
+        .find(|e| compared_name(&e.name).as_deref() == Some(wanted.as_str()))
+}
+
+/// The card for a Swapcard exhibitor.
+pub fn swapcard_card(fair: &SwapcardFair, e: &SwapcardExhibitor) -> Signal {
+    let booths = match e.booths.len() {
+        0 => String::new(),
+        1 => format!(" (booth {})", e.booths[0]),
+        _ => format!(" (booths {})", e.booths.join(", ")),
+    };
+    Signal {
+        label: fair.label.to_string(),
+        sub: format!(
+            "\"{}\" is an exhibitor at {}{booths}. The fair checks its exhibitors, so this is a good sign - but it does not prove that this listing is the company's own. Exhibitor list: {}",
+            e.name, fair.name, fair.list_page
+        ),
+        value: MYS_EXHIBITOR.to_string(),
+        signal_type: "good".to_string(),
+        category: OUTSIDE_RECORDS.to_string(),
+        check_type: "existence".to_string(),
+    }
+}
+
+/// Reads every page of a fair's list. None when the first page fails.
+async fn download_swapcard(fair: &SwapcardFair) -> Option<Vec<SwapcardExhibitor>> {
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(15))
+        .user_agent(BROWSER)
+        .build()
+        .ok()?;
+    let mut all: Vec<SwapcardExhibitor> = Vec::new();
+    let mut cursor: Option<String> = None;
+    for page in 0..SWAPCARD_MAX_PAGES {
+        let response = client
+            .post(format!("{}/api/graphql", fair.host))
+            .header("Accept", "*/*")
+            .header("Origin", fair.host)
+            .header("Referer", format!("{}/", fair.host))
+            .json(&swapcard_request(fair, cursor.as_deref()))
+            .send()
+            .await;
+        let answer = match response {
+            Ok(r) if r.status().is_success() => r.json::<Value>().await.ok(),
+            Ok(r) => {
+                eprintln!("Safely: {} list answered {}", fair.name, r.status());
+                None
+            }
+            Err(e) => {
+                eprintln!("Safely: {} list could not be reached: {}", fair.name, e);
+                None
+            }
+        };
+        let Some((exhibitors, next)) = answer.as_ref().and_then(swapcard_page) else {
+            eprintln!(
+                "Safely: {} list page {} could not be read",
+                fair.name,
+                page + 1
+            );
+            break;
+        };
+        let before = all.len();
+        for e in exhibitors {
+            if !all.contains(&e) {
+                all.push(e);
+            }
+        }
+        // No next page, or the same page again (the cursor was not taken).
+        if next.is_none() || next == cursor || all.len() == before {
+            break;
+        }
+        cursor = next;
+    }
+    eprintln!(
+        "Safely: {} exhibitor list read ({} companies)",
+        fair.name,
+        all.len()
+    );
+    (!all.is_empty()).then_some(all)
+}
+
+/// One fair's list and when it was read.
+type HeldList = (std::time::Instant, std::sync::Arc<Vec<SwapcardExhibitor>>);
+
+/// The lists read today, by fair name.
+static SWAPCARD_LISTS: std::sync::Mutex<Option<std::collections::HashMap<&'static str, HeldList>>> =
+    std::sync::Mutex::new(None);
+
+/// A list is read again after a day; a failed read is tried again after an hour.
+const SWAPCARD_KEEP: Duration = Duration::from_secs(24 * 60 * 60);
+const SWAPCARD_RETRY: Duration = Duration::from_secs(60 * 60);
+
+async fn swapcard_list(fair: &SwapcardFair) -> Option<std::sync::Arc<Vec<SwapcardExhibitor>>> {
+    let held = SWAPCARD_LISTS
+        .lock()
+        .ok()
+        .and_then(|m| m.as_ref().and_then(|m| m.get(fair.name).cloned()));
+    if let Some((when, list)) = &held {
+        let wait = if list.is_empty() {
+            SWAPCARD_RETRY
+        } else {
+            SWAPCARD_KEEP
+        };
+        if when.elapsed() < wait {
+            return (!list.is_empty()).then(|| list.clone());
+        }
+    }
+    // Marked first, so other scans meanwhile use the old list (or none).
+    let old = held.map(|(_, l)| l).unwrap_or_default();
+    if let Ok(mut m) = SWAPCARD_LISTS.lock() {
+        m.get_or_insert_with(Default::default)
+            .insert(fair.name, (std::time::Instant::now(), old.clone()));
+    }
+    let list = match download_swapcard(fair).await {
+        Some(list) => std::sync::Arc::new(list),
+        None => old,
+    };
+    if let Ok(mut m) = SWAPCARD_LISTS.lock() {
+        m.get_or_insert_with(Default::default)
+            .insert(fair.name, (std::time::Instant::now(), list.clone()));
+    }
+    (!list.is_empty()).then_some(list)
+}
+
+/// The Swapcard fairs' card (the first fair the seller exhibits at), or
+/// None when the check is off or it exhibits at none of them.
+pub async fn swapcard_signal(company_name: Option<&str>) -> Option<Signal> {
+    let name = company_name.map(str::trim).filter(|n| !n.is_empty())?;
+    if !enabled() {
+        return None;
+    }
+    compared_name(name)?;
+    for fair in SWAPCARD_FAIRS {
+        if let Some(list) = swapcard_list(fair).await
+            && let Some(e) = swapcard_match(name, &list)
+        {
+            return Some(swapcard_card(fair, e));
+        }
+    }
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1013,6 +1274,75 @@ mod tests {
         let card = mys_card(mys_match("Samsung SDS", &found).unwrap());
         assert!(card.sub.contains("(booth N110)"));
         assert!(mys_match("Samsung", &found).is_none());
+    }
+
+    /// Part of Bilal's real Hospitalar answer (Nov 5): page 1 of 568.
+    fn hospitalar_answer() -> Value {
+        json!([{ "data": { "view": { "id": "RXZlbnRWaWV3XzE4OTYxMTQ=", "exhibitors": {
+          "nodes": [
+            { "id": "RXhoaWJpdG9yXzI1MTgzNjY=", "name": "ACCUMED GLICOMED", "type": "Premium",
+              "withEvent": { "booths": [ { "name": "E-160", "__typename": "Core_Location" } ] } },
+            { "name": "NINGBO DAVID MEDICAL DEVICE CO., LTD.", "withEvent": { "booths": [] } },
+            { "name": "", "withEvent": null }
+          ],
+          "pageInfo": { "hasNextPage": true,
+            "endCursor": "WzEuMDQ3NjE5MDQ3NjE5MDQ3NywidGFyZ2V0IDIwMjciLCJtYWQudSIsIlJYaG9hV0pwZEc5eVh6STFNVGd6TVRJPSJd" },
+          "totalCount": 568 } } } }])
+    }
+
+    #[test]
+    fn a_swapcard_page_is_read() {
+        let (found, next) = swapcard_page(&hospitalar_answer()).unwrap();
+        assert_eq!(found.len(), 2);
+        assert_eq!(found[0].booths, vec!["E-160"]);
+        assert!(next.unwrap().starts_with("WzEuMDQ3"));
+        // The last page has no next cursor.
+        let last = json!([{ "data": { "view": { "exhibitors": {
+            "nodes": [ { "name": "PHILIPS" } ], "pageInfo": { "hasNextPage": false, "endCursor": "x" } } } } }]);
+        assert_eq!(swapcard_page(&last).unwrap().1, None);
+        assert!(swapcard_page(&json!([{ "errors": [ { "message": "no" } ] }])).is_none());
+    }
+
+    #[test]
+    fn the_swapcard_request_is_the_pages_own() {
+        let fair = &SWAPCARD_FAIRS[0];
+        let first = swapcard_request(fair, None);
+        assert_eq!(
+            first[0]["operationName"],
+            "EventExhibitorListViewConnectionQuery"
+        );
+        assert_eq!(first[0]["variables"]["viewId"], "RXZlbnRWaWV3XzE4OTYxMTQ=");
+        assert_eq!(first[0]["variables"]["eventId"], "RXZlbnRfNDUzNDA5Mw==");
+        assert!(first[0]["variables"].get("endCursor").is_none());
+        assert_eq!(
+            first[0]["extensions"]["persistedQuery"]["sha256Hash"],
+            "589c0fbaa483a657bad0a0af1e5a088746c200f0b1c7dd8520c869aeaba28867"
+        );
+        assert_eq!(
+            swapcard_request(fair, Some("abc"))[0]["variables"]["endCursor"],
+            "abc"
+        );
+    }
+
+    #[test]
+    fn swapcard_whole_names_and_card() {
+        let (found, _) = swapcard_page(&hospitalar_answer()).unwrap();
+        let fair = &SWAPCARD_FAIRS[0];
+        let card = swapcard_card(fair, swapcard_match("Accumed Glicomed", &found).unwrap());
+        assert_eq!(
+            (
+                card.label.as_str(),
+                card.value.as_str(),
+                card.signal_type.as_str()
+            ),
+            (BRAZIL_LABEL, MYS_EXHIBITOR, "good")
+        );
+        assert!(
+            card.sub
+                .contains("exhibitor at Hospitalar 2027 (booth E-160)")
+        );
+        assert!(swapcard_match("Ningbo David Medical Device Co., Ltd", &found).is_some());
+        assert!(swapcard_match("Accumed", &found).is_none());
     }
 
     #[test]
