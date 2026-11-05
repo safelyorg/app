@@ -196,6 +196,7 @@
   "dash.label.hktdc_fair": "Feira HKTDC",
   "dash.label.us_trade_show": "Feira nos EUA",
   "dash.label.brazil_trade_show": "Feira no Brasil",
+  "dash.label.france_trade_show": "Feira na França",
   "dash.value.orders_rating": "{n} pedidos, nota {rating}",
   "dash.value.orders": "{n} pedidos",
   "dash.value.not_checked": "Não verificado",

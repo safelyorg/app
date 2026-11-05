@@ -101,6 +101,7 @@ const SIGNAL_LABEL_TRANSLATIONS: Record<string, string> = {
   "HKTDC fair": "dash.label.hktdc_fair",
   "US trade show": "dash.label.us_trade_show",
   "Brazil trade show": "dash.label.brazil_trade_show",
+  "France trade show": "dash.label.france_trade_show",
   // Title of the risk factor shown when Safely could check too little.
   "Not enough information": "dash.label.not_enough_information",
 };

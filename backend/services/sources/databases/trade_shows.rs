@@ -40,7 +40,8 @@
 //! once a day and kept in memory, so a scan adds no request. Asked for
 //! every seller. Only a good sign; not found shows no card.
 //!
-//! And RX fairs (Feicon in Brazil...). Their exhibitor lists are searched
+//! And fairs searched on Algolia (RX's Feicon in Brazil, Comexposium's
+//! SIAL Paris in France...). Their exhibitor lists are searched
 //! on Algolia, with the public search key each fair's page gives every
 //! visitor's browser (it can only read the public exhibitor list):
 //! POST https://{app}-dsn.algolia.net/1/indexes/{index}/query
@@ -1079,11 +1080,11 @@ pub async fn swapcard_signal(company_name: Option<&str>) -> Option<Signal> {
 }
 
 // ---------------------------------------------------------------------
-// RX fairs on Algolia (Feicon...)
+// Fairs on Algolia (RX: Feicon; Comexposium: SIAL Paris...)
 // ---------------------------------------------------------------------
 
-/// One RX fair, as its exhibitor list page searches it (seen in Bilal's
-/// browser, Nov 5).
+/// One fair searched on Algolia, as its exhibitor list page searches
+/// it (seen in Bilal's browser, Nov 5).
 #[derive(Debug, Clone, Copy)]
 pub struct AlgoliaFair {
     /// "Feicon 2027".
@@ -1095,36 +1096,55 @@ pub struct AlgoliaFair {
     /// visitor's browser. Not a secret and not Safely's own key.
     pub search_key: &'static str,
     pub index: &'static str,
-    pub event_edition_id: &'static str,
-    pub locale: &'static str,
+    /// Algolia filters the fair's page sends (only its exhibitors of
+    /// this edition); empty when the list holds only this edition.
+    pub filters: &'static str,
     pub list_page: &'static str,
+    /// The address of one exhibitor's page, "{slug}" replaced by the
+    /// record's slug; empty when the fair has none (the list is linked).
+    pub exhibitor_page: &'static str,
 }
+
+/// The card's name for French fairs.
+pub const FRANCE_LABEL: &str = "France trade show";
 
 /// The RX fairs searched. Add a fair by adding its line (all the codes
 /// are in the Request URL and Payload of its list's Algolia "query").
-pub const ALGOLIA_FAIRS: &[AlgoliaFair] = &[AlgoliaFair {
-    name: "Feicon 2027",
-    label: BRAZIL_LABEL,
-    app_id: "XD0U5M6Y4R",
-    search_key: "d5cd7d4ec26134ff4a34d736a7f9ad47",
-    index: "evt-515eaf3f-a833-42fe-bb67-c1cd154e6401-index",
-    event_edition_id: "eve-72df616a-7258-48e7-909e-51b2b53cf9c4",
-    locale: "pt-br",
-    list_page: "https://www.feicon.com.br/pt-br/Expositores.html",
-}];
+pub const ALGOLIA_FAIRS: &[AlgoliaFair] = &[
+    AlgoliaFair {
+        name: "Feicon 2027",
+        label: BRAZIL_LABEL,
+        app_id: "XD0U5M6Y4R",
+        search_key: "d5cd7d4ec26134ff4a34d736a7f9ad47",
+        index: "evt-515eaf3f-a833-42fe-bb67-c1cd154e6401-index",
+        filters: "recordType:exhibitor AND locale:pt-br AND eventEditionId:eve-72df616a-7258-48e7-909e-51b2b53cf9c4",
+        list_page: "https://www.feicon.com.br/pt-br/Expositores.html",
+        exhibitor_page: "",
+    },
+    AlgoliaFair {
+        name: "SIAL Paris 2026",
+        label: FRANCE_LABEL,
+        app_id: "W1BGHM6UJN",
+        search_key: "deb06c31b0495c80bcbdf0077536d647",
+        index: "catalog.prod.sial.exhibitors.en",
+        filters: "",
+        list_page: "https://www.sialparis.com/en/exhibitors-2026",
+        exhibitor_page: "https://www.sialparis.com/en/exhibitors-2026/exhibitor/{slug}",
+    },
+];
 
 /// What is sent: the seller's name, only this fair's exhibitors, no
 /// typo tolerance (the same choices the fair's own page makes).
 pub fn algolia_request(fair: &AlgoliaFair, company_name: &str) -> Value {
-    let filters = format!(
-        "recordType:exhibitor AND locale:{} AND eventEditionId:{}",
-        fair.locale, fair.event_edition_id
-    );
+    let filters = if fair.filters.is_empty() {
+        String::new()
+    } else {
+        format!("&filters={}", urlencoding::encode(fair.filters))
+    };
     json!({
         "params": format!(
-            "query={}&hitsPerPage=20&filters={}&typoTolerance=false",
+            "query={}&hitsPerPage=20{filters}&typoTolerance=false",
             urlencoding::encode(company_name.trim()),
-            urlencoding::encode(&filters)
         )
     })
 }
@@ -1157,11 +1177,34 @@ fn texts_where(record: &Value, words: &[&str]) -> Vec<String> {
     found
 }
 
-/// One RX exhibitor found.
+/// Stands written as objects (SIAL: {"hall": "8", "aisle": "L",
+/// "number": "014"} -> "8 L014").
+fn stand_objects(record: &Value) -> Vec<String> {
+    record
+        .get("stands")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter(|s| s.is_object())
+        .map(|s| {
+            let place = format!("{}{}", text(s, "aisle"), text(s, "number"));
+            [text(s, "hall"), place]
+                .into_iter()
+                .filter(|p| !p.is_empty())
+                .collect::<Vec<_>>()
+                .join(" ")
+        })
+        .filter(|s| !s.is_empty())
+        .collect()
+}
+
+/// One exhibitor found on Algolia.
 #[derive(Debug, Clone, PartialEq)]
 pub struct AlgoliaExhibitor {
     pub name: String,
     pub booths: Vec<String>,
+    /// SIAL: "BAIKA" from {"slug": {"value": "BAIKA"}}.
+    pub slug: String,
 }
 
 /// The exhibitor in an Algolia answer whose whole name (any field with
@@ -1174,15 +1217,32 @@ pub fn algolia_match(company_name: &str, answer: &Value) -> Option<AlgoliaExhibi
         let name = texts_where(hit, &["name"])
             .into_iter()
             .find(|n| compared_name(n).as_deref() == Some(wanted.as_str()))?;
-        Some(AlgoliaExhibitor {
-            name,
-            booths: texts_where(hit, &["stand", "booth"]),
-        })
+        let mut booths = texts_where(hit, &["stand", "booth"]);
+        for b in stand_objects(hit) {
+            if !booths.contains(&b) {
+                booths.push(b);
+            }
+        }
+        let slug = match hit.get("slug") {
+            Some(Value::String(s)) => s.trim().to_string(),
+            Some(v) => text(v, "value"),
+            None => String::new(),
+        };
+        Some(AlgoliaExhibitor { name, booths, slug })
     })
 }
 
 /// The card for an RX exhibitor.
 pub fn algolia_card(fair: &AlgoliaFair, e: &AlgoliaExhibitor) -> Signal {
+    let link = if fair.exhibitor_page.is_empty() || e.slug.is_empty() {
+        format!("Exhibitor list: {}", fair.list_page)
+    } else {
+        format!(
+            "Exhibitor page: {}",
+            fair.exhibitor_page
+                .replace("{slug}", &urlencoding::encode(&e.slug))
+        )
+    };
     let booths = match e.booths.len() {
         0 => String::new(),
         1 => format!(" (booth {})", e.booths[0]),
@@ -1191,8 +1251,8 @@ pub fn algolia_card(fair: &AlgoliaFair, e: &AlgoliaExhibitor) -> Signal {
     Signal {
         label: fair.label.to_string(),
         sub: format!(
-            "\"{}\" is an exhibitor at {}{booths}. The fair checks its exhibitors, so this is a good sign - but it does not prove that this listing is the company's own. Exhibitor list: {}",
-            e.name, fair.name, fair.list_page
+            "\"{}\" is an exhibitor at {}{booths}. The fair checks its exhibitors, so this is a good sign - but it does not prove that this listing is the company's own. {}",
+            e.name, fair.name, link
         ),
         value: MYS_EXHIBITOR.to_string(),
         signal_type: "good".to_string(),
@@ -1618,6 +1678,51 @@ mod tests {
             )
             .is_none()
         );
+    }
+
+    /// Part of Bilal's real SIAL answer for "baika" (Nov 5).
+    fn sial_answer() -> Value {
+        json!({ "index": "catalog.prod.sial.exhibitors.en", "nbHits": 13, "hits": [
+          { "id": "fde9041b-2d79-f111-a8d9-005056ace99d", "name": "BAIKA",
+            "slug": { "value": "BAIKA", "search": "baika", "history": [] },
+            "address": { "city": "SAN FELIPE", "country": "Chile" },
+            "session": { "providerCatalogId": "ASIAL26" },
+            "stands": [ { "sector": "Fresh fruit and vegetables, dried fruit and horticulture",
+                          "hall": "8", "hall_id": "11576", "aisle": "L", "number": "014", "ref": "4R6A3JKV" } ],
+            "standCount": 1 },
+          { "name": "Barkat Rice Mills (Pvt)Ltd",
+            "slug": { "value": "Barkat-Rice-Mills-PvtLtd" },
+            "stands": [ { "hall": "4", "aisle": "L", "number": "195" } ] }
+        ]})
+    }
+
+    #[test]
+    fn a_sial_answer_is_read() {
+        let sial = &ALGOLIA_FAIRS[1];
+        assert_eq!(sial.name, "SIAL Paris 2026");
+        let body = algolia_request(sial, "BAIKA");
+        assert_eq!(
+            body["params"],
+            "query=BAIKA&hitsPerPage=20&typoTolerance=false"
+        );
+        let e = algolia_match("Baika", &sial_answer()).unwrap();
+        assert_eq!(e.booths, vec!["8 L014"]);
+        assert_eq!(e.slug, "BAIKA");
+        let card = algolia_card(sial, &e);
+        assert_eq!(
+            (card.label.as_str(), card.value.as_str()),
+            (FRANCE_LABEL, MYS_EXHIBITOR)
+        );
+        assert!(
+            card.sub
+                .contains("exhibitor at SIAL Paris 2026 (booth 8 L014)")
+        );
+        assert!(card.sub.contains(
+            "Exhibitor page: https://www.sialparis.com/en/exhibitors-2026/exhibitor/BAIKA"
+        ));
+        let e = algolia_match("Barkat Rice Mills (Pvt) Ltd", &sial_answer()).unwrap();
+        assert_eq!(e.booths, vec!["4 L195"]);
+        assert!(algolia_match("Baika Foods", &sial_answer()).is_none());
     }
 
     #[test]
