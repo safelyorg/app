@@ -298,6 +298,7 @@
         "Canton Fair": "Feira de Cantão",
         "HKTDC fair": "Feira HKTDC",
         "US trade show": "Feira nos EUA",
+        "Brazil trade show": "Feira no Brasil",
         "Company number": "Número da empresa",
         "Official register": "Registro oficial",
         Website: "Site",
