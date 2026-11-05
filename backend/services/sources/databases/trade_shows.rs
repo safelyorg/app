@@ -96,6 +96,9 @@ pub struct CantonExhibitor {
     /// "CF Award-winning Enterprise", "Multiple-session Exhibitor"...
     pub badges: Vec<String>,
     pub booths: Vec<Booth>,
+    /// Certified by China Customs as an AEO (Advanced Certified
+    /// Enterprise): "isAeo": "Y", or an "AEO" badge.
+    pub aeo: bool,
 }
 
 fn text(value: &Value, key: &str) -> String {
@@ -126,7 +129,7 @@ pub fn canton_exhibitors(answer: &Value) -> Option<Vec<CantonExhibitor>> {
                 if name.is_empty() {
                     return None;
                 }
-                let badges = item
+                let badges: Vec<String> = item
                     .get("tagDescList")
                     .and_then(Value::as_array)
                     .into_iter()
@@ -165,6 +168,15 @@ pub fn canton_exhibitors(answer: &Value) -> Option<Vec<CantonExhibitor>> {
                         }
                     }
                 }
+                let aeo = matches!(item.get("isAeo"), Some(Value::Bool(true)))
+                    || matches!(
+                        text(item, "isAeo").to_ascii_uppercase().as_str(),
+                        "Y" | "YES" | "1" | "TRUE"
+                    )
+                    || badges.iter().any(|b: &String| {
+                        b.split(|c: char| !c.is_ascii_alphanumeric())
+                            .any(|w| w == "AEO")
+                    });
                 Some(CantonExhibitor {
                     shop_id: if shop_id.is_empty() {
                         text(item, "id")
@@ -174,6 +186,7 @@ pub fn canton_exhibitors(answer: &Value) -> Option<Vec<CantonExhibitor>> {
                     name,
                     badges,
                     booths,
+                    aeo,
                 })
             })
             .collect(),
@@ -379,22 +392,55 @@ async fn search_canton(company_name: &str) -> Option<Vec<CantonExhibitor>> {
 /// The "Canton Fair" card, or None when the check is off, the seller is
 /// neither Chinese nor claims the fair, it is not an exhibitor without a
 /// claim, or the fair did not answer.
+/// The card's name, as in standards/databases/global.json.
+pub const AEO_LABEL: &str = "China Customs AEO";
+pub const AEO_CERTIFIED: &str = "AEO certified";
+
+/// The "China Customs AEO" card for a Canton Fair exhibitor China
+/// Customs certified as an AEO; None otherwise. China Customs' own
+/// lookup (credit.customs.gov.cn) refuses visitors outside mainland
+/// China (Bilal, Nov 5), so the fair's own AEO mark is used.
+pub fn aeo_card(e: &CantonExhibitor) -> Option<Signal> {
+    if !e.aeo {
+        return None;
+    }
+    Some(Signal {
+        label: AEO_LABEL.to_string(),
+        sub: format!(
+            "\"{}\" is certified by China Customs as an AEO (Advanced Certified Enterprise), its strictest check of exporters, as the Canton Fair's own exhibitor list shows. This is a strong good sign - but it does not prove that this listing is the company's own. Exhibitor page: {CANTON_SHOP}{}",
+            e.name, e.shop_id
+        ),
+        value: AEO_CERTIFIED.to_string(),
+        signal_type: "good".to_string(),
+        category: OUTSIDE_RECORDS.to_string(),
+        check_type: "existence".to_string(),
+    })
+}
+
+/// The "Canton Fair" card (and the "China Customs AEO" card when the
+/// exhibitor is AEO certified). Empty when the check is off, the seller
+/// is neither Chinese nor claims the fair, it is not an exhibitor
+/// without a claim, or the fair did not answer.
 pub async fn canton_signal(
     company_name: Option<&str>,
     country: Option<&str>,
     about: Option<&str>,
-) -> Option<Signal> {
-    let name = company_name.map(str::trim).filter(|n| !n.is_empty())?;
-    if !enabled() {
-        return None;
-    }
+) -> Vec<Signal> {
+    let Some(name) = company_name.map(str::trim).filter(|n| !n.is_empty()) else {
+        return Vec::new();
+    };
     let claims = claims_canton_fair(about);
-    if !claims && !is_chinese_seller(country) {
-        return None;
+    if !enabled() || (!claims && !is_chinese_seller(country)) || compared_name(name).is_none() {
+        return Vec::new();
     }
-    compared_name(name)?;
-    let found = search_canton(name).await?;
-    canton_card(name, claims, canton_match(name, &found))
+    let Some(found) = search_canton(name).await else {
+        return Vec::new();
+    };
+    let exhibitor = canton_match(name, &found);
+    canton_card(name, claims, exhibitor)
+        .into_iter()
+        .chain(exhibitor.and_then(aeo_card))
+        .collect()
 }
 
 // ---------------------------------------------------------------------
@@ -1816,6 +1862,33 @@ mod tests {
     }
 
     #[test]
+    fn aeo_exhibitors_get_their_own_card() {
+        let answer = json!({ "errCode": 0, "result": { "itemList": [
+            { "shopNo": "1", "name": "NINGBO A CO.,LTD.", "isAeo": "Y", "tagDescList": [] },
+            { "shopNo": "2", "name": "NINGBO B CO.,LTD.", "isAeo": null, "tagDescList": ["AEO"] },
+            { "shopNo": "3", "name": "NINGBO C CO.,LTD.", "isAeo": "N", "tagDescList": ["Brand Enterprise"] },
+            { "shopNo": "4", "name": "NINGBO D CO.,LTD.", "isAeo": null, "tagDescList": ["Multiple-session Exhibitor"] }
+        ]}});
+        let found = canton_exhibitors(&answer).unwrap();
+        assert_eq!(
+            found.iter().map(|e| e.aeo).collect::<Vec<_>>(),
+            vec![true, true, false, false]
+        );
+        let card = aeo_card(&found[0]).unwrap();
+        assert_eq!(
+            (
+                card.label.as_str(),
+                card.value.as_str(),
+                card.signal_type.as_str()
+            ),
+            (AEO_LABEL, AEO_CERTIFIED, "good")
+        );
+        assert_eq!(card.category, OUTSIDE_RECORDS);
+        assert!(card.sub.contains("shops?id=1"));
+        assert!(aeo_card(&found[2]).is_none());
+    }
+
+    #[test]
     fn claims_are_spotted() {
         assert!(claims_canton_fair(Some(
             "We exhibit at the Canton Fair every year."
@@ -1875,7 +1948,7 @@ mod tests {
         assert!(
             canton_signal(Some("Acme"), Some("Texas, USA"), None)
                 .await
-                .is_none()
+                .is_empty()
         );
         if enabled() {
             return;
@@ -1883,7 +1956,7 @@ mod tests {
         assert!(
             canton_signal(Some("Midea Group"), Some("Guangdong, China"), None)
                 .await
-                .is_none()
+                .is_empty()
         );
     }
 }

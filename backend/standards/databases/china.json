@@ -72,11 +72,11 @@
       "id": "customs_aeo",
       "name": "China Customs AEO list",
       "url": "http://credit.customs.gov.cn/",
-      "what_it_does": "Trusted exporters listed by China Customs.",
+      "what_it_does": "China Customs' trusted exporters (AEO, Advanced Certified Enterprise). Its own lookup (credit.customs.gov.cn) refuses visitors outside mainland China (checked Nov 5, captcha passed but no result), so the Canton Fair's own AEO mark is used: card 'China Customs AEO' for AEO-certified Canton Fair exhibitors.",
       "access": "scrape",
       "cost": "free",
       "step": 4,
-      "status": "planned"
+      "status": "live"
     }
   ],
   "cards": []

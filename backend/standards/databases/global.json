@@ -221,6 +221,15 @@
       "warning_points": 20
     },
     {
+      "card": "China Customs AEO",
+      "group": "outside_records",
+      "what_it_checks": "Whether the seller, found as a Canton Fair exhibitor (same whole-name match as the 'Canton Fair' card), is certified by China Customs as an AEO (Advanced Certified Enterprise): the fair's own exhibitor data marks it (isAeo 'Y' or an 'AEO' badge). China Customs' own lookup (credit.customs.gov.cn) refuses visitors outside mainland China, so it is not asked. Certified is a good sign; otherwise no card. Needs TRADE_SHOWS_CHECK_ENABLED=true in .env.",
+      "reads": [
+        "Company name",
+        "Country"
+      ]
+    },
+    {
       "card": "HKTDC fair",
       "group": "outside_records",
       "what_it_checks": "Whether a company with exactly the seller's name is an exhibitor at the HKTDC fairs Safely reads (HKTDC_FAIRS in trade_shows.rs; now the Hong Kong Electronics Fair, Spring Edition). Each fair's exhibitor search page is opened with the name and its data read: booth, and the HKTDC fairs the company exhibited at in recent years. Asked for China and Hong Kong sellers. An exhibitor is a good sign; not found shows no card (HKTDC runs many fairs, so it is never a warning). Needs TRADE_SHOWS_CHECK_ENABLED=true in .env.",

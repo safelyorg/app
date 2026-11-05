@@ -46,6 +46,7 @@ const SIGNAL_LABEL_TRANSLATIONS = {
     "France trade show": "dash.label.france_trade_show",
     "Reclame Aqui": "dash.label.reclame_aqui",
     "BBB rating": "dash.label.bbb_rating",
+    "China Customs AEO": "dash.label.china_customs_aeo",
     // Title of the risk factor shown when Safely could check too little.
     "Not enough information": "dash.label.not_enough_information",
 };
@@ -150,6 +151,7 @@ const SIGNAL_VALUE_TRANSLATIONS = {
     "D rating": "dash.value.bbb_d",
     "F rating": "dash.value.bbb_f",
     "Not rated": "dash.value.bbb_not_rated",
+    "AEO certified": "dash.value.aeo_certified",
 };
 // Results that carry a number ("3/9 fields provided", "Checked 4 times
 // before", "Gold member").
