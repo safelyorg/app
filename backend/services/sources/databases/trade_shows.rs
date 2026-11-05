@@ -23,6 +23,13 @@
 //! per fair in HKTDC_FAIRS. Only a good sign: HKTDC runs many fairs and
 //! Safely reads only some, so a claim that is not found is not a warning.
 //!
+//! And US fairs on Map Your Show (the exhibitor system of CES and
+//! hundreds of US fairs). Each show's exhibitor search, the one its own
+//! page uses (free, no key):
+//! GET {show}/ajax/remote-proxy.cfm?action=search&search={name}&searchtype=keyword&show=all
+//! Asked for every seller (CES has many Chinese, Korean and US
+//! exhibitors). Only a good sign; not found shows no card.
+//!
 //! An exhibitor counts only when its WHOLE name is the seller's name
 //! (legal forms and punctuation left out).
 //!
@@ -584,6 +591,205 @@ pub async fn hktdc_signal(company_name: Option<&str>, country: Option<&str>) -> 
     None
 }
 
+// ---------------------------------------------------------------------
+// Map Your Show fairs (CES...)
+// ---------------------------------------------------------------------
+
+/// The card's name, as in standards/databases/global.json.
+pub const MYS_LABEL: &str = "US trade show";
+/// Already translated for Global Sources' badge of the same words.
+pub const MYS_EXHIBITOR: &str = "Trade show exhibitor";
+
+/// The Map Your Show fairs searched: (name, address of its "8_0" site).
+/// Add a fair by adding its line.
+pub const MYS_SHOWS: &[(&str, &str)] = &[("CES", "https://exhibitors.ces.tech/8_0")];
+
+/// One Map Your Show exhibitor.
+#[derive(Debug, Clone, PartialEq)]
+pub struct MysExhibitor {
+    pub name: String,
+    /// "0013000001KaMXYAA3".
+    pub id: String,
+    /// "CES 2027" - the show and year, from the record's id ("...-CES27").
+    pub show: String,
+    /// "N110", "Alsace"...
+    pub booths: Vec<String>,
+    pub page: String,
+}
+
+/// The search address for a company name.
+pub fn mys_search_url(base: &str, company_name: &str) -> String {
+    format!(
+        "{base}/ajax/remote-proxy.cfm?action=search&search={}&searchtype=keyword&show=all",
+        urlencoding::encode(company_name.trim())
+    )
+}
+
+/// "CES" + "...-Exhibitor-CES27" -> "CES 2027".
+fn show_and_year(show: &str, record_id: &str) -> String {
+    let code = record_id.rsplit('-').next().unwrap_or("");
+    let digits: String = code
+        .chars()
+        .rev()
+        .take_while(char::is_ascii_digit)
+        .collect();
+    let digits: String = digits.chars().rev().collect();
+    match digits.len() {
+        2 => format!("{show} 20{digits}"),
+        4 => format!("{show} {digits}"),
+        _ => show.to_string(),
+    }
+}
+
+/// The exhibitors in a search answer, or None when it is not a success.
+pub fn mys_exhibitors(show: &str, base: &str, answer: &Value) -> Option<Vec<MysExhibitor>> {
+    if answer.get("SUCCESS").and_then(Value::as_bool) != Some(true) {
+        return None;
+    }
+    let hits = answer
+        .pointer("/DATA/results/exhibitor/hit")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    Some(
+        hits.iter()
+            .filter_map(|hit| {
+                let f = hit.get("fields")?;
+                let name = text(f, "exhname_t");
+                let id = text(f, "exhid_l");
+                if name.is_empty() || id.is_empty() {
+                    return None;
+                }
+                let mut booths: Vec<String> = Vec::new();
+                for b in f
+                    .get("boothsdisplay_la")
+                    .and_then(Value::as_array)
+                    .into_iter()
+                    .flatten()
+                    .filter_map(Value::as_str)
+                {
+                    // Map Your Show adds "randomstring" to every booth.
+                    let b = b.trim_end_matches("randomstring").trim().to_string();
+                    if !b.is_empty() && !booths.contains(&b) {
+                        booths.push(b);
+                    }
+                }
+                Some(MysExhibitor {
+                    page: format!("{base}/exhibitor/exhibitor-details.cfm?exhid={id}"),
+                    show: show_and_year(show, &text(hit, "id")),
+                    name,
+                    id,
+                    booths,
+                })
+            })
+            .collect(),
+    )
+}
+
+/// The exhibitor whose whole name is the seller's name.
+pub fn mys_match<'a>(company_name: &str, found: &'a [MysExhibitor]) -> Option<&'a MysExhibitor> {
+    let wanted = compared_name(company_name)?;
+    found
+        .iter()
+        .find(|e| compared_name(&e.name).as_deref() == Some(wanted.as_str()))
+}
+
+/// The card for a Map Your Show exhibitor.
+pub fn mys_card(e: &MysExhibitor) -> Signal {
+    let booths = if e.booths.is_empty() {
+        String::new()
+    } else {
+        let more = e.booths.len().saturating_sub(3);
+        let shown = e
+            .booths
+            .iter()
+            .take(3)
+            .cloned()
+            .collect::<Vec<_>>()
+            .join(", ");
+        let label = if e.booths.len() == 1 {
+            "booth"
+        } else {
+            "booths"
+        };
+        if more > 0 {
+            format!(" ({label} {shown} and {more} more)")
+        } else {
+            format!(" ({label} {shown})")
+        }
+    };
+    Signal {
+        label: MYS_LABEL.to_string(),
+        sub: format!(
+            "\"{}\" is an exhibitor at {}{booths}. The fair checks its exhibitors, so this is a good sign - but it does not prove that this listing is the company's own. Exhibitor page: {}",
+            e.name, e.show, e.page
+        ),
+        value: MYS_EXHIBITOR.to_string(),
+        signal_type: "good".to_string(),
+        category: OUTSIDE_RECORDS.to_string(),
+        check_type: "existence".to_string(),
+    }
+}
+
+async fn search_mys(show: &str, base: &str, company_name: &str) -> Option<Vec<MysExhibitor>> {
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(10))
+        .user_agent(BROWSER)
+        .build()
+        .ok()?;
+    let response = client
+        .get(mys_search_url(base, company_name))
+        .header("Accept", "application/json, text/javascript, */*; q=0.01")
+        .header("X-Requested-With", "XMLHttpRequest")
+        .header("Referer", format!("{base}/"))
+        .send()
+        .await;
+    match response {
+        Ok(r) if r.status().is_success() => match r.json::<Value>().await {
+            Ok(answer) => {
+                let found = mys_exhibitors(show, base, &answer);
+                if found.is_none() {
+                    eprintln!(
+                        "Safely: {show} search said: {}",
+                        text(&answer, "ERRORMESSAGE")
+                    );
+                }
+                found
+            }
+            Err(e) => {
+                eprintln!("Safely: {show} answer could not be read: {}", e);
+                None
+            }
+        },
+        Ok(r) => {
+            eprintln!("Safely: {show} search answered {}", r.status());
+            None
+        }
+        Err(e) => {
+            eprintln!("Safely: {show} search could not be reached: {}", e);
+            None
+        }
+    }
+}
+
+/// The "US trade show" card, or None when the check is off or the
+/// seller is not an exhibitor at the Map Your Show fairs Safely reads.
+pub async fn mys_signal(company_name: Option<&str>) -> Option<Signal> {
+    let name = company_name.map(str::trim).filter(|n| !n.is_empty())?;
+    if !enabled() {
+        return None;
+    }
+    compared_name(name)?;
+    for (show, base) in MYS_SHOWS {
+        if let Some(found) = search_mys(show, base, name).await
+            && let Some(e) = mys_match(name, &found)
+        {
+            return Some(mys_card(e));
+        }
+    }
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -751,6 +957,62 @@ mod tests {
             hktdc_search_url("hkelectronicsfairse", "Shenzhen Trendwoo Tech Co., Ltd./HK"),
             "https://www.hktdc.com/event/hkelectronicsfairse/en/exhibitor-search/Shenzhen%20Trendwoo%20Tech%20Co%20Ltd%20HK"
         );
+    }
+
+    /// Part of Bilal's real CES answer for "samsung" (Nov 4).
+    fn ces_answer() -> Value {
+        json!({
+          "SUCCESS": true, "ERRORMESSAGE": "",
+          "DATA": { "searchtext": "samsung", "results": { "exhibitor": { "found": 3, "hit": [
+            { "id": "0013A00001a0z5XQAQ-Exhibitor-CES27",
+              "fields": { "exhname_t": "Samsung SDS", "exhid_l": "0013A00001a0z5XQAQ",
+                          "boothsdisplay_la": ["N110randomstring"] } },
+            { "id": "0013000001KaMXYAA3-Exhibitor-CES27",
+              "fields": { "exhname_t": "Samsung Electronics, Inc.", "exhid_l": "0013000001KaMXYAA3",
+                          "boothsdisplay_la": ["Alsacerandomstring", "Bandol 2randomstring",
+                            "Castillonrandomstring", "Fleurierandomstring", "Hermitagerandomstring"] } },
+            { "id": "001Pp000023KAa3IAG-Exhibitor-CES27",
+              "fields": { "exhname_t": "Samsung Electronics America", "exhid_l": "001Pp000023KAa3IAG" } }
+          ] } } }
+        })
+    }
+
+    #[test]
+    fn a_ces_answer_is_read() {
+        let base = "https://exhibitors.ces.tech/8_0";
+        let found = mys_exhibitors("CES", base, &ces_answer()).unwrap();
+        assert_eq!(found.len(), 3);
+        assert_eq!(found[0].booths, vec!["N110"]);
+        assert_eq!(found[0].show, "CES 2027");
+        assert_eq!(
+            found[1].page,
+            "https://exhibitors.ces.tech/8_0/exhibitor/exhibitor-details.cfm?exhid=0013000001KaMXYAA3"
+        );
+        assert!(found[2].booths.is_empty());
+        assert!(mys_exhibitors("CES", base, &json!({ "SUCCESS": false })).is_none());
+        assert_eq!(
+            mys_search_url(base, "Samsung SDS"),
+            "https://exhibitors.ces.tech/8_0/ajax/remote-proxy.cfm?action=search&search=Samsung%20SDS&searchtype=keyword&show=all"
+        );
+    }
+
+    #[test]
+    fn ces_whole_names_and_card() {
+        let found =
+            mys_exhibitors("CES", "https://exhibitors.ces.tech/8_0", &ces_answer()).unwrap();
+        let e = mys_match("Samsung Electronics Inc", &found).unwrap();
+        let card = mys_card(e);
+        assert_eq!(
+            (card.value.as_str(), card.signal_type.as_str()),
+            (MYS_EXHIBITOR, "good")
+        );
+        assert!(
+            card.sub
+                .contains("CES 2027 (booths Alsace, Bandol 2, Castillon and 2 more)")
+        );
+        let card = mys_card(mys_match("Samsung SDS", &found).unwrap());
+        assert!(card.sub.contains("(booth N110)"));
+        assert!(mys_match("Samsung", &found).is_none());
     }
 
     #[test]

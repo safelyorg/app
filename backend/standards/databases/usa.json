@@ -65,12 +65,12 @@
     {
       "id": "us_fairs",
       "name": "Trade fairs (Map Your Show, ASD Market Week, MAGIC, CES)",
-      "url": "https://www.mapyourshow.com/",
-      "what_it_does": "Trade fair exhibitors.",
-      "access": "scrape",
+      "url": "https://exhibitors.ces.tech/8_0/",
+      "what_it_does": "Trade fair exhibitors on Map Your Show (CES now; more shows by adding a line to MYS_SHOWS in trade_shows.rs). Card 'US trade show'.",
+      "access": "api",
       "cost": "free",
       "step": 4,
-      "status": "planned"
+      "status": "live"
     }
   ],
   "cards": []

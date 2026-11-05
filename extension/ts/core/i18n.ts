@@ -355,6 +355,7 @@
     "Chamber of commerce": "Câmara de comércio",
     "Canton Fair": "Feira de Cantão",
     "HKTDC fair": "Feira HKTDC",
+    "US trade show": "Feira nos EUA",
     "Company number": "Número da empresa",
     "Official register": "Registro oficial",
     Website: "Site",

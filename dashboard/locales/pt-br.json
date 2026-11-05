@@ -194,6 +194,7 @@
   "dash.label.chamber_of_commerce": "Câmara de comércio",
   "dash.label.canton_fair": "Feira de Cantão",
   "dash.label.hktdc_fair": "Feira HKTDC",
+  "dash.label.us_trade_show": "Feira nos EUA",
   "dash.value.orders_rating": "{n} pedidos, nota {rating}",
   "dash.value.orders": "{n} pedidos",
   "dash.value.not_checked": "Não verificado",

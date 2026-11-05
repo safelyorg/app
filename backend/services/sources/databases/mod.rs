@@ -75,6 +75,7 @@ pub async fn check_outside_records(facts: &SellerFacts) -> Vec<Signal> {
         chamber,
         canton,
         hktdc,
+        us_show,
         website,
     ) = tokio::join!(
         sanctions::sanctions_signal(name),
@@ -86,6 +87,7 @@ pub async fn check_outside_records(facts: &SellerFacts) -> Vec<Signal> {
         chambers::chamber_signal(name, country, facts.website.as_deref()),
         trade_shows::canton_signal(name, country, facts.about.as_deref()),
         trade_shows::hktdc_signal(name, country),
+        trade_shows::mys_signal(name),
         website_records::website_record_cards(facts.website.as_deref()),
     );
     cards.extend(sanctions);
@@ -97,6 +99,7 @@ pub async fn check_outside_records(facts: &SellerFacts) -> Vec<Signal> {
     cards.extend(chamber);
     cards.extend(canton);
     cards.extend(hktdc);
+    cards.extend(us_show);
     cards.extend(website);
     cards
 }
