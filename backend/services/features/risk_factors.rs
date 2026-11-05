@@ -1,8 +1,13 @@
 use crate::models::{analysis::Signal, risk_factors::RiskFactor};
+use crate::services::features::osint::SCAM_MENTIONS_FOUND;
 use crate::services::features::signals::{
     COMMODITY_SCAM_PATTERN, FULL_PREPAYMENT, REGULATED_NOT_MAKER, UNTRACEABLE_PAYMENT,
 };
 use crate::services::shared::confidence::calculate_confidence;
+use crate::services::sources::databases::{
+    eu_vat, numbers, sam_gov,
+    trade_shows::{CANTON_LABEL, CLAIM_NOT_FOUND},
+};
 
 /// The risk factor shown when Safely could check too little about a
 /// supplier to trust a low score (see not_enough_information_factor).
@@ -346,6 +351,194 @@ pub fn derive_risk_factors(signals: &[Signal]) -> Vec<RiskFactor> {
             });
             covered_labels.push("Product range");
         }
+    }
+
+    // ---- Outside records (official lists) -----------------------------
+    // Each of these alone is Serious: a made-up company number, another
+    // company's number, or a company the US government has banned.
+
+    // A company number whose check digits do not add up: made up or
+    // mistyped (numbers.rs). Real numbers always pass.
+    if let Some(n) = find_signal(signals, numbers::NUMBER_LABEL)
+        && is_flagged(n)
+        && n.value == numbers::INVALID_NUMBER
+    {
+        factors.push(RiskFactor {
+            severity: "hard".to_string(),
+            name: "fake_company_number".to_string(),
+            description: evidence_or(
+                n,
+                "The company number the supplier gives is not a real number: its check digits do not add up.",
+            ),
+            contributing_signals: vec![numbers::NUMBER_LABEL.to_string()],
+        });
+        covered_labels.push(numbers::NUMBER_LABEL);
+    }
+
+    // The official register says the number belongs to another company
+    // (all its names compared, accents and legal endings left out).
+    if let Some(r) = find_signal(signals, numbers::REGISTER_LABEL)
+        && is_flagged(r)
+        && r.value == numbers::REGISTER_OTHER_NAME
+    {
+        factors.push(RiskFactor {
+            severity: "hard".to_string(),
+            name: "company_number_of_another_company".to_string(),
+            description: evidence_or(
+                r,
+                "The company number the supplier gives belongs to another company in the official register.",
+            ),
+            contributing_signals: vec![numbers::REGISTER_LABEL.to_string()],
+        });
+        covered_labels.push(numbers::REGISTER_LABEL);
+    }
+
+    // The EU's VAT register (VIES) names another company for this VAT
+    // number - the same problem as above.
+    if let Some(v) = find_signal(signals, eu_vat::LABEL)
+        && is_flagged(v)
+        && v.value == eu_vat::OTHER_NAME
+    {
+        factors.push(RiskFactor {
+            severity: "hard".to_string(),
+            name: "vat_number_of_another_company".to_string(),
+            description: evidence_or(
+                v,
+                "The EU VAT number the supplier gives belongs to another company.",
+            ),
+            contributing_signals: vec![eu_vat::LABEL.to_string()],
+        });
+        covered_labels.push(eu_vat::LABEL);
+    }
+
+    // On the US government's exclusion list (SAM.gov): banned from
+    // government deals, often for fraud.
+    if let Some(g) = find_signal(signals, sam_gov::LABEL)
+        && is_flagged(g)
+        && g.value == sam_gov::EXCLUDED
+    {
+        factors.push(RiskFactor {
+            severity: "hard".to_string(),
+            name: "excluded_by_us_government".to_string(),
+            description: evidence_or(
+                g,
+                "This company is on the US government's exclusion list (SAM.gov).",
+            ),
+            contributing_signals: vec![sam_gov::LABEL.to_string()],
+        });
+        covered_labels.push(sam_gov::LABEL);
+    }
+
+    // ---- Typical scam combinations ------------------------------------
+    // Each part alone is small; together they are a known pattern.
+    let new_company = find_signal(signals, "Account age")
+        .filter(|age| is_flagged(age) && is_new_account(&age.value));
+
+    // A brand-new company that gives no direct contact and is not checked
+    // by the platform: nothing to verify it by.
+    if let (Some(age), Some(c), Some(v)) = (
+        new_company,
+        find_signal(signals, "Contact info").filter(|c| is_flagged(c)),
+        find_signal(signals, "Platform verification").filter(|v| is_flagged(v)),
+    ) {
+        factors.push(RiskFactor {
+            severity: "compound".to_string(),
+            name: "new_company_no_contact_not_verified".to_string(),
+            description: format!(
+                "The company is very new ({}), gives no direct way to reach it ({}), and the platform has not checked it ({}). With nothing to verify, a buyer has no way to get money back if something goes wrong.",
+                age.value,
+                c.value.to_lowercase(),
+                v.value.to_lowercase()
+            ),
+            contributing_signals: vec![
+                "Account age".to_string(),
+                "Contact info".to_string(),
+                "Platform verification".to_string(),
+            ],
+        });
+        covered_labels.extend(["Account age", "Contact info", "Platform verification"]);
+    }
+
+    // A brand-new company whose own details do not add up (founded this
+    // year but claims 1,000+ staff or US$100M+ in sales).
+    if let (Some(age), Some(r)) = (
+        new_company,
+        find_signal(signals, "Registration consistency").filter(|r| is_flagged(r)),
+    ) {
+        factors.push(RiskFactor {
+            severity: "compound".to_string(),
+            name: "new_company_with_inconsistent_details".to_string(),
+            description: format!(
+                "{} The company is also very new ({}), so these claims cannot be backed by any track record.",
+                evidence_or(r, "The company's details do not add up."),
+                age.value
+            ),
+            contributing_signals: vec![
+                "Registration consistency".to_string(),
+                "Account age".to_string(),
+            ],
+        });
+        covered_labels.extend(["Registration consistency", "Account age"]);
+    }
+
+    // A brand-new company that says it exhibits at the Canton Fair, but
+    // the fair's own list does not show it.
+    if let (Some(age), Some(f)) = (
+        new_company,
+        find_signal(signals, CANTON_LABEL).filter(|f| is_flagged(f) && f.value == CLAIM_NOT_FOUND),
+    ) {
+        factors.push(RiskFactor {
+            severity: "compound".to_string(),
+            name: "new_company_unconfirmed_fair_claim".to_string(),
+            description: format!(
+                "{} The company is also very new ({}). A false fair claim from a new company is a common way to look established.",
+                evidence_or(f, "The supplier's Canton Fair claim is not confirmed by the fair."),
+                age.value
+            ),
+            contributing_signals: vec![CANTON_LABEL.to_string(), "Account age".to_string()],
+        });
+        covered_labels.extend([CANTON_LABEL, "Account age"]);
+    }
+
+    // Scam mentions online AND a bad rating on a big complaint site.
+    if find_signal(signals, "Social presence check")
+        .is_some_and(|m| is_flagged(m) && m.value == SCAM_MENTIONS_FOUND)
+    {
+        let rating = ["BBB rating", "Reclame Aqui"]
+            .iter()
+            .find_map(|label| find_signal(signals, label).filter(|r| is_flagged(r)));
+        if let Some(r) = rating {
+            factors.push(RiskFactor {
+                severity: "compound".to_string(),
+                name: "scam_mentions_and_bad_rating".to_string(),
+                description: format!(
+                    "This company's name appears next to scam words online, and {} gives it a bad rating ({}). Two separate sources point the same way.",
+                    r.label, r.value
+                ),
+                contributing_signals: vec!["Social presence check".to_string(), r.label.clone()],
+            });
+            covered_labels.push("Social presence check");
+            covered_labels.push(r.label.as_str());
+        }
+    }
+
+    // Website check: a website only weeks or months old that takes only
+    // risky payments (bank transfer, Pix, crypto) - the usual fake shop.
+    if let (Some(w), Some(_)) = (
+        find_signal(signals, "Website age").filter(|w| is_flagged(w) && w.value != "Not found"),
+        find_signal(signals, "Payment at checkout")
+            .filter(|p| is_flagged(p) && p.value == "Risky methods only"),
+    ) {
+        factors.push(RiskFactor {
+            severity: "compound".to_string(),
+            name: "new_website_risky_payment_only".to_string(),
+            description: format!(
+                "The website is very new ({}) and only takes payments that cannot be reversed (such as bank transfer, Pix or crypto). Fake shops usually look exactly like this.",
+                w.value.to_lowercase()
+            ),
+            contributing_signals: vec!["Website age".to_string(), "Payment at checkout".to_string()],
+        });
+        covered_labels.extend(["Website age", "Payment at checkout"]);
     }
 
     // Soft factors - anything caution/bad-type not already covered above
@@ -882,5 +1075,203 @@ mod tests {
         let f = derive_risk_factors(&s);
         assert_eq!(f.len(), 1);
         assert!(f[0].description.contains("very new (Founded this year)"));
+    }
+
+    // ---- Outside records and the new combinations (Nov 5) -------------
+
+    fn serious(f: &[RiskFactor], name: &str) -> bool {
+        find(f, name).is_some_and(|x| x.severity == "hard")
+    }
+
+    fn pattern(f: &[RiskFactor], name: &str) -> bool {
+        find(f, name).is_some_and(|x| x.severity == "compound")
+    }
+
+    #[test]
+    fn strong_outside_warnings_are_serious_on_their_own() {
+        let f = derive_risk_factors(&[sig("Company number", "Invalid number", "caution", "x")]);
+        assert!(serious(&f, "fake_company_number"));
+        let f = derive_risk_factors(&[sig(
+            "Official register",
+            "Other company name",
+            "caution",
+            "x",
+        )]);
+        assert!(serious(&f, "company_number_of_another_company"));
+        let f = derive_risk_factors(&[sig(
+            "EU VAT number",
+            "VAT number of another company",
+            "caution",
+            "x",
+        )]);
+        assert!(serious(&f, "vat_number_of_another_company"));
+        let f = derive_risk_factors(&[sig(
+            "US government register (SAM.gov)",
+            "Excluded by the US government",
+            "caution",
+            "x",
+        )]);
+        assert!(serious(&f, "excluded_by_us_government"));
+        // Smaller outside warnings stay "Worth noting".
+        let f = derive_risk_factors(&[
+            sig("Official register", "Closed", "caution", "x"),
+            sig("EU VAT number", "VAT number not active", "caution", "x"),
+            sig(
+                "US government register (SAM.gov)",
+                "Registration expired",
+                "info",
+                "x",
+            ),
+        ]);
+        assert!(f.iter().all(|x| x.severity != "hard"));
+        // A good result is never a factor.
+        let f = derive_risk_factors(&[sig("Company number", "Valid format", "good", "x")]);
+        assert!(f.is_empty());
+    }
+
+    #[test]
+    fn a_new_company_with_no_contact_and_no_check_is_a_pattern() {
+        let s = vec![
+            sig("Account age", "Founded this year", "caution", "x"),
+            sig("Contact info", "Not confirmed", "caution", "x"),
+            sig("Platform verification", "Unverified", "caution", "x"),
+        ];
+        let f = derive_risk_factors(&s);
+        assert!(pattern(&f, "new_company_no_contact_not_verified"));
+        // Checked by the platform (Alibaba "Checked by Alibaba"): no.
+        let s = vec![
+            sig("Account age", "Founded this year", "caution", "x"),
+            sig("Contact info", "Not confirmed", "caution", "x"),
+            sig("Platform verification", "Checked by Alibaba", "good", "x"),
+        ];
+        assert!(
+            find(
+                &derive_risk_factors(&s),
+                "new_company_no_contact_not_verified"
+            )
+            .is_none()
+        );
+        // An old company: no.
+        let s = vec![
+            sig("Account age", "About 19 years", "good", "x"),
+            sig("Contact info", "Not confirmed", "caution", "x"),
+            sig("Platform verification", "Unverified", "caution", "x"),
+        ];
+        assert!(
+            find(
+                &derive_risk_factors(&s),
+                "new_company_no_contact_not_verified"
+            )
+            .is_none()
+        );
+    }
+
+    #[test]
+    fn a_new_company_whose_details_do_not_add_up_is_a_pattern() {
+        let s = vec![
+            sig("Account age", "Founded this year", "caution", "x"),
+            sig(
+                "Registration consistency",
+                "Not confirmed",
+                "caution",
+                "Claims 1000+ staff.",
+            ),
+        ];
+        let f = derive_risk_factors(&s);
+        assert!(pattern(&f, "new_company_with_inconsistent_details"));
+        assert!(
+            find(&f, "new_company_with_inconsistent_details")
+                .unwrap()
+                .description
+                .contains("Claims 1000+ staff.")
+        );
+    }
+
+    #[test]
+    fn a_new_company_with_an_unconfirmed_fair_claim_is_a_pattern() {
+        let s = vec![
+            sig("Account age", "3 months", "caution", "x"),
+            sig("Canton Fair", "Claim not confirmed", "caution", "x"),
+        ];
+        assert!(pattern(
+            &derive_risk_factors(&s),
+            "new_company_unconfirmed_fair_claim"
+        ));
+        // "Not found" (no claim) is only a note: no.
+        let s = vec![
+            sig("Account age", "3 months", "caution", "x"),
+            sig("Canton Fair", "Not found", "info", "x"),
+        ];
+        assert!(
+            find(
+                &derive_risk_factors(&s),
+                "new_company_unconfirmed_fair_claim"
+            )
+            .is_none()
+        );
+    }
+
+    #[test]
+    fn scam_mentions_and_a_bad_rating_together_are_a_pattern() {
+        let s = vec![
+            sig(
+                "Social presence check",
+                "Scam mentions found",
+                "caution",
+                "x",
+            ),
+            sig("BBB rating", "F rating", "caution", "x"),
+        ];
+        assert!(pattern(
+            &derive_risk_factors(&s),
+            "scam_mentions_and_bad_rating"
+        ));
+        let s = vec![
+            sig(
+                "Social presence check",
+                "Scam mentions found",
+                "caution",
+                "x",
+            ),
+            sig("Reclame Aqui", "Not recommended", "caution", "x"),
+        ];
+        assert!(pattern(
+            &derive_risk_factors(&s),
+            "scam_mentions_and_bad_rating"
+        ));
+        // A good rating: no.
+        let s = vec![
+            sig(
+                "Social presence check",
+                "Scam mentions found",
+                "caution",
+                "x",
+            ),
+            sig("BBB rating", "A rating", "good", "x"),
+        ];
+        assert!(find(&derive_risk_factors(&s), "scam_mentions_and_bad_rating").is_none());
+    }
+
+    #[test]
+    fn a_new_website_with_only_risky_payment_is_a_pattern() {
+        let s = vec![
+            sig("Website age", "Under a month old", "caution", "x"),
+            sig("Payment at checkout", "Risky methods only", "caution", "x"),
+        ];
+        assert!(pattern(
+            &derive_risk_factors(&s),
+            "new_website_risky_payment_only"
+        ));
+        // An old website, or normal payment: no.
+        let s = vec![
+            sig("Website age", "8 years old", "good", "x"),
+            sig("Payment at checkout", "Risky methods only", "caution", "x"),
+        ];
+        assert!(find(&derive_risk_factors(&s), "new_website_risky_payment_only").is_none());
+        let s = vec![
+            sig("Website age", "Under a month old", "caution", "x"),
+            sig("Payment at checkout", "Normal", "good", "x"),
+        ];
+        assert!(find(&derive_risk_factors(&s), "new_website_risky_payment_only").is_none());
     }
 }
