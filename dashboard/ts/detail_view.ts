@@ -102,6 +102,7 @@ const SIGNAL_LABEL_TRANSLATIONS: Record<string, string> = {
   "US trade show": "dash.label.us_trade_show",
   "Brazil trade show": "dash.label.brazil_trade_show",
   "France trade show": "dash.label.france_trade_show",
+  "Reclame Aqui": "dash.label.reclame_aqui",
   // Title of the risk factor shown when Safely could check too little.
   "Not enough information": "dash.label.not_enough_information",
 };
@@ -195,6 +196,13 @@ const SIGNAL_VALUE_TRANSLATIONS: Record<string, string> = {
   "Canton Fair exhibitor": "dash.value.canton_fair_exhibitor",
   "Claim not confirmed": "dash.value.claim_not_confirmed",
   "HKTDC exhibitor": "dash.value.hktdc_exhibitor",
+  "Not recommended": "dash.value.ra_not_recommended",
+  "Bad reputation": "dash.value.ra_bad",
+  "Regular reputation": "dash.value.ra_regular",
+  "Good reputation": "dash.value.ra_good",
+  "Great reputation": "dash.value.ra_great",
+  "RA1000 reputation": "dash.value.ra_ra1000",
+  "Not enough reviews": "dash.value.ra_no_grade",
 };
 
 // Results that carry a number ("3/9 fields provided", "Checked 4 times

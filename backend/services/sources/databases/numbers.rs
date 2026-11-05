@@ -128,7 +128,7 @@ pub fn names_match(seller_name: &str, register_names: &[String]) -> bool {
 }
 
 /// "Comércio" -> "Comercio": registers often write names without accents.
-fn without_accents(text: &str) -> String {
+pub fn without_accents(text: &str) -> String {
     text.chars()
         .map(|c| match c {
             'á' | 'à' | 'â' | 'ã' | 'ä' | 'Á' | 'À' | 'Â' | 'Ã' | 'Ä' => 'a',

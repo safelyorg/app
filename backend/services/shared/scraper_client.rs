@@ -64,6 +64,9 @@ pub fn country_code_for_platform(platform: &str) -> Option<&'static str> {
         "wholesalecentral" => Some("us"),
         "madeinchina" => Some("us"),
         "globalsources" => Some("us"),
+        // Reclame Aqui refuses many non-Brazilian visitors (Bilal could
+        // only open it through a VPN, Nov 5), so it is read from Brazil.
+        "reclameaqui" => Some("br"),
         _ => None,
     }
 }
@@ -87,6 +90,8 @@ pub fn country_code_for_platform(platform: &str) -> Option<&'static str> {
 /// 2 KB "verify that you're not a robot" page (tested 2026-10-23:
 /// render=true on plain premium loaded the real 1.7 MB page).
 const NO_RENDER_PLATFORMS: &[&str] = &[
+    // reclameaqui: the reputation is in the page's own <meta> tags.
+    "reclameaqui",
     "thomasnet",
     "kompass",
     "exporthub",

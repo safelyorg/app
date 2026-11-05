@@ -254,6 +254,20 @@
       ]
     },
     {
+      "card": "Reclame Aqui",
+      "group": "outside_records",
+      "what_it_checks": "The seller's reputation on Reclame Aqui, Brazil's biggest complaint site. One Google search (Serper) finds the company's page (reclameaqui.com.br/empresa/...), which is read through ScraperAPI from a Brazilian address (the site refuses many other countries); the grade, score, complaints and answered/solved rates are in the page's own tags. The page counts only when its CNPJ is the seller's, or (no CNPJ given) its whole name is the seller's. 'Não recomendada' is a warning, 'Ruim' a smaller one; 'Regular' or no grade yet is information only; 'Bom', 'Ótimo' and 'RA1000' are good signs; not on Reclame Aqui shows no card. Asked for Brazil sellers and any seller that gives a CNPJ; answers kept 7 days. Needs RECLAME_AQUI_CHECK_ENABLED=true, SERPER_API_KEY and SCRAPERAPI_KEY in .env.",
+      "reads": [
+        "Company name",
+        "Country",
+        "Company number"
+      ],
+      "warning_points": 40,
+      "points_when_value": {
+        "Bad reputation": 20
+      }
+    },
+    {
       "card": "Website history",
       "group": "outside_records",
       "what_it_checks": "Since when the Wayback Machine (web.archive.org) has saved the seller's own website. Saved over a year ago is a good sign; newer or never saved is information only and never adds to the score (a brand-new domain is already warned about by 'Website age'). Needs WEBSITE_RECORDS_CHECK_ENABLED=true in .env.",

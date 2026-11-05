@@ -39,11 +39,11 @@
       "id": "reclame_aqui",
       "name": "Reclame Aqui",
       "url": "https://www.reclameaqui.com.br/",
-      "what_it_does": "Brazil's biggest complaint website. No public API.",
+      "what_it_does": "Brazil's biggest complaint site. The company page is found with a Google search (Serper) and read through ScraperAPI from Brazil; its <meta> tags give the grade, score, complaints, answered/solved rates and CNPJ. Card 'Reclame Aqui'.",
       "access": "scrape",
       "cost": "free",
       "step": 4,
-      "status": "planned"
+      "status": "live"
     },
     {
       "id": "acsp",
