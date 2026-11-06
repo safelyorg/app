@@ -426,18 +426,40 @@ fn scam_word_near_name_in(text: &str, name: &str, extra: &[&str]) -> bool {
 }
 
 /// Words that, just before a scam word, turn it around ("never had
-/// complaints", "not a scam", "no fraud", "nenhuma reclamação").
+/// complaints", "not a scam", "nenhuma reclamação"). Not "no": in
+/// Portuguese "no" means "in the" ("caí no golpe" = "I fell for the
+/// scam"), so it is only read as a negation before an English scam word
+/// (ENGLISH_SCAM_WORDS: "no complaints", "no fraud").
 const SCAM_NEGATIONS: &[&str] = &[
-    "not", "no", "never", "without", "zero", "nor", "neither", "isn", "wasn", "aren", "don",
-    "didn", "doesn", "hasn", "haven", "weren", "won", "nao", "não", "nunca", "nenhum", "nenhuma",
-    "sem",
+    "not", "never", "without", "zero", "nor", "neither", "isn", "wasn", "aren", "don", "didn",
+    "doesn", "hasn", "haven", "weren", "won", "nao", "não", "nunca", "nenhum", "nenhuma", "sem",
+];
+
+/// The English scam words, before which "no" is a negation.
+const ENGLISH_SCAM_WORDS: &[&str] = &[
+    "scam",
+    "scams",
+    "scammed",
+    "scammer",
+    "scammers",
+    "fraud",
+    "fraudulent",
+    "fraudster",
+    "fraudsters",
+    "complaint",
+    "complaints",
+    "ripoff",
+    "rip-off",
 ];
 
 /// True when one of the three words right before `at` is a negation.
 fn negated_before(words: &[String], at: usize) -> bool {
+    let english = words
+        .get(at)
+        .is_some_and(|w| ENGLISH_SCAM_WORDS.contains(&w.as_str()));
     words[at.saturating_sub(3)..at]
         .iter()
-        .any(|w| SCAM_NEGATIONS.contains(&w.as_str()))
+        .any(|w| SCAM_NEGATIONS.contains(&w.as_str()) || (english && w == "no"))
 }
 
 /// True when this query is one of the scam-word searches.
@@ -1117,6 +1139,11 @@ mod web_scam_tests {
         assert!(!scam_word_near_name("Acme Ltd isn't a scam", "Acme Ltd"));
         assert!(!scam_word_near_name("Acme Ltd: no fraud found", "Acme Ltd"));
         assert!(!scam_word_near_name("Acme Ltd nunca deu golpe", "Acme Ltd"));
+        // Portuguese "no" is "in the", not "no": a real scam report.
+        assert!(scam_word_near_name(
+            "Caí no golpe da empresa Acme Ltd",
+            "Acme Ltd"
+        ));
         // A real warning still counts.
         assert!(web_scam_word_near_name(
             "Many complaints about Persy Booths deliveries",
