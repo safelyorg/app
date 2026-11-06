@@ -407,6 +407,9 @@ fn scam_word_near_name_in(text: &str, name: &str, extra: &[&str]) -> bool {
             scam_spans.push((start, start + phrase_words.len() - 1));
         }
     }
+    // "never had complaints", "no fraud", "not a scam": the opposite of
+    // a warning (Persy Booths' client story, Nov 6).
+    scam_spans.retain(|&(start, _)| !negated_before(&words, start));
     name_starts.iter().any(|&name_start| {
         let name_end = name_start + name_words.len() - 1;
         scam_spans.iter().any(|&(start, end)| {
@@ -420,6 +423,21 @@ fn scam_word_near_name_in(text: &str, name: &str, extra: &[&str]) -> bool {
             gap <= SCAM_WORD_MAX_GAP
         })
     })
+}
+
+/// Words that, just before a scam word, turn it around ("never had
+/// complaints", "not a scam", "no fraud", "nenhuma reclamação").
+const SCAM_NEGATIONS: &[&str] = &[
+    "not", "no", "never", "without", "zero", "nor", "neither", "isn", "wasn", "aren", "don",
+    "didn", "doesn", "hasn", "haven", "weren", "won", "nao", "não", "nunca", "nenhum", "nenhuma",
+    "sem",
+];
+
+/// True when one of the three words right before `at` is a negation.
+fn negated_before(words: &[String], at: usize) -> bool {
+    words[at.saturating_sub(3)..at]
+        .iter()
+        .any(|w| SCAM_NEGATIONS.contains(&w.as_str()))
 }
 
 /// True when this query is one of the scam-word searches.
@@ -1086,6 +1104,28 @@ mod web_scam_tests {
                 .iter()
                 .all(|(p, _, _)| !is_web_scam_row(p))
         );
+    }
+
+    #[test]
+    fn praise_with_a_negated_scam_word_is_not_a_scam_mention() {
+        // Persy Booths' client story (Huckletree, Nov 6).
+        assert!(!web_scam_word_near_name(
+            "We've never had complaints about Persy Booths; they're a strong, reliable product.",
+            "Persy Booths"
+        ));
+        assert!(!scam_word_near_name("Acme Ltd is not a scam", "Acme Ltd"));
+        assert!(!scam_word_near_name("Acme Ltd isn't a scam", "Acme Ltd"));
+        assert!(!scam_word_near_name("Acme Ltd: no fraud found", "Acme Ltd"));
+        assert!(!scam_word_near_name("Acme Ltd nunca deu golpe", "Acme Ltd"));
+        // A real warning still counts.
+        assert!(web_scam_word_near_name(
+            "Many complaints about Persy Booths deliveries",
+            "Persy Booths"
+        ));
+        assert!(scam_word_near_name(
+            "Acme Ltd is a scam, they never shipped",
+            "Acme Ltd"
+        ));
     }
 
     #[test]
