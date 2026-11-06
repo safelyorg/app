@@ -210,9 +210,9 @@
 
                 <!-- Get the extension: for people who signed up but never
                      installed it. Opens the Chrome Web Store in a new tab
-                     (source "dashboard / sidebar" for the store's stats)
-                     and counts as a Lead for the Meta Pixel, like the
-                     website's "Add to Chrome" buttons. -->
+                     (source "dashboard / sidebar" for the store's stats).
+                     ts/install_welcome.ts counts the click as a Lead and
+                     brings the user back here after installing. -->
                 <div
                     id="get-extension"
                     class="mx-1 mb-3 p-3.5 rounded-xl border border-line bg-surface2"
@@ -235,7 +235,6 @@
                         href="https://chromewebstore.google.com/detail/safely/bmjdfmkocaaeephfpokmpffhlogmjlnf?utm_source=dashboard&amp;utm_medium=button&amp;utm_campaign=sidebar"
                         target="_blank"
                         rel="noopener"
-                        onclick="if (typeof window.fbq === 'function') window.fbq('track', 'Lead');"
                         class="flex items-center justify-center gap-2 w-full py-2 rounded-lg bg-brand text-surface text-[12px] font-bold hover:opacity-90 transition"
                     >
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10" /><circle cx="12" cy="12" r="4" /><path d="M21.17 8H12M3.95 6.06L8.54 14M10.88 21.94L15.46 14" /></svg>
@@ -1143,6 +1142,7 @@
         <script src="/dashboard/js/i18n.js"></script>
         <script src="/dashboard/js/auth.js"></script>
         <script src="/dashboard/js/shared.js"></script>
+        <script src="/dashboard/js/install_welcome.js"></script>
         <script src="/dashboard/js/history.js"></script>
         <script src="/dashboard/js/profile.js"></script>
         <script src="/dashboard/js/settings.js"></script>

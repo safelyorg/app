@@ -394,5 +394,9 @@
   "dash.outside.open_on": "Abrir em {site}",
   "dash.ext.title": "Instale a extensão",
   "dash.ext.text": "O Safely verifica cada vendedor na própria página do anúncio, em cerca de 10 segundos.",
-  "dash.ext.button": "Adicionar ao Chrome — Grátis"
+  "dash.ext.button": "Adicionar ao Chrome — Grátis",
+  "dash.installed.title": "Obrigado por instalar o Safely!",
+  "dash.installed.body": "Está tudo pronto. Abra a página de um fornecedor no Alibaba, Made-in-China, Global Sources ou outro site compatível, e a verificação começa sozinha.",
+  "dash.installed.tip": "Dica: clique no ícone de quebra-cabeça do Chrome e fixe o Safely para ele ficar sempre à vista.",
+  "dash.installed.button": "Entendi"
 }

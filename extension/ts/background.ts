@@ -16,9 +16,23 @@ interface FetchSupplierPageMessage {
   url: string;
 }
 
+// Where to send a new user right after installing: Safely's site with
+// "?installed=1". Chrome does not go back to the page the "Add to Chrome"
+// button was clicked on, so the site does it: it remembered that page
+// ("safely_install_from") and goes back there with a "thank you" popup
+// (site ts/tracking.ts, dashboard ts/install_welcome.ts). The store
+// version opens safely.sh; a copy loaded unpacked from this folder opens
+// the local server (same rule as SAFELY_ENV in core/api.ts: only the
+// Chrome Web Store adds an update_url).
+function welcomePageUrl(): string {
+  const fromStore = !!chrome.runtime.getManifest().update_url;
+  return (fromStore ? "https://safely.sh/" : "http://localhost:3000/") + "?installed=1";
+}
+
 chrome.runtime.onInstalled.addListener((details) => {
   if (details.reason === "install") {
     console.log("[Safely] Installed — protecting payments everywhere.");
+    chrome.tabs.create({ url: welcomePageUrl() });
   }
 });
 

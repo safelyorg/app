@@ -10,6 +10,12 @@ export const fakeChrome = {
     // scrapers/index.ts); the tests in scan-stop.test.ts set what it returns.
     connect: vi.fn(),
     sendMessage: vi.fn(),
+    // No update_url: like a copy loaded unpacked (see install.test.ts).
+    getManifest: vi.fn(() => ({})),
+  },
+  // background.ts opens the welcome page after installing.
+  tabs: {
+    create: vi.fn(),
   },
   storage: {
     local: {
