@@ -5,11 +5,12 @@ use crate::services::{
     features::billing::{
         BillingInterval, CreateCheckoutError, PLAN_PRODUCTS, PlanChange,
         apply_scheduled_downgrade_if_due, apply_upgrade, cancel_with_creem, classify_plan_change,
-        create_checkout, fetch_subscriber_email, get_scan_usage, handle_subscription_granted,
+        create_checkout_for, fetch_subscriber_email, get_scan_usage, handle_subscription_granted,
         handle_subscription_lost, handle_subscription_past_due, handle_subscription_update,
         plan_for_product_id, product_ids_key, schedule_downgrade, verify_and_parse_webhook,
     },
     features::email::send_subscription_canceled_email,
+    features::meta_capi::{AdClick, payment_in, send_purchase},
 };
 use axum::{
     Json,
@@ -78,7 +79,10 @@ pub async fn create_checkout_handler(
         }
     }
 
-    let checkout = create_checkout(&body.product_id, user_id)
+    // The browser's Meta cookies go with the checkout, so the payment can
+    // be matched to the ad it came from (meta_capi.rs).
+    let ad = AdClick::from_headers(&headers);
+    let checkout = create_checkout_for(&body.product_id, user_id, &ad)
         .await
         .map_err(|e| match e {
             CreateCheckoutError::MissingApiKey => {
@@ -127,6 +131,8 @@ pub async fn creem_webhook(
         return Ok(StatusCode::OK);
     }
 
+    report_payment_to_meta(&pool, &event.event_type, &event.object).await;
+
     match event.event_type.as_str() {
         "checkout.completed" => {
             eprintln!(
@@ -163,6 +169,41 @@ pub async fn creem_webhook(
     }
 
     Ok(StatusCode::OK)
+}
+
+/// A paid order (checkout.completed, subscription.paid) goes to Meta as a
+/// "Purchase" (meta_capi.rs). Sent in the background, so Creem gets its
+/// answer at once; nothing is sent without META_CAPI_TOKEN.
+async fn report_payment_to_meta(pool: &Pool<Postgres>, event_type: &str, object: &Value) {
+    let Some(payment) = payment_in(event_type, object) else {
+        return;
+    };
+    let metadata = object.get("metadata").cloned().unwrap_or(Value::Null);
+    let user_id = metadata
+        .get("safely_user_id")
+        .and_then(Value::as_str)
+        .map(str::to_string);
+    // The account's email; Creem's customer email if the account isn't found.
+    let mut email = None;
+    if let Some(id) = user_id
+        .as_deref()
+        .and_then(|id| id.parse::<uuid::Uuid>().ok())
+    {
+        email = query_scalar::<_, String>("SELECT email FROM users WHERE id = $1")
+            .bind(id)
+            .fetch_optional(pool)
+            .await
+            .ok()
+            .flatten();
+    }
+    if email.is_none() {
+        email = object
+            .pointer("/customer/email")
+            .and_then(Value::as_str)
+            .map(str::to_string);
+    }
+    let ad = AdClick::from_metadata(&metadata);
+    tokio::spawn(send_purchase(payment, email, user_id, ad));
 }
 
 /// POST /api/v1/billing/cancel-subscription

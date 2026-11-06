@@ -1,3 +1,4 @@
+use crate::services::features::meta_capi::AdClick;
 use crate::{
     errors::billing::{BillingError, WebhookError},
     models::billing::{
@@ -210,13 +211,26 @@ pub async fn create_checkout(
     product_id: &str,
     user_id: Uuid,
 ) -> Result<CreateCheckoutResponse, CreateCheckoutError> {
+    create_checkout_for(product_id, user_id, &AdClick::default()).await
+}
+
+/// The same checkout, with the browser's Meta cookies and user agent
+/// added to the metadata, so the payment can be reported to Meta from the
+/// webhook (meta_capi.rs).
+pub async fn create_checkout_for(
+    product_id: &str,
+    user_id: Uuid,
+    ad: &AdClick,
+) -> Result<CreateCheckoutResponse, CreateCheckoutError> {
+    let mut metadata = serde_json::json!({ "safely_user_id": user_id.to_string() });
+    ad.add_to_metadata(&mut metadata);
     let api_key = var("CREEM_API_KEY").map_err(|_| CreateCheckoutError::MissingApiKey)?;
     let base_url = var("PUBLIC_BASE_URL").unwrap_or_else(|_| "http://localhost:3000".to_string());
 
     let request_body = CreateCheckoutRequest {
         product_id: product_id.to_string(),
         success_url: format!("{}/dashboard/?checkout=success", base_url),
-        metadata: serde_json::json!({ "safely_user_id": user_id.to_string() }),
+        metadata,
     };
 
     let client = Client::new();

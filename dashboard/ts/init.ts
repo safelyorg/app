@@ -467,6 +467,11 @@ document.addEventListener("DOMContentLoaded", async () => {
   // confirmation has not reached Safely yet - from the plan picked just
   // before checkout. Sent once: the "checkout=success" mark is removed
   // from the address and the saved pick is cleared.
+  // Only "Subscribe" is sent from here. The "Purchase" (with the real
+  // amount paid) is sent by the server from Creem's webhook (backend
+  // meta_capi.rs). Creem does not put the order id in the address after a
+  // subscription checkout, so a Purchase here could not be matched to the
+  // server's one and Meta would count every payment twice.
   function trackPurchase(): void {
     let plan = realSubscriptionPlan;
     let interval: string | null = realSubscriptionInterval;
