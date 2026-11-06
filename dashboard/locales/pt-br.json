@@ -391,5 +391,8 @@
   "dash.outside.reputation": "Reputação",
   "dash.outside.trade_shows": "Feiras e câmaras de comércio",
   "dash.outside.website_history": "Histórico do site",
-  "dash.outside.open_on": "Abrir em {site}"
+  "dash.outside.open_on": "Abrir em {site}",
+  "dash.ext.title": "Instale a extensão",
+  "dash.ext.text": "O Safely verifica cada vendedor na própria página do anúncio, em cerca de 10 segundos.",
+  "dash.ext.button": "Adicionar ao Chrome — Grátis"
 }
