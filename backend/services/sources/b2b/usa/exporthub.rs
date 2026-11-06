@@ -166,8 +166,9 @@ impl B2bScraper for ExporthubScraper {
         }
 
         // Structured fallback table - only fills fields still missing.
-        // Its "Company Website" row just links back to the ExportHub
-        // profile itself, so it is deliberately never used as a website.
+        // Its "Company Website" row often just points back to ExportHub
+        // itself, so it is used only when it names an outside website
+        // (NUTRIDIET LDA, Nov 6: "https://nutridietlda.com/").
         if let Ok(row_sel) = Selector::parse(".rmp-comp--prof_table tr") {
             if let Ok(td_sel) = Selector::parse("td") {
                 for row in document.select(&row_sel) {
@@ -191,6 +192,11 @@ impl B2bScraper for ExporthubScraper {
                         "Year Incorporated" => {
                             if supplier.year_established.is_none() {
                                 supplier.year_established = Some(value);
+                            }
+                        }
+                        "Company Website" => {
+                            if supplier.website_url.is_none() {
+                                supplier.website_url = outside_website(&value);
                             }
                         }
                         _ => {}
@@ -629,6 +635,25 @@ fn is_exporthub_placeholder_image(url: &str) -> bool {
     lower.contains("noimg") || lower.contains("/avatar.jpg")
 }
 
+/// The seller's own website from ExportHub's "Company Website" row:
+/// "https://nutridietlda.com/" or "www.acme.com" -> a full address;
+/// an ExportHub address, or anything that is not a web address, -> None.
+fn outside_website(value: &str) -> Option<String> {
+    let v = value.trim().trim_end_matches('/');
+    let bare = v
+        .trim_start_matches("https://")
+        .trim_start_matches("http://");
+    let host = bare.split(['/', '?', '#']).next()?.to_lowercase();
+    if host.contains(' ') || !host.contains('.') || host.contains("exporthub.") {
+        return None;
+    }
+    Some(if v.starts_with("http://") || v.starts_with("https://") {
+        format!("{v}/")
+    } else {
+        format!("https://{bare}/")
+    })
+}
+
 fn non_placeholder(value: &str) -> Option<String> {
     let trimmed = value.trim();
     if trimmed.is_empty() || trimmed.eq_ignore_ascii_case("not provided") {
@@ -824,6 +849,39 @@ mod tests {
                 "Address: Alameda das Comunidades Portuguesas, Lisboa, Portugal.\nNutridiet LDA is a wholesale supplier and distributors of Chemicals"
             )
         );
+    }
+
+    #[test]
+    fn the_company_website_row_is_used_only_for_an_outside_site() {
+        let page = |site: &str| {
+            format!(
+                r#"<html><body><table class="table rmp-comp--prof_table"><tbody>
+                <tr><td>Company Name</td><td>NUTRIDIET LDA</td></tr>
+                <tr><td>Company Website</td><td>{site}</td></tr>
+                </tbody></table></body></html>"#
+            )
+        };
+        let s = ExporthubScraper;
+        let with = |site: &str| {
+            s.enrich_from_extended_profile(full_supplier(), &page(site))
+                .website_url
+        };
+        // NUTRIDIET LDA's real company page (Nov 6).
+        assert_eq!(
+            with("https://nutridietlda.com/").as_deref(),
+            Some("https://nutridietlda.com/")
+        );
+        assert_eq!(
+            with("www.acme.com").as_deref(),
+            Some("https://www.acme.com/")
+        );
+        // A link back to ExportHub, or no web address: no website.
+        assert_eq!(
+            with("https://www.exporthub.com/nutridiet-lda-10772764/profile.html"),
+            None
+        );
+        assert_eq!(with("Not Available"), None);
+        assert_eq!(with("N/A"), None);
     }
 
     #[test]
