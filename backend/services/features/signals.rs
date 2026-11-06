@@ -1670,14 +1670,26 @@ const FAR_TOO_LOW: &[&str] = &[
     "below the cost",
 ];
 
-/// true when the reasoning says the price is far too low, without
-/// "not" right before it ("not extremely low" does not count).
+/// Words that, just before a phrase, turn it around: "not extremely
+/// low", "neither suspiciously low nor suspiciously high" (Persy Booths,
+/// B2BMap, Nov 6: a plausible price was flipped to "suspiciously low").
+const NEGATIONS: &[&str] = &[
+    "not", "no", "neither", "nor", "never", "without", "isn't", "wasn't",
+];
+
+/// true when the reasoning says the price is far too low, without a
+/// negation in the three words right before it.
 fn reasoning_says_far_too_low(reasoning: &str) -> bool {
     let lower = reasoning.to_lowercase();
     FAR_TOO_LOW.iter().any(|phrase| {
         lower.match_indices(phrase).any(|(i, _)| {
-            let before = lower[..i].trim_end();
-            !(before.ends_with(" not") || before.ends_with("n't") || before.ends_with(" no"))
+            let negated = lower[..i]
+                .split(|c: char| !(c.is_alphanumeric() || c == '\''))
+                .filter(|w| !w.is_empty())
+                .rev()
+                .take(3)
+                .any(|w| NEGATIONS.contains(&w) || w.ends_with("n't"));
+            !negated
         })
     })
 }
@@ -3109,11 +3121,19 @@ mod b2b_signal_tests {
         );
         assert_eq!(card.value, "suspiciously low");
         assert_eq!(card.signal_type, "caution");
+        // A negation further back does not hide a real "far below".
+        let card = price(
+            "normal",
+            "Shipping is not included. The price is far below the cost of the parts.",
+        );
+        assert_eq!(card.value, "suspiciously low");
         // A plain normal price, or one that is "not extremely low", stays normal.
         for reasoning in [
             "US$250 per carton is plausible for this product.",
             "The price is not extremely low for a generic phone.",
             "The price isn't far below the usual range.",
+            // The real Persy Booths scan (B2BMap, Nov 6).
+            "The stated price is plausible and consistent with the market range for premium European-made acoustic office pods of this type. The price is neither suspiciously low nor suspiciously high.",
         ] {
             let card = price("normal", reasoning);
             assert_eq!(card.value, "normal", "{reasoning}");
