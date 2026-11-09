@@ -33,7 +33,7 @@ use std::env::var;
 use std::time::Duration;
 
 /// Safely's Pixel (the same one the website and dashboard load).
-const DEFAULT_PIXEL_ID: &str = "1490328886384904";
+const DEFAULT_PIXEL_ID: &str = "2388396301944921";
 const GRAPH_API: &str = "https://graph.facebook.com/v21.0";
 
 /// The browser details saved with a checkout (in Creem's metadata).
