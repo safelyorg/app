@@ -164,6 +164,35 @@
     border: var(--bd-thin);
     border-radius: 999px;
 }
+/* Lookalike Domain Checker: two boxes, and the list of tricks found */
+.tool-input.ldc-wide {
+    flex-basis: 100%;
+}
+.tool-label.ldc-second {
+    margin-top: 6px;
+}
+.ldc-tricks-title {
+    margin-top: 12px;
+    font-weight: 700;
+}
+.tool-result ul.ldc-tricks {
+    margin: 4px 0 8px;
+    padding-left: 22px;
+    list-style: disc;
+    line-height: 1.6;
+}
+.ldc-tricks li {
+    margin: 2px 0;
+    overflow-wrap: anywhere;
+}
+.ldc-age {
+    margin-top: 14px;
+}
+.ldc-age a {
+    font-weight: 700;
+    color: var(--ink);
+}
+
 /* Soft link to the extension, under a result */
 .tool-upsell {
     margin-top: 16px;
@@ -604,10 +633,63 @@ ul.tool-cards {
     border-radius: 999px;
     box-shadow: var(--sh-sm);
 }
-/* With more tools, the other tools sit under the wide card */
+/* With more tools, the other tools sit under the wide card, each one
+   the same size and shape: text and button on the left, banner on the
+   right. (A grid stretched one card across the whole width, which made
+   its banner huge.) */
 .tool-featured + ul.tool-cards {
     max-width: 1060px;
-    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    grid-template-columns: 1fr;
+    gap: 30px;
+}
+.tool-featured + ul.tool-cards li a {
+    display: grid;
+    grid-template-columns: 1.05fr 1fr;
+    grid-template-rows: 1fr auto auto auto auto 1fr;
+    column-gap: 34px;
+    row-gap: 14px;
+    align-items: start;
+    padding: 34px 34px 34px 38px;
+}
+.tool-featured + ul.tool-cards li a > * {
+    grid-column: 1;
+    justify-self: start;
+}
+.tool-featured + ul.tool-cards .tool-card-badge {
+    grid-row: 2;
+}
+.tool-featured + ul.tool-cards .tool-card-title {
+    grid-row: 3;
+    margin-top: 4px;
+    font-size: clamp(26px, 2.6vw, 34px);
+}
+.tool-featured + ul.tool-cards .tool-card-desc {
+    grid-row: 4;
+    flex: none;
+    font-size: 17px;
+}
+.tool-featured + ul.tool-cards .tool-card-more {
+    grid-row: 5;
+    display: inline-flex;
+    align-items: center;
+    margin-top: 6px;
+    padding: 12px 22px;
+    font-family: var(--disp);
+    font-weight: 800;
+    font-size: 16px;
+    background: var(--sun);
+    border: var(--bd-thin);
+    border-radius: 999px;
+    box-shadow: var(--sh-sm);
+}
+.tool-featured + ul.tool-cards .tool-card-img {
+    grid-column: 2;
+    grid-row: 1 / -1;
+    align-self: center;
+    justify-self: stretch;
+    margin: 0;
+    border: var(--bd);
+    box-shadow: var(--sh-sm);
 }
 
 /* ---------- "Coming soon": planned tools, not links ---------- */
@@ -669,6 +751,20 @@ ul.tool-cards.soon {
     }
     .tool-featured .tool-card-img {
         order: -1;
+    }
+    .tool-featured + ul.tool-cards li a {
+        grid-template-columns: 1fr;
+        grid-template-rows: none;
+        row-gap: 12px;
+        padding: 26px;
+    }
+    .tool-featured + ul.tool-cards li a > * {
+        grid-row: auto;
+    }
+    .tool-featured + ul.tool-cards .tool-card-img {
+        grid-column: 1;
+        grid-row: 1;
+        margin-bottom: 10px;
     }
 }
 

@@ -5,6 +5,7 @@ pub mod blogs;
 pub mod dashboard;
 pub mod domain_age;
 pub mod fraud_reports;
+pub mod lookalike;
 pub mod outcomes;
 pub mod pdf;
 pub mod reviews;

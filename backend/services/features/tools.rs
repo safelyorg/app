@@ -98,10 +98,16 @@ pub const NOT_FOUND_PAGE: &str = include_str!("../../../site/templates/404.html"
 
 /// The box of each tool, by its name (the Markdown file name).
 /// A new tool adds one entry here, like the Domain Age Checker below.
-pub const WIDGETS: &[(&str, &str)] = &[(
-    "domain-age-checker",
-    include_str!("../../../site/templates/tool_widgets/domain-age-checker.html"),
-)];
+pub const WIDGETS: &[(&str, &str)] = &[
+    (
+        "domain-age-checker",
+        include_str!("../../../site/templates/tool_widgets/domain-age-checker.html"),
+    ),
+    (
+        "lookalike-domain-checker",
+        include_str!("../../../site/templates/tool_widgets/lookalike-domain-checker.html"),
+    ),
+];
 
 /// Pages that are always in the sitemap. The list page, every tool and
 /// every blog are added for each language.
@@ -265,6 +271,110 @@ const ENGLISH: &[(&str, &str)] = &[
         "Safely checks domain age, and 14 other signals, on every supplier page automatically.",
     ),
     ("dac.upsell_link", "Add Safely to Chrome →"),
+    // The Lookalike Domain Checker box (site/templates/tool_widgets/lookalike-domain-checker.html)
+    ("ldc.label", "Website or email address to check"),
+    ("ldc.placeholder", "paypa1-secure.com"),
+    ("ldc.real_label", "The real company's website (optional)"),
+    ("ldc.real_placeholder", "paypal.com"),
+    ("ldc.button", "Check name"),
+    (
+        "ldc.hint",
+        "Paste a link, a domain or an email address. Leave the second box empty to compare with famous brands like Amazon, PayPal and Alibaba.",
+    ),
+    ("ldc.checking", "Checking..."),
+    ("ldc.checked", "Checked"),
+    ("ldc.site", "Real website behind it"),
+    ("ldc.compared", "Compared with"),
+    ("ldc.tricks_title", "Tricks found:"),
+    ("ldc.same_title", "This is the real {real} website"),
+    (
+        "ldc.same_text",
+        "The address matches {real}. Still check that the link you got really goes there before you sign in or pay.",
+    ),
+    ("ldc.lookalike_title", "Lookalike: this copies {real}"),
+    (
+        "ldc.lookalike_text",
+        "This address is not {real}. It copies the name with a small trick, which is how fake websites and emails fool buyers. Do not sign in, pay or download anything from it.",
+    ),
+    ("ldc.close_title", "Close to {real}: check it"),
+    (
+        "ldc.close_text",
+        "This address is close to {real}, but not the same. It may belong to the same company (for example its website for another country), or it may be a copy. Ask the company on a phone number you found yourself.",
+    ),
+    ("ldc.different_title", "Not a copy of {real}"),
+    (
+        "ldc.different_text",
+        "This name does not look like a copy of {real}. It is a different website, so it is not {real} either. If someone tells you it is, be careful.",
+    ),
+    ("ldc.no_brand_title", "No famous brand copied"),
+    (
+        "ldc.no_brand_text",
+        "This name does not copy a famous brand we know. To check it against one company, add that company's real website in the second box.",
+    ),
+    ("ldc.mixed_title", "Letters from another alphabet"),
+    (
+        "ldc.mixed_text",
+        "This name mixes in letters from another alphabet that look like normal ones. That is a common trick to copy a real name, so be careful with it.",
+    ),
+    (
+        "ldc.t.foreign_letters",
+        "Letters from another alphabet that look like normal ones: {a} ({b})",
+    ),
+    (
+        "ldc.t.number_for_letter",
+        "The number \"{a}\" instead of the letter \"{b}\"",
+    ),
+    (
+        "ldc.t.lookalike_letters",
+        "\"{a}\" instead of \"{b}\": together they look the same",
+    ),
+    (
+        "ldc.t.changed_letter",
+        "One letter changed: \"{a}\" instead of \"{b}\"",
+    ),
+    ("ldc.t.missing_letter", "One letter left out: \"{a}\""),
+    ("ldc.t.extra_letter", "One letter added: \"{a}\""),
+    (
+        "ldc.t.swapped_letters",
+        "Two letters swapped: \"{a}\" instead of \"{b}\"",
+    ),
+    ("ldc.t.extra_dash", "A dash added inside the name"),
+    ("ldc.script.cyrillic", "Cyrillic"),
+    ("ldc.script.greek", "Greek"),
+    ("ldc.script.accent", "with an accent"),
+    (
+        "ldc.t.extra_word",
+        "The real name with an extra word: \"{a}\"",
+    ),
+    (
+        "ldc.t.different_ending",
+        "Another ending: {a} instead of {b}",
+    ),
+    (
+        "ldc.t.name_in_front",
+        "The real name is at the front, but the website is really {a}",
+    ),
+    (
+        "ldc.t.two_changes",
+        "Two letters different from the real name",
+    ),
+    ("ldc.age_link", "Check how old this website is →"),
+    (
+        "ldc.err_invalid",
+        "That does not look like a website or email address. Try something like paypa1-secure.com.",
+    ),
+    (
+        "ldc.err_invalid_real",
+        "The real company's website does not look right. Try something like paypal.com, or leave it empty.",
+    ),
+    (
+        "ldc.err_failed",
+        "The check did not work this time. Please try again in a moment.",
+    ),
+    (
+        "ldc.upsell",
+        "Safely checks lookalike names, and 14 other signals, on every supplier page automatically.",
+    ),
     ("cmp.free_plan", "Free plan"),
     ("cmp.add_free", "Add to Chrome, it is free"),
     ("cta.sticker", "10-second install"),

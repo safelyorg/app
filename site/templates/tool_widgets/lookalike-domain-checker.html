@@ -1,0 +1,79 @@
+<!-- Lookalike Domain Checker: the box on safely.sh/tools/lookalike-domain-checker.
+     The words are filled in by the server in the page's language.
+     The hidden texts at the bottom are read by lookalike-domain-checker.ts
+     to write the result in the same language. -->
+<div class="ldc" data-ldc data-api="/api/v1/tools/lookalike">
+    <form class="tool-form" data-ldc-form novalidate>
+        <label class="tool-label" for="ldc-domain">{{t:ldc.label}}</label>
+        <input
+            class="tool-input ldc-wide"
+            id="ldc-domain"
+            name="domain"
+            type="text"
+            inputmode="url"
+            autocomplete="off"
+            autocapitalize="off"
+            spellcheck="false"
+            maxlength="300"
+            placeholder="{{a:ldc.placeholder}}"
+            required
+        />
+        <label class="tool-label ldc-second" for="ldc-real">{{t:ldc.real_label}}</label>
+        <input
+            class="tool-input"
+            id="ldc-real"
+            name="real"
+            type="text"
+            inputmode="url"
+            autocomplete="off"
+            autocapitalize="off"
+            spellcheck="false"
+            maxlength="300"
+            placeholder="{{a:ldc.real_placeholder}}"
+        />
+        <button class="btn btn-lg btn-sun" type="submit" data-ldc-button>{{t:ldc.button}}</button>
+        <p class="tool-hint">{{t:ldc.hint}}</p>
+    </form>
+    <div class="tool-result" data-ldc-result hidden aria-live="polite"></div>
+    <div hidden data-ldc-texts>
+        <span data-k="checking">{{t:ldc.checking}}</span>
+        <span data-k="checked">{{t:ldc.checked}}</span>
+        <span data-k="site">{{t:ldc.site}}</span>
+        <span data-k="compared">{{t:ldc.compared}}</span>
+        <span data-k="tricks_title">{{t:ldc.tricks_title}}</span>
+        <span data-k="same_title">{{t:ldc.same_title}}</span>
+        <span data-k="same_text">{{t:ldc.same_text}}</span>
+        <span data-k="lookalike_title">{{t:ldc.lookalike_title}}</span>
+        <span data-k="lookalike_text">{{t:ldc.lookalike_text}}</span>
+        <span data-k="close_title">{{t:ldc.close_title}}</span>
+        <span data-k="close_text">{{t:ldc.close_text}}</span>
+        <span data-k="different_title">{{t:ldc.different_title}}</span>
+        <span data-k="different_text">{{t:ldc.different_text}}</span>
+        <span data-k="no_brand_title">{{t:ldc.no_brand_title}}</span>
+        <span data-k="no_brand_text">{{t:ldc.no_brand_text}}</span>
+        <span data-k="mixed_title">{{t:ldc.mixed_title}}</span>
+        <span data-k="mixed_text">{{t:ldc.mixed_text}}</span>
+        <span data-k="t.foreign_letters">{{t:ldc.t.foreign_letters}}</span>
+        <span data-k="t.number_for_letter">{{t:ldc.t.number_for_letter}}</span>
+        <span data-k="t.lookalike_letters">{{t:ldc.t.lookalike_letters}}</span>
+        <span data-k="t.changed_letter">{{t:ldc.t.changed_letter}}</span>
+        <span data-k="t.missing_letter">{{t:ldc.t.missing_letter}}</span>
+        <span data-k="t.extra_letter">{{t:ldc.t.extra_letter}}</span>
+        <span data-k="t.swapped_letters">{{t:ldc.t.swapped_letters}}</span>
+        <span data-k="t.extra_dash">{{t:ldc.t.extra_dash}}</span>
+        <span data-k="script.cyrillic">{{t:ldc.script.cyrillic}}</span>
+        <span data-k="script.greek">{{t:ldc.script.greek}}</span>
+        <span data-k="script.accent">{{t:ldc.script.accent}}</span>
+        <span data-k="t.extra_word">{{t:ldc.t.extra_word}}</span>
+        <span data-k="t.different_ending">{{t:ldc.t.different_ending}}</span>
+        <span data-k="t.name_in_front">{{t:ldc.t.name_in_front}}</span>
+        <span data-k="t.two_changes">{{t:ldc.t.two_changes}}</span>
+        <span data-k="age_link">{{t:ldc.age_link}}</span>
+        <span data-k="err_invalid_domain">{{t:ldc.err_invalid}}</span>
+        <span data-k="err_invalid_real">{{t:ldc.err_invalid_real}}</span>
+        <span data-k="err_failed">{{t:ldc.err_failed}}</span>
+        <span data-k="upsell">{{t:ldc.upsell}}</span>
+        <span data-k="upsell_link">{{t:dac.upsell_link}}</span>
+    </div>
+</div>
+<script src="/js/lookalike-domain-checker.js?v=20261110a" defer></script>
