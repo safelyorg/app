@@ -35,16 +35,22 @@ pub const TRAFFIC_LABEL: &str = "Website traffic";
 pub const CERTIFICATE_LABEL: &str = "Security certificate";
 
 pub const HISTORY_OLD: &str = "Online for years";
+pub const HISTORY_YEAR: &str = "Online for over a year";
 pub const HISTORY_NEW: &str = "New online";
 pub const HISTORY_NONE: &str = "Not in the archive";
 pub const TRAFFIC_TOP: &str = "Top 1 million site";
 pub const TRAFFIC_NONE: &str = "Not in the top 1 million";
 pub const CERTIFICATE_OLD: &str = "Certificate for years";
+pub const CERTIFICATE_YEAR: &str = "Certificate for over a year";
 pub const CERTIFICATE_NEW: &str = "First certificate recent";
 pub const CERTIFICATE_NONE: &str = "No certificate found";
 
 /// A record at least this old (in days) is a good sign.
 const OLD_ENOUGH_DAYS: i64 = 365;
+/// From this age (2 years) a site or certificate is "for years"; between
+/// 1 and 2 years it is "for over a year" (TradeWheel's leedssolartech.com,
+/// first saved 1.6 years ago, was called "Online for years", Nov 10).
+const YEARS_DAYS: i64 = 730;
 
 /// Longest wait for each source. crt.sh is often slow.
 const WAYBACK_WAIT: Duration = Duration::from_secs(8);
@@ -173,12 +179,19 @@ pub fn history_card(domain: &str, first: Option<NaiveDate>, today: NaiveDate) ->
                 "The Wayback Machine (web.archive.org) first saved {domain} on {date}, {} ago.",
                 age_in_words(days)
             );
-            if days >= OLD_ENOUGH_DAYS {
+            if days >= YEARS_DAYS {
                 card(
                     HISTORY_LABEL,
                     HISTORY_OLD,
                     true,
                     format!("{since} The website has a long public record."),
+                )
+            } else if days >= OLD_ENOUGH_DAYS {
+                card(
+                    HISTORY_LABEL,
+                    HISTORY_YEAR,
+                    true,
+                    format!("{since} The website has a public record of more than a year."),
                 )
             } else {
                 card(
@@ -328,8 +341,10 @@ pub fn certificate_card(domain: &str, first: Option<NaiveDate>, today: NaiveDate
                 "The first security certificate for {domain} was issued on {date}, {} ago (crt.sh, the public log of certificates).",
                 age_in_words(days)
             );
-            if days >= OLD_ENOUGH_DAYS {
+            if days >= YEARS_DAYS {
                 card(CERTIFICATE_LABEL, CERTIFICATE_OLD, true, since)
+            } else if days >= OLD_ENOUGH_DAYS {
+                card(CERTIFICATE_LABEL, CERTIFICATE_YEAR, true, since)
             } else {
                 card(
                     CERTIFICATE_LABEL,
@@ -390,6 +405,24 @@ mod tests {
                 .contains("first saved xtoinc.com on 2014-05-12, 12 years ago")
         );
         assert_eq!(old.category, OUTSIDE_RECORDS);
+        // 1.6 years (TradeWheel, Nov 10): good, but not "for years".
+        let year = history_card(
+            "leedssolartech.com",
+            Some(day("2025-03-17")),
+            day("2026-11-10"),
+        );
+        assert_eq!(
+            (year.value.as_str(), year.signal_type.as_str()),
+            (HISTORY_YEAR, "good")
+        );
+        assert!(year.sub.contains("public record of more than a year"));
+        assert!(!year.sub.contains("long public record"));
+        let cert = certificate_card(
+            "leedssolartech.com",
+            Some(day("2025-03-17")),
+            day("2026-11-10"),
+        );
+        assert_eq!(cert.value, CERTIFICATE_YEAR);
         let new = history_card("shop.com", Some(day("2026-08-01")), day("2026-11-04"));
         assert_eq!(
             (new.value.as_str(), new.signal_type.as_str()),
