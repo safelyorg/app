@@ -663,6 +663,56 @@ fn name_without_legal_suffix(company_name: &str) -> Option<String> {
     Some(short)
 }
 
+/// True when a name has only one real word once its legal ending is
+/// left out: "Bernal", "Bernal, LLC", "Deva Inc". Such a word is often a
+/// surname or an everyday word, so a search finds many other people and
+/// companies with it (ThomasNet's "Bernal", Nov 10: a contractor, a court
+/// case and politicians named Bernal, all counted as scam mentions).
+fn is_single_word_name(name: &str) -> bool {
+    words_of(name)
+        .iter()
+        .filter(|w| !LEGAL_SUFFIXES.contains(&w.as_str()))
+        .count()
+        <= 1
+}
+
+/// Clues that tie a search result to this seller and not to another one
+/// with the same one-word name: the city of its address ("Rochester
+/// Hills, MI" -> "rochester hills") and the last 7 digits of its phone.
+fn identity_clues(location: Option<&str>, phone: Option<&str>) -> Vec<String> {
+    let mut clues = Vec::new();
+    if let Some(city) = location
+        .and_then(|l| l.split([',', '/', '|']).next())
+        .map(|c| c.trim().to_lowercase())
+        .filter(|c| c.chars().filter(|ch| ch.is_alphabetic()).count() >= 3)
+    {
+        clues.push(city);
+    }
+    let digits: String = phone
+        .unwrap_or_default()
+        .chars()
+        .filter(char::is_ascii_digit)
+        .collect();
+    if digits.len() >= 7 {
+        clues.push(digits[digits.len() - 7..].to_string());
+    }
+    clues
+}
+
+/// True when a search result (title and text, lower case) holds one of
+/// the clues. A phone clue is matched on the digits only, so "(888)
+/// 703-7703" and "888.703.7703" both match.
+fn has_identity_clue(haystack: &str, clues: &[String]) -> bool {
+    let digits: String = haystack.chars().filter(char::is_ascii_digit).collect();
+    clues.iter().any(|clue| {
+        if clue.chars().all(|c| c.is_ascii_digit()) {
+            digits.contains(clue.as_str())
+        } else {
+            haystack.contains(clue.as_str())
+        }
+    })
+}
+
 /// The names searched for: the full company name, and the same name
 /// without its legal ending when it has one ("Loyal Vina Co., Ltd" ->
 /// also "Loyal Vina"). Never a cut-down name like "Golden Steel" for
@@ -829,6 +879,7 @@ pub fn build_location_fallback_queries(
 async fn run_query_batch(
     queries: Vec<(String, String, String)>,
     country_code: &str,
+    clues: Arc<Vec<String>>,
 ) -> (Vec<PlatformCheckResult>, u32) {
     let semaphore = Arc::new(Semaphore::new(10));
     let mut join_set = JoinSet::new();
@@ -837,6 +888,7 @@ async fn run_query_batch(
         let country_code = country_code.to_string();
         let web_scam_row = is_web_scam_row(&platform_label);
         let scam_mention = web_scam_row || is_scam_word_query(&query);
+        let clues = clues.clone();
         join_set.spawn(async move {
             let _permit = permit_holder.acquire().await.ok();
             let real_results = run_serper_search(&query, Some(&country_code)).await;
@@ -864,6 +916,16 @@ async fn run_query_batch(
                             scam_word_near_name(&haystack, &variant)
                         };
                         if !near {
+                            continue;
+                        }
+                        // A one-word name ("Bernal") also belongs to many
+                        // other people and companies: the result must name
+                        // this seller's city or phone too.
+                        if is_single_word_name(&variant) && !has_identity_clue(&haystack, &clues) {
+                            eprintln!(
+                                "Safely: scam mention skipped (one-word name \"{}\", no city or phone): {}",
+                                variant, r.link
+                            );
                             continue;
                         }
                         eprintln!(
@@ -994,8 +1056,9 @@ pub async fn build_social_presence_matrix(
     // The whole-web scam searches run in the same batch.
     primary_queries.extend(build_web_scam_queries(company_name));
     let total_primary = primary_queries.len();
+    let clues = Arc::new(identity_clues(location, phone));
     let (mut results, mut real_search_failures) =
-        run_query_batch(primary_queries, country_code).await;
+        run_query_batch(primary_queries, country_code, clues.clone()).await;
     let mut total_queries = total_primary;
 
     // TIER 2 - only for the platform+variant pairs Tier 1 genuinely
@@ -1023,7 +1086,7 @@ pub async fn build_social_presence_matrix(
             if !fallback_queries.is_empty() {
                 total_queries += fallback_queries.len();
                 let (fallback_results, fallback_failures) =
-                    run_query_batch(fallback_queries, country_code).await;
+                    run_query_batch(fallback_queries, country_code, clues.clone()).await;
                 real_search_failures += fallback_failures;
 
                 // Merge: a Tier 2 hit fills in the matching Tier 1
@@ -1225,6 +1288,45 @@ mod web_scam_tests {
         assert!(!is_scam_checker_page(
             "https://www.ripoffreport.com/reports/acme",
             "acme ripoff report: never delivered"
+        ));
+    }
+
+    #[test]
+    fn a_one_word_name_needs_the_city_or_phone_in_a_scam_result() {
+        // ThomasNet's "Bernal" (Rochester Hills, MI), Nov 10.
+        assert!(is_single_word_name("Bernal"));
+        assert!(is_single_word_name("Bernal, LLC"));
+        assert!(is_single_word_name("Deva Inc"));
+        assert!(!is_single_word_name("Loyal Vina Co., Ltd"));
+        assert!(!is_single_word_name("Bernal Rotary Systems"));
+
+        let clues = identity_clues(Some("Rochester Hills, MI"), Some("(888) 703-7703"));
+        assert_eq!(
+            clues,
+            vec!["rochester hills".to_string(), "7037703".to_string()]
+        );
+        // Other people named Bernal: no clue, so not a scam mention.
+        assert!(!has_identity_clue(
+            "warning signs of ivan bernal's remodeling contractor scam in san antonio",
+            &clues
+        ));
+        assert!(!has_identity_clue(
+            "open records request reveals multiple bernal complaints",
+            &clues
+        ));
+        // About this company: its city or its phone.
+        assert!(has_identity_clue(
+            "bernal rochester hills scam report",
+            &clues
+        ));
+        assert!(has_identity_clue(
+            "beware bernal 888.703.7703 never shipped",
+            &clues
+        ));
+        // No location and no phone: no clue can match.
+        assert!(!has_identity_clue(
+            "bernal scam",
+            &identity_clues(None, None)
         ));
     }
 }
