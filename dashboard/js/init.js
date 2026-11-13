@@ -385,6 +385,20 @@ document.addEventListener("DOMContentLoaded", async () => {
         // Open the switch on the billing the user already has.
         setBillingInterval(isPaid && interval === "year" ? "year" : "month");
     }
+    // "Team" + "Shared by owner@company.com": the plan a team member uses.
+    function renderSharedPlan(shared) {
+        const nameEl = document.getElementById("current-plan-name");
+        const priceEl = document.getElementById("current-plan-price");
+        if (nameEl)
+            nameEl.textContent = planLabel(shared.plan, null);
+        if (priceEl) {
+            priceEl.textContent = t("dash.team.shared_by", "Shared by {email}").replace("{email}", shared.owner_email);
+        }
+        if (currentPlanBadge) {
+            currentPlanBadge.classList.remove("hidden");
+            currentPlanBadge.textContent = t("dash.settings.active_badge", "Active");
+        }
+    }
     async function loadRealSubscriptionStatus() {
         try {
             const res = await fetch(API_BASE + "/billing/subscription-status", {
@@ -402,12 +416,18 @@ document.addEventListener("DOMContentLoaded", async () => {
                 : null;
             renderPlan(realSubscriptionPlan, realSubscriptionInterval, data.current_period_end, realSubscriptionPlan ? data.scheduled_plan_name || null : null);
             renderUsage(data.usage || null);
+            // A team member without their own plan uses the team owner's plan.
+            if (!realSubscriptionPlan && data.shared_plan)
+                renderSharedPlan(data.shared_plan);
         }
         catch (e) {
             console.error("Safely: failed to load subscription status", e);
         }
     }
     loadRealSubscriptionStatus();
+    // The Team card (team.ts) calls this after leaving a team, so the
+    // plan shown here changes at once, without a refresh.
+    window.safelyReloadPlan = loadRealSubscriptionStatus;
     const billingParams = new URLSearchParams(window.location.search);
     if (billingParams.get("manage_billing") === "1") {
         document.getElementById("view-settings").checked = true;

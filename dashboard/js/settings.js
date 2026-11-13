@@ -36,6 +36,8 @@ async function loadSettingsData() {
         loading.classList.add("hidden");
         body.classList.remove("hidden");
         settingsLoaded = true;
+        // The Team card (team.ts).
+        loadTeam();
     }
     catch (e) {
         console.error("Safely: failed to load settings", e);

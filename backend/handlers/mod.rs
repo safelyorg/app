@@ -11,3 +11,4 @@ pub mod pdf;
 pub mod reviews;
 pub mod subscribe;
 pub mod tools;
+pub mod team;

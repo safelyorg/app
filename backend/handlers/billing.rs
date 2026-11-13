@@ -11,6 +11,7 @@ use crate::services::{
     },
     features::email::send_subscription_canceled_email,
     features::meta_capi::{AdClick, payment_in, send_purchase},
+    features::team::{handle_seat_webhook, leave_team_if_paying, shared_plan, sync_extra_seats},
 };
 use axum::{
     Json,
@@ -133,6 +134,12 @@ pub async fn creem_webhook(
 
     report_payment_to_meta(&pool, &event.event_type, &event.object).await;
 
+    // Extra team seats are their own Creem subscription, never a plan
+    // (team.rs): handled there, and nothing below runs for them.
+    if handle_seat_webhook(&pool, &event.event_type, &event.object).await {
+        return Ok(StatusCode::OK);
+    }
+
     match event.event_type.as_str() {
         "checkout.completed" => {
             eprintln!(
@@ -143,21 +150,25 @@ pub async fn creem_webhook(
         "subscription.active" | "subscription.paid" => {
             if let Some(parsed) = extract_subscription(&event.event_type, &event.object) {
                 handle_subscription_granted(&pool, &parsed).await;
+                sync_seats_for(&pool, &parsed).await;
             }
         }
         "subscription.past_due" => {
             if let Some(parsed) = extract_subscription(&event.event_type, &event.object) {
                 handle_subscription_past_due(&pool, &parsed).await;
+                sync_seats_for(&pool, &parsed).await;
             }
         }
         "subscription.paused" | "subscription.expired" | "subscription.canceled" => {
             if let Some(parsed) = extract_subscription(&event.event_type, &event.object) {
                 handle_subscription_lost(&pool, &parsed, &event.event_type).await;
+                sync_seats_for(&pool, &parsed).await;
             }
         }
         "subscription.update" => {
             if let Some(parsed) = extract_subscription(&event.event_type, &event.object) {
                 handle_subscription_update(&pool, &parsed).await;
+                sync_seats_for(&pool, &parsed).await;
             }
         }
         "refund.created" => {
@@ -169,6 +180,20 @@ pub async fn creem_webhook(
     }
 
     Ok(StatusCode::OK)
+}
+
+/// After a plan event: ends the owner's extra seats once they no longer
+/// have a Team plan (team.rs sync_extra_seats), and takes the person off
+/// a team they were invited to once they pay for their own plan
+/// (team.rs leave_team_if_paying).
+async fn sync_seats_for(
+    pool: &Pool<Postgres>,
+    parsed: &crate::models::billing::ParsedSubscription,
+) {
+    if let Some(owner_id) = crate::services::features::billing::extract_metadata_user_id(parsed) {
+        sync_extra_seats(pool, owner_id).await;
+        leave_team_if_paying(pool, owner_id).await;
+    }
 }
 
 /// A paid order (checkout.completed, subscription.paid) goes to Meta as a
@@ -251,6 +276,9 @@ pub async fn cancel_subscription_handler(
     .await
     .map_err(|_| BillingError::InternalError("Failed to update subscription".to_string()))?;
 
+    // The plan is gone, so its extra seats go too.
+    sync_extra_seats(&pool, user_id).await;
+
     if let Some(email) = fetch_subscriber_email(&pool, &sub_id).await {
         if let Err(e) = send_subscription_canceled_email(&email).await {
             eprintln!("Failed to send cancellation confirmation email: {:?}", e);
@@ -303,6 +331,10 @@ pub async fn get_subscription_status(
     .map_err(|_| BillingError::InternalError("Failed to look up subscription".to_string()))?;
 
     let usage = get_scan_usage(&pool, user_id).await;
+    // A team member uses the owner's plan: {"plan": "Team", "owner_email": "..."}.
+    let shared = shared_plan(&pool, user_id)
+        .await
+        .map(|(plan, owner_email)| json!({ "plan": plan, "owner_email": owner_email }));
 
     let Some((
         sub_id,
@@ -318,6 +350,7 @@ pub async fn get_subscription_status(
             "plan_name": null, "billing_interval": null, "status": null, "current_period_end": null,
             "scheduled_plan_name": null,
             "usage": usage,
+            "shared_plan": shared,
         })));
     };
 
@@ -342,6 +375,7 @@ pub async fn get_subscription_status(
         "current_period_end": current_period_end,
         "scheduled_plan_name": scheduled_plan_name_response,
         "usage": usage,
+        "shared_plan": shared,
     })))
 }
 
@@ -381,7 +415,13 @@ pub async fn change_plan_handler(
 
     match classify_plan_change(&current_plan, current_interval, new_plan, new_interval) {
         PlanChange::UpgradeNow => {
-            apply_upgrade(&pool, &sub_id, &body.product_id, new_plan, new_interval).await
+            let result =
+                apply_upgrade(&pool, &sub_id, &body.product_id, new_plan, new_interval).await;
+            // Enterprise has no seat limit: the extra seats are ended.
+            if result.is_ok() {
+                sync_extra_seats(&pool, user_id).await;
+            }
+            result
         }
         PlanChange::DowngradeAtRenewal => {
             schedule_downgrade(&pool, &sub_id, &body.product_id, new_plan).await

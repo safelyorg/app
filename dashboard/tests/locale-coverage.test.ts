@@ -16,7 +16,7 @@ async function keysIn(file: string): Promise<string[]> {
 }
 
 describe("Portuguese dashboard texts", () => {
-  for (const file of ["ts/detail_view.ts", "ts/settings.ts", "ts/init.ts"]) {
+  for (const file of ["ts/detail_view.ts", "ts/settings.ts", "ts/init.ts", "ts/team.ts"]) {
     it("has every text used in " + file, async () => {
       const keys = await keysIn(file);
       expect(keys.filter((key) => !(key in portuguese))).toEqual([]);

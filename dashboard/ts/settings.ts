@@ -40,6 +40,8 @@ async function loadSettingsData(): Promise<void> {
     loading.classList.add("hidden");
     body.classList.remove("hidden");
     settingsLoaded = true;
+    // The Team card (team.ts).
+    loadTeam();
   } catch (e) {
     console.error("Safely: failed to load settings", e);
     loading.textContent = "Could not load account settings.";

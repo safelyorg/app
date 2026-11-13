@@ -305,6 +305,65 @@ pub async fn send_subscription_canceled_email(to_email: &str) -> Result<(), Auth
     Ok(())
 }
 
+/// Tells someone they were added to a Safely team (team.rs invite).
+/// They use the owner's plan once they sign in with this email.
+pub async fn send_team_invite_email(
+    to_email: &str,
+    owner_email: &str,
+    plan: &str,
+) -> Result<(), AuthError> {
+    let api_key = var("RESEND_API_KEY").map_err(|_| {
+        AuthError::InternalServerError("RESEND_API_KEY needs to be setup".to_string())
+    })?;
+
+    let base_url = var("PUBLIC_BASE_URL").map_err(|_| {
+        AuthError::InternalServerError("PUBLIC_BASE_URL needs to be configured".to_string())
+    })?;
+
+    let from_address =
+        var("RESEND_FROM_EMAIL").unwrap_or_else(|_| "onboarding@resend.dev".to_string());
+    let dashboard_url = format!("{}/dashboard/", base_url);
+    let logo_url = format!("{}/images/white_logo.png", base_url);
+    let tera = get_tera();
+    let mut context = Context::new();
+
+    context.insert("dashboard_url", &dashboard_url);
+    context.insert("logo_url", &logo_url);
+    context.insert("owner_email", owner_email);
+    context.insert("member_email", to_email);
+    context.insert("plan", plan);
+
+    let html_body = tera
+        .render("team_invite_email.html", &context)
+        .map_err(|e| AuthError::InternalServerError(e.to_string()))?;
+
+    let body = json!({
+        "from": format!("Safely <{}>", from_address),
+        "to": [to_email],
+        "subject": format!("{} added you to their Safely team", owner_email),
+        "html": html_body,
+    });
+
+    let response = Client::new()
+        .post("https://api.resend.com/emails")
+        .bearer_auth(api_key)
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| AuthError::InternalServerError(e.to_string()))?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let text = response.text().await.unwrap_or_default();
+        return Err(AuthError::InternalServerError(format!(
+            "Resend error ({}): {}",
+            status, text
+        )));
+    }
+
+    Ok(())
+}
+
 /// Subscribes an email address to your Kit newsletter form. Kit's
 /// subscribe endpoint is deliberately permissive - it succeeds even for
 /// most malformed input, so the real validation happens on our own

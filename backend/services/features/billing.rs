@@ -6,6 +6,7 @@ use crate::{
         ParsedSubscription,
     },
     services::features::email::{send_payment_failed_email, send_subscription_ended_email},
+    services::features::team::plan_holder,
 };
 use axum::{Json, body::Bytes, http::HeaderMap};
 use chrono::{DateTime, NaiveDate, Utc};
@@ -970,12 +971,15 @@ pub async fn reserve_scan(
     if is_unlimited_user(pool, user_id).await {
         return Ok(ScanCharge::NotCounted);
     }
+    // A team member's scans count on the plan of the team's owner
+    // (team.rs). Everyone else: their own plan.
+    let holder = plan_holder(pool, user_id).await;
     let paid: Option<(Uuid, String)> = sqlx::query_as(
         "SELECT id, plan_name FROM subscriptions
          WHERE user_id = $1 AND status = 'active'
          ORDER BY updated_at DESC LIMIT 1",
     )
-    .bind(user_id)
+    .bind(holder)
     .fetch_optional(pool)
     .await
     .map_err(|e| {
@@ -1251,7 +1255,8 @@ async fn plan_scan_usage(pool: &Pool<Postgres>, user_id: Uuid) -> Value {
          WHERE user_id = $1 AND status = 'active'
          ORDER BY updated_at DESC LIMIT 1"
     ))
-    .bind(user_id)
+    // A team member sees the scans of the plan they use (team.rs).
+    .bind(plan_holder(pool, user_id).await)
     .fetch_optional(pool)
     .await
     .unwrap_or_else(|e| {
