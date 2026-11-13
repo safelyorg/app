@@ -1,3 +1,4 @@
+use crate::services::features::results::{sees_full_results, trim_to_free};
 use crate::services::features::translation::get_or_create_translation;
 use crate::{
     errors::dashboard::DashboardError,
@@ -196,7 +197,21 @@ pub async fn get_history_item(
                     d.seller.network_summary = translated.network_summary;
                 }
             }
-            let value = to_value(d).map_err(|e| DashboardError::InternalError(e.to_string()))?;
+            let mut value =
+                to_value(d).map_err(|e| DashboardError::InternalError(e.to_string()))?;
+            // Free: only the score and the top reasons (results.rs). The
+            // scan is saved in full, so it shows in full once they pay.
+            let full = sees_full_results(&pool, user_id).await;
+            if !full {
+                let mut signals = value["signals"].take();
+                let mut factors = value["risk_factors"].take();
+                let mut social = value["social_candidates"].take();
+                trim_to_free(&mut signals, &mut factors, &mut social);
+                value["signals"] = signals;
+                value["risk_factors"] = factors;
+                value["social_candidates"] = social;
+            }
+            value["full_result"] = Value::Bool(full);
             Ok(Json(value))
         }
         None => Err(DashboardError::NotFound("Not found".to_string())),

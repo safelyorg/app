@@ -109,6 +109,10 @@ pub struct AnalyzeResponse {
     pub risk_factors: Vec<RiskFactor>,
     #[serde(default)]
     pub social_candidates: Vec<PlatformCheckResult>,
+    /// False when the person is on the Free plan: the answer then has
+    /// only the score and the top reasons (services/features/results.rs),
+    /// and the extension locks its Details tab.
+    pub full_result: bool,
 }
 
 /// Deserialize lets a saved scan's signals be read back from the

@@ -70,6 +70,8 @@ interface AnalyzeResponse {
   fraud_report_count: number;
   // True when you already reported this seller (one report each).
   reported_by_you?: boolean;
+  /** False on the Free plan (backend services/features/results.rs). */
+  full_result?: boolean;
   risk_factors: Array<{
     severity: string;
     name: string;
@@ -334,6 +336,10 @@ function formatPlatformName(platform: string | null | undefined): string {
       riskFactors: data.risk_factors || [],
       sellerId: data.seller.id,
       socialCandidates: data.social_candidates || [],
+      // False on the Free plan: the server sent only the score and the
+      // top reasons, and the Details tab is locked. An older server
+      // without this field sends full results.
+      fullResult: data.full_result !== false,
       seller: {
         name: data.seller.name || "Not found",
         platform: formatPlatformName(data.seller.platform || fallbackPlatform),

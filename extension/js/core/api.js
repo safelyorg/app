@@ -221,6 +221,10 @@ function formatPlatformName(platform) {
             riskFactors: data.risk_factors || [],
             sellerId: data.seller.id,
             socialCandidates: data.social_candidates || [],
+            // False on the Free plan: the server sent only the score and the
+            // top reasons, and the Details tab is locked. An older server
+            // without this field sends full results.
+            fullResult: data.full_result !== false,
             seller: {
                 name: data.seller.name || "Not found",
                 platform: formatPlatformName(data.seller.platform || fallbackPlatform),

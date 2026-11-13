@@ -106,6 +106,11 @@
         "{n} of {total} checks need a look.": "{n} de {total} verificações precisam de atenção.",
         Contact: "Contato",
         "What we found": "O que encontramos",
+        // Free plan: the rest of the result is on paid plans ("See plans" is above)
+        "See the full report": "Veja o relatório completo",
+        "All {total} checks with their reasons, outside records, online presence and the PDF report are on the Team and Enterprise plans.": "As {total} verificações com os motivos, os registros externos, a presença online e o relatório em PDF estão nos planos Team e Enterprise.",
+        "Details are on the Team and Enterprise plans": "Os detalhes estão nos planos Team e Enterprise",
+        "See all {total} checks with their reasons, outside records (registers, sanctions, trade shows, website history), online presence, scam warnings and the \"Before you pay\" checklist.": "Veja as {total} verificações com os motivos, os registros externos (registros, sanções, feiras, histórico do site), a presença online, os alertas de golpe e a lista \"Antes de pagar\".",
         Supplier: "Fornecedor",
         "On {platform} for": "No {platform} há",
         "Company age": "Idade da empresa",

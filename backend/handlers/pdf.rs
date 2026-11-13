@@ -3,13 +3,16 @@ use crate::{
     services::{
         features::auth::extract_user_id, features::history::get_history_detail,
         features::pdf_report::generate_evidence_pdf,
+        features::results::sees_full_results,
     },
 };
 use axum::{
+    Json,
     extract::{Path, State},
     http::{HeaderMap, StatusCode, header},
     response::{IntoResponse, Response},
 };
+use serde_json::json;
 use sqlx::{Pool, Postgres};
 use uuid::Uuid;
 
@@ -32,6 +35,15 @@ pub async fn download_evidence_pdf(
         .await
         .map_err(|e| DashboardError::InternalError(e.to_string()))?
         .ok_or_else(|| DashboardError::NotFound("Not found".to_string()))?;
+
+    // The PDF is the full report: paid plans only (results.rs).
+    if !sees_full_results(&pool, user_id).await {
+        return Ok((
+            StatusCode::FORBIDDEN,
+            Json(json!({ "error": "needs_paid_plan" })),
+        )
+            .into_response());
+    }
 
     let pdf_bytes = generate_evidence_pdf(&detail).map_err(DashboardError::InternalError)?;
 

@@ -1,3 +1,4 @@
+use crate::services::features::results::apply_plan_to_response;
 use crate::{
     errors::analyze::AnalyzeError,
     models::{
@@ -273,6 +274,8 @@ pub async fn analyze(
     // The result is saved: this scan counts.
     scan_hold.finish();
     save_and_translate(&pool, &mut response.0, reader_language).await;
+    // Free: only the score and the top reasons are sent (results.rs).
+    apply_plan_to_response(&pool, user_id, &mut response.0).await;
     Ok(response)
 }
 
@@ -384,6 +387,8 @@ pub async fn check_website(
     let mut response = save_and_build_response(data).await?;
     scan_hold.finish();
     save_and_translate(&pool, &mut response.0, reader_language).await;
+    // Free: only the score and the top reasons are sent (results.rs).
+    apply_plan_to_response(&pool, user_id, &mut response.0).await;
     Ok(response)
 }
 

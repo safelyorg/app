@@ -417,6 +417,8 @@ pub async fn save_and_build_response(
         confidence_reasoning,
         risk_factors,
         social_candidates: data.social_candidates,
+        // Set for the person's plan in the handler (results.rs).
+        full_result: true,
     }))
 }
 

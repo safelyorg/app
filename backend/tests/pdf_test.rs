@@ -1,6 +1,8 @@
 mod common;
 
-use crate::common::{cleanup_test_seller, cleanup_test_user, test_pool};
+use crate::common::{
+    cleanup_test_seller, cleanup_test_user, insert_test_subscription, test_pool,
+};
 use axum::{
     extract::{Path, State},
     http::{HeaderMap, HeaderValue},
@@ -286,6 +288,14 @@ async fn download_evidence_pdf_succeeds_and_returns_real_pdf_bytes() {
             .expect("expected to insert the header value"),
     );
 
+    // The PDF is the full report: the Free plan gets 403.
+    let refused = download_evidence_pdf(State(pool.clone()), headers.clone(), Path(analysis.id))
+        .await
+        .expect("expected an answer")
+        .into_response();
+    assert_eq!(refused.status(), StatusCode::FORBIDDEN);
+
+    insert_test_subscription(&pool, user.id, "sub_pdf_success_test", "Team", "active").await;
     let response = download_evidence_pdf(State(pool.clone()), headers, Path(analysis.id))
         .await
         .expect("expected the real PDF to be generated successfully")

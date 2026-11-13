@@ -91,3 +91,39 @@
         transition-duration: 0.01ms !important;
     }
 }
+
+/* Free plan: the rest of the result is on paid plans (risk.ts,
+   intelligence.ts "safely-unlock"). */
+.safely-unlock {
+    margin: 14px 0;
+    padding: 18px 16px 16px;
+    border: 1.5px dashed var(--line, #3a3a40);
+    border-radius: 14px;
+    text-align: center;
+}
+.safely-unlock-icon {
+    width: 34px;
+    height: 34px;
+    margin: 0 auto 10px;
+    border-radius: 10px;
+    background: #ffb938;
+    color: #161616;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.safely-unlock-icon svg {
+    width: 18px;
+    height: 18px;
+}
+.safely-unlock-title {
+    font-weight: 700;
+    font-size: 14px;
+    margin-bottom: 6px;
+}
+.safely-unlock-text {
+    font-size: 12.5px;
+    line-height: 1.5;
+    opacity: 0.75;
+    margin-bottom: 12px;
+}

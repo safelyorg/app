@@ -437,5 +437,11 @@
   "dash.team.seats_saved": "Vagas atualizadas.",
   "dash.team.load_failed": "Não foi possível carregar a sua equipe.",
   "dash.team.seats_bought": "Obrigado! Suas vagas extras ficam prontas em instantes.",
-  "dash.team.shared_by": "Compartilhado por {email}"
+  "dash.team.shared_by": "Compartilhado por {email}",
+  "dash.detail.see_plans": "Ver planos",
+  "dash.detail.full_report_title": "Veja o relatório completo",
+  "dash.detail.full_report_text": "As {total} verificações com os motivos, os registros externos, a presença online e o relatório em PDF estão nos planos Team e Enterprise.",
+  "dash.detail.details_locked_title": "Os detalhes estão nos planos Team e Enterprise",
+  "dash.detail.details_locked_text": "Veja as {total} verificações com os motivos, os registros externos (registros, sanções, feiras, histórico do site), a presença online, os alertas de golpe e a lista \"Antes de pagar\".",
+  "dash.detail.pdf_paid": "O relatório em PDF está nos planos Team e Enterprise."
 }

@@ -377,11 +377,59 @@ interface ReportSubmission {
     );
   }
 
+  // ---- Free plan: the rest is in the full report ------------------
+  // The server sends a Free plan only the score and the top reasons
+  // (backend services/features/results.rs). "See plans" opens the
+  // plans in the dashboard. One click handler for both tabs.
+  function isFreeResult(pageData: any): boolean {
+    return !!pageData && pageData.fullResult === false;
+  }
+
+  if (!(window as any).__safelyUnlockBound) {
+    (window as any).__safelyUnlockBound = true;
+    document.addEventListener("click", (e) => {
+      const btn = (e.target as HTMLElement).closest("[data-safely-unlock]");
+      if (!btn) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const api = (window as any).__safelyAPI;
+      const base = api && api.SITE_BASE ? api.SITE_BASE : "https://safely.sh";
+      window.open(base + "/dashboard/?manage_billing=1", "_blank", "noopener");
+    });
+  }
+
+  const LOCK_ICON =
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4.5" y="10.5" width="15" height="10" rx="2.5"/><path d="M8 10.5V7.5a4 4 0 018 0v3"/></svg>';
+
+  function unlockCard(title: string, text: string): string {
+    return (
+      '<div class="safely-unlock"><div class="safely-unlock-icon">' +
+      LOCK_ICON +
+      '</div><div class="safely-unlock-title">' +
+      escapeHtml(title) +
+      '</div><div class="safely-unlock-text">' +
+      escapeHtml(text) +
+      '</div><button type="button" class="safely-btn safely-btn-dark safely-btn-full" data-safely-unlock>' +
+      escapeHtml(tr("See plans")) +
+      "</button></div>"
+    );
+  }
+
   function buildRiskTab(): string {
     const pageData = (window as any).__safelyData;
+    const total = (pageData.signals || []).length;
     return (
       buildScoreCard(pageData) +
       buildFindings(pageData) +
+      (isFreeResult(pageData)
+        ? unlockCard(
+            tr("See the full report"),
+            tr(
+              "All {total} checks with their reasons, outside records, online presence and the PDF report are on the Team and Enterprise plans.",
+              { total },
+            ),
+          )
+        : "") +
       buildSupplier(pageData) +
       buildActions(pageData)
     );

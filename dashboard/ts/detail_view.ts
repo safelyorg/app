@@ -54,6 +54,9 @@ interface DetailResponse {
   risk_factors: DetailRiskFactor[] | null;
   reports: DetailReport[] | null;
   social_candidates: PlatformCheckResult[] | null;
+  /** False on the Free plan: only the score and the top reasons were
+   * sent (backend services/features/results.rs). */
+  full_result?: boolean;
 }
 
 // The Portuguese words here are the same as the extension's
@@ -1239,7 +1242,38 @@ function buildReports(reports: DetailReport[]): string {
   );
 }
 
+// ---- Free plan: the rest is on paid plans -------------------------
+// The server sends a Free plan only the score and the top reasons. The
+// Details tab and the PDF are for Team and Enterprise. "See plans"
+// opens the plans in Settings.
+
+let currentFullResult = true;
+
+function detailUnlockCard(title: string, text: string): string {
+  return (
+    '<div class="d-unlock rounded-2xl border border-dashed border-line p-5 text-center">' +
+    '<div class="mx-auto mb-2.5 w-9 h-9 rounded-xl bg-[#ffb938] text-[#161616] flex items-center justify-center">' +
+    '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4.5" y="10.5" width="15" height="10" rx="2.5"/><path d="M8 10.5V7.5a4 4 0 018 0v3"/></svg>' +
+    "</div>" +
+    '<div class="text-[14px] font-bold text-ink">' +
+    escapeHtml(title) +
+    "</div>" +
+    '<div class="text-[12.5px] text-muted mt-1.5 leading-relaxed">' +
+    escapeHtml(text) +
+    "</div>" +
+    '<button type="button" data-detail-unlock class="mt-3.5 px-4 py-2 rounded-lg bg-ink text-bg text-[12.5px] font-bold hover:opacity-90 transition">' +
+    escapeHtml(t("dash.detail.see_plans", "See plans")) +
+    "</button></div>"
+  );
+}
+
+function openPlans(): void {
+  window.location.href = "/dashboard/?manage_billing=1";
+}
+
 function renderDetailBody(data: DetailResponse): void {
+  currentFullResult = data.full_result !== false;
+  const total = (data.signals || []).length;
   (document.getElementById("detail-title") as HTMLElement).textContent =
     data.listing_title || t("dash.detail.untitled_listing", "Untitled listing");
 
@@ -1259,7 +1293,17 @@ function renderDetailBody(data: DetailResponse): void {
   }
 
   (document.getElementById("detail-verdict") as HTMLElement).innerHTML = buildScoreCard(data);
-  (document.getElementById("detail-findings") as HTMLElement).innerHTML = buildFindings(data);
+  (document.getElementById("detail-findings") as HTMLElement).innerHTML =
+    buildFindings(data) +
+    (currentFullResult
+      ? ""
+      : detailUnlockCard(
+          t("dash.detail.full_report_title", "See the full report"),
+          t(
+            "dash.detail.full_report_text",
+            "All {total} checks with their reasons, outside records, online presence and the PDF report are on the Team and Enterprise plans.",
+          ).replace("{total}", String(total)),
+        ));
 
   const seller = data.seller;
   (document.getElementById("detail-seller-name") as HTMLElement).textContent = hasValue(seller.name)
@@ -1274,7 +1318,15 @@ function renderDetailBody(data: DetailResponse): void {
   );
 
   (document.getElementById("detail-tab-content-intel") as HTMLElement).innerHTML =
-    buildDetailsTab(data);
+    currentFullResult
+      ? buildDetailsTab(data)
+      : detailUnlockCard(
+          t("dash.detail.details_locked_title", "Details are on the Team and Enterprise plans"),
+          t(
+            "dash.detail.details_locked_text",
+            'See all {total} checks with their reasons, outside records (registers, sanctions, trade shows, website history), online presence, scam warnings and the "Before you pay" checklist.',
+          ).replace("{total}", String(total)),
+        );
 
   const filedBlock = document.getElementById("detail-report-filed") as HTMLElement;
   const emptyBlock = document.getElementById("detail-report-empty") as HTMLElement;
@@ -1290,6 +1342,10 @@ function renderDetailBody(data: DetailResponse): void {
 // result page.
 document.getElementById("detail-view")?.addEventListener("click", (e: MouseEvent) => {
   const target = e.target as HTMLElement;
+  if (target.closest("[data-detail-unlock]")) {
+    openPlans();
+    return;
+  }
   const opener = target.closest("[data-open]");
   if (opener) {
     const row = opener.closest(".d-row");
@@ -1315,6 +1371,11 @@ let currentAnalysisId: string | null = null;
 
 async function downloadEvidencePdf(): Promise<void> {
   if (!currentAnalysisId) return;
+  // The PDF is the full report: Team and Enterprise only.
+  if (!currentFullResult) {
+    showToast(t("dash.detail.pdf_paid", "The PDF report is on the Team and Enterprise plans."));
+    return;
+  }
   const btn = document.getElementById("detail-download-pdf") as HTMLButtonElement | null;
   if (btn) {
     btn.disabled = true;
@@ -1324,6 +1385,10 @@ async function downloadEvidencePdf(): Promise<void> {
     const res = await fetch(API_BASE + "/history/" + currentAnalysisId + "/pdf", {
       headers: (window as any).safelyAuth.authHeader(),
     });
+    if (res.status === 403) {
+      showToast(t("dash.detail.pdf_paid", "The PDF report is on the Team and Enterprise plans."));
+      return;
+    }
     if (!res.ok) {
       console.error("Safely: failed to download the real PDF report");
       return;
