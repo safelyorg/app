@@ -23,6 +23,7 @@ pub mod risk_factors;
 pub mod sellers;
 pub mod signals;
 pub mod team;
+pub mod team_history;
 pub mod templates;
 pub mod tools;
 pub mod translation;

@@ -312,11 +312,11 @@
             >
                 <div class="w-full max-w-5xl mx-auto">
                     <h1 class="text-[22px] font-bold tracking-tight" data-i18n="dash.history.page_title">History</h1>
-                    <p class="text-[13px] text-muted mt-1" data-i18n="dash.history.page_desc">Every listing you checked with the Safely extension.</p>
+                    <p id="history-desc" class="text-[13px] text-muted mt-1" data-i18n="dash.history.page_desc">Every listing you checked with the Safely extension.</p>
                     <div class="grid grid-cols-3 gap-3 mt-5 mb-7">
                         <div class="bg-surface border border-line rounded-2xl px-4 py-3.5">
                             <span id="stat-checked-num" class="block font-display text-[26px] leading-tight">0</span>
-                            <span class="text-[12px] text-muted" data-i18n="dash.stat.checked">listings checked</span>
+                            <span id="stat-checked-label" class="text-[12px] text-muted" data-i18n="dash.stat.checked">listings checked</span>
                         </div>
                         <div class="stat-hot bg-surface border border-line rounded-2xl px-4 py-3.5">
                             <span id="stat-high-num" class="block font-display text-[26px] leading-tight">0</span>
@@ -324,19 +324,23 @@
                         </div>
                         <div class="bg-surface border border-line rounded-2xl px-4 py-3.5">
                             <span id="stat-reported-num" class="block font-display text-[26px] leading-tight">0</span>
-                            <span class="text-[12px] text-muted" data-i18n="dash.stat.reported">reported by you</span>
+                            <span id="stat-reported-label" class="text-[12px] text-muted" data-i18n="dash.stat.reported">reported by you</span>
                         </div>
                     </div>
 
                     <div
                         class="flex justify-between items-center mb-4 gap-3 flex-wrap"
                     >
-                        <h2
-                            class="text-[15px] font-bold tracking-tight w-full sm:w-auto"
-                            data-i18n="dash.history.title"
-                        >
-                            Analysis History
-                        </h2>
+                        <div class="flex items-center gap-2.5 w-full sm:w-auto">
+                            <h2
+                                class="text-[15px] font-bold tracking-tight"
+                                data-i18n="dash.history.title"
+                            >
+                                Analysis History
+                            </h2>
+                            <!-- Team only: My scans / All team scans / one person (team_history.ts) -->
+                            <div id="history-who" class="hidden relative"></div>
+                        </div>
                         <div class="flex gap-2 flex-nowrap items-center">
                             <div class="relative">
                                 <svg
@@ -395,7 +399,7 @@
                         class="bg-surface border border-line rounded-2xl overflow-hidden"
                     >
                         <table class="w-full table-fixed">
-                            <colgroup>
+                            <colgroup id="history-cols">
                                 <col
                                     class="hidden sm:table-column"
                                     style="width: 110px"
@@ -416,6 +420,8 @@
                                         Date
                                     </th>
                                     <th class="px-4 py-3" data-i18n="dash.table.listing">Listing</th>
+                                    <!-- Shown on "All team scans" (team_history.ts) -->
+                                    <th id="th-who" class="hidden" data-i18n="dash.table.scanned_by">Scanned by</th>
                                     <th class="hidden sm:table-cell px-4 py-3" data-i18n="dash.table.platform">Platform</th>
                                     <th class="px-4 py-3" data-i18n="dash.table.risk">Risk</th>
                                     <th class="px-4 py-3" data-i18n="dash.table.reported">Reported</th>
@@ -1014,6 +1020,9 @@
                         </button>
                     </div>
 
+                    <!-- A teammate's scan: who made it (detail_view.ts) -->
+                    <div id="detail-scanned-by" class="hidden -mt-2 mb-5"></div>
+
                     <div
                         id="detail-loading"
                         class="text-center text-muted text-sm py-20"
@@ -1156,6 +1165,7 @@
         <script src="/dashboard/js/team.js"></script>
         <script src="/dashboard/js/settings.js"></script>
         <script src="/dashboard/js/detail_view.js"></script>
+        <script src="/dashboard/js/team_history.js"></script>
         <script src="/dashboard/js/reviews.js"></script>
         <script src="/dashboard/js/init.js"></script>
     </body>

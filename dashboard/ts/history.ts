@@ -30,6 +30,13 @@ function renderStats(): void {
       .length.toString();
   }
   if (reported) {
-    reported.textContent = document.querySelectorAll("#report-rows tr[data-report]").length.toString();
+    // A team list (team_history.ts) counts its own rows marked reported;
+    // "My scans" counts your reports.
+    const who: string = (window as any).safelyHistoryWho || "me";
+    reported.textContent = (
+      who === "me"
+        ? document.querySelectorAll("#report-rows tr[data-report]")
+        : document.querySelectorAll('#history-rows tr[data-id][data-reported="true"]')
+    ).length.toString();
   }
 }

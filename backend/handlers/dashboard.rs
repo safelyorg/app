@@ -1,8 +1,11 @@
 use crate::services::features::results::{sees_full_results, trim_to_free};
+use crate::services::features::team_history::{
+    HistoryWho, email_of, history_choices, scan_owner_for_viewer, team_history,
+};
 use crate::services::features::translation::get_or_create_translation;
 use crate::{
     errors::dashboard::DashboardError,
-    models::{analysis::RiskLevel, fraud_reports::ReportTypes},
+    models::{analysis::RiskLevel, fraud_reports::ReportTypes, history::HistoryItem},
     services::{
         features::auth::{extract_user_id, find_user_by_id, set_login_method},
         features::dashboard::{delete_user_account, unlink_google_account},
@@ -42,6 +45,19 @@ struct HistoryRow {
     seller_name: Option<String>,
     reported: bool,
     search_text: String,
+    /// Team lists only: who made the scan (email), whether it was the
+    /// viewer, and the first letter for the small round badge.
+    scanned_by: String,
+    scanned_by_you: bool,
+    scanned_by_initial: String,
+}
+
+/// ?who= on GET /api/v1/history/html: "team" (all team scans, owner
+/// only), a teammate's user ID, or nothing for "My scans".
+#[derive(Debug, Default, Deserialize)]
+pub struct HistoryHtmlQuery {
+    #[serde(default)]
+    pub who: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -91,28 +107,53 @@ pub async fn get_history(
 pub async fn get_history_html(
     State(pool): State<Pool<Postgres>>,
     headers: HeaderMap,
+    Query(q): Query<HistoryHtmlQuery>,
 ) -> Result<Html<String>, DashboardError> {
     let user_id = extract_user_id(&headers, &pool)
         .await
         .map_err(|_| DashboardError::InternalError("Failed to verify session".to_string()))?
         .ok_or(DashboardError::Unauthorized)?;
 
-    let items = get_user_history(&pool, user_id)
+    // A team list (team_history.rs), or "My scans" when none was asked
+    // for or this person may not see the one asked for.
+    let who = HistoryWho::parse(q.who.as_deref());
+    let team_items = team_history(&pool, user_id, who)
         .await
         .map_err(|e| DashboardError::InternalError(e.to_string()))?;
+    let show_who = team_items.is_some();
+    let items: Vec<(HistoryItem, Uuid, String)> = match team_items {
+        Some(list) => list
+            .into_iter()
+            .map(|t| (t.item, t.scanned_by_id, t.scanned_by))
+            .collect(),
+        None => get_user_history(&pool, user_id)
+            .await
+            .map_err(|e| DashboardError::InternalError(e.to_string()))?
+            .into_iter()
+            .map(|item| (item, user_id, String::new()))
+            .collect(),
+    };
 
     let rows: Vec<HistoryRow> = items
         .into_iter()
-        .map(|item| {
+        .map(|(item, scanned_by_id, scanned_by)| {
             let platform_name = platform_display_name(&item.platform);
             // The search box also finds scans by platform ("alibaba").
             let search_text = format!(
-                "{} {} {}",
+                "{} {} {} {}",
                 item.listing_title.as_deref().unwrap_or(""),
                 item.seller_name.as_deref().unwrap_or(""),
-                platform_name
+                platform_name,
+                scanned_by
             )
+            .trim_end()
             .to_lowercase();
+            let scanned_by_you = scanned_by_id == user_id;
+            let scanned_by_initial = scanned_by
+                .chars()
+                .next()
+                .map(|c| c.to_uppercase().to_string())
+                .unwrap_or_default();
 
             HistoryRow {
                 id: item.id,
@@ -125,6 +166,9 @@ pub async fn get_history_html(
                 seller_name: item.seller_name,
                 reported: item.reported,
                 search_text,
+                scanned_by,
+                scanned_by_you,
+                scanned_by_initial,
             }
         })
         .collect();
@@ -132,6 +176,7 @@ pub async fn get_history_html(
     let tera = get_tera();
     let mut context = Context::new();
     context.insert("items", &rows);
+    context.insert("show_who", &show_who);
 
     let html = tera
         .render("history_rows.html", &context)
@@ -169,9 +214,16 @@ pub async fn get_history_item(
         .map_err(|_| DashboardError::InternalError("Failed to verify session".to_string()))?
         .ok_or(DashboardError::Unauthorized)?;
 
-    let detail = get_history_detail(&pool, id, user_id)
+    // Their own scan, or a teammate's scan in their team (team_history.rs).
+    let scanner = scan_owner_for_viewer(&pool, id, user_id)
         .await
         .map_err(|e| DashboardError::InternalError(e.to_string()))?;
+    let detail = match scanner {
+        Some(scanner) => get_history_detail(&pool, id, scanner)
+            .await
+            .map_err(|e| DashboardError::InternalError(e.to_string()))?,
+        None => None,
+    };
 
     let language = q.language.as_deref().unwrap_or("en");
 
@@ -212,10 +264,42 @@ pub async fn get_history_item(
                 value["social_candidates"] = social;
             }
             value["full_result"] = Value::Bool(full);
+            // A teammate's scan: "Scanned by ..." on the result page.
+            if let Some(scanner) = scanner.filter(|s| *s != user_id) {
+                value["scanned_by"] = email_of(&pool, scanner)
+                    .await
+                    .map_or(Value::Null, Value::String);
+            }
             Ok(Json(value))
         }
         None => Err(DashboardError::NotFound("Not found".to_string())),
     }
+}
+
+/// GET /api/v1/history/people
+///
+/// What the History dropdown offers: "team" (in a paid team at all),
+/// "can_see_all" (the owner: "All team scans") and the other people in
+/// the team, each with their user ID, email and whether they are the
+/// owner. Not in a team: {"team": false}, and no dropdown is shown.
+pub async fn get_history_people(
+    State(pool): State<Pool<Postgres>>,
+    headers: HeaderMap,
+) -> Result<Json<Value>, DashboardError> {
+    let user_id = extract_user_id(&headers, &pool)
+        .await
+        .map_err(|_| DashboardError::InternalError("Failed to verify session".to_string()))?
+        .ok_or(DashboardError::Unauthorized)?;
+
+    let (team, can_see_all, people) = history_choices(&pool, user_id)
+        .await
+        .map_err(|e| DashboardError::InternalError(e.to_string()))?;
+
+    Ok(Json(json!({
+        "team": team,
+        "can_see_all": can_see_all,
+        "people": people,
+    })))
 }
 
 /// GET /api/v1/reports

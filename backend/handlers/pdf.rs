@@ -2,8 +2,8 @@ use crate::{
     errors::dashboard::DashboardError,
     services::{
         features::auth::extract_user_id, features::history::get_history_detail,
-        features::pdf_report::generate_evidence_pdf,
-        features::results::sees_full_results,
+        features::pdf_report::generate_evidence_pdf, features::results::sees_full_results,
+        features::team_history::scan_owner_for_viewer,
     },
 };
 use axum::{
@@ -31,7 +31,12 @@ pub async fn download_evidence_pdf(
         .map_err(|_| DashboardError::InternalError("Failed to verify session".to_string()))?
         .ok_or(DashboardError::Unauthorized)?;
 
-    let detail = get_history_detail(&pool, id, user_id)
+    // Their own scan, or a teammate's scan in their team (team_history.rs).
+    let scanner = scan_owner_for_viewer(&pool, id, user_id)
+        .await
+        .map_err(|e| DashboardError::InternalError(e.to_string()))?
+        .ok_or_else(|| DashboardError::NotFound("Not found".to_string()))?;
+    let detail = get_history_detail(&pool, id, scanner)
         .await
         .map_err(|e| DashboardError::InternalError(e.to_string()))?
         .ok_or_else(|| DashboardError::NotFound("Not found".to_string()))?;

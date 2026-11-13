@@ -294,6 +294,9 @@ function renderOwnerView(box: HTMLElement, data: any): void {
 async function loadTeam(): Promise<void> {
   const box = document.getElementById("team-body");
   if (!box) return;
+  // The History dropdown follows the team (team_history.ts).
+  const reloadHistory = (window as any).safelyReloadHistoryChoices;
+  if (typeof reloadHistory === "function") reloadHistory();
   try {
     const res = await fetch(API_BASE + "/team", { headers: teamHeaders(false) });
     if (res.status === 401) return;

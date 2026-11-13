@@ -15,9 +15,9 @@ use axum::{
 use backend::{
     errors::dashboard::DashboardError,
     handlers::dashboard::{
-        HistoryItemQuery, UpdateMeRequest, delete_account, disconnect_google, get_avatar,
-        get_history, get_history_html, get_history_item, get_me, get_reports, get_reports_html,
-        update_me,
+        HistoryHtmlQuery, HistoryItemQuery, UpdateMeRequest, delete_account, disconnect_google,
+        get_avatar, get_history, get_history_html, get_history_item, get_me, get_reports,
+        get_reports_html, update_me,
     },
     models::fraud_reports::ReportTypes,
     routes::dashboard::dashboard_routes,
@@ -424,7 +424,7 @@ async fn get_history_html_unauthorized() {
     let pool = test_pool().await;
     let headers = HeaderMap::new();
 
-    let result = get_history_html(State(pool), headers).await;
+    let result = get_history_html(State(pool), headers, Query(HistoryHtmlQuery::default())).await;
     match result {
         Err(DashboardError::Unauthorized) => {}
         Err(other) => panic!("expected Unauthorized, got a different error: {:?}", other),
@@ -439,9 +439,13 @@ async fn get_history_html_empty_history() {
     let (user, _) = create_test_user(&pool, email).await;
     let headers = auth_headers_for(&pool, user.id).await;
 
-    let result = get_history_html(State(pool.clone()), headers)
-        .await
-        .expect("expected the request to succeed even with no history");
+    let result = get_history_html(
+        State(pool.clone()),
+        headers,
+        Query(HistoryHtmlQuery::default()),
+    )
+    .await
+    .expect("expected the request to succeed even with no history");
 
     let html = result.0;
 
@@ -473,9 +477,13 @@ async fn get_history_html_success_with_real_data() {
     )
     .await;
 
-    let result = get_history_html(State(pool.clone()), headers)
-        .await
-        .expect("expected the request to succeed");
+    let result = get_history_html(
+        State(pool.clone()),
+        headers,
+        Query(HistoryHtmlQuery::default()),
+    )
+    .await
+    .expect("expected the request to succeed");
 
     let html = result.0;
 
@@ -524,7 +532,7 @@ async fn get_history_html_database_error() {
     cleanup_test_user(&pool, email).await;
     pool.close().await;
 
-    let result = get_history_html(State(pool), headers).await;
+    let result = get_history_html(State(pool), headers, Query(HistoryHtmlQuery::default())).await;
 
     match result {
         Err(DashboardError::InternalError(_)) => {}

@@ -57,6 +57,9 @@ interface DetailResponse {
   /** False on the Free plan: only the score and the top reasons were
    * sent (backend services/features/results.rs). */
   full_result?: boolean;
+  created_at?: string;
+  /** A teammate's scan: their email (backend team_history.rs). */
+  scanned_by?: string | null;
 }
 
 // The Portuguese words here are the same as the extension's
@@ -1276,6 +1279,27 @@ function renderDetailBody(data: DetailResponse): void {
   const total = (data.signals || []).length;
   (document.getElementById("detail-title") as HTMLElement).textContent =
     data.listing_title || t("dash.detail.untitled_listing", "Untitled listing");
+
+  // A teammate's scan: "Scanned by ali@company.com · 2026-11-12".
+  const byEl = document.getElementById("detail-scanned-by");
+  if (byEl) {
+    if (data.scanned_by) {
+      byEl.innerHTML =
+        '<span class="inline-flex items-center gap-2 bg-surface2 border border-line rounded-full pl-1 pr-3 py-1 text-[12px]">' +
+        '<span class="w-5 h-5 rounded-full bg-amber/20 text-ink text-[10px] font-bold flex items-center justify-center">' +
+        escapeHtml(data.scanned_by.charAt(0).toUpperCase()) +
+        "</span>" +
+        escapeHtml(
+          t("dash.detail.scanned_by", "Scanned by {email}").replace("{email}", data.scanned_by),
+        ) +
+        (data.created_at ? '<span class="text-muted num"> · ' + escapeHtml(formatDate(data.created_at)) + "</span>" : "") +
+        "</span>";
+      byEl.classList.remove("hidden");
+    } else {
+      byEl.innerHTML = "";
+      byEl.classList.add("hidden");
+    }
+  }
 
   const linkEl = document.getElementById("detail-listing-link") as HTMLAnchorElement | null;
   if (linkEl) {

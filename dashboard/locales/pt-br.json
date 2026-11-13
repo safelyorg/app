@@ -443,5 +443,20 @@
   "dash.detail.full_report_text": "As {total} verificações com os motivos, os registros externos, a presença online e o relatório em PDF estão nos planos Team e Enterprise.",
   "dash.detail.details_locked_title": "Os detalhes estão nos planos Team e Enterprise",
   "dash.detail.details_locked_text": "Veja as {total} verificações com os motivos, os registros externos (registros, sanções, feiras, histórico do site), a presença online, os alertas de golpe e a lista \"Antes de pagar\".",
-  "dash.detail.pdf_paid": "O relatório em PDF está nos planos Team e Enterprise."
+  "dash.detail.pdf_paid": "O relatório em PDF está nos planos Team e Enterprise.",
+  "dash.table.scanned_by": "Feito por",
+  "dash.detail.scanned_by": "Feito por {email}",
+  "dash.team_history.my_scans": "Minhas análises",
+  "dash.team_history.all_team": "Todas as análises da equipe",
+  "dash.team_history.person_scans": "Análises de {name}",
+  "dash.team_history.members": "Membros da equipe",
+  "dash.team_history.team": "Equipe",
+  "dash.team_history.owner_tag": "(dono)",
+  "dash.team_history.you": "Você",
+  "dash.team_history.desc_team": "Todos os anúncios que sua equipe verificou com a extensão Safely.",
+  "dash.team_history.desc_person": "Todos os anúncios que {email} verificou com a extensão Safely.",
+  "dash.team_history.checked_team": "anúncios verificados pela equipe",
+  "dash.team_history.reported_team": "denunciados pela equipe",
+  "dash.team_history.checked_person": "anúncios verificados por {name}",
+  "dash.team_history.reported_person": "denunciados por {name}"
 }

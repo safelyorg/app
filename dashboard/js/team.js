@@ -240,6 +240,10 @@ async function loadTeam() {
     const box = document.getElementById("team-body");
     if (!box)
         return;
+    // The History dropdown follows the team (team_history.ts).
+    const reloadHistory = window.safelyReloadHistoryChoices;
+    if (typeof reloadHistory === "function")
+        reloadHistory();
     try {
         const res = await fetch(API_BASE + "/team", { headers: teamHeaders(false) });
         if (res.status === 401)

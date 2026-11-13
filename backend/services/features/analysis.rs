@@ -29,6 +29,7 @@ use crate::{
             build_b2b_verification_signal, build_domain_signal, is_supplier_page_scan,
             soften_no_presence, stated_founding_year,
         },
+        features::team::plan_holder,
         shared::claude::{CallB2bClaudeArguments, call_b2b_claude},
         shared::confidence::calculate_confidence,
         shared::evidence::{record_evidence, record_risk_factors},
@@ -427,6 +428,9 @@ pub async fn save_and_build_response(
 // sqlx::Error is honest here; a custom error type isn't needed.
 pub async fn create_analysis(data: CreateAnalysisData<'_>) -> Result<Analysis, Error> {
     let id = Uuid::now_v7();
+    // The team this scan belongs to: the owner's account when a team
+    // member scans, else the person's own (team_history.rs).
+    let team_owner_id = plan_holder(data.pool, data.user_id).await;
     let analysis = query_as::<_, Analysis>(
         "
         INSERT INTO analysis (
@@ -442,11 +446,12 @@ pub async fn create_analysis(data: CreateAnalysisData<'_>) -> Result<Analysis, E
             confidence_reasoning,
             risk_factors,
             social_candidates,
+            team_owner_id,
             created_at
         )
         VALUES (
             $1,  $2,  $3,  $4,   $5,
-            $6,  $7,  $8,  $9,   $10, $11, $12, NOW()
+            $6,  $7,  $8,  $9,   $10, $11, $12, $13, NOW()
         )
         RETURNING *
         ",
@@ -463,6 +468,7 @@ pub async fn create_analysis(data: CreateAnalysisData<'_>) -> Result<Analysis, E
     .bind(&data.confidence_reasoning)
     .bind(&data.risk_factors)
     .bind(&data.social_candidates)
+    .bind(team_owner_id)
     .fetch_one(data.pool)
     .await?;
 

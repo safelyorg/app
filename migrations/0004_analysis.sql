@@ -11,8 +11,10 @@ CREATE TABLE IF NOT EXISTS analysis (
     confidence_reasoning TEXT,
     risk_factors JSONB,
     social_candidates JSONB,
+    team_owner_id UUID REFERENCES users(id) ON DELETE SET NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE INDEX IF NOT EXISTS idx_analysis_listing_id ON analysis(listing_id);
 CREATE INDEX IF NOT EXISTS idx_analysis_user_id ON analysis(user_id);
+CREATE INDEX IF NOT EXISTS idx_analysis_team_owner ON analysis(team_owner_id, created_at DESC);
