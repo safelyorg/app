@@ -583,6 +583,8 @@ pub async fn build_website_analysis(
     };
     signals.extend(check_outside_records(&facts).await);
     keep_enabled_cards(&mut signals);
+    // For "Watch this supplier": the same checks again later (watch.rs).
+    crate::services::features::watch::remember_seller_facts(pool, seller_id, &facts).await;
 
     let risk_score = website_score_from_signals(&signals, fraud_count);
     Ok(WebsiteResult {

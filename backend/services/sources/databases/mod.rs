@@ -129,7 +129,10 @@ pub fn name_for_lists(name: &str) -> &str {
 
 /// What a scan knows about the seller. Every field is optional: each
 /// check uses what it needs and is skipped without it.
-#[derive(Debug, Clone, Default)]
+// Saved with each scan (watch.rs remember_seller_facts), so a watched
+// supplier can be checked again later.
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+#[serde(default)]
 pub struct SellerFacts {
     /// The company's name ("Guangdong Boyue Trading Co., Ltd.").
     pub company_name: Option<String>,

@@ -84,6 +84,7 @@
             checked
         />
         <input type="radio" name="view" id="view-reports" class="hidden" />
+        <input type="radio" name="view" id="view-watch" class="hidden" />
         <input type="radio" name="view" id="view-settings" class="hidden" />
         <input
             type="radio"
@@ -205,6 +206,16 @@
                             <path d="M9 15l3 3 6-6" />
                         </svg>
                         <span data-i18n="dash.nav.reports">My Reports</span>
+                    </label>
+                    <label
+                        for="view-watch"
+                        class="relative flex items-center gap-3 pl-4 pr-3 py-2.5 rounded-lg text-[13px] font-semibold text-muted hover:text-ink hover:bg-surface2 cursor-pointer transition"
+                    >
+                        <span
+                            class="nav-accent absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-full bg-brand opacity-0 transition"
+                        ></span>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z" /><circle cx="12" cy="12" r="3" /></svg>
+                        <span data-i18n="dash.nav.watch">Watched suppliers</span>
                     </label>
                 </nav>
 
@@ -474,6 +485,20 @@
                             >
                             </tbody>
                         </table>
+                    </div>
+                </div>
+            </main>
+
+            <!-- WATCHED SUPPLIERS PANEL (watch.ts) -->
+            <main
+                id="panel-watch"
+                class="flex-1 overflow-y-auto p-5 md:p-9 pt-20 md:pt-9"
+            >
+                <div class="w-full max-w-5xl mx-auto">
+                    <h1 class="text-[22px] font-bold tracking-tight" data-i18n="dash.watch.title">Watched suppliers</h1>
+                    <p id="watch-desc" class="text-[13px] text-muted mt-1"></p>
+                    <div id="watch-body" class="mt-5">
+                        <div class="text-center text-muted text-sm py-16" data-i18n="dash.common.loading">Loading...</div>
                     </div>
                 </div>
             </main>
@@ -999,6 +1024,12 @@
                                 <path d="M8 7h9v9" />
                             </svg>
                         </a>
+                        <!-- Watch this supplier (detail_view.ts) -->
+                        <button
+                            id="detail-watch"
+                            type="button"
+                            class="hidden items-center gap-1.5 px-3 py-1.5 rounded-lg bg-ink text-bg border border-ink text-[12px] font-bold hover:opacity-90 transition flex-shrink-0"
+                        ></button>
                         <button
                             id="detail-download-pdf"
                             class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-surface2 border border-line text-[12px] font-bold hover:bg-surface3 transition flex-shrink-0"
@@ -1166,6 +1197,7 @@
         <script src="/dashboard/js/settings.js"></script>
         <script src="/dashboard/js/detail_view.js"></script>
         <script src="/dashboard/js/team_history.js"></script>
+        <script src="/dashboard/js/watch.js"></script>
         <script src="/dashboard/js/reviews.js"></script>
         <script src="/dashboard/js/init.js"></script>
     </body>

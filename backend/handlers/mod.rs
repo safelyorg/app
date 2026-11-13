@@ -10,5 +10,6 @@ pub mod outcomes;
 pub mod pdf;
 pub mod reviews;
 pub mod subscribe;
-pub mod tools;
 pub mod team;
+pub mod tools;
+pub mod watch;

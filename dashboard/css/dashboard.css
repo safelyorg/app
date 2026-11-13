@@ -75,6 +75,7 @@ body {
 
 #panel-history,
 #panel-reports,
+#panel-watch,
 #panel-settings {
     display: none;
 }
@@ -83,6 +84,9 @@ body:has(#view-history:checked) #panel-history {
     display: block;
 }
 body:has(#view-reports:checked) #panel-reports {
+    display: block;
+}
+body:has(#view-watch:checked) #panel-watch {
     display: block;
 }
 body:has(#view-settings:checked) #panel-settings {
@@ -130,7 +134,8 @@ tr[data-search-hidden="true"] {
    Selected states: sidebar link, risk filter, tabs, theme.
    ============================================================ */
 body:has(#view-history:checked) label[for="view-history"],
-body:has(#view-reports:checked) label[for="view-reports"] {
+body:has(#view-reports:checked) label[for="view-reports"],
+body:has(#view-watch:checked) label[for="view-watch"] {
     color: rgb(var(--c-ink));
     background: rgb(var(--c-surface2));
 }

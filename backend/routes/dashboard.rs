@@ -3,6 +3,7 @@ use crate::handlers::dashboard::{
     get_history_people, get_me, get_reports, get_reports_html, update_me, upload_avatar,
 };
 use crate::handlers::pdf::download_evidence_pdf;
+use crate::handlers::watch::{get_watch_list, post_stop_watch, post_watch};
 use axum::{
     Router,
     routing::{get, post},
@@ -24,4 +25,7 @@ pub fn dashboard_routes() -> Router<Pool<Postgres>> {
         )
         .route("/api/v1/me/avatar", get(get_avatar).post(upload_avatar))
         .route("/api/v1/me/google/disconnect", post(disconnect_google))
+        // "Watch this supplier" (handlers/watch.rs)
+        .route("/api/v1/watch", get(get_watch_list).post(post_watch))
+        .route("/api/v1/watch/stop", post(post_stop_watch))
 }

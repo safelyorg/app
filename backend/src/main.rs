@@ -6,6 +6,7 @@ use backend::routes::{
     analyze, auth, billing, dashboard, dashboard_pages, fraud_reports, outcomes, platform_domains,
     reviews, subscribe, tool_api, tools,
 };
+use backend::services::features::watch::start_watch_scheduler;
 use backend::services::shared::scraper_client::warn_if_scraperapi_key_missing;
 use dotenvy::dotenv;
 use sqlx::{Pool, Postgres};
@@ -178,6 +179,8 @@ async fn main() {
     // Prints a clear warning if SCRAPERAPI_KEY is missing from .env.
     warn_if_scraperapi_key_missing();
     let app_pool = setup_database().await;
+    // "Watch this supplier": checks run in the background (watch.rs).
+    start_watch_scheduler(app_pool.clone());
     let app = build_router(app_pool);
     run_server(app).await;
 }

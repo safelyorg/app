@@ -34,6 +34,7 @@ function t(key, fallback) {
 const DASHBOARD_PAGES = [
     ["view-history", "/dashboard/"],
     ["view-reports", "/reports"],
+    ["view-watch", "/watch"],
     ["view-settings", "/settings"],
 ];
 // True while the dashboard follows Back / Forward: the address is
@@ -65,6 +66,8 @@ function dashboardViewFromAddress(path) {
         return "view-reports";
     if (clean === "/settings")
         return "view-settings";
+    if (clean === "/watch")
+        return "view-watch";
     return "view-history";
 }
 (function () {

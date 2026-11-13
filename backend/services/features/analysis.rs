@@ -30,6 +30,7 @@ use crate::{
             soften_no_presence, stated_founding_year,
         },
         features::team::plan_holder,
+        features::watch::remember_seller_facts,
         shared::claude::{CallB2bClaudeArguments, call_b2b_claude},
         shared::confidence::calculate_confidence,
         shared::evidence::{record_evidence, record_risk_factors},
@@ -960,6 +961,8 @@ pub async fn build_b2b_analysis_path(
     };
     signals.extend(check_outside_records(&facts).await);
     keep_enabled_cards(&mut signals);
+    // For "Watch this supplier": the same checks again later (watch.rs).
+    remember_seller_facts(pool, seller_id, &facts).await;
 
     let risk_score = b2b_score_from_signals(&signals, fraud_count);
 

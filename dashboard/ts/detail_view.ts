@@ -58,6 +58,9 @@ interface DetailResponse {
    * sent (backend services/features/results.rs). */
   full_result?: boolean;
   created_at?: string;
+  seller_id?: string;
+  /** The supplier is on the team's watch list (backend watch.rs). */
+  watching?: boolean;
   /** A teammate's scan: their email (backend team_history.rs). */
   scanned_by?: string | null;
 }
@@ -1280,6 +1283,8 @@ function renderDetailBody(data: DetailResponse): void {
   (document.getElementById("detail-title") as HTMLElement).textContent =
     data.listing_title || t("dash.detail.untitled_listing", "Untitled listing");
 
+  renderWatchButton(data);
+
   // A teammate's scan: "Scanned by ali@company.com · 2026-11-12".
   const byEl = document.getElementById("detail-scanned-by");
   if (byEl) {
@@ -1392,6 +1397,103 @@ document.getElementById("detail-view")?.addEventListener("click", (e: MouseEvent
 });
 
 let currentAnalysisId: string | null = null;
+
+// ---- Watch this supplier (backend watch.rs) -----------------------
+// Paid plans: "Watch this supplier" / "Watching". Free: a lock that
+// opens the plans.
+
+let currentWatchSellerId: string | null = null;
+let currentWatching = false;
+
+const WATCH_EYE =
+  '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>';
+const WATCH_CHECK =
+  '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg>';
+const WATCH_LOCK =
+  '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4.5" y="10.5" width="15" height="10" rx="2.5"/><path d="M8 10.5V7.5a4 4 0 018 0v3"/></svg>';
+
+function paintWatchButton(): void {
+  const btn = document.getElementById("detail-watch");
+  if (!btn) return;
+  const dark = "bg-ink text-bg border-ink";
+  const light = "bg-surface2 text-ink border-line";
+  btn.classList.remove(...dark.split(" "), ...light.split(" "));
+  if (!currentFullResult) {
+    btn.classList.add(...light.split(" "));
+    btn.innerHTML =
+      WATCH_LOCK +
+      '<span class="hidden sm:inline">' +
+      escapeHtml(t("dash.watch.watch_btn", "Watch this supplier")) +
+      "</span>";
+  } else if (currentWatching) {
+    btn.classList.add(...light.split(" "));
+    btn.innerHTML =
+      WATCH_CHECK +
+      '<span class="hidden sm:inline">' +
+      escapeHtml(t("dash.watch.watching_btn", "Watching")) +
+      "</span>";
+  } else {
+    btn.classList.add(...dark.split(" "));
+    btn.innerHTML =
+      WATCH_EYE +
+      '<span class="hidden sm:inline">' +
+      escapeHtml(t("dash.watch.watch_btn", "Watch this supplier")) +
+      "</span>";
+  }
+  btn.title = currentWatching
+    ? t("dash.watch.stop_hint", "Click to stop watching")
+    : t("dash.watch.watch_hint", "Safely checks this supplier again and emails you when something changes.");
+}
+
+function renderWatchButton(data: DetailResponse): void {
+  const btn = document.getElementById("detail-watch");
+  if (!btn) return;
+  currentWatchSellerId = data.seller_id || null;
+  currentWatching = !!data.watching;
+  btn.classList.remove("hidden");
+  btn.classList.add("inline-flex");
+  paintWatchButton();
+}
+
+async function toggleWatch(): Promise<void> {
+  if (!currentFullResult) {
+    openPlans();
+    return;
+  }
+  if (!currentAnalysisId) return;
+  const headers = { ...(window as any).safelyAuth.authHeader(), "Content-Type": "application/json" };
+  const stopping = currentWatching;
+  try {
+    const res = await fetch(API_BASE + (stopping ? "/watch/stop" : "/watch"), {
+      method: "POST",
+      headers,
+      body: JSON.stringify(stopping ? { seller_id: currentWatchSellerId } : { analysis_id: currentAnalysisId }),
+    });
+    if (res.status === 403) {
+      showToast(t("dash.watch.needs_paid", "Watching suppliers is on the Team and Enterprise plans."));
+      return;
+    }
+    if (res.status === 409) {
+      showToast(
+        t("dash.watch.limit", "Your plan can watch up to 50 suppliers. Stop watching one, or move to Enterprise."),
+      );
+      return;
+    }
+    if (!res.ok && res.status !== 404) throw new Error("failed");
+    currentWatching = !stopping;
+    paintWatchButton();
+    showToast(
+      stopping
+        ? t("dash.watch.stopped", "Stopped watching this supplier.")
+        : t("dash.watch.started", "Watching. Safely will email you when something changes."),
+    );
+  } catch (e) {
+    console.error("Safely: could not change the watch", e);
+    showToast(t("dash.watch.failed", "Could not change this right now. Please try again."));
+  }
+}
+
+document.getElementById("detail-watch")?.addEventListener("click", toggleWatch);
 
 async function downloadEvidencePdf(): Promise<void> {
   if (!currentAnalysisId) return;

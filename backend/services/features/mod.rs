@@ -27,3 +27,4 @@ pub mod team_history;
 pub mod templates;
 pub mod tools;
 pub mod translation;
+pub mod watch;

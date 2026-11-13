@@ -40,6 +40,7 @@ function t(key: string, fallback: string): string {
 const DASHBOARD_PAGES: [string, string][] = [
   ["view-history", "/dashboard/"],
   ["view-reports", "/reports"],
+  ["view-watch", "/watch"],
   ["view-settings", "/settings"],
 ];
 
@@ -76,6 +77,7 @@ function dashboardViewFromAddress(path: string): string {
   const clean = path.replace(/\/+$/, "").toLowerCase();
   if (clean === "/reports") return "view-reports";
   if (clean === "/settings") return "view-settings";
+  if (clean === "/watch") return "view-watch";
   return "view-history";
 }
 

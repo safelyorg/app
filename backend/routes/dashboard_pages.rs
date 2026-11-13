@@ -38,6 +38,7 @@ pub fn dashboard_pages_routes<S: Clone + Send + Sync + 'static>() -> Router<S> {
         .route_service("/dashboard/", ServeFile::new(DASHBOARD_PAGE))
         .route_service("/reports", ServeFile::new(DASHBOARD_PAGE))
         .route_service("/settings", ServeFile::new(DASHBOARD_PAGE))
+        .route_service("/watch", ServeFile::new(DASHBOARD_PAGE))
         // With a "/" at the end, the page's files would be looked for
         // under /settings/, so those go to the address without it.
         .route(
@@ -48,6 +49,7 @@ pub fn dashboard_pages_routes<S: Clone + Send + Sync + 'static>() -> Router<S> {
             "/settings/",
             get(|| async { Redirect::permanent("/settings") }),
         )
+        .route("/watch/", get(|| async { Redirect::permanent("/watch") }))
         .route("/dashboard/{*path}", get(dashboard_address))
 }
 

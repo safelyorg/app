@@ -3,6 +3,7 @@ use crate::services::features::team_history::{
     HistoryWho, email_of, history_choices, scan_owner_for_viewer, team_history,
 };
 use crate::services::features::translation::get_or_create_translation;
+use crate::services::features::watch::is_watched;
 use crate::{
     errors::dashboard::DashboardError,
     models::{analysis::RiskLevel, fraud_reports::ReportTypes, history::HistoryItem},
@@ -264,6 +265,8 @@ pub async fn get_history_item(
                 value["social_candidates"] = social;
             }
             value["full_result"] = Value::Bool(full);
+            // "Watch this supplier" button state (watch.rs).
+            value["watching"] = Value::Bool(is_watched(&pool, user_id, id).await);
             // A teammate's scan: "Scanned by ..." on the result page.
             if let Some(scanner) = scanner.filter(|s| *s != user_id) {
                 value["scanned_by"] = email_of(&pool, scanner)
