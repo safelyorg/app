@@ -212,15 +212,17 @@ pub async fn create_checkout(
     product_id: &str,
     user_id: Uuid,
 ) -> Result<CreateCheckoutResponse, CreateCheckoutError> {
-    create_checkout_for(product_id, user_id, &AdClick::default()).await
+    create_checkout_for(product_id, user_id, None, &AdClick::default()).await
 }
 
 /// The same checkout, with the browser's Meta cookies and user agent
 /// added to the metadata, so the payment can be reported to Meta from the
-/// webhook (meta_capi.rs).
+/// webhook (meta_capi.rs), and the Safely email filled in and locked on
+/// the payment page (one Creem customer for the plan and the seats).
 pub async fn create_checkout_for(
     product_id: &str,
     user_id: Uuid,
+    email: Option<&str>,
     ad: &AdClick,
 ) -> Result<CreateCheckoutResponse, CreateCheckoutError> {
     let mut metadata = serde_json::json!({ "safely_user_id": user_id.to_string() });
@@ -232,6 +234,7 @@ pub async fn create_checkout_for(
         product_id: product_id.to_string(),
         success_url: format!("{}/dashboard/?checkout=success", base_url),
         metadata,
+        customer: email.map(|e| serde_json::json!({ "email": e })),
     };
 
     let client = Client::new();
@@ -669,6 +672,39 @@ pub async fn cancel_at_period_end_with_creem(sub_id: &str) -> Result<(), Billing
         "Creem rejected the cancellation",
     )
     .await
+}
+
+/// A link to the person's Creem customer portal ("Manage card"): there
+/// they change the card for their plan and seats. POST
+/// /v1/customers/billing {customer_id} -> customer_portal_link.
+pub async fn customer_portal_link(customer_id: &str) -> Result<String, BillingError> {
+    let api_key = var("CREEM_API_KEY")
+        .map_err(|_| BillingError::InternalError("CREEM_API_KEY not set".to_string()))?;
+    let creem_base_url =
+        var("CREEM_API_BASE_URL").unwrap_or_else(|_| "https://test-api.creem.io".to_string());
+    let response = Client::new()
+        .post(format!("{}/v1/customers/billing", creem_base_url))
+        .header("x-api-key", api_key)
+        .json(&json!({ "customer_id": customer_id }))
+        .send()
+        .await
+        .map_err(|_| BillingError::ServiceUnavailable("Could not reach Creem".to_string()))?;
+    if !response.status().is_success() {
+        eprintln!(
+            "Safely: Creem refused the customer portal link: {}",
+            response.text().await.unwrap_or_default()
+        );
+        return Err(BillingError::ServiceUnavailable(
+            "Creem could not open the card page".to_string(),
+        ));
+    }
+    let body: Value = response.json().await.map_err(|_| {
+        BillingError::ServiceUnavailable("Creem sent an unreadable answer".to_string())
+    })?;
+    body["customer_portal_link"]
+        .as_str()
+        .map(str::to_string)
+        .ok_or_else(|| BillingError::ServiceUnavailable("Creem sent no card page link".to_string()))
 }
 
 /// Undoes a cancellation that has not happened yet ("Keep my plan").

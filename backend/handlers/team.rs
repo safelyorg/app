@@ -123,6 +123,7 @@ pub async fn change_seats(
     let answer: Value = match set_extra_seats(&pool, owner_id, body.extra_seats).await {
         Ok(SeatChange::Checkout(url)) => json!({ "result": "checkout", "checkout_url": url }),
         Ok(SeatChange::Removed(removed)) => json!({ "result": "removed", "removed": removed }),
+        Ok(SeatChange::Added(added)) => json!({ "result": "added", "added": added }),
         Ok(SeatChange::Unchanged) => json!({ "result": "unchanged" }),
         Err(e) => return refused(e),
     };

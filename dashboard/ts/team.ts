@@ -271,79 +271,140 @@ function seatWord(n: number): string {
   return n === 1 ? t("dash.team.seat_one", "seat") : t("dash.team.seat_many", "seats");
 }
 
-// The -/+ counter picks how many seats. "Add n" opens the payment page
-// for n seats ($25 each a month). "Remove n" (only when there are extra
-// seats) takes away n free seats at once: no refund, nothing charged
-// for them again.
+// A small line icon (stroke follows the text colour).
+function seatIcon(paths: string, size = 14): SVGSVGElement {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("width", String(size));
+  svg.setAttribute("height", String(size));
+  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.setAttribute("fill", "none");
+  svg.setAttribute("stroke", "currentColor");
+  svg.setAttribute("stroke-width", "2.2");
+  svg.setAttribute("stroke-linecap", "round");
+  svg.setAttribute("stroke-linejoin", "round");
+  svg.innerHTML = paths;
+  return svg;
+}
+
+const SEAT_ICON_PLUS = '<path d="M12 5v14M5 12h14"/>';
+const SEAT_ICON_MINUS = '<path d="M5 12h14"/>';
+const SEAT_ICON_CARD = '<rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/>';
+const SEAT_ICON_INFO = '<circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/>';
+
+// Extra seats: a summary (in your plan / extra / total), then the -/+
+// counter with "Add n" and, once there are extra seats, "Remove n".
+// "Add n": the first time the payment page for n seats ($25 each a
+// month); after that no page, the saved card is charged for the days
+// left this month. "Remove n" takes away n free seats at once: no refund,
+// nothing charged for them again.
 function buildSeatControls(data: any): HTMLElement {
   const plan = seatPlan(data);
   const price: number = Number(data.seat_price_usd) || 0;
   const included = Math.max(0, (data.seat_limit || 0) - plan.extra);
-  const wrap = teamEl("div", "mt-4 pt-3 border-t border-line");
+  const wrap = teamEl("div", "mt-5 pt-4 border-t border-line");
 
-  wrap.append(
+  // Title + price pill.
+  const head = teamEl("div", "flex items-center justify-between gap-3");
+  head.append(teamEl("div", "text-[13px] font-bold", t("dash.team.extra_title", "Extra seats")));
+  head.append(
     teamEl(
-      "div",
-      "text-[12.5px] font-semibold",
-      t("dash.team.seats_total", "Seats: {total} ({included} in your plan + {extra} extra)")
-        .replace("{total}", String(included + plan.extra))
-        .replace("{included}", String(included))
-        .replace("{extra}", String(plan.extra)),
+      "span",
+      "px-2 py-0.5 rounded-full bg-surface2 border border-line text-[10.5px] font-semibold text-muted whitespace-nowrap",
+      t("dash.team.per_seat", "${price} / seat / month").replace("{price}", String(price)),
     ),
   );
-  wrap.append(
-    teamEl(
-      "div",
-      "text-[11px] text-muted mt-0.5",
-      t(
-        "dash.team.seats_rule",
-        "Each extra seat is ${price} a month. Remove one any time to stop paying for it (no refund). The {included} seats in your plan can't be removed.",
-      )
-        .replace(/\{price\}/g, String(price))
-        .replace("{included}", String(included)),
-    ),
+  wrap.append(head);
+
+  // In your plan · Extra · Total
+  const stats = teamEl("div", "grid grid-cols-3 mt-3 rounded-xl border border-line overflow-hidden");
+  stats.setAttribute("data-seat-stats", "");
+  const stat = (value: number, label: string, strong: boolean, last: boolean): HTMLElement => {
+    const cell = teamEl("div", `px-3.5 py-2.5 ${strong ? "bg-surface2" : ""} ${last ? "" : "border-r border-line"}`);
+    cell.append(teamEl("div", "text-[18px] font-bold leading-tight tabular-nums", String(value)));
+    cell.append(teamEl("div", "text-[10.5px] font-semibold text-muted uppercase tracking-wide mt-0.5", label));
+    return cell;
+  };
+  stats.append(
+    stat(included, t("dash.team.stat_plan", "In your plan"), false, false),
+    stat(plan.extra, t("dash.team.stat_extra", "Extra"), false, false),
+    stat(included + plan.extra, t("dash.team.stat_total", "Total"), true, true),
   );
+  wrap.append(stats);
 
-  const btn = "h-8 px-3.5 rounded-lg text-[11.5px] font-bold disabled:opacity-40 disabled:cursor-not-allowed";
-  const row = teamEl("div", "flex items-center gap-2 mt-3 flex-wrap");
-  const add = teamEl("button", `${btn} bg-ink text-bg`) as HTMLButtonElement;
-  add.setAttribute("data-seat-add", "");
-  add.type = "button";
-
-  // [-] n [+]  [Add n]  [Remove n]
-  const counter = teamEl("div", "flex items-center rounded-lg border border-line overflow-hidden");
-  const minus = teamEl("button", "w-8 h-8 text-[15px] font-bold bg-surface2 disabled:opacity-40", "−") as HTMLButtonElement;
-  const count = teamEl("span", "w-10 text-center text-[13px] font-bold", "1");
-  const plus = teamEl("button", "w-8 h-8 text-[15px] font-bold bg-surface2 disabled:opacity-40", "+") as HTMLButtonElement;
+  // [- n +]  [+ Add n]  [- Remove n]           +$50 / month
+  const row = teamEl("div", "flex items-center gap-2 mt-3.5 flex-wrap");
+  const counter = teamEl("div", "flex items-center h-9 rounded-xl border border-line bg-surface overflow-hidden");
+  const stepBtn = "w-9 h-full flex items-center justify-center text-muted hover:text-ink hover:bg-surface2 transition disabled:opacity-30 disabled:hover:bg-transparent disabled:cursor-not-allowed";
+  const minus = teamEl("button", stepBtn) as HTMLButtonElement;
+  minus.append(seatIcon(SEAT_ICON_MINUS, 13));
+  minus.setAttribute("aria-label", "-1");
+  const count = teamEl("span", "w-9 text-center text-[13.5px] font-bold tabular-nums border-x border-line h-full flex items-center justify-center", "1");
+  const plus = teamEl("button", stepBtn) as HTMLButtonElement;
+  plus.append(seatIcon(SEAT_ICON_PLUS, 13));
+  plus.setAttribute("aria-label", "+1");
   minus.setAttribute("data-seat-minus", "");
   plus.setAttribute("data-seat-plus", "");
   count.setAttribute("data-seat-count", "");
   counter.append(minus, count, plus);
-  const remove = teamEl("button", `${btn} bg-surface2 border border-line`) as HTMLButtonElement;
+
+  const btn = "h-9 px-3.5 rounded-xl text-[12px] font-bold inline-flex items-center gap-1.5 transition disabled:opacity-35 disabled:cursor-not-allowed";
+  const add = teamEl("button", `${btn} bg-ink text-bg hover:opacity-90`) as HTMLButtonElement;
+  add.setAttribute("data-seat-add", "");
+  const addLabel = teamEl("span", "");
+  add.append(seatIcon(SEAT_ICON_PLUS, 13), addLabel);
+  const remove = teamEl("button", `${btn} bg-surface border border-line text-ink hover:bg-surface2`) as HTMLButtonElement;
   remove.setAttribute("data-seat-remove", "");
-  [minus, plus, remove].forEach((b) => (b.type = "button"));
+  const removeLabel = teamEl("span", "");
+  remove.append(seatIcon(SEAT_ICON_MINUS, 13), removeLabel);
+  [minus, plus, add, remove].forEach((b) => (b.type = "button"));
+  const preview = teamEl("span", "ml-auto text-[11.5px] font-semibold text-muted tabular-nums");
+  preview.setAttribute("data-seat-preview", "");
   row.append(counter, add);
   if (plan.extra > 0) row.append(remove);
+  row.append(preview);
   wrap.append(row);
 
-  const hint = teamEl("div", "text-[11px] text-muted mt-1.5");
+  const hint = teamEl("div", "text-[11px] text-amber mt-2 empty:hidden");
   hint.setAttribute("data-seat-hint", "");
   wrap.append(hint);
 
-  // The confirm box.
-  const confirm = teamEl("div", "hidden mt-3 p-3 rounded-xl bg-surface2 border border-line");
+  // The rule, quietly.
+  const note = teamEl("div", "flex items-start gap-1.5 text-[11px] text-muted mt-2.5 leading-relaxed");
+  const noteIcon = seatIcon(SEAT_ICON_INFO, 12);
+  noteIcon.classList.add("mt-0.5", "flex-shrink-0");
+  note.append(
+    noteIcon,
+    teamEl(
+      "span",
+      "",
+      t(
+        "dash.team.seats_rule",
+        "Removed seats stop right away, with no refund. The {included} seats in your plan can't be removed.",
+      ).replace("{included}", String(included)),
+    ),
+  );
+  wrap.append(note);
+
+  // The confirm box: icon, title, text, buttons.
+  const confirm = teamEl("div", "hidden mt-3.5 p-3.5 rounded-xl bg-surface2 border border-line");
   confirm.setAttribute("data-seat-confirm", "");
-  const confirmText = teamEl("div", "text-[12px] leading-relaxed");
-  const yes = teamEl("button", "px-3 py-1.5 rounded-lg bg-ink text-bg text-[11.5px] font-bold disabled:opacity-40") as HTMLButtonElement;
+  const confirmTop = teamEl("div", "flex items-start gap-3");
+  const confirmIcon = teamEl("div", "w-8 h-8 rounded-lg bg-surface border border-line flex items-center justify-center flex-shrink-0 text-ink");
+  const confirmBody = teamEl("div", "min-w-0");
+  const confirmTitle = teamEl("div", "text-[12.5px] font-bold");
+  const confirmText = teamEl("div", "text-[11.5px] text-muted leading-relaxed mt-0.5");
+  confirmBody.append(confirmTitle, confirmText);
+  confirmTop.append(confirmIcon, confirmBody);
+  const yes = teamEl("button", "h-8 px-3.5 rounded-lg bg-ink text-bg text-[11.5px] font-bold hover:opacity-90 transition disabled:opacity-40") as HTMLButtonElement;
   const no = teamEl(
     "button",
-    "px-3 py-1.5 rounded-lg bg-surface border border-line text-[11.5px] font-bold",
+    "h-8 px-3.5 rounded-lg bg-surface border border-line text-[11.5px] font-bold hover:bg-surface3 transition",
     t("dash.common.cancel", "Cancel"),
   ) as HTMLButtonElement;
   [yes, no].forEach((b) => (b.type = "button"));
-  const confirmButtons = teamEl("div", "flex gap-2 mt-2.5");
-  confirmButtons.append(yes, no);
-  confirm.append(confirmText, confirmButtons);
+  const confirmButtons = teamEl("div", "flex justify-end gap-2 mt-3");
+  confirmButtons.append(no, yes);
+  confirm.append(confirmTop, confirmButtons);
   wrap.append(confirm);
 
   let n = 1;
@@ -352,10 +413,11 @@ function buildSeatControls(data: any): HTMLElement {
     count.textContent = String(n);
     minus.disabled = n <= 1;
     plus.disabled = n >= most;
-    add.textContent = t("dash.team.add_n", "Add {n}").replace("{n}", String(n));
+    addLabel.textContent = t("dash.team.add_n", "Add {n}").replace("{n}", String(n));
     add.disabled = n > plan.maxAdd;
-    remove.textContent = t("dash.team.remove_n", "Remove {n}").replace("{n}", String(n));
+    removeLabel.textContent = t("dash.team.remove_n", "Remove {n}").replace("{n}", String(n));
     remove.disabled = n > plan.maxRemove;
+    preview.textContent = t("dash.team.preview_add", "+${total} / month").replace("{total}", String(n * price));
     if (plan.extra > 0 && plan.maxRemove === 0) {
       hint.textContent = t(
         "dash.team.remove_all_used",
@@ -378,31 +440,48 @@ function buildSeatControls(data: any): HTMLElement {
     draw();
   });
 
+  const showConfirm = (icon: string, title: string, text: string, yesText: string): void => {
+    confirmIcon.replaceChildren(seatIcon(icon, 15));
+    confirmTitle.textContent = title;
+    confirmText.textContent = text;
+    yes.textContent = yesText;
+    confirm.classList.remove("hidden");
+  };
+
   let wanted = plan.extra;
   add.addEventListener("click", () => {
     wanted = plan.extra + n;
-    confirmText.textContent = t(
-      "dash.team.add_confirm",
-      "Add {n} {seats} for ${total} a month (${price} each)? You'll go to the payment page.",
-    )
-      .replace("{n}", String(n))
-      .replace("{seats}", seatWord(n))
-      .replace("{total}", String(n * price))
-      .replace("{price}", String(price));
-    yes.textContent = t("dash.team.add_yes", "Yes, add");
-    confirm.classList.remove("hidden");
+    showConfirm(
+      SEAT_ICON_CARD,
+      t("dash.team.add_title", "Add {n} {seats} · ${total} / month")
+        .replace("{n}", String(n))
+        .replace("{seats}", seatWord(n))
+        .replace("{total}", String(n * price)),
+      plan.extra === 0
+        ? t(
+            "dash.team.add_first_body",
+            "You'll go to the payment page this one time. After that, new seats are added without it.",
+          )
+        : t(
+            "dash.team.add_more_body",
+            "No payment page: your saved card is charged now for the days left this month, then ${total} a month more with your other seats.",
+          ).replace("{total}", String(n * price)),
+      t("dash.team.add_yes", "Yes, add"),
+    );
   });
   remove.addEventListener("click", () => {
     wanted = plan.extra - n;
-    confirmText.textContent = t(
-      "dash.team.remove_confirm",
-      "Remove {n} {seats}? Removed now, and you won't be charged for {them} again. Money already paid is not refunded.",
-    )
-      .replace("{n}", String(n))
-      .replace("{seats}", seatWord(n))
-      .replace("{them}", n === 1 ? t("dash.team.it", "it") : t("dash.team.them", "them"));
-    yes.textContent = t("dash.team.remove_yes", "Yes, remove");
-    confirm.classList.remove("hidden");
+    showConfirm(
+      SEAT_ICON_MINUS,
+      t("dash.team.remove_title", "Remove {n} {seats}")
+        .replace("{n}", String(n))
+        .replace("{seats}", seatWord(n)),
+      t(
+        "dash.team.remove_body",
+        "Removed right away, and you won't be charged for {them} again. Money already paid is not refunded.",
+      ).replace("{them}", n === 1 ? t("dash.team.it", "it") : t("dash.team.them", "them")),
+      t("dash.team.remove_yes", "Yes, remove"),
+    );
   });
   no.addEventListener("click", () => confirm.classList.add("hidden"));
   yes.addEventListener("click", async () => {
@@ -412,6 +491,14 @@ function buildSeatControls(data: any): HTMLElement {
       if (res.result === "checkout" && res.checkout_url) {
         window.location.href = res.checkout_url;
         return;
+      }
+      if (res.result === "added") {
+        const added: number = res.added || 0;
+        showToast(
+          t("dash.team.seats_added", "{n} {seats} added.")
+            .replace("{n}", String(added))
+            .replace("{seats}", seatWord(added)),
+        );
       }
       if (res.result === "removed") {
         const removed: number = res.removed || 0;

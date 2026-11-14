@@ -722,6 +722,27 @@
                                             Continue
                                         </button>
                                     </div>
+                                    <!-- "Manage card": Creem's page for the card that pays for the plan and the extra seats. Only while on a paid plan (init.ts) -->
+                                    <div id="manage-card-area" class="hidden mt-3 pt-3 border-t border-line">
+                                        <div class="flex items-center gap-3 p-3 rounded-xl bg-surface2/60 border border-line">
+                                            <div class="w-9 h-9 rounded-lg bg-surface border border-line flex items-center justify-center flex-shrink-0">
+                                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                                    <rect x="2" y="5" width="20" height="14" rx="2" />
+                                                    <path d="M2 10h20M6 15h4" />
+                                                </svg>
+                                            </div>
+                                            <div class="min-w-0 flex-1">
+                                                <div class="text-[12.5px] font-bold" data-i18n="dash.settings.payment_method">Payment method</div>
+                                                <div class="text-[11px] text-muted leading-snug mt-0.5" data-i18n="dash.settings.manage_card_note">Kept safe by Creem. One card pays for your plan and your extra seats.</div>
+                                            </div>
+                                            <button type="button" id="manage-card-btn" class="h-8 px-3 rounded-lg bg-surface border border-line text-[11.5px] font-bold inline-flex items-center gap-1 hover:bg-surface3 transition flex-shrink-0 disabled:opacity-40">
+                                                <span data-i18n="dash.settings.manage_card">Manage card</span>
+                                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+                                                    <path d="M7 17L17 7M9 7h8v8" />
+                                                </svg>
+                                            </button>
+                                        </div>
+                                    </div>
                                     <!-- A canceled plan that has not ended yet (init.ts) -->
                                     <div id="resume-subscription-area" class="hidden mt-3 pt-3 border-t border-line text-center">
                                         <p id="resume-subscription-text" class="text-[12px] text-muted mb-2.5 leading-relaxed"></p>

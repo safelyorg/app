@@ -20,6 +20,10 @@ pub struct CreateCheckoutRequest {
     pub product_id: String,
     pub success_url: String,
     pub metadata: Value,
+    /// {"email": ...}: the Safely email, filled in and locked on the
+    /// payment page, so every payment belongs to one Creem customer.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub customer: Option<Value>,
 }
 
 #[derive(Debug, Deserialize)]

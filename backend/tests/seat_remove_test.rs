@@ -1,9 +1,10 @@
 // Extra seats (services/features/team.rs set_extra_seats): $25 a month
-// each. Adding any number is one Creem checkout. Removing takes seats
-// from the newest purchase first: a purchase whose seats all go is
-// cancelled at once, otherwise its seat count is lowered with no
-// proration. Never a refund. The 3 plan seats always stay. Creem is a
-// fake server (wiremock).
+// each. The first seats are a Creem checkout; later seats raise the seat
+// count of the newest seat subscription with no payment page (Creem
+// charges the saved card for the days left). Removing takes seats from
+// the newest purchase first: a purchase whose seats all go is cancelled
+// at once, otherwise its seat count is lowered with no proration. Never a
+// refund. The 3 plan seats always stay. Creem is a fake server (wiremock).
 
 mod common;
 
@@ -72,7 +73,7 @@ async fn removing_seats_newest_first_without_a_refund() {
 
     let (owner, _) = create_test_user(&pool, OWNER).await;
     let creem = MockServer::start().await;
-    // Newest purchase: 3 seats. Remove 1 -> lowered to 2, no proration.
+    // Newest purchase: 3 seats. Add 2 -> 5, charged now for the days left.
     Mock::given(method("GET"))
         .and(path("/v1/subscriptions"))
         .and(query_param("subscription_id", "sub_sr_new"))
@@ -82,15 +83,26 @@ async fn removing_seats_newest_first_without_a_refund() {
     Mock::given(method("POST"))
         .and(path("/v1/subscriptions/sub_sr_new"))
         .and(body_json(json!({
-            "items": [{ "id": "item_sub_sr_new", "price_id": "pprice_1", "units": 2 }],
+            "items": [{ "id": "item_sub_sr_new", "price_id": "pprice_1", "units": 5 }],
+            "update_behavior": "proration-charge-immediately",
+        })))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({})))
+        .expect(1)
+        .mount(&creem)
+        .await;
+    // Remove 1 -> lowered to 4, no proration (no refund).
+    Mock::given(method("POST"))
+        .and(path("/v1/subscriptions/sub_sr_new"))
+        .and(body_json(json!({
+            "items": [{ "id": "item_sub_sr_new", "price_id": "pprice_1", "units": 4 }],
             "update_behavior": "proration-none",
         })))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({})))
         .expect(1)
         .mount(&creem)
         .await;
-    // Then remove 3: the newest purchase's 2 seats (cancelled) + 1 of the
-    // older purchase's 1 seat (cancelled).
+    // Then remove 5: the newest purchase's 4 seats (cancelled) + the older
+    // purchase's 1 seat (cancelled).
     for id in ["sub_sr_new", "sub_sr_old"] {
         Mock::given(method("POST"))
             .and(path(format!("/v1/subscriptions/{id}/cancel")))
@@ -128,17 +140,25 @@ async fn removing_seats_newest_first_without_a_refund() {
     }
     assert_eq!(team_view(&pool, owner.id).await.unwrap()["seat_limit"], 7);
 
-    // Remove 1 (7 -> 6).
+    // Add 2 (7 -> 9): no payment page, added to the newest purchase.
     assert_eq!(
-        set_extra_seats(&pool, owner.id, 3).await,
+        set_extra_seats(&pool, owner.id, 6).await,
+        Ok(SeatChange::Added(2))
+    );
+    assert_eq!(status(&pool, "sub_sr_new").await, ("active".to_string(), 5));
+    assert_eq!(team_view(&pool, owner.id).await.unwrap()["seat_limit"], 9);
+
+    // Remove 1 (9 -> 8).
+    assert_eq!(
+        set_extra_seats(&pool, owner.id, 5).await,
         Ok(SeatChange::Removed(1))
     );
-    assert_eq!(status(&pool, "sub_sr_new").await, ("active".to_string(), 2));
+    assert_eq!(status(&pool, "sub_sr_new").await, ("active".to_string(), 4));
 
-    // Remove 3 (6 -> 3): back to the 3 plan seats.
+    // Remove 5 (8 -> 3): back to the 3 plan seats.
     assert_eq!(
         set_extra_seats(&pool, owner.id, 0).await,
-        Ok(SeatChange::Removed(3))
+        Ok(SeatChange::Removed(5))
     );
     assert_eq!(status(&pool, "sub_sr_new").await.0, "canceled");
     assert_eq!(status(&pool, "sub_sr_old").await.0, "canceled");

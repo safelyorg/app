@@ -5,10 +5,10 @@ use crate::services::{
     features::billing::{
         BillingInterval, CreateCheckoutError, PLAN_PRODUCTS, PlanChange,
         apply_scheduled_downgrade_if_due, apply_upgrade, cancel_at_period_end_with_creem,
-        classify_plan_change, create_checkout_for, fetch_subscriber_email, get_scan_usage,
-        handle_subscription_granted, handle_subscription_lost, handle_subscription_past_due,
-        handle_subscription_update, plan_for_product_id, product_ids_key, resume_with_creem,
-        schedule_downgrade, verify_and_parse_webhook,
+        classify_plan_change, create_checkout_for, customer_portal_link, fetch_subscriber_email,
+        get_scan_usage, handle_subscription_granted, handle_subscription_lost,
+        handle_subscription_past_due, handle_subscription_update, plan_for_product_id,
+        product_ids_key, resume_with_creem, schedule_downgrade, verify_and_parse_webhook,
     },
     features::email::{send_subscription_canceled_email, send_team_plan_ending_email},
     features::meta_capi::{AdClick, payment_in, send_purchase},
@@ -87,7 +87,13 @@ pub async fn create_checkout_handler(
     // The browser's Meta cookies go with the checkout, so the payment can
     // be matched to the ad it came from (meta_capi.rs).
     let ad = AdClick::from_headers(&headers);
-    let checkout = create_checkout_for(&body.product_id, user_id, &ad)
+    let email: Option<String> = query_scalar("SELECT email FROM users WHERE id = $1")
+        .bind(user_id)
+        .fetch_optional(&pool)
+        .await
+        .ok()
+        .flatten();
+    let checkout = create_checkout_for(&body.product_id, user_id, email.as_deref(), &ad)
         .await
         .map_err(|e| match e {
             CreateCheckoutError::MissingApiKey => {
@@ -392,6 +398,35 @@ pub async fn resume_subscription_handler(
     keep_seats_with_plan(&pool, user_id).await;
 
     Ok(Json(json!({ "success": true })))
+}
+
+/// POST /api/v1/billing/manage-card
+///
+/// "Manage card": a link to the person's Creem customer portal, where
+/// they change the card for their plan and their extra seats (both are
+/// paid with the same email, so they belong to one Creem customer). Only
+/// for someone who pays for a plan themselves.
+pub async fn manage_card_handler(
+    State(pool): State<Pool<Postgres>>,
+    headers: HeaderMap,
+) -> Result<Json<Value>, BillingError> {
+    let user_id = extract_user_id(&headers, &pool)
+        .await
+        .map_err(|_| BillingError::InternalError("Failed to verify session".to_string()))?
+        .ok_or(BillingError::Unauthorized)?;
+    let customer_id: Option<String> = query_scalar(
+        "SELECT creem_customer_id FROM subscriptions
+         WHERE user_id = $1 AND creem_customer_id <> ''
+         ORDER BY (status IN ('active', 'past_due')) DESC, updated_at DESC LIMIT 1",
+    )
+    .bind(user_id)
+    .fetch_optional(&pool)
+    .await
+    .map_err(|_| BillingError::InternalError("Failed to look up subscription".to_string()))?;
+    let customer_id =
+        customer_id.ok_or_else(|| BillingError::NotFound("No card on file".to_string()))?;
+    let url = customer_portal_link(&customer_id).await?;
+    Ok(Json(json!({ "url": url })))
 }
 
 /// One subscription row for the status endpoint: id, plan, billing

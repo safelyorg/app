@@ -391,6 +391,10 @@ document.addEventListener("DOMContentLoaded", async () => {
         const ending = isPaid && !!cancelAt;
         if (cancelSubArea)
             cancelSubArea.classList.toggle("hidden", !isPaid || ending);
+        // "Manage card": only for someone who pays for their own plan.
+        const manageCardArea = document.getElementById("manage-card-area");
+        if (manageCardArea)
+            manageCardArea.classList.toggle("hidden", !isPaid);
         const resumeArea = document.getElementById("resume-subscription-area");
         if (resumeArea)
             resumeArea.classList.toggle("hidden", !ending);
@@ -687,6 +691,32 @@ document.addEventListener("DOMContentLoaded", async () => {
             finally {
                 resumeBtn.disabled = false;
                 resumeBtn.textContent = originalText;
+            }
+        });
+    }
+    // "Manage card": opens Creem's page for the card that pays for the plan
+    // and the extra seats (the server asks Creem for the link).
+    const manageCardBtn = document.getElementById("manage-card-btn");
+    if (manageCardBtn) {
+        manageCardBtn.addEventListener("click", async () => {
+            manageCardBtn.disabled = true;
+            try {
+                const res = await fetch(API_BASE + "/billing/manage-card", {
+                    method: "POST",
+                    headers: window.safelyAuth.authHeader(),
+                });
+                if (res.status === 401) {
+                    window.safelyAuth.logout();
+                    return;
+                }
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok || !data.url)
+                    throw new Error("No card page");
+                window.location.href = data.url;
+            }
+            catch (e) {
+                showToast(t("dash.toast.manage_card_failed", "Couldn't open the card page. Please try again."));
+                manageCardBtn.disabled = false;
             }
         });
     }

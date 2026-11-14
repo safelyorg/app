@@ -13,9 +13,12 @@
 //! fewer seats than members (after a downgrade), the members invited
 //! first keep access.
 //!
-//! Extra seats are $25 a month each. Every "Add" is one Creem checkout
-//! for the number of seats picked (its own subscription, "units" =
-//! seats), kept in team_extra_seats - never in the subscriptions table,
+//! Extra seats are $25 a month each. The first "Add" is one Creem
+//! checkout for the number of seats picked (a seat subscription, "units"
+//! = seats). Later "Add"s raise the seat count of that subscription:
+//! no payment page, Creem charges the saved card now for the days left
+//! (proration-charge-immediately), then the full price with the other
+//! seats. Seat subscriptions are kept in team_extra_seats - never in the subscriptions table,
 //! so they never count as a plan. Removing seats takes them from the
 //! newest purchase first: a whole purchase is cancelled at once, or its
 //! seat count is lowered with no proration. No refund either way, and
@@ -429,15 +432,18 @@ pub async fn leave_team_if_paying(pool: &Pool<Postgres>, user_id: Uuid) {
 pub enum SeatChange {
     /// Nothing to change.
     Unchanged,
-    /// More seats: pay for them on this Creem checkout page.
+    /// The first seats: pay for them on this Creem checkout page.
     Checkout(String),
+    /// Seats added to the seat subscription (the saved card is charged).
+    Added(i64),
     /// Seats were removed (no refund, no more charges): how many.
     Removed(i64),
 }
 
-/// Sets the owner's extra seats to `wanted`. Adding is a Creem checkout
-/// for the new seats. Removing takes the newest seats away at once, with
-/// no refund.
+/// Sets the owner's extra seats to `wanted`. Adding: the first time a
+/// Creem checkout, later the seat count of the newest seat subscription
+/// goes up (the saved card is charged, no payment page). Removing takes
+/// the newest seats away at once, with no refund.
 pub async fn set_extra_seats(
     pool: &Pool<Postgres>,
     owner_id: Uuid,
@@ -467,8 +473,36 @@ pub async fn set_extra_seats(
         if team_plan_ends(pool, owner_id).await.is_some() {
             return Err(TeamError::PlanEnding);
         }
+        let adding = wanted - current;
+        // Seats bought before: add to that seat subscription.
+        let newest: Option<(String, i32)> = query_as(
+            "SELECT creem_subscription_id, seats FROM team_extra_seats
+             WHERE owner_id = $1 AND status = 'active' AND cancel_at IS NULL
+             ORDER BY created_at DESC LIMIT 1",
+        )
+        .bind(owner_id)
+        .fetch_optional(pool)
+        .await?;
+        if let Some((sub_id, seats)) = newest {
+            let units = seats as i64 + adding;
+            set_seat_units(&sub_id, units, "proration-charge-immediately").await?;
+            query(
+                "UPDATE team_extra_seats SET seats = $2, updated_at = NOW()
+                 WHERE creem_subscription_id = $1",
+            )
+            .bind(&sub_id)
+            .bind(units as i32)
+            .execute(pool)
+            .await?;
+            eprintln!(
+                "Safely: {} extra seat(s) added to {} for {} (now {}): Creem charges the saved card for the days left",
+                adding, sub_id, owner_id, units
+            );
+            return Ok(SeatChange::Added(adding));
+        }
         let product = seat_product_for(interval).ok_or(TeamError::SeatsUnavailable)?;
-        let url = seat_checkout(&product, owner_id, wanted - current).await?;
+        let email = owner_email(pool, owner_id).await;
+        let url = seat_checkout(&product, owner_id, adding, email.as_deref()).await?;
         return Ok(SeatChange::Checkout(url));
     }
     remove_seats(pool, owner_id, current - wanted).await
@@ -518,7 +552,7 @@ async fn remove_seats(
                 }
             }
         } else {
-            match lower_seat_units(&sub_id, seats - left).await {
+            match set_seat_units(&sub_id, seats - left, "proration-none").await {
                 Ok(()) => {
                     query(
                         "UPDATE team_extra_seats SET seats = $2, updated_at = NOW()
@@ -548,9 +582,12 @@ async fn remove_seats(
     Ok(SeatChange::Removed(removed))
 }
 
-/// Lowers the seat count of one seat purchase at Creem, with no
-/// proration: no refund now, the next payment is for fewer seats.
-async fn lower_seat_units(sub_id: &str, units: i64) -> Result<(), TeamError> {
+/// Sets the seat count of one seat subscription at Creem. `behavior`:
+/// "proration-charge-immediately" (adding: the saved card is charged now
+/// for the days left) or "proration-none" (removing: no refund, the next
+/// payment is for fewer seats). Right after another change Creem answers
+/// "subscription_concurrent_change"; then it waits and tries again.
+async fn set_seat_units(sub_id: &str, units: i64, behavior: &str) -> Result<(), TeamError> {
     let key = creem_api_key()?;
     let client = Client::new();
     let subscription: Value = client
@@ -583,24 +620,45 @@ async fn lower_seat_units(sub_id: &str, units: i64) -> Result<(), TeamError> {
     if let Some(price_id) = price_id {
         item["price_id"] = json!(price_id);
     }
-    let response = client
-        .post(format!("{}/v1/subscriptions/{}", creem_base_url(), sub_id))
-        .header("x-api-key", &key)
-        .json(&json!({ "items": [item], "update_behavior": "proration-none" }))
-        .send()
-        .await
-        .map_err(|e| {
-            eprintln!("Safely: Creem seat change failed: {}", e);
-            TeamError::PaymentFailed
-        })?;
-    if !response.status().is_success() {
-        eprintln!(
-            "Safely: Creem refused the seat change: {}",
-            response.text().await.unwrap_or_default()
-        );
+    for attempt in 1..=SEAT_CHANGE_TRIES {
+        let response = client
+            .post(format!("{}/v1/subscriptions/{}", creem_base_url(), sub_id))
+            .header("x-api-key", &key)
+            .json(&json!({ "items": [item], "update_behavior": behavior }))
+            .send()
+            .await
+            .map_err(|e| {
+                eprintln!("Safely: Creem seat change failed: {}", e);
+                TeamError::PaymentFailed
+            })?;
+        if response.status().is_success() {
+            return Ok(());
+        }
+        let text = response.text().await.unwrap_or_default();
+        if text.contains("subscription_concurrent_change") && attempt < SEAT_CHANGE_TRIES {
+            tokio::time::sleep(std::time::Duration::from_secs(SEAT_CHANGE_WAIT_SECS)).await;
+            continue;
+        }
+        eprintln!("Safely: Creem refused the seat change: {}", text);
         return Err(TeamError::PaymentFailed);
     }
-    Ok(())
+    Err(TeamError::PaymentFailed)
+}
+
+/// How often a seat change is tried while Creem is still finishing the
+/// last one, and how long to wait in between.
+const SEAT_CHANGE_TRIES: u32 = 4;
+const SEAT_CHANGE_WAIT_SECS: u64 = 3;
+
+/// The owner's Safely email, filled in and locked on the Creem payment
+/// page so every payment belongs to the same Creem customer.
+async fn owner_email(pool: &Pool<Postgres>, owner_id: Uuid) -> Option<String> {
+    query_scalar("SELECT email FROM users WHERE id = $1")
+        .bind(owner_id)
+        .fetch_optional(pool)
+        .await
+        .ok()
+        .flatten()
 }
 
 /// The item of a Creem subscription to change: (item id, price id). The
@@ -639,9 +697,16 @@ fn creem_api_key() -> Result<String, TeamError> {
     })
 }
 
-/// The body of a Creem checkout for `units` extra seats.
-pub fn seat_checkout_body(product_id: &str, owner_id: Uuid, units: i64, base_url: &str) -> Value {
-    json!({
+/// The body of a Creem checkout for `units` extra seats. The owner's
+/// email is filled in and locked, when known.
+pub fn seat_checkout_body(
+    product_id: &str,
+    owner_id: Uuid,
+    units: i64,
+    base_url: &str,
+    email: Option<&str>,
+) -> Value {
+    let mut body = json!({
         "product_id": product_id,
         "units": units,
         "success_url": format!("{}/settings?seats=success", base_url),
@@ -649,16 +714,27 @@ pub fn seat_checkout_body(product_id: &str, owner_id: Uuid, units: i64, base_url
             "safely_user_id": owner_id.to_string(),
             "safely_purpose": "extra_seats",
         },
-    })
+    });
+    if let Some(email) = email {
+        body["customer"] = json!({ "email": email });
+    }
+    body
 }
 
 /// A Creem checkout page for `units` extra seats. Returns its address.
-async fn seat_checkout(product_id: &str, owner_id: Uuid, units: i64) -> Result<String, TeamError> {
+async fn seat_checkout(
+    product_id: &str,
+    owner_id: Uuid,
+    units: i64,
+    email: Option<&str>,
+) -> Result<String, TeamError> {
     let base_url = var("PUBLIC_BASE_URL").unwrap_or_else(|_| "http://localhost:3000".to_string());
     let response = Client::new()
         .post(format!("{}/v1/checkouts", creem_base_url()))
         .header("x-api-key", creem_api_key()?)
-        .json(&seat_checkout_body(product_id, owner_id, units, &base_url))
+        .json(&seat_checkout_body(
+            product_id, owner_id, units, &base_url, email,
+        ))
         .send()
         .await
         .map_err(|e| {
@@ -985,8 +1061,11 @@ mod tests {
     #[test]
     fn checkout_asks_for_the_seats() {
         let owner = Uuid::nil();
-        let body = seat_checkout_body("prod_seat", owner, 2, "https://safely.sh");
+        let body = seat_checkout_body("prod_seat", owner, 2, "https://safely.sh", Some("a@b.com"));
         assert_eq!(body["units"], 2);
+        assert_eq!(body["customer"]["email"], "a@b.com");
+        let no_email = seat_checkout_body("prod_seat", owner, 1, "https://safely.sh", None);
+        assert!(no_email.get("customer").is_none());
         assert_eq!(body["product_id"], "prod_seat");
         assert_eq!(body["metadata"]["safely_purpose"], "extra_seats");
         assert_eq!(body["metadata"]["safely_user_id"], owner.to_string());
