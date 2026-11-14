@@ -1497,7 +1497,7 @@ async function toggleWatch(): Promise<void> {
     }
     if (res.status === 409) {
       showToast(
-        t("dash.watch.limit", "Your plan can watch up to 50 suppliers. Stop watching one, or move to Enterprise."),
+        t("dash.watch.limit", "Your plan can watch up to 25 suppliers. Stop watching one, or move to Enterprise."),
       );
       return;
     }

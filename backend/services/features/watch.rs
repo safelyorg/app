@@ -1,7 +1,7 @@
 //! Watch suppliers: Safely checks a supplier again by itself and emails
 //! when something changes.
 //!
-//! - Team: up to 50 suppliers, checked every week. Enterprise (and the
+//! - Team: up to 25 suppliers, checked every week. Enterprise (and the
 //!   unlimited list): no limit, checked every day. Free: not available.
 //! - A team shares one list (the owner's account, like History).
 //! - The marketplace page itself is not scanned again (marketplaces block
@@ -41,7 +41,7 @@ use std::time::Duration;
 use uuid::Uuid;
 
 /// How many suppliers a Team plan can watch.
-pub const TEAM_WATCH_LIMIT: i64 = 50;
+pub const TEAM_WATCH_LIMIT: i64 = 25;
 
 /// How the supplier looked at the last check.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]

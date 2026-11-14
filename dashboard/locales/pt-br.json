@@ -469,7 +469,7 @@
   "dash.watch.empty_title": "Nenhum fornecedor monitorado ainda",
   "dash.watch.empty_text": "Abra uma análise no Histórico e clique em \"Monitorar este fornecedor\".",
   "dash.watch.failed": "Não foi possível alterar agora. Tente novamente.",
-  "dash.watch.limit": "Seu plano pode monitorar até 50 fornecedores. Pare de monitorar um, ou passe para o Enterprise.",
+  "dash.watch.limit": "Seu plano pode monitorar até 25 fornecedores. Pare de monitorar um, ou passe para o Enterprise.",
   "dash.watch.listing_note": "O marketplace bloqueou a verificação. Outras verificações: sem mudança.",
   "dash.watch.load_failed": "Não foi possível carregar a lista. Atualize a página.",
   "dash.watch.locked_title": "O monitoramento de fornecedores está nos planos Team e Enterprise",

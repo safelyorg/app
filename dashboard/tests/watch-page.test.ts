@@ -35,8 +35,8 @@ describe("watched suppliers page", () => {
   });
 
   it("Team: used out of 50, and an empty list", () => {
-    const text = page({ paid: true, limit: 50, used: 0, every_days: 7, next_check: null, items: [] });
-    expect(text).toContain("0 / 50");
+    const text = page({ paid: true, limit: 25, used: 0, every_days: 7, next_check: null, items: [] });
+    expect(text).toContain("0 / 25");
     expect(text).toContain("No suppliers watched yet");
   });
 
@@ -71,7 +71,7 @@ describe("watched suppliers page", () => {
   it("supplier names are text, never HTML", () => {
     page({
       paid: true,
-      limit: 50,
+      limit: 25,
       used: 1,
       every_days: 7,
       next_check: null,

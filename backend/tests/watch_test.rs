@@ -175,7 +175,7 @@ async fn watching_suppliers_end_to_end() {
         .unwrap();
     stop_watch(&pool, member.id, seller_id).await.unwrap();
     assert!(!is_watched(&pool, owner.id, analysis_id).await);
-    add_watch(&pool, member.id, analysis_id).await.unwrap(); // 50 of 50
+    add_watch(&pool, member.id, analysis_id).await.unwrap(); // 25 of 25
     query("DELETE FROM watched_suppliers WHERE seller_id = $1")
         .bind(seller_id)
         .execute(&pool)
@@ -192,7 +192,7 @@ async fn watching_suppliers_end_to_end() {
         .unwrap();
     assert!(matches!(
         add_watch(&pool, owner.id, analysis_id).await,
-        Err(WatchError::LimitReached(50))
+        Err(WatchError::LimitReached(25))
     ));
 
     query("DELETE FROM fraud_reports WHERE platform_id = 'wt_supplier'")
