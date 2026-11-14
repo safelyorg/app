@@ -172,6 +172,9 @@ async fn owner_and_members_see_team_scans() {
     let one = rows(&pool, owner.id, Some(sara.id.to_string())).await;
     assert!(one.contains("Sara team scan"));
     assert!(!one.contains("Ali team scan"));
+    // One person's list has no "Scanned by" column (same columns as My scans).
+    assert!(!one.contains(&format!("title=\"{SARA}\"")));
+    assert!(all.contains(&format!("title=\"{ALI}\"")));
 
     // A member asking for all team scans gets their own list instead.
     let mine = rows(&pool, ali.id, Some("team".into())).await;
@@ -201,6 +204,37 @@ async fn owner_and_members_see_team_scans() {
         open(&pool, outsider.id, owner_scan).await,
         Err(DashboardError::NotFound(_))
     ));
+
+    // The Report tab: everyone in the team sees the team's reports, with
+    // who made them; a report from outside the team is not listed.
+    let seller_id: Uuid = query_scalar(
+        "SELECT l.seller_id FROM analysis a JOIN listings l ON l.id = a.listing_id WHERE a.id = $1",
+    )
+    .bind(owner_scan)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    for who in [sara.id, outsider.id] {
+        query("INSERT INTO fraud_reports (seller_id, user_id, platform, platform_id, report_type) VALUES ($1, $2, 'alibaba', $3, 'scam')")
+            .bind(seller_id)
+            .bind(who)
+            .bind(SCANS[0])
+            .execute(&pool)
+            .await
+            .unwrap();
+    }
+    let detail = open(&pool, ali.id, owner_scan).await.unwrap();
+    let reports = detail["reports"].as_array().unwrap();
+    assert_eq!(reports.len(), 1, "only the team's report: {reports:?}");
+    assert_eq!(reports[0]["by_email"], SARA);
+    assert_eq!(reports[0]["by_you"], false);
+    let detail = open(&pool, sara.id, owner_scan).await.unwrap();
+    assert_eq!(detail["reports"][0]["by_you"], true);
+    query("DELETE FROM fraud_reports WHERE seller_id = $1")
+        .bind(seller_id)
+        .execute(&pool)
+        .await
+        .unwrap();
 
     // Ali leaves: his team scan stays with the team, the owner still sees it.
     query("DELETE FROM team_members WHERE email = $1")

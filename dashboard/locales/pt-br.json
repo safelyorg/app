@@ -504,5 +504,8 @@
   "dash.team.status_on_free": "No plano gratuito",
   "dash.team.ended_title": "Seu plano de equipe terminou",
   "dash.team.ended_hint": "Estas pessoas estão no plano gratuito agora. Elas voltam a usar seu plano quando você assinar de novo.",
-  "dash.team.free_title": "Só você"
+  "dash.team.free_title": "Só você",
+  "dash.detail.reported_by_you": "por você",
+  "dash.detail.reported_by": "por {who}",
+  "dash.detail.no_report_team": "Ninguém da sua equipe denunciou este fornecedor."
 }

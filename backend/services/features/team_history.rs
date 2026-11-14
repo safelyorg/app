@@ -205,6 +205,59 @@ pub async fn scan_owner_for_viewer(
     Ok(in_team.then_some(scanner))
 }
 
+/// One team report: type, when, who (id, email, name).
+type ReportRow = (
+    String,
+    chrono::DateTime<chrono::Utc>,
+    Uuid,
+    String,
+    Option<String>,
+);
+
+/// The team's scam reports about a seller, for the Report tab: who in
+/// the team reported it (name or email, "you"), why and when. Everyone
+/// in the team sees them. None when the person is not in a team (then
+/// the tab shows only their own reports). People outside the team only
+/// ever count as a number in the score, never with a name.
+pub async fn team_reports(
+    pool: &Pool<Postgres>,
+    viewer: Uuid,
+    seller_id: Uuid,
+) -> Result<Option<Vec<serde_json::Value>>, Error> {
+    let Some(owner_id) = team_of(pool, viewer).await else {
+        return Ok(None);
+    };
+    let ids: Vec<Uuid> = team_people(pool, owner_id)
+        .await?
+        .into_iter()
+        .map(|p| p.id)
+        .collect();
+    let rows: Vec<ReportRow> = query_as(
+        "SELECT fr.report_type::text, fr.reported_at, fr.user_id, lower(u.email), u.name
+             FROM fraud_reports fr
+             JOIN users u ON u.id = fr.user_id
+             WHERE fr.seller_id = $1 AND fr.user_id = ANY($2)
+             ORDER BY fr.reported_at DESC",
+    )
+    .bind(seller_id)
+    .bind(&ids)
+    .fetch_all(pool)
+    .await?;
+    Ok(Some(
+        rows.into_iter()
+            .map(|(report_type, reported_at, user_id, email, name)| {
+                serde_json::json!({
+                    "report_type": report_type,
+                    "reported_at": reported_at,
+                    "by_email": email,
+                    "by_name": name.filter(|n| !n.trim().is_empty()),
+                    "by_you": user_id == viewer,
+                })
+            })
+            .collect(),
+    ))
+}
+
 /// A teammate's email, for "Scanned by" on a result page.
 pub async fn email_of(pool: &Pool<Postgres>, user_id: Uuid) -> Option<String> {
     query_scalar("SELECT lower(email) FROM users WHERE id = $1")

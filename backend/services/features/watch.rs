@@ -23,6 +23,7 @@ use crate::models::analysis::Signal;
 use crate::services::features::billing::is_unlimited_user;
 use crate::services::features::domain_age::{lookup, normalize_domain};
 use crate::services::features::email::send_watch_alert_email;
+use crate::services::features::osint::web_scam_pages;
 use crate::services::features::team::plan_holder;
 use crate::services::features::team_history::scan_owner_for_viewer;
 use crate::services::shared::standards::database_card_enabled;
@@ -44,6 +45,7 @@ pub const TEAM_WATCH_LIMIT: i64 = 50;
 
 /// How the supplier looked at the last check.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct WatchState {
     /// Outside-records cards: label -> (type, value, text).
     pub cards: BTreeMap<String, (String, String, String)>,
@@ -61,6 +63,12 @@ pub struct WatchState {
     pub listing: Option<String>,
     /// False when the listing site blocked this check.
     pub listing_checked: bool,
+    /// Pages found online with the company's name next to scam words
+    /// (the scan's own web search): (address, title).
+    pub web_pages: Vec<(String, String)>,
+    /// False until the web search has worked once (no key, or it
+    /// failed): then nothing found is never read as "no warnings".
+    pub web_checked: bool,
 }
 
 /// One thing that got worse since the last check.
@@ -141,6 +149,28 @@ pub fn compare(old: &WatchState, new: &WatchState) -> Vec<WatchChange> {
                 format!(
                     "{site} was registered again on {now} (before: {before}). It may now belong to someone else."
                 ),
+            ));
+        }
+    }
+
+    // New scam pages online: only when the last search worked too, so
+    // the first working search never sends every old page as "new".
+    if old.web_checked && new.web_checked {
+        let fresh: Vec<&(String, String)> = new
+            .web_pages
+            .iter()
+            .filter(|(url, _)| !old.web_pages.iter().any(|(u, _)| u == url))
+            .collect();
+        if let Some((url, title)) = fresh.first() {
+            let more = if fresh.len() > 1 {
+                format!(" (and {} more)", fresh.len() - 1)
+            } else {
+                String::new()
+            };
+            changes.push(change(
+                "web_warning",
+                "New scam warning online",
+                format!("{title} - {url}{more}"),
             ));
         }
     }
@@ -310,6 +340,26 @@ pub async fn current_state(
     state.listing = answer
         .map(str::to_string)
         .or_else(|| old.and_then(|o| o.listing.clone()));
+
+    // The scan's web search for scam warnings, again (osint.rs): the
+    // company's name next to scam words, and on complaint sites.
+    state.web_pages = old.map(|o| o.web_pages.clone()).unwrap_or_default();
+    state.web_checked = old.is_some_and(|o| o.web_checked);
+    if let Some(name) = facts
+        .company_name
+        .as_deref()
+        .filter(|n| !n.trim().is_empty())
+    {
+        let platform: String = query_scalar("SELECT platform FROM sellers WHERE id = $1")
+            .bind(seller_id)
+            .fetch_one(pool)
+            .await
+            .unwrap_or_default();
+        if let Some(pages) = web_scam_pages(name, &platform, facts.country.as_deref()).await {
+            state.web_pages = pages.into_iter().map(|p| (p.url, p.title)).collect();
+            state.web_checked = true;
+        }
+    }
     state
 }
 
@@ -803,6 +853,26 @@ mod tests {
         };
         let kinds: Vec<String> = compare(&old, &new).into_iter().map(|c| c.kind).collect();
         assert_eq!(kinds, vec!["website_down", "website_owner"]);
+    }
+
+    #[test]
+    fn a_new_scam_page_online() {
+        let old = WatchState {
+            web_checked: true,
+            web_pages: vec![("https://a.com/1".into(), "Old page".into())],
+            ..WatchState::default()
+        };
+        let mut new = old.clone();
+        new.web_pages
+            .push(("https://b.com/2".into(), "Bernal took my money".into()));
+        let found = compare(&old, &new);
+        assert_eq!(found[0].kind, "web_warning");
+        assert!(found[0].detail.contains("https://b.com/2"));
+        // The same pages again: nothing new.
+        assert!(compare(&new, &new).is_empty());
+        // The search had never worked before: the first pages are not "new".
+        let never = WatchState::default();
+        assert!(compare(&never, &new).is_empty());
     }
 
     #[test]

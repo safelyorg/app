@@ -1,6 +1,6 @@
 use crate::services::features::results::{sees_full_results, trim_to_free};
 use crate::services::features::team_history::{
-    HistoryWho, email_of, history_choices, scan_owner_for_viewer, team_history,
+    HistoryWho, email_of, history_choices, scan_owner_for_viewer, team_history, team_reports,
 };
 use crate::services::features::translation::get_or_create_translation;
 use crate::services::features::watch::is_watched;
@@ -121,7 +121,9 @@ pub async fn get_history_html(
     let team_items = team_history(&pool, user_id, who)
         .await
         .map_err(|e| DashboardError::InternalError(e.to_string()))?;
-    let show_who = team_items.is_some();
+    // The "Scanned by" column is only on "All team scans": one person's
+    // list is all theirs, so it has the same 5 columns as "My scans".
+    let show_who = team_items.is_some() && who == HistoryWho::AllTeam;
     let items: Vec<(HistoryItem, Uuid, String)> = match team_items {
         Some(list) => list
             .into_iter()
@@ -265,6 +267,17 @@ pub async fn get_history_item(
                 value["social_candidates"] = social;
             }
             value["full_result"] = Value::Bool(full);
+            // In a team: everyone's reports about this seller, with who
+            // made them (team_history.rs). Otherwise their own, as before.
+            if let Some(seller_id) = value["seller"]["id"]
+                .as_str()
+                .and_then(|s| Uuid::parse_str(s).ok())
+                && let Ok(Some(list)) = team_reports(&pool, user_id, seller_id).await
+            {
+                value["reported"] = Value::Bool(list.iter().any(|r| r["by_you"] == true));
+                value["reports"] = Value::Array(list);
+                value["team_reports"] = Value::Bool(true);
+            }
             // "Watch this supplier" button state (watch.rs).
             value["watching"] = Value::Bool(is_watched(&pool, user_id, id).await);
             // A teammate's scan: "Scanned by ..." on the result page.

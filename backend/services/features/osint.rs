@@ -966,6 +966,43 @@ async fn run_query_batch(
     (results, failures)
 }
 
+/// Watch suppliers (watch.rs): the same whole-web scam searches a scan
+/// runs (build_web_scam_queries), with the same rules (scam word next
+/// to the name, no scam-checker sites, a one-word name needs the city).
+/// Returns the pages found, or None when the searches could not run (no
+/// SERPER_API_KEY, or most of them failed), so a failure is never read
+/// as "nothing new".
+pub async fn web_scam_pages(
+    company_name: &str,
+    platform: &str,
+    location: Option<&str>,
+) -> Option<Vec<SocialCandidateLink>> {
+    let queries = build_web_scam_queries(Some(company_name));
+    if queries.is_empty() {
+        return Some(Vec::new());
+    }
+    let total = queries.len();
+    let country_code = match platform {
+        "b2brazil" => "br",
+        _ => "us",
+    };
+    let clues = Arc::new(identity_clues(location, None));
+    let (results, failures) = run_query_batch(queries, country_code, clues).await;
+    if failures as usize * 2 > total {
+        return None;
+    }
+    let mut seen = HashSet::new();
+    let mut pages = Vec::new();
+    for result in results {
+        for page in result.candidates {
+            if seen.insert(page.url.clone()) {
+                pages.push(page);
+            }
+        }
+    }
+    Some(pages)
+}
+
 /// The "Social presence check" card, from every search result:
 /// - the company's name found next to scam words -> a warning,
 ///   "Scam mentions found" (counts more than other warnings);

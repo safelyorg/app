@@ -1,4 +1,5 @@
 interface DetailSeller {
+  id?: string;
   name: string | null;
   handle: string | null;
   phone: string | null;
@@ -20,6 +21,10 @@ interface DetailSignal {
 interface DetailReport {
   report_type: string;
   reported_at: string;
+  /** In a team: who in the team made the report (backend team_history.rs). */
+  by_email?: string;
+  by_name?: string | null;
+  by_you?: boolean;
 }
 
 interface DetailRiskFactor {
@@ -59,6 +64,8 @@ interface DetailResponse {
   full_result?: boolean;
   created_at?: string;
   seller_id?: string;
+  /** The Report tab lists the whole team's reports (team_history.rs). */
+  team_reports?: boolean;
   /** The supplier is on the team's watch list (backend watch.rs). */
   watching?: boolean;
   /** A teammate's scan: their email (backend team_history.rs). */
@@ -1240,7 +1247,15 @@ function buildReports(reports: DetailReport[]): string {
         detailRow({
           mark: mark("flag"),
           title: translateReportReason(r.report_type),
-          value: t("dash.detail.submitted", "Submitted") + " " + formatDate(r.reported_at),
+          value:
+            t("dash.detail.submitted", "Submitted") +
+            " " +
+            formatDate(r.reported_at) +
+            (r.by_you
+              ? " · " + t("dash.detail.reported_by_you", "by you")
+              : r.by_name || r.by_email
+                ? " · " + t("dash.detail.reported_by", "by {who}").replace("{who}", (r.by_name || r.by_email) as string)
+                : ""),
         }),
       )
       .join("") +
@@ -1363,6 +1378,13 @@ function renderDetailBody(data: DetailResponse): void {
   filedBlock.innerHTML = reports.length > 0 ? buildReports(reports) : "";
   filedBlock.classList.toggle("hidden", reports.length === 0);
   emptyBlock.classList.toggle("hidden", reports.length > 0);
+  // In a team the tab shows everyone's reports, so the empty text says so.
+  const emptyText = emptyBlock.querySelector("[data-i18n='dash.detail.no_report_desc']");
+  if (emptyText) {
+    emptyText.textContent = data.team_reports
+      ? t("dash.detail.no_report_team", "No one in your team has reported this seller.")
+      : t("dash.detail.no_report_desc", "You have not reported this seller.");
+  }
 
   switchDetailTab("risk");
 }
@@ -1448,7 +1470,7 @@ function paintWatchButton(): void {
 function renderWatchButton(data: DetailResponse): void {
   const btn = document.getElementById("detail-watch");
   if (!btn) return;
-  currentWatchSellerId = data.seller_id || null;
+  currentWatchSellerId = (data.seller && data.seller.id) || data.seller_id || null;
   currentWatching = !!data.watching;
   btn.classList.remove("hidden");
   btn.classList.add("inline-flex");

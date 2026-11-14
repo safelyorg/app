@@ -995,7 +995,14 @@ function buildReports(reports) {
             .map((r) => detailRow({
             mark: mark("flag"),
             title: translateReportReason(r.report_type),
-            value: t("dash.detail.submitted", "Submitted") + " " + formatDate(r.reported_at),
+            value: t("dash.detail.submitted", "Submitted") +
+                " " +
+                formatDate(r.reported_at) +
+                (r.by_you
+                    ? " · " + t("dash.detail.reported_by_you", "by you")
+                    : r.by_name || r.by_email
+                        ? " · " + t("dash.detail.reported_by", "by {who}").replace("{who}", (r.by_name || r.by_email))
+                        : ""),
         }))
             .join("") +
         "</div>");
@@ -1089,6 +1096,13 @@ function renderDetailBody(data) {
     filedBlock.innerHTML = reports.length > 0 ? buildReports(reports) : "";
     filedBlock.classList.toggle("hidden", reports.length === 0);
     emptyBlock.classList.toggle("hidden", reports.length > 0);
+    // In a team the tab shows everyone's reports, so the empty text says so.
+    const emptyText = emptyBlock.querySelector("[data-i18n='dash.detail.no_report_desc']");
+    if (emptyText) {
+        emptyText.textContent = data.team_reports
+            ? t("dash.detail.no_report_team", "No one in your team has reported this seller.")
+            : t("dash.detail.no_report_desc", "You have not reported this seller.");
+    }
     switchDetailTab("risk");
 }
 // Rows that open and "Show more" / "Show less", for every list on the
@@ -1168,7 +1182,7 @@ function renderWatchButton(data) {
     const btn = document.getElementById("detail-watch");
     if (!btn)
         return;
-    currentWatchSellerId = data.seller_id || null;
+    currentWatchSellerId = (data.seller && data.seller.id) || data.seller_id || null;
     currentWatching = !!data.watching;
     btn.classList.remove("hidden");
     btn.classList.add("inline-flex");
