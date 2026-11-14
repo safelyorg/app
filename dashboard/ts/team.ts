@@ -126,11 +126,18 @@ function renderOwnerView(box: HTMLElement, data: any): void {
   const limit: number | null = data.seat_limit;
   const used: number = data.seats_used;
   const canInvite = data.plan !== "Free" && limit !== 1;
+  const members = (data.members as any[]) || [];
+  // Free with people still in the list: the team plan ended.
+  const ended = !canInvite && members.length > 0;
 
-  // "2 of 3 seats used" / "4 people · unlimited"
+  // Paid: "2 of 3 seats used" / "4 people · unlimited".
+  // Free: "Only you", or "Your team plan has ended".
   const head = teamEl("div", "flex items-center justify-between gap-3");
-  const seatsText =
-    limit === null
+  const seatsText = !canInvite
+    ? ended
+      ? t("dash.team.ended_title", "Your team plan has ended")
+      : t("dash.team.free_title", "Only you")
+    : limit === null
       ? t("dash.team.seats_unlimited", "{used} people · unlimited seats").replace("{used}", String(used))
       : t("dash.team.seats_used", "{used} of {limit} seats used")
           .replace("{used}", String(used))
@@ -144,13 +151,18 @@ function renderOwnerView(box: HTMLElement, data: any): void {
       teamEl(
         "div",
         "text-[12px] text-muted mt-1.5 leading-relaxed",
-        t(
-          "dash.team.free_hint",
-          "The Free plan is for 1 person. With Team, 3 people can use your plan; with Enterprise, as many as you need.",
-        ),
+        ended
+          ? t(
+              "dash.team.ended_hint",
+              "These people are on the Free plan now. They get your plan back when you subscribe again.",
+            )
+          : t(
+              "dash.team.free_hint",
+              "The Free plan is for 1 person. With Team, 3 people can use your plan; with Enterprise, as many as you need.",
+            ),
       ),
     );
-    return;
+    if (!ended) return;
   }
 
   // The people invited
@@ -162,8 +174,12 @@ function renderOwnerView(box: HTMLElement, data: any): void {
     const row = teamEl("div", "flex items-center justify-between gap-3 px-3 py-2.5 text-[12.5px]");
     const left = teamEl("div", "min-w-0");
     left.append(teamEl("div", "font-semibold truncate", m.email));
+    // No paid plan (it ended): the member is on Free until the owner
+    // subscribes again. Paid plan but too few seats: add a seat.
     const status = !m.has_seat
-      ? t("dash.team.status_no_seat", "No seat - add a seat to give access")
+      ? data.plan === "Free"
+        ? t("dash.team.status_on_free", "On the Free plan")
+        : t("dash.team.status_no_seat", "No seat - add a seat to give access")
       : m.joined
         ? t("dash.team.status_joined", "Joined")
         : t("dash.team.status_invited", "Invited - not signed in yet");
@@ -189,6 +205,8 @@ function renderOwnerView(box: HTMLElement, data: any): void {
     list.append(row);
   });
   box.append(list);
+  // No new invites until the plan is paid again.
+  if (!canInvite) return;
 
   // Invite one more
   const form = teamEl("form", "mt-3 flex gap-2");

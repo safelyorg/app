@@ -12,6 +12,7 @@ const SUBSCRIPTION_ENDED_TEMPLATE: &str =
     include_str!("../../templates/subscription_ended_email.html");
 const TEAM_INVITE_TEMPLATE: &str = include_str!("../../templates/team_invite_email.html");
 const WATCH_ALERT_TEMPLATE: &str = include_str!("../../templates/watch_alert_email.html");
+const TEAM_PLAN_ENDING_TEMPLATE: &str = include_str!("../../templates/team_plan_ending_email.html");
 const HISTORY_ROWS_TEMPLATE: &str = include_str!("../../templates/history_rows.html");
 const REPORT_ROWS_TEMPLATE: &str = include_str!("../../templates/report_rows.html");
 
@@ -47,6 +48,8 @@ pub fn get_tera() -> &'static Tera {
             .expect("tera should add the team invite raw template");
         tera.add_raw_template("watch_alert_email.html", WATCH_ALERT_TEMPLATE)
             .expect("tera should add the watch alert raw template");
+        tera.add_raw_template("team_plan_ending_email.html", TEAM_PLAN_ENDING_TEMPLATE)
+            .expect("tera should add the team plan ending raw template");
         tera.add_raw_template("history_rows.html", HISTORY_ROWS_TEMPLATE)
             .expect("tera should add the history rows raw template");
         tera.add_raw_template("report_rows.html", REPORT_ROWS_TEMPLATE)

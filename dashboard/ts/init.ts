@@ -210,6 +210,8 @@ document.addEventListener("DOMContentLoaded", async () => {
   let realSubscriptionStatus: string | null = null;
   let realSubscriptionPlan: string | null = null;
   let realSubscriptionInterval: Interval | null = null;
+  // Canceled for the end of the period: when the plan ends (else null).
+  let realCancelAt: string | null = null;
 
   // The plan and billing picked right before Creem checkout, kept for the
   // Meta Pixel "Subscribe" event when the buyer comes back.
@@ -371,6 +373,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     interval: Interval | null,
     periodEnd: string | null,
     scheduledPlan: string | null,
+    cancelAt: string | null = null,
   ): void {
     const isPaid = !!planName;
     const nameEl = document.getElementById("current-plan-name");
@@ -380,7 +383,12 @@ document.addEventListener("DOMContentLoaded", async () => {
       if (nameEl) nameEl.textContent = planLabel(planName as string, interval);
       if (priceEl) {
         const renews = formatShortDate(periodEnd);
-        let line = renews ? t("dash.settings.renews_at", "Renews at") + " " + renews : "";
+        const ends = formatShortDate(cancelAt);
+        let line = ends
+          ? t("dash.settings.ends_on", "Ends on") + " " + ends
+          : renews
+            ? t("dash.settings.renews_at", "Renews at") + " " + renews
+            : "";
         // A downgrade waiting for the renewal (e.g. Enterprise -> Team).
         if (scheduledPlan && scheduledPlan !== planName) {
           line +=
@@ -400,22 +408,35 @@ document.addEventListener("DOMContentLoaded", async () => {
       if (priceEl) priceEl.textContent = t("dash.settings.free_desc", "5 free scans every month");
       if (currentPlanBadge) currentPlanBadge.classList.add("hidden");
     }
-    if (cancelSubArea) cancelSubArea.classList.toggle("hidden", !isPaid);
+    // Ending plan: "Keep my plan" instead of "Cancel subscription".
+    const ending = isPaid && !!cancelAt;
+    if (cancelSubArea) cancelSubArea.classList.toggle("hidden", !isPaid || ending);
+    const resumeArea = document.getElementById("resume-subscription-area");
+    if (resumeArea) resumeArea.classList.toggle("hidden", !ending);
+    const resumeText = document.getElementById("resume-subscription-text");
+    if (resumeText && ending) {
+      resumeText.textContent = t(
+        "dash.settings.ending_text",
+        "Your plan is canceled. It stays active until {date}, then your account moves to the Free plan.",
+      ).replace("{date}", formatShortDate(cancelAt));
+    }
 
     // Open the switch on the billing the user already has.
     setBillingInterval(isPaid && interval === "year" ? "year" : "month");
   }
 
   // "Team" + "Shared by owner@company.com": the plan a team member uses.
-  function renderSharedPlan(shared: { plan: string; owner_email: string }): void {
+  function renderSharedPlan(shared: { plan: string; owner_email: string; cancel_at?: string | null }): void {
     const nameEl = document.getElementById("current-plan-name");
     const priceEl = document.getElementById("current-plan-price");
     if (nameEl) nameEl.textContent = planLabel(shared.plan, null);
     if (priceEl) {
-      priceEl.textContent = t("dash.team.shared_by", "Shared by {email}").replace(
-        "{email}",
-        shared.owner_email,
-      );
+      let line = t("dash.team.shared_by", "Shared by {email}").replace("{email}", shared.owner_email);
+      // The owner canceled it: it still works until this day.
+      if (shared.cancel_at) {
+        line += " · " + t("dash.settings.ends_on", "Ends on") + " " + formatShortDate(shared.cancel_at);
+      }
+      priceEl.textContent = line;
     }
     if (currentPlanBadge) {
       currentPlanBadge.classList.remove("hidden");
@@ -432,6 +453,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       const data = await res.json();
       realSubscriptionStatus = data.status;
       realSubscriptionPlan = data.status === "active" ? data.plan_name : null;
+      realCancelAt = realSubscriptionPlan ? data.cancel_at || null : null;
       realSubscriptionInterval = realSubscriptionPlan
         ? data.billing_interval === "year"
           ? "year"
@@ -442,6 +464,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         realSubscriptionInterval,
         data.current_period_end,
         realSubscriptionPlan ? data.scheduled_plan_name || null : null,
+        realCancelAt,
       );
       renderUsage(data.usage || null);
       // A team member without their own plan uses the team owner's plan.
@@ -574,6 +597,13 @@ document.addEventListener("DOMContentLoaded", async () => {
             (window as any).safelyAuth.logout();
             return;
           }
+          if (res.status === 409) {
+            // The plan is set to end: keep it first, then change it.
+            showToast(
+              t("dash.toast.plan_ending_keep_first", "Your plan is set to end. Choose Keep my plan first, then change it."),
+            );
+            return;
+          }
           if (!res.ok) throw new Error("Plan change failed");
           const data = await res.json();
           if (data.applied === "immediately") {
@@ -647,16 +677,50 @@ document.addEventListener("DOMContentLoaded", async () => {
         }
         if (!res.ok) throw new Error("Cancel failed");
 
-        // The server marks the subscription canceled straight away, so
-        // re-reading the status now shows the Free plan and its usage.
+        // The plan stays active until the end of the paid period; the
+        // card now says when it ends, with "Keep my plan".
+        const done = await res.json().catch(() => ({}));
         await loadRealSubscriptionStatus();
         toggleCancelConfirm(false);
         togglePlanSection(false);
-        showToast(t("dash.toast.sub_canceled", "Your subscription has been canceled."));
+        const ends = formatShortDate(done && done.cancel_at ? done.cancel_at : realCancelAt);
+        showToast(
+          ends
+            ? t("dash.toast.sub_canceled_until", "Your plan is canceled. It stays active until {date}.").replace("{date}", ends)
+            : t("dash.toast.sub_canceled", "Your subscription has been canceled."),
+        );
       } catch (e) {
         showToast(t("dash.toast.cancel_failed", "Couldn't cancel your subscription. Please try again."));
         cancelSubConfirmYes.disabled = false;
         cancelSubConfirmYes.textContent = originalText;
+      }
+    });
+  }
+
+  // "Keep my plan": undoes a cancellation that has not happened yet.
+  const resumeBtn = document.getElementById("resume-subscription-btn") as HTMLButtonElement | null;
+  if (resumeBtn) {
+    resumeBtn.addEventListener("click", async () => {
+      const originalText = resumeBtn.textContent;
+      resumeBtn.disabled = true;
+      resumeBtn.textContent = t("dash.common.updating", "Updating...");
+      try {
+        const res = await fetch(API_BASE + "/billing/resume-subscription", {
+          method: "POST",
+          headers: (window as any).safelyAuth.authHeader(),
+        });
+        if (res.status === 401) {
+          (window as any).safelyAuth.logout();
+          return;
+        }
+        if (!res.ok) throw new Error("Resume failed");
+        await loadRealSubscriptionStatus();
+        showToast(t("dash.toast.plan_kept", "Your plan will keep going. Nothing changes."));
+      } catch (e) {
+        showToast(t("dash.toast.plan_keep_failed", "Couldn't keep your plan. Please try again."));
+      } finally {
+        resumeBtn.disabled = false;
+        resumeBtn.textContent = originalText;
       }
     });
   }

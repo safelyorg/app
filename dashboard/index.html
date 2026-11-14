@@ -722,6 +722,11 @@
                                             Continue
                                         </button>
                                     </div>
+                                    <!-- A canceled plan that has not ended yet (init.ts) -->
+                                    <div id="resume-subscription-area" class="hidden mt-3 pt-3 border-t border-line text-center">
+                                        <p id="resume-subscription-text" class="text-[12px] text-muted mb-2.5 leading-relaxed"></p>
+                                        <button type="button" id="resume-subscription-btn" class="px-4 py-2 rounded-lg bg-ink text-bg text-[12px] font-bold hover:opacity-90 transition disabled:opacity-40" data-i18n="dash.settings.keep_plan">Keep my plan</button>
+                                    </div>
                                     <!-- Only shown while on a paid plan (init.ts) -->
                                     <div id="cancel-subscription-area" class="hidden mt-3 pt-3 border-t border-line">
                                         <button type="button" id="cancel-subscription-btn" class="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-coral text-[11px] font-semibold hover:bg-coral/10 transition">
@@ -734,7 +739,7 @@
                                         <div id="cancel-sub-confirm" class="overflow-hidden transition-all duration-300 ease-in-out" style="max-height: 0;">
                                             <div class="mt-2 p-3.5 bg-coral/5 border border-coral/25 rounded-xl">
                                                 <p class="text-[12px] text-muted mb-3 leading-relaxed" data-i18n="dash.settings.cancel_confirm_text">
-                                                    Are you sure? Your paid plan ends and you move to the Free plan (5 scans a month).
+                                                    Are you sure? You won't be charged again. Your plan (and your team's) stays active until the end of the period you paid for, then your account moves to the Free plan (5 scans a month).
                                                 </p>
                                                 <div class="flex items-center justify-center gap-2">
                                                     <button type="button" id="cancel-sub-confirm-yes" class="px-3.5 py-2 rounded-lg bg-coral text-white text-[12px] font-bold hover:bg-coral/90 transition" data-i18n="dash.settings.yes_cancel">

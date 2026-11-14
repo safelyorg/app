@@ -9,7 +9,7 @@
   </head>
   <body style="margin:0;padding:0;background-color:#161616;">
     <div style="display:none; max-height:0px; overflow:hidden; mso-hide:all;">
-        Your Safely subscription has been canceled, as requested.
+        {% if ends_on %}Your Safely plan is canceled. It stays active until {{ ends_on }}.{% else %}Your Safely subscription has been canceled, as requested.{% endif %}
     </div>
     <div style="display:none; max-height:0px; overflow:hidden; mso-hide:all;">
         &#8199;&zwnj;&nbsp;&#8199;&zwnj;&nbsp;&#8199;&zwnj;&nbsp;&#8199;&zwnj;&nbsp;&#8199;&zwnj;&nbsp;&#8199;&zwnj;&nbsp;&#8199;&zwnj;&nbsp;&#8199;&zwnj;&nbsp;&#8199;&zwnj;&nbsp;&#8199;&zwnj;&nbsp;&#8199;&zwnj;&nbsp;&#8199;&zwnj;&nbsp;&#8199;&zwnj;&nbsp;&#8199;&zwnj;&nbsp;&#8199;&zwnj;&nbsp;&#8199;&zwnj;&nbsp;&#8199;&zwnj;&nbsp;&#8199;&zwnj;&nbsp;&#8199;&zwnj;&nbsp;&#8199;&zwnj;&nbsp;&#8199;&zwnj;&nbsp;&#8199;&zwnj;&nbsp;&#8199;&zwnj;&nbsp;&#8199;&zwnj;&nbsp;&#8199;&zwnj;&nbsp;&#8199;&zwnj;&nbsp;&#8199;&zwnj;&nbsp;&#8199;&zwnj;&nbsp;&#8199;&zwnj;&nbsp;&#8199;&zwnj;&nbsp;&#8199;&zwnj;&nbsp;&#8199;&zwnj;&nbsp;&#8199;&zwnj;&nbsp;&#8199;&zwnj;&nbsp;&#8199;&zwnj;&nbsp;&#8199;&zwnj;&nbsp;&#8199;&zwnj;&nbsp;&#8199;&zwnj;&nbsp;&#8199;&zwnj;&nbsp;&#8199;&zwnj;&nbsp;&#8199;&zwnj;&nbsp;&#8199;&zwnj;&nbsp;&#8199;&zwnj;&nbsp;&#8199;&zwnj;&nbsp;&#8199;&zwnj;&nbsp;&#8199;&zwnj;&nbsp;&#8199;&zwnj;&nbsp;&#8199;&zwnj;&nbsp;&#8199;&zwnj;&nbsp;&#8199;&zwnj;&nbsp;&#8199;&zwnj;&nbsp;&#8199;&zwnj;&nbsp;&#8199;&zwnj;&nbsp;&#8199;&zwnj;&nbsp;&#8199;&zwnj;&nbsp;&#8199;&zwnj;&nbsp;&#8199;&zwnj;&nbsp;&#8199;&zwnj;&nbsp;&#8199;&zwnj;&nbsp;&#8199;&zwnj;&nbsp;&#8199;&zwnj;&nbsp;&#8199;&zwnj;&nbsp;&#8199;&zwnj;&nbsp;&#8199;&zwnj;&nbsp;&#8199;&zwnj;&nbsp;&#8199;&zwnj;&nbsp;&#8199;&zwnj;&nbsp;&#8199;&zwnj;&nbsp;&#8199;&zwnj;&nbsp;&#8199;&zwnj;&nbsp;&#8199;&zwnj;&nbsp;&#8199;&zwnj;&nbsp;&#8199;&zwnj;&nbsp;&#8199;&zwnj;&nbsp;&#8199;&zwnj;&nbsp;&#8199;&zwnj;&nbsp;&#8199;&zwnj;&nbsp;&#8199;&zwnj;&nbsp;&#8199;&zwnj;&nbsp;&#8199;&zwnj;&nbsp;&#8199;&zwnj;&nbsp;&#8199;&zwnj;&nbsp;&#8199;&zwnj;&nbsp;&#8199;&zwnj;&nbsp;&#8199;&zwnj;&nbsp;&#8199;&zwnj;&nbsp;&#8199;&zwnj;&nbsp;&#8199;&zwnj;&nbsp;&#8199;&zwnj;&nbsp;&#8199;&zwnj;&nbsp;&#8199;&zwnj;&nbsp;&#8199;&zwnj;&nbsp;&#8199;&zwnj;&nbsp;&#8199;&zwnj;&nbsp;&#8199;&zwnj;&nbsp;&#8199;&zwnj;&nbsp;&#8199;&zwnj;&nbsp;&#8199;&zwnj;&nbsp;&#8199;&zwnj;&nbsp;&#8199;&zwnj;&nbsp;&#8199;&zwnj;&nbsp;&#8199;&zwnj;&nbsp;&#8199;&zwnj;&nbsp;
@@ -46,7 +46,12 @@
             <tr>
               <td style="padding:28px 40px 0 40px;">
                 <p style="margin:0;font-size:15px;line-height:1.7;color:#404040;font-family:Inter,Arial,Helvetica,sans-serif;text-align:left;">Hi there,</p>
+                {% if ends_on %}
+                <p style="margin:14px 0 0 0;font-size:15px;line-height:1.7;color:#404040;font-family:Inter,Arial,Helvetica,sans-serif;text-align:left;">It's confirmed that your Safely subscription has been canceled, as requested. You won't be charged again.</p>
+                <p style="margin:14px 0 0 0;font-size:15px;line-height:1.7;color:#404040;font-family:Inter,Arial,Helvetica,sans-serif;text-align:left;">Your plan stays active until <strong style="color:#161616;">{{ ends_on }}</strong>{% if members > 0 %}, for you and your team{% endif %}. After that, your account moves to the Free plan. Changed your mind? Choose <strong style="color:#161616;">Keep my plan</strong> in Settings before then.</p>
+                {% else %}
                 <p style="margin:14px 0 0 0;font-size:15px;line-height:1.7;color:#404040;font-family:Inter,Arial,Helvetica,sans-serif;text-align:left;">It's confirmed that your Safely subscription has been canceled, as requested. Premium access has ended.</p>
+                {% endif %}
                 <p style="margin:14px 0 0 0;font-size:15px;line-height:1.7;color:#404040;font-family:Inter,Arial,Helvetica,sans-serif;text-align:left;">You're welcome to resubscribe any time - your account and history are still here whenever you're ready.</p>
               </td>
             </tr>

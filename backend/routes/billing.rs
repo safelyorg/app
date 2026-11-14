@@ -1,6 +1,6 @@
 use crate::handlers::billing::{
     cancel_subscription_handler, change_plan_handler, create_checkout_handler, creem_webhook,
-    get_product_ids, get_subscription_status,
+    get_product_ids, get_subscription_status, resume_subscription_handler,
 };
 use crate::handlers::team::{change_seats, get_team, invite_member, leave_team, remove_member};
 use axum::{
@@ -16,6 +16,10 @@ pub fn billing_routes() -> Router<Pool<Postgres>> {
         .route(
             "/api/v1/billing/cancel-subscription",
             post(cancel_subscription_handler),
+        )
+        .route(
+            "/api/v1/billing/resume-subscription",
+            post(resume_subscription_handler),
         )
         .route(
             "/api/v1/billing/subscription-status",

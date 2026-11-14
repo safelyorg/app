@@ -18,7 +18,9 @@
 //! count as a plan. They are cancelled by themselves when the owner no
 //! longer has a Team plan (sync_extra_seats).
 
-use crate::services::features::billing::{BillingInterval, cancel_with_creem};
+use crate::services::features::billing::{
+    BillingInterval, cancel_at_period_end_with_creem, cancel_with_creem, resume_with_creem,
+};
 use crate::services::features::email::send_team_invite_email;
 use reqwest::Client;
 use serde_json::{Value, json};
@@ -690,16 +692,28 @@ pub async fn handle_seat_webhook(pool: &Pool<Postgres>, event_type: &str, object
         "subscription.past_due" => "past_due",
         _ => subscription["status"].as_str().unwrap_or("active"),
     };
+    // Canceled for the end of the period: the seats work until then.
+    let ending = status == "scheduled_cancel";
+    let status = if ending { "active" } else { status };
+    let cancel_at: Option<chrono::DateTime<chrono::Utc>> = if ending {
+        subscription["current_period_end_date"]
+            .as_str()
+            .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
+            .map(|d| d.with_timezone(&chrono::Utc))
+    } else {
+        None
+    };
     let seats = units_in(subscription);
     // A late event about an old seat subscription never replaces a newer
     // active one.
     let saved = query(
-        "INSERT INTO team_extra_seats (owner_id, creem_subscription_id, seats, status, updated_at)
-         VALUES ($1, $2, $3, $4, NOW())
+        "INSERT INTO team_extra_seats (owner_id, creem_subscription_id, seats, status, cancel_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, NOW())
          ON CONFLICT (owner_id) DO UPDATE SET
              creem_subscription_id = EXCLUDED.creem_subscription_id,
              seats = EXCLUDED.seats,
              status = EXCLUDED.status,
+             cancel_at = EXCLUDED.cancel_at,
              updated_at = NOW()
          WHERE team_extra_seats.creem_subscription_id = EXCLUDED.creem_subscription_id
             OR EXCLUDED.status = 'active'",
@@ -708,6 +722,7 @@ pub async fn handle_seat_webhook(pool: &Pool<Postgres>, event_type: &str, object
     .bind(sub_id)
     .bind(seats as i32)
     .bind(status)
+    .bind(cancel_at)
     .execute(pool)
     .await;
     if let Err(e) = saved {
@@ -756,6 +771,99 @@ pub async fn sync_extra_seats(pool: &Pool<Postgres>, owner_id: Uuid) {
     .bind(&sub_id)
     .execute(pool)
     .await;
+}
+
+/// The owner canceled their plan for the end of the period: the extra
+/// seats end on the same day (Creem "scheduled" cancel), not at once.
+pub async fn end_seats_with_plan(pool: &Pool<Postgres>, owner_id: Uuid) {
+    let row: Option<(String, Option<chrono::DateTime<chrono::Utc>>)> = query_as(
+        "SELECT e.creem_subscription_id, s.cancel_at FROM team_extra_seats e
+         LEFT JOIN subscriptions s ON s.user_id = e.owner_id AND s.status = 'active'
+         WHERE e.owner_id = $1 AND e.status IN ('active', 'past_due') AND e.cancel_at IS NULL",
+    )
+    .bind(owner_id)
+    .fetch_optional(pool)
+    .await
+    .unwrap_or(None);
+    let Some((sub_id, plan_ends)) = row else {
+        return;
+    };
+    if let Err(e) = cancel_at_period_end_with_creem(&sub_id).await {
+        eprintln!(
+            "Safely: could not end the extra seats {} with the plan at Creem - cancel them in the Creem dashboard: {:?}",
+            sub_id, e
+        );
+        return;
+    }
+    let _ = query(
+        "UPDATE team_extra_seats SET cancel_at = COALESCE($2, NOW()), updated_at = NOW()
+         WHERE creem_subscription_id = $1",
+    )
+    .bind(&sub_id)
+    .bind(plan_ends)
+    .execute(pool)
+    .await;
+}
+
+/// "Keep my plan": the extra seats keep going too.
+pub async fn keep_seats_with_plan(pool: &Pool<Postgres>, owner_id: Uuid) {
+    let sub_id: Option<String> = query_scalar(
+        "SELECT creem_subscription_id FROM team_extra_seats
+         WHERE owner_id = $1 AND status IN ('active', 'past_due') AND cancel_at IS NOT NULL",
+    )
+    .bind(owner_id)
+    .fetch_optional(pool)
+    .await
+    .unwrap_or(None);
+    let Some(sub_id) = sub_id else {
+        return;
+    };
+    if let Err(e) = resume_with_creem(&sub_id).await {
+        eprintln!(
+            "Safely: could not keep the extra seats {} at Creem - resume them in the Creem dashboard: {:?}",
+            sub_id, e
+        );
+        return;
+    }
+    let _ = query(
+        "UPDATE team_extra_seats SET cancel_at = NULL, updated_at = NOW() WHERE creem_subscription_id = $1",
+    )
+    .bind(&sub_id)
+    .execute(pool)
+    .await;
+}
+
+/// The emails of the people in the owner's team who have a Safely
+/// account (they use the plan), for "your team plan ends" emails.
+pub async fn team_member_emails(pool: &Pool<Postgres>, owner_id: Uuid) -> Vec<String> {
+    query_scalar(
+        "SELECT u.email FROM team_members m
+         JOIN users u ON lower(u.email) = m.email
+         WHERE m.owner_id = $1 AND u.id <> $1
+         ORDER BY m.created_at",
+    )
+    .bind(owner_id)
+    .fetch_all(pool)
+    .await
+    .unwrap_or_default()
+}
+
+/// When the team owner's plan ends (it was canceled for the end of the
+/// period): the date, or None when it is not ending.
+pub async fn team_plan_ends(
+    pool: &Pool<Postgres>,
+    owner_id: Uuid,
+) -> Option<chrono::DateTime<chrono::Utc>> {
+    query_scalar(
+        "SELECT cancel_at FROM subscriptions
+         WHERE user_id = $1 AND status = 'active' AND cancel_at IS NOT NULL
+         ORDER BY updated_at DESC LIMIT 1",
+    )
+    .bind(owner_id)
+    .fetch_optional(pool)
+    .await
+    .ok()
+    .flatten()
 }
 
 /// The plan this member uses from their team, for the dashboard's

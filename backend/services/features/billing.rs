@@ -469,6 +469,15 @@ pub async fn upsert_subscription(
         .and_then(|s| DateTime::parse_from_rfc3339(s).ok())
         .map(|dt| dt.with_timezone(&Utc));
 
+    // Canceled for the end of the period: still active until then.
+    let ending = parsed.status == "scheduled_cancel" || status == "scheduled_cancel";
+    let status = if status == "scheduled_cancel" {
+        "active"
+    } else {
+        status
+    };
+    let cancel_at = if ending { current_period_end } else { None };
+
     let existing_period_end: Option<Option<DateTime<Utc>>> = query_scalar(
         "SELECT current_period_end FROM subscriptions WHERE creem_subscription_id = $1",
     )
@@ -485,11 +494,12 @@ pub async fn upsert_subscription(
             id, user_id, creem_subscription_id, creem_customer_id,
             creem_product_id, plan_name, status, current_period_end,
             canceled_at, scans_used_this_period, billing_interval,
-            scan_period_start, scan_anchor, created_at, updated_at
+            scan_period_start, scan_anchor, created_at, updated_at, cancel_at
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7::subscription_status, $8, $9, 0, $11, NOW(), NOW(), NOW(), NOW())
+        VALUES ($1, $2, $3, $4, $5, $6, $7::subscription_status, $8, $9, 0, $11, NOW(), NOW(), NOW(), NOW(), $12)
         ON CONFLICT (creem_subscription_id) DO UPDATE SET
             status = EXCLUDED.status,
+            cancel_at = EXCLUDED.cancel_at,
             current_period_end = EXCLUDED.current_period_end,
             canceled_at = EXCLUDED.canceled_at,
             creem_product_id = CASE
@@ -530,6 +540,7 @@ pub async fn upsert_subscription(
     .bind(canceled_at)
     .bind(is_new_period)
     .bind(interval.as_str())
+    .bind(cancel_at)
     .execute(pool)
     .await?;
 
@@ -635,25 +646,64 @@ pub async fn handle_subscription_update(pool: &Pool<Postgres>, parsed: &ParsedSu
 /// real cancellation endpoint, and checks that Creem genuinely accepted it,
 /// rather than just assuming the request going out means it worked.
 pub async fn cancel_with_creem(sub_id: &str) -> Result<(), BillingError> {
+    // "immediate" is said out loud: the store's default could be set to
+    // "scheduled" in Creem's settings.
+    creem_subscription_call(
+        sub_id,
+        "cancel",
+        Some(json!({ "mode": "immediate" })),
+        "Creem rejected the cancellation",
+    )
+    .await
+}
+
+/// Cancels at the end of the paid period (Creem mode "scheduled"): the
+/// plan keeps working until then, and Creem sends
+/// subscription.scheduled_cancel now and subscription.canceled at the
+/// end.
+pub async fn cancel_at_period_end_with_creem(sub_id: &str) -> Result<(), BillingError> {
+    creem_subscription_call(
+        sub_id,
+        "cancel",
+        Some(json!({ "mode": "scheduled", "onExecute": "cancel" })),
+        "Creem rejected the cancellation",
+    )
+    .await
+}
+
+/// Undoes a cancellation that has not happened yet ("Keep my plan").
+pub async fn resume_with_creem(sub_id: &str) -> Result<(), BillingError> {
+    creem_subscription_call(sub_id, "resume", None, "Creem rejected keeping the plan").await
+}
+
+/// POST /v1/subscriptions/{id}/{action} at Creem.
+async fn creem_subscription_call(
+    sub_id: &str,
+    action: &str,
+    body: Option<Value>,
+    rejected: &str,
+) -> Result<(), BillingError> {
     let api_key = var("CREEM_API_KEY")
         .map_err(|_| BillingError::InternalError("CREEM_API_KEY not set".to_string()))?;
     let creem_base_url =
         var("CREEM_API_BASE_URL").unwrap_or_else(|_| "https://test-api.creem.io".to_string());
 
-    let response = Client::new()
+    let mut request = Client::new()
         .post(format!(
-            "{}/v1/subscriptions/{}/cancel",
-            creem_base_url, sub_id
+            "{}/v1/subscriptions/{}/{}",
+            creem_base_url, sub_id, action
         ))
-        .header("x-api-key", api_key)
+        .header("x-api-key", api_key);
+    if let Some(body) = body {
+        request = request.json(&body);
+    }
+    let response = request
         .send()
         .await
         .map_err(|_| BillingError::ServiceUnavailable("Could not reach Creem".to_string()))?;
 
     if !response.status().is_success() {
-        return Err(BillingError::ServiceUnavailable(
-            "Creem rejected the cancellation".to_string(),
-        ));
+        return Err(BillingError::ServiceUnavailable(rejected.to_string()));
     }
 
     Ok(())

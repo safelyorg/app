@@ -36,7 +36,7 @@
   "dash.plan.enterprise": "Enterprise",
   "dash.common.continue": "Continuar",
   "dash.settings.cancel_subscription": "Cancelar assinatura",
-  "dash.settings.cancel_confirm_text": "Tem certeza? Seu plano pago termina e você passa para o plano gratuito (5 verificações por mês).",
+  "dash.settings.cancel_confirm_text": "Tem certeza? Você não será cobrado de novo. Seu plano (e o da sua equipe) continua ativo até o fim do período pago, depois sua conta passa para o plano gratuito (5 verificações por mês).",
   "dash.settings.yes_cancel": "Sim, cancelar",
   "dash.settings.keep_subscription": "Manter assinatura",
   "dash.settings.account_history": "Histórico da conta",
@@ -493,5 +493,16 @@
   "dash.watch.watch_hint": "O Safely verifica este fornecedor de novo e envia um e-mail quando algo muda.",
   "dash.watch.watching_btn": "Monitorando",
   "dash.watch.col_added_by": "Adicionado por",
-  "dash.watch.added_by_you": "Você"
+  "dash.watch.added_by_you": "Você",
+  "dash.settings.ends_on": "Termina em",
+  "dash.settings.ending_text": "Seu plano foi cancelado. Ele continua ativo até {date}, depois sua conta passa para o plano gratuito.",
+  "dash.settings.keep_plan": "Manter meu plano",
+  "dash.toast.plan_ending_keep_first": "Seu plano está programado para terminar. Escolha Manter meu plano primeiro, depois mude.",
+  "dash.toast.sub_canceled_until": "Seu plano foi cancelado. Ele continua ativo até {date}.",
+  "dash.toast.plan_kept": "Seu plano vai continuar. Nada muda.",
+  "dash.toast.plan_keep_failed": "Não foi possível manter seu plano. Tente novamente.",
+  "dash.team.status_on_free": "No plano gratuito",
+  "dash.team.ended_title": "Seu plano de equipe terminou",
+  "dash.team.ended_hint": "Estas pessoas estão no plano gratuito agora. Elas voltam a usar seu plano quando você assinar de novo.",
+  "dash.team.free_title": "Só você"
 }

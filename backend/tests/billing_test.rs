@@ -2681,7 +2681,7 @@ async fn send_subscription_canceled_email_missing_api_key() {
         remove_var("RESEND_API_KEY");
     }
 
-    let result = send_subscription_canceled_email("delivered@resend.dev").await;
+    let result = send_subscription_canceled_email("delivered@resend.dev", None, 0).await;
     match result {
         Err(AuthError::InternalServerError(_)) => {}
         Err(other) => panic!(
@@ -2708,7 +2708,7 @@ async fn send_subscription_canceled_email_missing_base_url() {
         remove_var("PUBLIC_BASE_URL");
     }
 
-    let result = send_subscription_canceled_email("delivered@resend.dev").await;
+    let result = send_subscription_canceled_email("delivered@resend.dev", None, 0).await;
     match result {
         Err(AuthError::InternalServerError(_)) => {}
         Err(other) => panic!(
@@ -2730,7 +2730,7 @@ async fn send_subscription_canceled_email_missing_base_url() {
 async fn send_subscription_canceled_email_succeeds() {
     load_env_once();
 
-    let result = send_subscription_canceled_email("delivered@resend.dev").await;
+    let result = send_subscription_canceled_email("delivered@resend.dev", None, 0).await;
     assert!(
         result.is_ok(),
         "expected the subscription-canceled email to send successfully, got: {:?}",
@@ -2743,7 +2743,7 @@ async fn send_subscription_canceled_email_succeeds() {
 async fn send_subscription_canceled_email_fails_for_a_blocked_domain() {
     load_env_once();
 
-    let result = send_subscription_canceled_email("test_user@example.com").await;
+    let result = send_subscription_canceled_email("test_user@example.com", None, 0).await;
     match result {
         Err(AuthError::InternalServerError(message)) => {
             assert!(

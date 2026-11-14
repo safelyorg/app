@@ -22,6 +22,9 @@ CREATE TABLE IF NOT EXISTS subscriptions (
     status subscription_status NOT NULL,
     current_period_end TIMESTAMPTZ,
     canceled_at TIMESTAMPTZ,
+    -- Canceled for the end of the paid period (Creem "scheduled"): the
+    -- plan stays 'active' until this time. NULL = not ending.
+    cancel_at TIMESTAMPTZ,
     -- A pending downgrade (e.g. Enterprise -> Team). Creem already
     -- bills the new product from the next renewal; here the user keeps
     -- the current plan until that renewal arrives, then these are

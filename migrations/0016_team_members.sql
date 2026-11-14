@@ -31,5 +31,8 @@ CREATE TABLE IF NOT EXISTS team_extra_seats (
     creem_subscription_id TEXT NOT NULL UNIQUE,
     seats INTEGER NOT NULL DEFAULT 0 CHECK (seats >= 0),
     status TEXT NOT NULL,
+    -- Ends with the owner's canceled plan, at the end of the paid period.
+    -- NULL = not ending.
+    cancel_at TIMESTAMPTZ,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

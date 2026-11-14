@@ -4,14 +4,18 @@ use crate::services::{
     features::auth::extract_user_id,
     features::billing::{
         BillingInterval, CreateCheckoutError, PLAN_PRODUCTS, PlanChange,
-        apply_scheduled_downgrade_if_due, apply_upgrade, cancel_with_creem, classify_plan_change,
-        create_checkout_for, fetch_subscriber_email, get_scan_usage, handle_subscription_granted,
-        handle_subscription_lost, handle_subscription_past_due, handle_subscription_update,
-        plan_for_product_id, product_ids_key, schedule_downgrade, verify_and_parse_webhook,
+        apply_scheduled_downgrade_if_due, apply_upgrade, cancel_at_period_end_with_creem,
+        classify_plan_change, create_checkout_for, fetch_subscriber_email, get_scan_usage,
+        handle_subscription_granted, handle_subscription_lost, handle_subscription_past_due,
+        handle_subscription_update, plan_for_product_id, product_ids_key, resume_with_creem,
+        schedule_downgrade, verify_and_parse_webhook,
     },
-    features::email::send_subscription_canceled_email,
+    features::email::{send_subscription_canceled_email, send_team_plan_ending_email},
     features::meta_capi::{AdClick, payment_in, send_purchase},
-    features::team::{handle_seat_webhook, leave_team_if_paying, shared_plan, sync_extra_seats},
+    features::team::{
+        end_seats_with_plan, handle_seat_webhook, keep_seats_with_plan, leave_team_if_paying,
+        plan_holder, shared_plan, sync_extra_seats, team_member_emails, team_plan_ends,
+    },
 };
 use axum::{
     Json,
@@ -171,6 +175,31 @@ pub async fn creem_webhook(
                 sync_seats_for(&pool, &parsed).await;
             }
         }
+        // Canceled for the end of the period (also from Creem's own
+        // customer portal): the plan stays active until then.
+        "subscription.scheduled_cancel" => {
+            if let Some(parsed) = extract_subscription(&event.event_type, &event.object) {
+                let already: bool = query_scalar(
+                    "SELECT cancel_at IS NOT NULL FROM subscriptions WHERE creem_subscription_id = $1",
+                )
+                .bind(&parsed.id)
+                .fetch_optional(&pool)
+                .await
+                .ok()
+                .flatten()
+                .unwrap_or(false);
+                handle_subscription_update(&pool, &parsed).await;
+                if let Some(owner_id) =
+                    crate::services::features::billing::extract_metadata_user_id(&parsed)
+                {
+                    end_seats_with_plan(&pool, owner_id).await;
+                    // Canceled outside Safely: the emails were not sent yet.
+                    if !already {
+                        tell_plan_ending(&pool, owner_id, &parsed.id).await;
+                    }
+                }
+            }
+        }
         "refund.created" => {
             eprintln!("refund.created received for event {}", event.id);
         }
@@ -252,8 +281,8 @@ pub async fn cancel_subscription_handler(
         .map_err(|_| BillingError::InternalError("Failed to verify session".to_string()))?
         .ok_or(BillingError::Unauthorized)?;
 
-    let sub_id: Option<String> = query_scalar(
-        "SELECT creem_subscription_id FROM subscriptions
+    let row: Option<(String, Option<DateTime<Utc>>)> = query_as(
+        "SELECT creem_subscription_id, cancel_at FROM subscriptions
          WHERE user_id = $1 AND status IN ('active', 'past_due')
          ORDER BY created_at DESC LIMIT 1",
     )
@@ -262,13 +291,97 @@ pub async fn cancel_subscription_handler(
     .await
     .map_err(|_| BillingError::InternalError("Failed to look up subscription".to_string()))?;
 
-    let sub_id =
-        sub_id.ok_or_else(|| BillingError::NotFound("No active subscription found".to_string()))?;
+    let (sub_id, already_ending) =
+        row.ok_or_else(|| BillingError::NotFound("No active subscription found".to_string()))?;
+    // Already canceled for the end of the period: nothing more to do.
+    if let Some(ends) = already_ending {
+        return Ok(Json(json!({ "success": true, "cancel_at": ends })));
+    }
 
-    cancel_with_creem(&sub_id).await?;
+    // The plan keeps working until the end of the period the person paid
+    // for (like Netflix or Spotify); Creem ends it then.
+    cancel_at_period_end_with_creem(&sub_id).await?;
+
+    let ends: Option<DateTime<Utc>> = query_scalar(
+        "UPDATE subscriptions SET cancel_at = COALESCE(current_period_end, NOW()), canceled_at = NOW(), updated_at = NOW()
+         WHERE creem_subscription_id = $1
+         RETURNING cancel_at",
+    )
+    .bind(&sub_id)
+    .fetch_one(&pool)
+    .await
+    .map_err(|_| BillingError::InternalError("Failed to update subscription".to_string()))?;
+
+    // The team's extra seats end on the same day.
+    end_seats_with_plan(&pool, user_id).await;
+    tell_plan_ending(&pool, user_id, &sub_id).await;
+
+    Ok(Json(json!({ "success": true, "cancel_at": ends })))
+}
+
+/// "Dec 13, 2026".
+fn day_in_words(day: DateTime<Utc>) -> String {
+    day.format("%b %-d, %Y").to_string()
+}
+
+/// Emails about a plan canceled for the end of the period: the owner
+/// (confirmation, with the end date) and every team member who uses it.
+async fn tell_plan_ending(pool: &Pool<Postgres>, owner_id: uuid::Uuid, sub_id: &str) {
+    let row: Option<(String, Option<DateTime<Utc>>)> =
+        query_as("SELECT plan_name, cancel_at FROM subscriptions WHERE creem_subscription_id = $1")
+            .bind(sub_id)
+            .fetch_optional(pool)
+            .await
+            .ok()
+            .flatten();
+    let (plan, ends) = row.unwrap_or_else(|| ("Team".to_string(), None));
+    let ends_on = ends.map(day_in_words);
+    let members = team_member_emails(pool, owner_id).await;
+    if let Some(email) = fetch_subscriber_email(pool, sub_id).await {
+        if let Err(e) =
+            send_subscription_canceled_email(&email, ends_on.as_deref(), members.len()).await
+        {
+            eprintln!("Failed to send cancellation confirmation email: {:?}", e);
+        }
+        if let Some(ends_on) = ends_on.as_deref() {
+            for member in &members {
+                if let Err(e) = send_team_plan_ending_email(member, &email, &plan, ends_on).await {
+                    eprintln!("Failed to send the team plan ending email: {:?}", e);
+                }
+            }
+        }
+    }
+}
+
+/// POST /api/v1/billing/resume-subscription
+///
+/// "Keep my plan": undoes a cancellation that has not happened yet. The
+/// plan (and the team's extra seats) simply keep renewing.
+pub async fn resume_subscription_handler(
+    State(pool): State<Pool<Postgres>>,
+    headers: HeaderMap,
+) -> Result<Json<Value>, BillingError> {
+    let user_id = extract_user_id(&headers, &pool)
+        .await
+        .map_err(|_| BillingError::InternalError("Failed to verify session".to_string()))?
+        .ok_or(BillingError::Unauthorized)?;
+
+    let sub_id: Option<String> = query_scalar(
+        "SELECT creem_subscription_id FROM subscriptions
+         WHERE user_id = $1 AND status IN ('active', 'past_due') AND cancel_at IS NOT NULL
+         ORDER BY created_at DESC LIMIT 1",
+    )
+    .bind(user_id)
+    .fetch_optional(&pool)
+    .await
+    .map_err(|_| BillingError::InternalError("Failed to look up subscription".to_string()))?;
+    let sub_id =
+        sub_id.ok_or_else(|| BillingError::NotFound("No plan is waiting to end".to_string()))?;
+
+    resume_with_creem(&sub_id).await?;
 
     query(
-        "UPDATE subscriptions SET status = 'canceled'::subscription_status, canceled_at = NOW(), updated_at = NOW()
+        "UPDATE subscriptions SET cancel_at = NULL, canceled_at = NULL, updated_at = NOW()
          WHERE creem_subscription_id = $1",
     )
     .bind(&sub_id)
@@ -276,17 +389,24 @@ pub async fn cancel_subscription_handler(
     .await
     .map_err(|_| BillingError::InternalError("Failed to update subscription".to_string()))?;
 
-    // The plan is gone, so its extra seats go too.
-    sync_extra_seats(&pool, user_id).await;
-
-    if let Some(email) = fetch_subscriber_email(&pool, &sub_id).await {
-        if let Err(e) = send_subscription_canceled_email(&email).await {
-            eprintln!("Failed to send cancellation confirmation email: {:?}", e);
-        }
-    }
+    keep_seats_with_plan(&pool, user_id).await;
 
     Ok(Json(json!({ "success": true })))
 }
+
+/// One subscription row for the status endpoint: id, plan, billing
+/// interval, status, period end, scheduled downgrade (product, plan) and
+/// when a canceled plan ends.
+type StatusRow = (
+    String,
+    String,
+    String,
+    String,
+    Option<DateTime<Utc>>,
+    Option<String>,
+    Option<String>,
+    Option<DateTime<Utc>>,
+);
 
 /// GET /api/v1/billing/subscription-status
 ///
@@ -311,17 +431,9 @@ pub async fn get_subscription_status(
         .map_err(|_| BillingError::InternalError("Failed to verify session".to_string()))?
         .ok_or(BillingError::Unauthorized)?;
 
-    let row: Option<(
-        String,
-        String,
-        String,
-        String,
-        Option<DateTime<Utc>>,
-        Option<String>,
-        Option<String>,
-    )> = query_as(
+    let row: Option<StatusRow> = query_as(
         "SELECT creem_subscription_id, plan_name, billing_interval, status::text, current_period_end,
-                scheduled_product_id, scheduled_plan_name
+                scheduled_product_id, scheduled_plan_name, cancel_at
          FROM subscriptions WHERE user_id = $1
          ORDER BY (status = 'active') DESC, created_at DESC LIMIT 1",
     )
@@ -331,10 +443,15 @@ pub async fn get_subscription_status(
     .map_err(|_| BillingError::InternalError("Failed to look up subscription".to_string()))?;
 
     let usage = get_scan_usage(&pool, user_id).await;
-    // A team member uses the owner's plan: {"plan": "Team", "owner_email": "..."}.
-    let shared = shared_plan(&pool, user_id)
-        .await
-        .map(|(plan, owner_email)| json!({ "plan": plan, "owner_email": owner_email }));
+    // A team member uses the owner's plan: {"plan": "Team", "owner_email": "...",
+    // "cancel_at": when the owner's canceled plan ends, or null}.
+    let shared = match shared_plan(&pool, user_id).await {
+        Some((plan, owner_email)) => {
+            let ends = team_plan_ends(&pool, plan_holder(&pool, user_id).await).await;
+            Some(json!({ "plan": plan, "owner_email": owner_email, "cancel_at": ends }))
+        }
+        None => None,
+    };
 
     let Some((
         sub_id,
@@ -344,11 +461,13 @@ pub async fn get_subscription_status(
         current_period_end,
         scheduled_product_id,
         scheduled_plan_name,
+        cancel_at,
     )) = row
     else {
         return Ok(Json(json!({
             "plan_name": null, "billing_interval": null, "status": null, "current_period_end": null,
             "scheduled_plan_name": null,
+            "cancel_at": null,
             "usage": usage,
             "shared_plan": shared,
         })));
@@ -374,6 +493,8 @@ pub async fn get_subscription_status(
         "status": status,
         "current_period_end": current_period_end,
         "scheduled_plan_name": scheduled_plan_name_response,
+        // Canceled for the end of the period: when it ends (else null).
+        "cancel_at": cancel_at,
         "usage": usage,
         "shared_plan": shared,
     })))
@@ -398,6 +519,19 @@ pub async fn change_plan_handler(
 
     let (new_plan, new_interval) = plan_for_product_id(&body.product_id)
         .ok_or_else(|| BillingError::InvalidRequest("Unknown plan".to_string()))?;
+
+    let ending: bool = query_scalar(
+        "SELECT EXISTS (SELECT 1 FROM subscriptions
+         WHERE user_id = $1 AND status = 'active' AND cancel_at IS NOT NULL)",
+    )
+    .bind(user_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap_or(false);
+    // A plan waiting to end: "Keep my plan" first, then change it.
+    if ending {
+        return Err(BillingError::Conflict("plan_ending".to_string()));
+    }
 
     let current: Option<(String, String, String)> = query_as(
         "SELECT creem_subscription_id, plan_name, billing_interval FROM subscriptions

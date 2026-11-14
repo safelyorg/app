@@ -253,7 +253,14 @@ pub async fn send_subscription_ended_email(to_email: &str) -> Result<(), AuthErr
 /// for Creem exhausting its automatic payment retries. Same webhook
 /// event fires either way, so this distinction can only be made by our
 /// own code, at the moment we know for certain which case we're in.
-pub async fn send_subscription_canceled_email(to_email: &str) -> Result<(), AuthError> {
+/// `ends_on` ("Dec 13, 2026"): canceled for the end of the period - the
+/// plan stays active until then. `members`: how many people use the plan
+/// with them. None: the plan ended at once.
+pub async fn send_subscription_canceled_email(
+    to_email: &str,
+    ends_on: Option<&str>,
+    members: usize,
+) -> Result<(), AuthError> {
     let client = Client::new();
     let mut context = Context::new();
 
@@ -273,6 +280,8 @@ pub async fn send_subscription_canceled_email(to_email: &str) -> Result<(), Auth
 
     context.insert("dashboard_url", &dashboard_url);
     context.insert("logo_url", &logo_url);
+    context.insert("ends_on", &ends_on);
+    context.insert("members", &members);
 
     let html_body = tera
         .render("subscription_canceled_email.html", &context)
@@ -456,6 +465,60 @@ pub async fn send_watch_alert_email(
         "from": format!("Safely <{}>", from_address),
         "to": [to_email],
         "subject": format!("{}: {}", supplier, first),
+        "html": html_body,
+    });
+
+    let response = Client::new()
+        .post("https://api.resend.com/emails")
+        .bearer_auth(api_key)
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| AuthError::InternalServerError(e.to_string()))?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let text = response.text().await.unwrap_or_default();
+        return Err(AuthError::InternalServerError(format!(
+            "Resend error ({}): {}",
+            status, text
+        )));
+    }
+    Ok(())
+}
+
+/// Tells a team member that the owner canceled the plan they use, and
+/// when it ends (handlers/billing.rs, cancel for the end of the period).
+pub async fn send_team_plan_ending_email(
+    to_email: &str,
+    owner_email: &str,
+    plan: &str,
+    ends_on: &str,
+) -> Result<(), AuthError> {
+    let api_key = var("RESEND_API_KEY").map_err(|_| {
+        AuthError::InternalServerError("RESEND_API_KEY needs to be setup".to_string())
+    })?;
+    let base_url = var("PUBLIC_BASE_URL").map_err(|_| {
+        AuthError::InternalServerError("PUBLIC_BASE_URL needs to be configured".to_string())
+    })?;
+    let from_address =
+        var("RESEND_FROM_EMAIL").unwrap_or_else(|_| "onboarding@resend.dev".to_string());
+    let tera = get_tera();
+    let mut context = Context::new();
+    context.insert("dashboard_url", &format!("{}/dashboard/", base_url));
+    context.insert("logo_url", &format!("{}/images/white_logo.png", base_url));
+    context.insert("owner_email", owner_email);
+    context.insert("plan", plan);
+    context.insert("ends_on", ends_on);
+
+    let html_body = tera
+        .render("team_plan_ending_email.html", &context)
+        .map_err(|e| AuthError::InternalServerError(e.to_string()))?;
+
+    let body = json!({
+        "from": format!("Safely <{}>", from_address),
+        "to": [to_email],
+        "subject": format!("Your Safely team plan ends on {}", ends_on),
         "html": html_body,
     });
 
