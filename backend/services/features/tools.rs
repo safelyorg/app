@@ -488,12 +488,9 @@ const ENGLISH: &[(&str, &str)] = &[
     ("modal.api.title", "API"),
     (
         "modal.api.body1",
-        "The Safely API lets Business and Enterprise customers score listings and sellers programmatically, run bulk analyses, and pull fraud reports into their own tools.",
+        "The Safely API is coming soon. It will let Enterprise customers check sellers from their own tools.",
     ),
-    (
-        "modal.api.body2",
-        "API access is included on the Enterprise plan.",
-    ),
+    ("modal.api.body2", "It will be part of the Enterprise plan."),
     ("modal.vs_norton.title", "Safely vs Norton"),
     (
         "modal.vs_norton.body1",
