@@ -22,17 +22,22 @@ CREATE TABLE IF NOT EXISTS team_members (
 
 CREATE INDEX IF NOT EXISTS idx_team_members_owner ON team_members(owner_id, created_at);
 
--- team_extra_seats: the owner's "Team extra member" subscription at
--- Creem ($25 per seat). seats is Creem's "units" on that subscription.
+-- team_extra_seats: the owner's extra seats. Each extra seat is its own
+-- "Team extra member" subscription at Creem ($25), so each seat is its
+-- own payment: removing a seat refunds that seat's payment in full. One
+-- row per seat subscription (seats is Creem's "units", normally 1).
 -- It is kept apart from the subscriptions table on purpose: it is not a
--- plan, so it never counts as one. One row per owner.
+-- plan, so it never counts as one.
 CREATE TABLE IF NOT EXISTS team_extra_seats (
-    owner_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
-    creem_subscription_id TEXT NOT NULL UNIQUE,
-    seats INTEGER NOT NULL DEFAULT 0 CHECK (seats >= 0),
+    creem_subscription_id TEXT PRIMARY KEY,
+    owner_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    seats INTEGER NOT NULL DEFAULT 1 CHECK (seats >= 0),
     status TEXT NOT NULL,
     -- Ends with the owner's canceled plan, at the end of the paid period.
     -- NULL = not ending.
     cancel_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+CREATE INDEX IF NOT EXISTS idx_team_extra_seats_owner ON team_extra_seats(owner_id, status);

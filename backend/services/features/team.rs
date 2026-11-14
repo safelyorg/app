@@ -13,10 +13,16 @@
 //! fewer seats than members (after a downgrade), the members invited
 //! first keep access.
 //!
-//! The extra seats are their own Creem subscription, kept in
-//! team_extra_seats - never in the subscriptions table, so they never
-//! count as a plan. They are cancelled by themselves when the owner no
-//! longer has a Team plan (sync_extra_seats).
+//! Extra seats are $25 a month each. Every "Add" is one Creem checkout
+//! for the number of seats picked (its own subscription, "units" =
+//! seats), kept in team_extra_seats - never in the subscriptions table,
+//! so they never count as a plan. Removing seats takes them from the
+//! newest purchase first: a whole purchase is cancelled at once, or its
+//! seat count is lowered with no proration. No refund either way, and
+//! nothing is charged for removed seats again. Only seats nobody uses
+//! can be removed, so no member loses access. They are
+//! cancelled by themselves when the owner no longer has
+//! a Team plan (sync_extra_seats).
 
 use crate::services::features::billing::{
     BillingInterval, cancel_at_period_end_with_creem, cancel_with_creem, resume_with_creem,
@@ -71,6 +77,9 @@ pub enum TeamError {
     PaymentFailed,
     /// "unavailable": the database could not be read.
     Unavailable,
+    /// "plan_ending": the plan was canceled for the end of the period;
+    /// no new seats until the owner keeps the plan.
+    PlanEnding,
 }
 
 impl TeamError {
@@ -88,6 +97,7 @@ impl TeamError {
             TeamError::SeatsUnavailable => "seats_unavailable",
             TeamError::PaymentFailed => "payment_failed",
             TeamError::Unavailable => "unavailable",
+            TeamError::PlanEnding => "plan_ending",
         }
     }
 }
@@ -170,13 +180,13 @@ async fn own_plan(
 
 /// The owner's extra seats that are paid for (0 when none).
 async fn extra_seats(pool: &Pool<Postgres>, owner_id: Uuid) -> Result<i64, sqlx::Error> {
-    let seats: Option<i32> = query_scalar(
-        "SELECT seats FROM team_extra_seats WHERE owner_id = $1 AND status = 'active'",
+    query_scalar(
+        "SELECT COALESCE(SUM(seats), 0)::bigint FROM team_extra_seats
+         WHERE owner_id = $1 AND status = 'active'",
     )
     .bind(owner_id)
-    .fetch_optional(pool)
-    .await?;
-    Ok(seats.unwrap_or(0) as i64)
+    .fetch_one(pool)
+    .await
 }
 
 /// The owner's plan and how many people it has.
@@ -419,16 +429,15 @@ pub async fn leave_team_if_paying(pool: &Pool<Postgres>, user_id: Uuid) {
 pub enum SeatChange {
     /// Nothing to change.
     Unchanged,
-    /// No seats yet: pay for them on this Creem checkout page.
+    /// More seats: pay for them on this Creem checkout page.
     Checkout(String),
-    /// The seat count at Creem was changed (charged now, for the rest
-    /// of the billing period).
-    Updated,
-    /// All extra seats were removed: the seat subscription is cancelled.
-    Cancelled,
+    /// Seats were removed (no refund, no more charges): how many.
+    Removed(i64),
 }
 
-/// Sets the owner's extra seats to `wanted` (0 removes them all).
+/// Sets the owner's extra seats to `wanted`. Adding is a Creem checkout
+/// for the new seats. Removing takes the newest seats away at once, with
+/// no refund.
 pub async fn set_extra_seats(
     pool: &Pool<Postgres>,
     owner_id: Uuid,
@@ -450,50 +459,173 @@ pub async fn set_extra_seats(
     if 1 + members > TEAM_INCLUDED_SEATS + wanted {
         return Err(TeamError::RemovePeopleFirst);
     }
+    let current = extra_seats(pool, owner_id).await?;
+    if wanted == current {
+        return Ok(SeatChange::Unchanged);
+    }
+    if wanted > current {
+        if team_plan_ends(pool, owner_id).await.is_some() {
+            return Err(TeamError::PlanEnding);
+        }
+        let product = seat_product_for(interval).ok_or(TeamError::SeatsUnavailable)?;
+        let url = seat_checkout(&product, owner_id, wanted - current).await?;
+        return Ok(SeatChange::Checkout(url));
+    }
+    remove_seats(pool, owner_id, current - wanted).await
+}
 
-    let current: Option<(String, i32)> = query_as(
+/// Removes `count` extra seats, newest purchase first: a purchase whose
+/// seats all go is cancelled at once; otherwise its seat count is
+/// lowered. No refund; nothing is charged for removed seats again.
+async fn remove_seats(
+    pool: &Pool<Postgres>,
+    owner_id: Uuid,
+    count: i64,
+) -> Result<SeatChange, TeamError> {
+    let subs: Vec<(String, i32)> = query_as(
         "SELECT creem_subscription_id, seats FROM team_extra_seats
-         WHERE owner_id = $1 AND status = 'active'",
+         WHERE owner_id = $1 AND status = 'active'
+         ORDER BY created_at DESC",
     )
     .bind(owner_id)
-    .fetch_optional(pool)
+    .fetch_all(pool)
     .await?;
-
-    match current {
-        None if wanted == 0 => Ok(SeatChange::Unchanged),
-        None => {
-            let product = seat_product_for(interval).ok_or(TeamError::SeatsUnavailable)?;
-            let url = seat_checkout(&product, owner_id, wanted).await?;
-            Ok(SeatChange::Checkout(url))
+    let mut removed = 0i64;
+    for (sub_id, seats) in subs {
+        let left = count - removed;
+        if left <= 0 {
+            break;
         }
-        Some((_, seats)) if seats as i64 == wanted => Ok(SeatChange::Unchanged),
-        Some((sub_id, _)) if wanted == 0 => {
-            cancel_with_creem(&sub_id).await.map_err(|e| {
-                eprintln!("Safely: could not cancel the extra seats at Creem: {:?}", e);
-                TeamError::PaymentFailed
-            })?;
-            query(
-                "UPDATE team_extra_seats SET status = 'canceled', updated_at = NOW()
-                 WHERE creem_subscription_id = $1",
-            )
-            .bind(&sub_id)
-            .execute(pool)
-            .await?;
-            Ok(SeatChange::Cancelled)
-        }
-        Some((sub_id, _)) => {
-            change_seat_units(&sub_id, wanted).await?;
-            query(
-                "UPDATE team_extra_seats SET seats = $2, updated_at = NOW()
-                 WHERE creem_subscription_id = $1",
-            )
-            .bind(&sub_id)
-            .bind(wanted as i32)
-            .execute(pool)
-            .await?;
-            Ok(SeatChange::Updated)
+        let seats = seats as i64;
+        let done = if seats <= left {
+            match cancel_with_creem(&sub_id).await {
+                Ok(()) => {
+                    query(
+                        "UPDATE team_extra_seats SET status = 'canceled', cancel_at = NULL, updated_at = NOW()
+                         WHERE creem_subscription_id = $1",
+                    )
+                    .bind(&sub_id)
+                    .execute(pool)
+                    .await?;
+                    Ok(seats)
+                }
+                Err(e) => {
+                    eprintln!(
+                        "Safely: could not cancel extra seats {} at Creem: {:?}",
+                        sub_id, e
+                    );
+                    Err(TeamError::PaymentFailed)
+                }
+            }
+        } else {
+            match lower_seat_units(&sub_id, seats - left).await {
+                Ok(()) => {
+                    query(
+                        "UPDATE team_extra_seats SET seats = $2, updated_at = NOW()
+                         WHERE creem_subscription_id = $1",
+                    )
+                    .bind(&sub_id)
+                    .bind((seats - left) as i32)
+                    .execute(pool)
+                    .await?;
+                    Ok(left)
+                }
+                Err(e) => Err(e),
+            }
+        };
+        match done {
+            Ok(n) => {
+                removed += n;
+                eprintln!(
+                    "Safely: {} extra seat(s) removed from {} for {}: no refund, no more charges for them",
+                    n, sub_id, owner_id
+                );
+            }
+            Err(e) if removed == 0 => return Err(e),
+            Err(_) => break,
         }
     }
+    Ok(SeatChange::Removed(removed))
+}
+
+/// Lowers the seat count of one seat purchase at Creem, with no
+/// proration: no refund now, the next payment is for fewer seats.
+async fn lower_seat_units(sub_id: &str, units: i64) -> Result<(), TeamError> {
+    let key = creem_api_key()?;
+    let client = Client::new();
+    let subscription: Value = client
+        .get(format!(
+            "{}/v1/subscriptions?subscription_id={}",
+            creem_base_url(),
+            url_part(sub_id)
+        ))
+        .header("x-api-key", &key)
+        .send()
+        .await
+        .map_err(|e| {
+            eprintln!("Safely: Creem subscription lookup failed: {}", e);
+            TeamError::PaymentFailed
+        })?
+        .json()
+        .await
+        .map_err(|e| {
+            eprintln!("Safely: Creem subscription lookup failed: {}", e);
+            TeamError::PaymentFailed
+        })?;
+    let Some((item_id, price_id)) = seat_item(&subscription) else {
+        eprintln!(
+            "Safely: the seat subscription {} has no item to change",
+            sub_id
+        );
+        return Err(TeamError::PaymentFailed);
+    };
+    let mut item = json!({ "id": item_id, "units": units });
+    if let Some(price_id) = price_id {
+        item["price_id"] = json!(price_id);
+    }
+    let response = client
+        .post(format!("{}/v1/subscriptions/{}", creem_base_url(), sub_id))
+        .header("x-api-key", &key)
+        .json(&json!({ "items": [item], "update_behavior": "proration-none" }))
+        .send()
+        .await
+        .map_err(|e| {
+            eprintln!("Safely: Creem seat change failed: {}", e);
+            TeamError::PaymentFailed
+        })?;
+    if !response.status().is_success() {
+        eprintln!(
+            "Safely: Creem refused the seat change: {}",
+            response.text().await.unwrap_or_default()
+        );
+        return Err(TeamError::PaymentFailed);
+    }
+    Ok(())
+}
+
+/// The item of a Creem subscription to change: (item id, price id). The
+/// seat product's item when it can be told apart, else the first one.
+pub fn seat_item(subscription: &Value) -> Option<(String, Option<String>)> {
+    let items = subscription["items"].as_array()?;
+    let item = items
+        .iter()
+        .find(|i| i["product_id"].as_str().is_some_and(is_seat_product))
+        .or_else(|| items.first())?;
+    Some((
+        item["id"].as_str()?.to_string(),
+        item["price_id"].as_str().map(str::to_string),
+    ))
+}
+
+/// Text safe to put in an address: letters, digits, "-" and "_" stay,
+/// anything else is %-encoded.
+fn url_part(text: &str) -> String {
+    text.bytes()
+        .map(|b| match b {
+            b'a'..=b'z' | b'A'..=b'Z' | b'0'..=b'9' | b'-' | b'_' => (b as char).to_string(),
+            _ => format!("%{:02X}", b),
+        })
+        .collect()
 }
 
 fn creem_base_url() -> String {
@@ -548,87 +680,6 @@ async fn seat_checkout(product_id: &str, owner_id: Uuid, units: i64) -> Result<S
         .as_str()
         .map(str::to_string)
         .ok_or(TeamError::PaymentFailed)
-}
-
-/// Text safe to put in an address: letters, digits, "-" and "_" stay,
-/// anything else is %-encoded.
-fn url_part(text: &str) -> String {
-    text.bytes()
-        .map(|b| match b {
-            b'a'..=b'z' | b'A'..=b'Z' | b'0'..=b'9' | b'-' | b'_' => (b as char).to_string(),
-            _ => format!("%{:02X}", b),
-        })
-        .collect()
-}
-
-/// The item of a Creem subscription to change: (item id, price id). The
-/// seat product's item when it can be told apart, else the first one.
-pub fn seat_item(subscription: &Value) -> Option<(String, Option<String>)> {
-    let items = subscription["items"].as_array()?;
-    let item = items
-        .iter()
-        .find(|i| i["product_id"].as_str().is_some_and(is_seat_product))
-        .or_else(|| items.first())?;
-    Some((
-        item["id"].as_str()?.to_string(),
-        item["price_id"].as_str().map(str::to_string),
-    ))
-}
-
-/// Changes the number of seats on the seat subscription at Creem. The
-/// difference is charged now, for the rest of the billing period.
-async fn change_seat_units(sub_id: &str, units: i64) -> Result<(), TeamError> {
-    let key = creem_api_key()?;
-    let client = Client::new();
-    let failed = |what: &str| {
-        let what = what.to_string();
-        move |e: reqwest::Error| {
-            eprintln!("Safely: Creem {} failed: {}", what, e);
-            TeamError::PaymentFailed
-        }
-    };
-    let subscription: Value = client
-        .get(format!(
-            "{}/v1/subscriptions?subscription_id={}",
-            creem_base_url(),
-            url_part(sub_id)
-        ))
-        .header("x-api-key", &key)
-        .send()
-        .await
-        .map_err(failed("subscription lookup"))?
-        .json()
-        .await
-        .map_err(failed("subscription lookup"))?;
-    let (item_id, price_id) = seat_item(&subscription).ok_or_else(|| {
-        eprintln!(
-            "Safely: the seat subscription {} has no item to change",
-            sub_id
-        );
-        TeamError::PaymentFailed
-    })?;
-    let mut item = json!({ "id": item_id, "units": units });
-    if let Some(price_id) = price_id {
-        item["price_id"] = json!(price_id);
-    }
-    let response = client
-        .post(format!("{}/v1/subscriptions/{}", creem_base_url(), sub_id))
-        .header("x-api-key", &key)
-        .json(&json!({
-            "items": [item],
-            "update_behavior": "proration-charge-immediately",
-        }))
-        .send()
-        .await
-        .map_err(failed("seat change"))?;
-    if !response.status().is_success() {
-        eprintln!(
-            "Safely: Creem refused the seat change: {}",
-            response.text().await.unwrap_or_default()
-        );
-        return Err(TeamError::PaymentFailed);
-    }
-    Ok(())
 }
 
 /// The number of seats in a Creem subscription: the seat item's units,
@@ -704,19 +755,32 @@ pub async fn handle_seat_webhook(pool: &Pool<Postgres>, event_type: &str, object
         None
     };
     let seats = units_in(subscription);
-    // A late event about an old seat subscription never replaces a newer
-    // active one.
+    // 0 seats: the owner removed the last ones (the subscription is being
+    // cancelled); never active again.
+    let status = if seats == 0 { "canceled" } else { status };
+    eprintln!(
+        "Safely: extra seats event {} for {}: {} seat(s), {}{}",
+        event_type,
+        sub_id,
+        seats,
+        status,
+        if ending {
+            " (ends with the period)"
+        } else {
+            ""
+        }
+    );
+    // One row per seat subscription. A removed (canceled) seat never
+    // comes back with a late event.
     let saved = query(
         "INSERT INTO team_extra_seats (owner_id, creem_subscription_id, seats, status, cancel_at, updated_at)
          VALUES ($1, $2, $3, $4, $5, NOW())
-         ON CONFLICT (owner_id) DO UPDATE SET
-             creem_subscription_id = EXCLUDED.creem_subscription_id,
+         ON CONFLICT (creem_subscription_id) DO UPDATE SET
              seats = EXCLUDED.seats,
              status = EXCLUDED.status,
              cancel_at = EXCLUDED.cancel_at,
              updated_at = NOW()
-         WHERE team_extra_seats.creem_subscription_id = EXCLUDED.creem_subscription_id
-            OR EXCLUDED.status = 'active'",
+         WHERE team_extra_seats.status <> 'canceled'",
     )
     .bind(owner_id)
     .bind(sub_id)
@@ -747,90 +811,79 @@ pub async fn sync_extra_seats(pool: &Pool<Postgres>, owner_id: Uuid) {
     if plan.as_deref() == Some("Team") {
         return;
     }
-    let sub_id: Option<String> = query_scalar(
+    for sub_id in seat_subscriptions(pool, owner_id, "").await {
+        if let Err(e) = cancel_with_creem(&sub_id).await {
+            eprintln!(
+                "Safely: could not cancel extra seat {} at Creem - cancel it in the Creem dashboard: {:?}",
+                sub_id, e
+            );
+        }
+        let _ = query(
+            "UPDATE team_extra_seats SET status = 'canceled', updated_at = NOW()
+             WHERE creem_subscription_id = $1",
+        )
+        .bind(&sub_id)
+        .execute(pool)
+        .await;
+    }
+}
+
+/// The owner's active seat subscriptions; `which` = "ending" (canceled
+/// for the end of the period), "not_ending", or "" for all.
+async fn seat_subscriptions(pool: &Pool<Postgres>, owner_id: Uuid, which: &str) -> Vec<String> {
+    query_scalar(
         "SELECT creem_subscription_id FROM team_extra_seats
-         WHERE owner_id = $1 AND status IN ('active', 'past_due')",
+         WHERE owner_id = $1 AND status IN ('active', 'past_due')
+           AND ($2 = '' OR ($2 = 'ending') = (cancel_at IS NOT NULL))
+         ORDER BY created_at",
     )
     .bind(owner_id)
-    .fetch_optional(pool)
+    .bind(which)
+    .fetch_all(pool)
     .await
-    .unwrap_or(None);
-    let Some(sub_id) = sub_id else {
-        return;
-    };
-    if let Err(e) = cancel_with_creem(&sub_id).await {
-        eprintln!(
-            "Safely: could not cancel extra seats {} at Creem - cancel them in the Creem dashboard: {:?}",
-            sub_id, e
-        );
-    }
-    let _ = query(
-        "UPDATE team_extra_seats SET status = 'canceled', updated_at = NOW()
-         WHERE creem_subscription_id = $1",
-    )
-    .bind(&sub_id)
-    .execute(pool)
-    .await;
+    .unwrap_or_default()
 }
 
 /// The owner canceled their plan for the end of the period: the extra
 /// seats end on the same day (Creem "scheduled" cancel), not at once.
 pub async fn end_seats_with_plan(pool: &Pool<Postgres>, owner_id: Uuid) {
-    let row: Option<(String, Option<chrono::DateTime<chrono::Utc>>)> = query_as(
-        "SELECT e.creem_subscription_id, s.cancel_at FROM team_extra_seats e
-         LEFT JOIN subscriptions s ON s.user_id = e.owner_id AND s.status = 'active'
-         WHERE e.owner_id = $1 AND e.status IN ('active', 'past_due') AND e.cancel_at IS NULL",
-    )
-    .bind(owner_id)
-    .fetch_optional(pool)
-    .await
-    .unwrap_or(None);
-    let Some((sub_id, plan_ends)) = row else {
-        return;
-    };
-    if let Err(e) = cancel_at_period_end_with_creem(&sub_id).await {
-        eprintln!(
-            "Safely: could not end the extra seats {} with the plan at Creem - cancel them in the Creem dashboard: {:?}",
-            sub_id, e
-        );
-        return;
+    let plan_ends = team_plan_ends(pool, owner_id).await;
+    for sub_id in seat_subscriptions(pool, owner_id, "not_ending").await {
+        if let Err(e) = cancel_at_period_end_with_creem(&sub_id).await {
+            eprintln!(
+                "Safely: could not end extra seat {} with the plan at Creem - cancel it in the Creem dashboard: {:?}",
+                sub_id, e
+            );
+            continue;
+        }
+        let _ = query(
+            "UPDATE team_extra_seats SET cancel_at = COALESCE($2, NOW()), updated_at = NOW()
+             WHERE creem_subscription_id = $1",
+        )
+        .bind(&sub_id)
+        .bind(plan_ends)
+        .execute(pool)
+        .await;
     }
-    let _ = query(
-        "UPDATE team_extra_seats SET cancel_at = COALESCE($2, NOW()), updated_at = NOW()
-         WHERE creem_subscription_id = $1",
-    )
-    .bind(&sub_id)
-    .bind(plan_ends)
-    .execute(pool)
-    .await;
 }
 
 /// "Keep my plan": the extra seats keep going too.
 pub async fn keep_seats_with_plan(pool: &Pool<Postgres>, owner_id: Uuid) {
-    let sub_id: Option<String> = query_scalar(
-        "SELECT creem_subscription_id FROM team_extra_seats
-         WHERE owner_id = $1 AND status IN ('active', 'past_due') AND cancel_at IS NOT NULL",
-    )
-    .bind(owner_id)
-    .fetch_optional(pool)
-    .await
-    .unwrap_or(None);
-    let Some(sub_id) = sub_id else {
-        return;
-    };
-    if let Err(e) = resume_with_creem(&sub_id).await {
-        eprintln!(
-            "Safely: could not keep the extra seats {} at Creem - resume them in the Creem dashboard: {:?}",
-            sub_id, e
-        );
-        return;
+    for sub_id in seat_subscriptions(pool, owner_id, "ending").await {
+        if let Err(e) = resume_with_creem(&sub_id).await {
+            eprintln!(
+                "Safely: could not keep extra seat {} at Creem - resume it in the Creem dashboard: {:?}",
+                sub_id, e
+            );
+            continue;
+        }
+        let _ = query(
+            "UPDATE team_extra_seats SET cancel_at = NULL, updated_at = NOW() WHERE creem_subscription_id = $1",
+        )
+        .bind(&sub_id)
+        .execute(pool)
+        .await;
     }
-    let _ = query(
-        "UPDATE team_extra_seats SET cancel_at = NULL, updated_at = NOW() WHERE creem_subscription_id = $1",
-    )
-    .bind(&sub_id)
-    .execute(pool)
-    .await;
 }
 
 /// The emails of the people in the owner's team who have a Safely
@@ -944,16 +997,16 @@ mod tests {
     }
 
     #[test]
-    fn units_and_items_from_creem() {
+    fn units_from_creem() {
         let sub = json!({"items": [{"id": "sitem_1", "price_id": "pprice_1", "units": 3}]});
         assert_eq!(units_in(&sub), 3);
         assert_eq!(
             seat_item(&sub),
             Some(("sitem_1".to_string(), Some("pprice_1".to_string())))
         );
+        assert_eq!(seat_item(&json!({})), None);
         assert_eq!(units_in(&json!({"items": []})), 1);
         assert_eq!(units_in(&json!({})), 1);
-        assert_eq!(seat_item(&json!({})), None);
     }
 
     #[test]

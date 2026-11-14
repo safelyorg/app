@@ -11,9 +11,14 @@
 //!   Safely's database.
 //! - The buyer's email and Safely user ID are sent hashed (SHA-256), as
 //!   Meta asks; never in plain text.
-//! - event_id is "order_<Creem order id>". The first payment comes in
-//!   both checkout.completed and subscription.paid with the same order id,
-//!   so Meta counts it once; each renewal is a new order.
+//! - Safely only sells subscriptions, so every payment comes as
+//!   subscription.paid (the first one too, right after checkout.completed).
+//!   The Purchase is sent from subscription.paid only, with
+//!   event_id "tx_<Creem transaction id>": one per real charge. This also
+//!   counts a charge with no new order, like adding a team member to
+//!   existing extra seats (Creem charges the difference on the same order;
+//!   an order-based id made Meta drop it as a repeat). checkout.completed
+//!   is used only for a checkout that has no subscription.
 //! - Only the server sends "Purchase". The dashboard sends "Subscribe"
 //!   (dashboard ts/init.ts): Creem's address after a subscription checkout
 //!   has no order id, so a browser Purchase could not be matched to this
@@ -108,6 +113,9 @@ impl AdClick {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Payment {
     pub order_id: String,
+    /// One per real charge: "tx_<transaction id>", or "order_<order id>"
+    /// when Creem gives no transaction id. Meta's event_id.
+    pub event_key: String,
     /// In the currency's main unit (Creem sends cents: 20000 -> 200.0).
     pub value: f64,
     pub currency: String,
@@ -120,6 +128,11 @@ pub struct Payment {
 pub fn payment_in(event_type: &str, object: &Value) -> Option<Payment> {
     let (paid, order_id) = match event_type {
         "checkout.completed" => {
+            // A subscription's first payment also comes as
+            // subscription.paid: counted there, once.
+            if object.get("subscription").is_some_and(|s| !s.is_null()) {
+                return None;
+            }
             let order = object.get("order")?;
             (order, order.get("id")?.as_str()?.to_string())
         }
@@ -131,6 +144,10 @@ pub fn payment_in(event_type: &str, object: &Value) -> Option<Payment> {
             (tx, order.to_string())
         }
         _ => return None,
+    };
+    let event_key = match (event_type, paid.get("id").and_then(Value::as_str)) {
+        ("subscription.paid", Some(tx)) if !tx.is_empty() => format!("tx_{tx}"),
+        _ => format!("order_{order_id}"),
     };
     if paid
         .get("status")
@@ -154,6 +171,7 @@ pub fn payment_in(event_type: &str, object: &Value) -> Option<Payment> {
         .to_uppercase();
     (cents > 0.0 && !order_id.is_empty()).then(|| Payment {
         order_id,
+        event_key,
         value: cents / 100.0,
         currency,
     })
@@ -195,7 +213,7 @@ pub fn purchase_event(
     json!({
         "event_name": "Purchase",
         "event_time": event_time,
-        "event_id": format!("order_{}", payment.order_id),
+        "event_id": payment.event_key,
         "action_source": "website",
         "event_source_url": page_url,
         "user_data": user_data,
@@ -248,8 +266,8 @@ pub async fn send_purchase(
         .await;
     match answer {
         Ok(r) if r.status().is_success() => eprintln!(
-            "Safely: Meta Purchase sent (order {}, {} {})",
-            payment.order_id, payment.value, payment.currency
+            "Safely: Meta Purchase sent (order {}, {} {}, id {})",
+            payment.order_id, payment.value, payment.currency, payment.event_key
         ),
         Ok(r) => {
             let status = r.status();
@@ -313,6 +331,7 @@ mod tests {
             first,
             Payment {
                 order_id: "ord_4aDwWXjMLpes4Kj4XqNnUA".into(),
+                event_key: "order_ord_4aDwWXjMLpes4Kj4XqNnUA".into(),
                 value: 200.0,
                 currency: "USD".into()
             }
@@ -321,9 +340,24 @@ mod tests {
             "last_transaction": { "id": "tran_1", "amount": 20000, "amount_paid": 24200, "tax_amount": 4200,
                                   "currency": "USD", "status": "paid", "order": "ord_4aDwWXjMLpes4Kj4XqNnUA" }
         });
-        // The first payment comes in both events with the same order id:
-        // the same event_id, so Meta counts it once.
-        assert_eq!(payment_in("subscription.paid", &renewal).unwrap(), first);
+        let paid = payment_in("subscription.paid", &renewal).unwrap();
+        assert_eq!(paid.event_key, "tx_tran_1");
+        assert_eq!(paid.value, 200.0);
+        // A subscription's checkout.completed is not sent: its payment
+        // comes again as subscription.paid, so Meta gets it once.
+        let sub_checkout = json!({
+            "subscription": { "id": "sub_1" },
+            "order": { "id": "ord_4aDwWXjMLpes4Kj4XqNnUA", "amount": 20000, "currency": "usd", "status": "paid" }
+        });
+        assert_eq!(payment_in("checkout.completed", &sub_checkout), None);
+        // Adding a member to existing seats: a new charge on the same order
+        // is its own Purchase (a new transaction id), not a repeat.
+        let extra = json!({
+            "last_transaction": { "id": "tran_2", "amount": 2500, "amount_paid": 2500, "tax_amount": 0,
+                                  "currency": "USD", "status": "paid", "order": "ord_4aDwWXjMLpes4Kj4XqNnUA" }
+        });
+        let extra = payment_in("subscription.paid", &extra).unwrap();
+        assert_eq!((extra.event_key.as_str(), extra.value), ("tx_tran_2", 25.0));
         // A discount code: Creem's "amount" stays the full price; the
         // value is what was paid without tax (1936 - 336 = 1600 -> 16.0).
         let discounted = json!({
@@ -345,6 +379,7 @@ mod tests {
     fn the_purchase_event_hashes_personal_data() {
         let payment = Payment {
             order_id: "ord_1".into(),
+            event_key: "tx_tran_1".into(),
             value: 200.0,
             currency: "USD".into(),
         };
@@ -362,7 +397,7 @@ mod tests {
             "https://safely.sh/dashboard/",
         );
         assert_eq!(e["event_name"], "Purchase");
-        assert_eq!(e["event_id"], "order_ord_1");
+        assert_eq!(e["event_id"], "tx_tran_1");
         assert_eq!(e["action_source"], "website");
         assert_eq!(
             e["custom_data"],

@@ -133,7 +133,7 @@ async fn the_plan_works_until_the_end_of_the_period() {
     assert!(shown["shared_plan"]["cancel_at"].is_string());
 
     // Cancel again: nothing new is sent to Creem (expect(1) above).
-    cancel_subscription_handler(State(pool.clone()), headers.clone())
+    let _ = cancel_subscription_handler(State(pool.clone()), headers.clone())
         .await
         .unwrap();
 
@@ -149,7 +149,7 @@ async fn the_plan_works_until_the_end_of_the_period() {
     assert!(matches!(change, Err(BillingError::Conflict(_))));
 
     // Keep my plan.
-    resume_subscription_handler(State(pool.clone()), headers.clone())
+    let _ = resume_subscription_handler(State(pool.clone()), headers.clone())
         .await
         .expect("resume");
     let ending: bool = query_scalar(

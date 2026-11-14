@@ -507,5 +507,21 @@
   "dash.team.free_title": "Só você",
   "dash.detail.reported_by_you": "por você",
   "dash.detail.reported_by": "por {who}",
-  "dash.detail.no_report_team": "Ninguém da sua equipe denunciou este fornecedor."
+  "dash.detail.no_report_team": "Ninguém da sua equipe denunciou este fornecedor.",
+  "dash.team.seat_one": "vaga",
+  "dash.team.seat_many": "vagas",
+  "dash.team.seats_total": "Vagas: {total} ({included} no seu plano + {extra} extras)",
+  "dash.team.seats_rule": "Cada vaga extra custa US${price} por mês. Remova uma quando quiser para parar de pagar por ela (sem reembolso). As {included} vagas do seu plano não podem ser removidas.",
+  "dash.team.remove_n": "Remover {n}",
+  "dash.team.remove_all_used": "Todas as vagas extras estão em uso. Remova uma pessoa primeiro para remover uma vaga.",
+  "dash.team.remove_up_to": "Você pode remover até {n} agora (vagas que ninguém usa).",
+  "dash.team.add_yes": "Sim, adicionar",
+  "dash.team.remove_confirm": "Remover {n} {seats}? Removida(s) agora, e você não será cobrado por {them} de novo. O valor já pago não é reembolsado.",
+  "dash.team.remove_yes": "Sim, remover",
+  "dash.team.seats_removed": "{n} {seats} removida(s). Você não será cobrado por {them} de novo.",
+  "dash.team.err_plan_ending": "Seu plano está terminando. Clique em \"Manter meu plano\" primeiro para adicionar vagas.",
+  "dash.team.it": "ela",
+  "dash.team.them": "elas",
+  "dash.team.add_n": "Adicionar {n}",
+  "dash.team.add_confirm": "Adicionar {n} {seats} por US${total} ao mês (US${price} cada)? Você vai para a página de pagamento."
 }

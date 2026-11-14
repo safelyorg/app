@@ -10,7 +10,6 @@
 // Someone you invite uses your plan once they sign in to Safely with
 // that email. A person who was invited sees whose team they are in and
 // can leave it. The server is backend/handlers/team.rs.
-let teamSeatsWanted = 0;
 function teamHeaders(json) {
     const auth = window.safelyAuth.authHeader();
     return json ? Object.assign({ "Content-Type": "application/json" }, auth) : auth;
@@ -30,6 +29,7 @@ function teamErrorText(code) {
         not_found: ["dash.team.err_not_found", "That person isn't in your team."],
         too_many_seats: ["dash.team.err_too_many", "For more than 50 extra seats, the Enterprise plan is better."],
         remove_people_first: ["dash.team.err_remove_first", "You have more people than seats. Remove someone first."],
+        plan_ending: ["dash.team.err_plan_ending", "Your plan is ending. Press \"Keep my plan\" first to add seats."],
         seats_unavailable: ["dash.team.err_seats_unavailable", "Extra seats can't be bought yet. Please write to help@safely.sh."],
         payment_failed: ["dash.team.err_payment", "The payment page could not be opened. Please try again."],
     };
@@ -206,53 +206,155 @@ function renderOwnerView(box, data) {
     box.append(teamEl("div", "text-[11px] text-muted mt-1.5 leading-relaxed", full
         ? t("dash.team.full_hint", "Every seat is used. Add an extra seat below, or remove someone.")
         : t("dash.team.invite_hint", "They get an email, and use your plan once they sign in to Safely with this address.")));
-    // Extra seats (Team only)
+    // Extra seats (Team only): pick a number, then Add or Remove, with a
+    // short confirm that says what it costs.
     if (data.can_buy_seats) {
-        teamSeatsWanted = data.extra_seats;
-        const seats = teamEl("div", "mt-4 pt-3 border-t border-line flex items-center justify-between gap-3");
-        const label = teamEl("div", "min-w-0");
-        label.append(teamEl("div", "text-[12.5px] font-semibold", t("dash.team.extra_seats", "Extra seats")));
-        label.append(teamEl("div", "text-[11px] text-muted", t("dash.team.extra_price", "${price} per seat a month, on top of your 3 seats").replace("{price}", String(data.seat_price_usd))));
-        seats.append(label);
-        const controls = teamEl("div", "flex items-center gap-1.5 flex-shrink-0");
-        const minus = teamEl("button", "w-7 h-7 rounded-md bg-surface2 border border-line text-[14px] font-bold", "−");
-        const count = teamEl("span", "w-7 text-center text-[13px] font-bold num", String(teamSeatsWanted));
-        const plus = teamEl("button", "w-7 h-7 rounded-md bg-surface2 border border-line text-[14px] font-bold", "+");
-        const save = teamEl("button", "ml-1 px-3 py-1.5 rounded-lg bg-ink text-bg text-[11px] font-bold disabled:opacity-40", t("dash.team.save", "Save"));
-        [minus, plus, save].forEach((b) => (b.type = "button"));
-        save.disabled = true;
-        const show = () => {
-            count.textContent = String(teamSeatsWanted);
-            save.disabled = teamSeatsWanted === data.extra_seats;
-        };
-        minus.addEventListener("click", () => {
-            teamSeatsWanted = Math.max(0, teamSeatsWanted - 1);
-            show();
-        });
-        plus.addEventListener("click", () => {
-            teamSeatsWanted = Math.min(data.max_extra_seats, teamSeatsWanted + 1);
-            show();
-        });
-        save.addEventListener("click", async () => {
-            save.disabled = true;
-            try {
-                const res = await teamPost("/seats", { extra_seats: teamSeatsWanted });
-                if (res.result === "checkout" && res.checkout_url) {
-                    window.location.href = res.checkout_url;
-                    return;
-                }
-                showToast(t("dash.team.seats_saved", "Seats updated."));
-                loadTeam();
-            }
-            catch (e) {
-                teamMessage(teamErrorText(e.message), false);
-                show();
-            }
-        });
-        controls.append(minus, count, plus, save);
-        seats.append(controls);
-        box.append(seats);
+        box.append(buildSeatControls(data));
     }
+}
+// What the owner can do with extra seats. The 3 seats in the plan can
+// never be removed; an extra seat can be removed only when nobody uses it.
+function seatPlan(data) {
+    const extra = data.extra_seats || 0;
+    const freeSeats = Math.max(0, (data.seat_limit || 0) - (data.seats_used || 0));
+    return {
+        extra,
+        maxAdd: Math.max(0, (data.max_extra_seats || 0) - extra),
+        maxRemove: Math.min(extra, freeSeats),
+    };
+}
+function seatWord(n) {
+    return n === 1 ? t("dash.team.seat_one", "seat") : t("dash.team.seat_many", "seats");
+}
+// The -/+ counter picks how many seats. "Add n" opens the payment page
+// for n seats ($25 each a month). "Remove n" (only when there are extra
+// seats) takes away n free seats at once: no refund, nothing charged
+// for them again.
+function buildSeatControls(data) {
+    const plan = seatPlan(data);
+    const price = Number(data.seat_price_usd) || 0;
+    const included = Math.max(0, (data.seat_limit || 0) - plan.extra);
+    const wrap = teamEl("div", "mt-4 pt-3 border-t border-line");
+    wrap.append(teamEl("div", "text-[12.5px] font-semibold", t("dash.team.seats_total", "Seats: {total} ({included} in your plan + {extra} extra)")
+        .replace("{total}", String(included + plan.extra))
+        .replace("{included}", String(included))
+        .replace("{extra}", String(plan.extra))));
+    wrap.append(teamEl("div", "text-[11px] text-muted mt-0.5", t("dash.team.seats_rule", "Each extra seat is ${price} a month. Remove one any time to stop paying for it (no refund). The {included} seats in your plan can't be removed.")
+        .replace(/\{price\}/g, String(price))
+        .replace("{included}", String(included))));
+    const btn = "h-8 px-3.5 rounded-lg text-[11.5px] font-bold disabled:opacity-40 disabled:cursor-not-allowed";
+    const row = teamEl("div", "flex items-center gap-2 mt-3 flex-wrap");
+    const add = teamEl("button", `${btn} bg-ink text-bg`);
+    add.setAttribute("data-seat-add", "");
+    add.type = "button";
+    // [-] n [+]  [Add n]  [Remove n]
+    const counter = teamEl("div", "flex items-center rounded-lg border border-line overflow-hidden");
+    const minus = teamEl("button", "w-8 h-8 text-[15px] font-bold bg-surface2 disabled:opacity-40", "−");
+    const count = teamEl("span", "w-10 text-center text-[13px] font-bold", "1");
+    const plus = teamEl("button", "w-8 h-8 text-[15px] font-bold bg-surface2 disabled:opacity-40", "+");
+    minus.setAttribute("data-seat-minus", "");
+    plus.setAttribute("data-seat-plus", "");
+    count.setAttribute("data-seat-count", "");
+    counter.append(minus, count, plus);
+    const remove = teamEl("button", `${btn} bg-surface2 border border-line`);
+    remove.setAttribute("data-seat-remove", "");
+    [minus, plus, remove].forEach((b) => (b.type = "button"));
+    row.append(counter, add);
+    if (plan.extra > 0)
+        row.append(remove);
+    wrap.append(row);
+    const hint = teamEl("div", "text-[11px] text-muted mt-1.5");
+    hint.setAttribute("data-seat-hint", "");
+    wrap.append(hint);
+    // The confirm box.
+    const confirm = teamEl("div", "hidden mt-3 p-3 rounded-xl bg-surface2 border border-line");
+    confirm.setAttribute("data-seat-confirm", "");
+    const confirmText = teamEl("div", "text-[12px] leading-relaxed");
+    const yes = teamEl("button", "px-3 py-1.5 rounded-lg bg-ink text-bg text-[11.5px] font-bold disabled:opacity-40");
+    const no = teamEl("button", "px-3 py-1.5 rounded-lg bg-surface border border-line text-[11.5px] font-bold", t("dash.common.cancel", "Cancel"));
+    [yes, no].forEach((b) => (b.type = "button"));
+    const confirmButtons = teamEl("div", "flex gap-2 mt-2.5");
+    confirmButtons.append(yes, no);
+    confirm.append(confirmText, confirmButtons);
+    wrap.append(confirm);
+    let n = 1;
+    const most = Math.max(1, plan.maxAdd, plan.maxRemove);
+    const draw = () => {
+        count.textContent = String(n);
+        minus.disabled = n <= 1;
+        plus.disabled = n >= most;
+        add.textContent = t("dash.team.add_n", "Add {n}").replace("{n}", String(n));
+        add.disabled = n > plan.maxAdd;
+        remove.textContent = t("dash.team.remove_n", "Remove {n}").replace("{n}", String(n));
+        remove.disabled = n > plan.maxRemove;
+        if (plan.extra > 0 && plan.maxRemove === 0) {
+            hint.textContent = t("dash.team.remove_all_used", "Every extra seat is in use. Remove a person first to remove a seat.");
+        }
+        else if (plan.extra > 0 && n > plan.maxRemove) {
+            hint.textContent = t("dash.team.remove_up_to", "You can remove up to {n} now (seats nobody uses).")
+                .replace("{n}", String(plan.maxRemove));
+        }
+        else {
+            hint.textContent = "";
+        }
+        confirm.classList.add("hidden");
+    };
+    minus.addEventListener("click", () => {
+        n = Math.max(1, n - 1);
+        draw();
+    });
+    plus.addEventListener("click", () => {
+        n = Math.min(most, n + 1);
+        draw();
+    });
+    let wanted = plan.extra;
+    add.addEventListener("click", () => {
+        wanted = plan.extra + n;
+        confirmText.textContent = t("dash.team.add_confirm", "Add {n} {seats} for ${total} a month (${price} each)? You'll go to the payment page.")
+            .replace("{n}", String(n))
+            .replace("{seats}", seatWord(n))
+            .replace("{total}", String(n * price))
+            .replace("{price}", String(price));
+        yes.textContent = t("dash.team.add_yes", "Yes, add");
+        confirm.classList.remove("hidden");
+    });
+    remove.addEventListener("click", () => {
+        wanted = plan.extra - n;
+        confirmText.textContent = t("dash.team.remove_confirm", "Remove {n} {seats}? Removed now, and you won't be charged for {them} again. Money already paid is not refunded.")
+            .replace("{n}", String(n))
+            .replace("{seats}", seatWord(n))
+            .replace("{them}", n === 1 ? t("dash.team.it", "it") : t("dash.team.them", "them"));
+        yes.textContent = t("dash.team.remove_yes", "Yes, remove");
+        confirm.classList.remove("hidden");
+    });
+    no.addEventListener("click", () => confirm.classList.add("hidden"));
+    yes.addEventListener("click", async () => {
+        yes.disabled = true;
+        try {
+            const res = await teamPost("/seats", { extra_seats: wanted });
+            if (res.result === "checkout" && res.checkout_url) {
+                window.location.href = res.checkout_url;
+                return;
+            }
+            if (res.result === "removed") {
+                const removed = res.removed || 0;
+                showToast(t("dash.team.seats_removed", "{n} {seats} removed. You won't be charged for {them} again.")
+                    .replace("{n}", String(removed))
+                    .replace("{seats}", seatWord(removed))
+                    .replace("{them}", removed === 1 ? t("dash.team.it", "it") : t("dash.team.them", "them")));
+            }
+            loadTeam();
+        }
+        catch (e) {
+            confirm.classList.add("hidden");
+            teamMessage(teamErrorText(e.message), false);
+        }
+        finally {
+            yes.disabled = false;
+        }
+    });
+    draw();
+    return wrap;
 }
 async function loadTeam() {
     const box = document.getElementById("team-body");
