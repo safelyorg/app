@@ -30,7 +30,7 @@ function formatResetDate(isoDate) {
     return months[parts[1] - 1] + " " + parts[2];
 }
 // The small line under the panel title: scans used / limit, e.g.
-// "1/5", "2/750" or "1/Unlimited". Empty string if unknown.
+// "1/5", "2/500" or "1/Unlimited". Empty string if unknown.
 function formatUsageLine(usage) {
     if (!usage || !usage.plan)
         return "";

@@ -154,7 +154,7 @@ async fn a_member_uses_the_owners_plan_and_scans() {
     );
     let usage = get_scan_usage(&t.pool, member.id).await;
     assert_eq!(usage["plan"], "Team");
-    assert_eq!(usage["limit"], 750);
+    assert_eq!(usage["limit"], 500);
 
     let view = team_view(&t.pool, member.id).await.unwrap();
     assert_eq!(view["role"], "member");

@@ -29,7 +29,7 @@ function formatResetDate(isoDate: string | null | undefined): string {
 }
 
 // The small line under the panel title: scans used / limit, e.g.
-// "1/5", "2/750" or "1/Unlimited". Empty string if unknown.
+// "1/5", "2/500" or "1/Unlimited". Empty string if unknown.
 function formatUsageLine(
   usage: { plan: string; used: number; limit: number | null } | null,
 ): string {

@@ -914,12 +914,17 @@ pub async fn mark_event_processed_if_new(pool: &Pool<Postgres>, event_id: &str) 
     }
 }
 
+/// Scans a month on the Team plan, shared by the whole team (owner,
+/// members and extra seats). Above this, scans stop until next month or
+/// until they move to Enterprise.
+pub const TEAM_MONTHLY_SCANS: i32 = 500;
+
 /// Monthly scan limit of an active paid plan. None means unlimited.
 /// The same on monthly and yearly billing. (Anyone without an active
 /// paid plan is on Free - see FREE_MONTHLY_SCANS.)
 pub fn scan_limit_for_plan(plan_name: &str) -> Option<i32> {
     match plan_name {
-        "Team" => Some(750),
+        "Team" => Some(TEAM_MONTHLY_SCANS),
         "Enterprise" => None,
         _ => Some(0),
     }

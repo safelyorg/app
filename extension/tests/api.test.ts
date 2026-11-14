@@ -109,20 +109,20 @@ describe("analyze", () => {
     });
   });
 
-  it("returns the paid plan limit when a Team plan has used its 750 scans", async () => {
+  it("returns the paid plan limit when a Team plan has used its 500 scans", async () => {
     (globalThis as any).fetch.mockResolvedValue({
       ok: false,
       status: 402,
       text: async () =>
         JSON.stringify({
           error: "scan_limit_reached",
-          message: "You've used all 750 scans included in your plan this month.",
-          limit: 750,
+          message: "You've used all 500 scans included in your plan this month.",
+          limit: 500,
         }),
     });
 
     const result = await api.analyze({} as any);
-    expect(result).toEqual({ error: "scan_limit_reached", scanLimit: 750 });
+    expect(result).toEqual({ error: "scan_limit_reached", scanLimit: 500 });
   });
 
   it("still reports a scan limit when a 402 body can't be read", async () => {
@@ -238,7 +238,7 @@ describe("getScanUsage", () => {
     });
     (globalThis as any).fetch.mockResolvedValue({
       ok: true,
-      json: async () => ({ usage: { plan: "Team", used: 1, limit: 750, resets_on: null } }),
+      json: async () => ({ usage: { plan: "Team", used: 1, limit: 500, resets_on: null } }),
     });
 
     await api.getScanUsage();

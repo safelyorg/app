@@ -2841,7 +2841,7 @@ async fn get_subscription_status_no_scheduled_downgrade() {
     assert_eq!(result["status"], json!("active"));
     assert_eq!(result["scheduled_plan_name"], json!(null));
     assert_eq!(result["usage"]["plan"], json!("Team"));
-    assert_eq!(result["usage"]["limit"], json!(750));
+    assert_eq!(result["usage"]["limit"], json!(500));
 
     query("DELETE FROM subscriptions WHERE creem_subscription_id = $1")
         .bind(sub_id)
@@ -3794,8 +3794,8 @@ async fn mark_event_processed_correctly_handles_two_genuinely_simultaneous_attem
 
 // Scan Limit For Plan Tests
 #[test]
-fn team_plan_gets_750_scans_a_month() {
-    assert_eq!(scan_limit_for_plan("Team"), Some(750));
+fn team_plan_gets_500_scans_a_month() {
+    assert_eq!(scan_limit_for_plan("Team"), Some(500));
 }
 
 #[test]
@@ -3973,7 +3973,7 @@ async fn a_past_due_subscription_falls_back_to_the_free_plan() {
 
 // Paid Plan Scan Tests
 #[tokio::test]
-async fn team_monthly_stops_at_750_scans() {
+async fn team_monthly_stops_at_500_scans() {
     let pool = test_pool().await;
     let email = "team_monthly_limit_test@example.com";
     let (user, _) = create_test_user(&pool, email).await;
@@ -3985,7 +3985,7 @@ async fn team_monthly_stops_at_750_scans() {
             plan_name: "Team",
             status: "active",
             billing_interval: "month",
-            scans_used: 749,
+            scans_used: 499,
             bought_days_ago: 10,
         },
     )
@@ -3993,7 +3993,7 @@ async fn team_monthly_stops_at_750_scans() {
 
     assert!(check_and_increment_scan_usage(&pool, user.id).await.is_ok());
     match check_and_increment_scan_usage(&pool, user.id).await {
-        Err(ScanLimitError::LimitReached { limit }) => assert_eq!(limit, 750),
+        Err(ScanLimitError::LimitReached { limit }) => assert_eq!(limit, 500),
         other => panic!("expected LimitReached, got: {:?}", other),
     }
 
@@ -4046,7 +4046,7 @@ async fn a_monthly_plan_does_not_reset_by_itself_only_on_renewal() {
             plan_name: "Team",
             status: "active",
             billing_interval: "month",
-            scans_used: 750,
+            scans_used: 500,
             bought_days_ago: 10,
         },
     )
@@ -4071,7 +4071,7 @@ async fn a_monthly_plan_does_not_reset_by_itself_only_on_renewal() {
 }
 
 #[tokio::test]
-async fn yearly_team_gets_its_750_scans_back_every_month() {
+async fn yearly_team_gets_its_500_scans_back_every_month() {
     let pool = test_pool().await;
     let email = "yearly_team_monthly_reset_test@example.com";
     let (user, _) = create_test_user(&pool, email).await;
@@ -4084,13 +4084,13 @@ async fn yearly_team_gets_its_750_scans_back_every_month() {
             plan_name: "Team",
             status: "active",
             billing_interval: "year",
-            scans_used: 750,
+            scans_used: 500,
             bought_days_ago: 40,
         },
     )
     .await;
 
-    // 750 used in the current scan month: refused.
+    // 500 used in the current scan month: refused.
     assert!(
         check_and_increment_scan_usage(&pool, user.id)
             .await

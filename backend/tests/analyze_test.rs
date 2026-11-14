@@ -3239,14 +3239,14 @@ async fn response_json(err: AnalyzeError) -> (StatusCode, Value) {
 
 #[tokio::test]
 async fn scan_limit_reached_returns_payment_required_with_the_real_limit() {
-    let (status, body) = response_json(AnalyzeError::ScanLimitReached(750)).await;
+    let (status, body) = response_json(AnalyzeError::ScanLimitReached(500)).await;
 
     assert_eq!(status, StatusCode::PAYMENT_REQUIRED);
     assert_eq!(body["error"], "scan_limit_reached");
-    assert_eq!(body["limit"], 750);
+    assert_eq!(body["limit"], 500);
     let message = body["message"].as_str().unwrap();
     assert!(
-        message.contains("750") && message.contains("this month"),
+        message.contains("500") && message.contains("this month"),
         "expected the real limit and 'this month' in the message, got: {}",
         message
     );
@@ -3297,7 +3297,7 @@ async fn database_error_passes_the_real_message_straight_through() {
 
 #[tokio::test]
 async fn scan_limit_reached_and_free_scan_limit_reached_use_different_error_codes() {
-    let (_, paid_body) = response_json(AnalyzeError::ScanLimitReached(750)).await;
+    let (_, paid_body) = response_json(AnalyzeError::ScanLimitReached(500)).await;
     let (_, free_body) = response_json(AnalyzeError::FreeScanLimitReached {
         limit: 5,
         resets_on: NaiveDate::from_ymd_opt(2026, 11, 14).unwrap(),

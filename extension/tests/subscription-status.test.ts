@@ -13,8 +13,8 @@ describe("formatUsageLine - the small used/limit line in the panel header", () =
     expect(formatUsageLine({ plan: "Free", used: 100, limit: 100 })).toBe("100/100");
   });
 
-  it("shows Team scans as used/750, monthly or yearly", () => {
-    expect(formatUsageLine({ plan: "Team", used: 2, limit: 750 })).toBe("2/750");
+  it("shows Team scans as used/500, monthly or yearly", () => {
+    expect(formatUsageLine({ plan: "Team", used: 2, limit: 500 })).toBe("2/500");
   });
 
   it("shows Enterprise as used/Unlimited", () => {
@@ -66,8 +66,8 @@ describe("scanLimitMessage - the screen shown when scans are used up", () => {
   });
 
   it("paid: says the plan's limit for this month", () => {
-    expect(scanLimitMessage("scan_limit_reached", 750, null)).toBe(
-      "You've used all 750 scans included in your plan this month.",
+    expect(scanLimitMessage("scan_limit_reached", 500, null)).toBe(
+      "You've used all 500 scans included in your plan this month.",
     );
   });
 
