@@ -4,8 +4,9 @@ use axum::{Router, response::Redirect, routing::get};
 use backend::db::{bootstrap::run_grants, connection::load_pool};
 use backend::routes::{
     analyze, auth, billing, dashboard, dashboard_pages, fraud_reports, outcomes, platform_domains,
-    reviews, subscribe, tool_api, tools,
+    reviews, subscribe, tool_api, tools, vendors,
 };
+use backend::services::features::vendors::start_vendor_scheduler;
 use backend::services::features::watch::start_watch_scheduler;
 use backend::services::shared::scraper_client::warn_if_scraperapi_key_missing;
 use dotenvy::dotenv;
@@ -60,6 +61,9 @@ fn build_router(app_pool: Pool<Postgres>) -> Router {
         .merge(reviews::reviews_routes())
         // The free tools' lookups, like /api/v1/tools/domain-age
         .merge(tool_api::tool_api_routes())
+        // Vendor checks: the buyer's list and the vendor's own form at
+        // /v/<link> (routes/vendors.rs).
+        .merge(vendors::vendors_routes())
         // History, My Reports, Settings and one result's own page
         // (routes/dashboard_pages.rs).
         .merge(dashboard_pages::dashboard_pages_routes())
@@ -181,6 +185,8 @@ async fn main() {
     let app_pool = setup_database().await;
     // "Watch this supplier": checks run in the background (watch.rs).
     start_watch_scheduler(app_pool.clone());
+    // Vendor checks: reminders, closed links and waiting checks (vendors.rs).
+    start_vendor_scheduler(app_pool.clone());
     let app = build_router(app_pool);
     run_server(app).await;
 }

@@ -484,7 +484,7 @@ function buildScoreCard(data) {
     const score = Math.max(0, Math.min(100, data.risk_score || 0));
     const r = 42;
     const c = 2 * Math.PI * r;
-    return ('<div class="verdict-card"><div class="verdict-ring"><svg viewBox="0 0 100 100">' +
+    return ('<div class="verdict-card vd-verdict"><div class="vd-verdict-top"><div class="verdict-ring"><svg viewBox="0 0 100 100">' +
         '<circle cx="50" cy="50" r="' +
         r +
         '" fill="none" stroke="var(--card-track)" stroke-width="8"/>' +
@@ -504,7 +504,91 @@ function buildScoreCard(data) {
         escapeHtml(say) +
         '</div><div class="verdict-sub">' +
         escapeHtml(sub) +
-        "</div></div></div>");
+        "</div></div></div>" +
+        buildScoreParts(data, score, tooLittle ? "caution" : level) +
+        "</div>");
+}
+const SCORE_LINES_SHOWN = 5;
+function scoreLine(dot, text, points) {
+    return ('<div class="vd-point"><i class="vd-dot ' +
+        dot +
+        '"></i><span>' +
+        escapeHtml(text) +
+        "</span><b>" +
+        escapeHtml(points) +
+        "</b></div>");
+}
+function patternTitle(p) {
+    return riskFactorTitle({ severity: "", name: p.name, description: "", contributing_signals: p.signals || [] });
+}
+function buildScoreParts(data, score, level) {
+    // Low 0-33, Caution 34-66, High 67-100 (handlers/analyze.rs).
+    const zone = (cls, text, on) => '<span class="vd-zone vd-zone-' + cls + (on ? " is-on" : "") + '">' + escapeHtml(text) + "</span>";
+    const scale = '<div class="vd-scale"><div class="vd-scale-track is-scan"><i class="vd-z-low"></i><i class="vd-z-caution"></i><i class="vd-z-high"></i>' +
+        '<b style="left:' +
+        score +
+        '%"></b></div><div class="vd-scale-labels is-scan">' +
+        zone("low", t("dash.detail.scale_low", "Low 0–33"), level === "low") +
+        zone("caution", t("dash.detail.scale_caution", "Caution 34–66"), level === "caution") +
+        zone("high", t("dash.detail.scale_high", "High 67+"), level === "high") +
+        "</div></div>";
+    const parts = data.score_parts;
+    // Free plan: the bar only; what added to the score is on paid plans.
+    if (data.full_result === false) {
+        return (scale +
+            '<div class="vd-points"><div class="vd-point is-none"><span>' +
+            escapeHtml(t("dash.detail.score_locked", "See what adds to the score on the Team and Enterprise plans.")) +
+            "</span></div></div>");
+    }
+    if (!parts)
+        return scale;
+    const lines = [];
+    (parts.items || []).forEach((i) => lines.push(scoreLine(i.points >= 20 ? "is-bad" : "is-caution", translateSignalLabel(i.label), "+" + i.points)));
+    if (parts.notes && parts.notes.points > 0) {
+        lines.push(scoreLine("is-note", t("dash.detail.score_notes", "{n} not confirmed: {list}")
+            .replace("{n}", String(parts.notes.count))
+            .replace("{list}", parts.notes.labels.map(translateSignalLabel).join(", ")), "+" + parts.notes.points));
+    }
+    if (parts.reports && parts.reports.points > 0) {
+        lines.push(scoreLine("is-bad", t("dash.detail.score_reports", "Scam reports on Safely: {n}").replace("{n}", String(parts.reports.count)), "+" + parts.reports.points));
+    }
+    const shown = lines.slice(0, SCORE_LINES_SHOWN);
+    if (lines.length > SCORE_LINES_SHOWN) {
+        shown.push('<div class="vd-point is-none"><span>' +
+            escapeHtml(t("dash.detail.score_more", "+{n} more in the list below").replace("{n}", String(lines.length - SCORE_LINES_SHOWN))) +
+            "</span></div>");
+    }
+    // Minimum scores: the score is at least this, whatever the points.
+    const minimum = t("dash.detail.score_min", "at least {n}");
+    const mins = (parts.minimums || []).map((m) => {
+        const text = m.kind === "serious"
+            ? t("dash.detail.score_serious", "Serious: {list}").replace("{list}", m.labels.map(patternTitle).join("; "))
+            : m.kind === "pattern"
+                ? t("dash.detail.score_pattern", "Pattern match: {list}").replace("{list}", m.labels.map(patternTitle).join("; "))
+                : m.kind === "reports"
+                    ? t("dash.detail.score_reports_min", "Reported by several Safely users")
+                    : t("dash.detail.score_not_enough", "Too little information to check");
+        return scoreLine(m.kind === "not_enough" ? "is-note" : "is-bad", text, minimum.replace("{n}", String(m.score)));
+    });
+    let html = '<div class="vd-points"><div class="vd-points-title">' + escapeHtml(t("dash.detail.score_adds", "What adds to the score")) + "</div>";
+    if (!shown.length && !mins.length) {
+        html +=
+            '<div class="vd-point is-none"><span>' + escapeHtml(t("dash.detail.score_nothing", "Nothing added to the score.")) + "</span></div>";
+    }
+    html += shown.join("");
+    if (mins.length) {
+        html +=
+            '<div class="vd-points-title vd-points-sub">' + escapeHtml(t("dash.detail.score_minimums", "Minimum score")) + "</div>" + mins.join("");
+    }
+    // Saved with an older scan or rules changed since: say so, so the
+    // numbers never look wrong.
+    if (typeof parts.total === "number" && parts.total !== score) {
+        html +=
+            '<div class="vd-point is-none"><span>' +
+                escapeHtml(t("dash.detail.score_changed", "Safely's rules changed since this scan: today these add up to {n}. Scan again for the current score.").replace("{n}", String(parts.total))) +
+                "</span></div>";
+    }
+    return scale + html + "</div>";
 }
 // ---- What we found ---------------------------------------------------
 const SEVERITY_ORDER = ["hard", "compound", "soft"];
@@ -773,8 +857,34 @@ function buildDetailsTab(data) {
     const signals = all.filter((s) => !isOutsideRecord(s));
     const flagged = signals.filter((s) => isFlagged(s.type));
     const fine = signals.filter((s) => !isFlagged(s.type));
+    // Risk patterns (several checks together, e.g. "Advance payment
+    // request + Account age"), most serious first. They lead "Needs a
+    // look", with their explanation and checklist ("What we found" used
+    // to show them; it is gone on paid plans).
+    // A factor made from one check that is already in the list (a
+    // "Worth noting" Price analysis, Contact info...) would show the same
+    // problem twice, so only that check's own row is kept.
+    const shownLabels = flagged.map((s) => s.label);
+    const patterns = (data.risk_factors || [])
+        .filter((f) => f && f.name !== NOT_ENOUGH_INFORMATION)
+        .filter((f) => !((f.contributing_signals || []).length === 1 && shownLabels.indexOf(f.contributing_signals[0]) !== -1))
+        .slice()
+        .sort((a, b) => SEVERITY_ORDER.indexOf(a.severity) - SEVERITY_ORDER.indexOf(b.severity));
+    const patternRows = patterns.map((f) => {
+        const { realSub, checklist } = parseChecklistSignal(f.description);
+        const text = capitalizeFirst(realSub.trim());
+        return detailRow({
+            mark: mark("flag"),
+            title: riskFactorTitle(f),
+            value: severityLabel(f.severity),
+            moreHTML: text || checklist.length ? escapeHtml(text) + checklistHTML(checklist) : "",
+        });
+    });
+    const needCount = flagged.length + patternRows.length;
+    // The count is of checks, like the score card's "2 of 25 checks
+    // need a look" (a risk pattern is several checks together).
     let html = '<div class="d-counts"><div class="d-count' +
-        (flagged.length > 0 ? " stat-hot" : "") +
+        (needCount > 0 ? " stat-hot" : "") +
         '"><b>' +
         flagged.length +
         "</b><small>" +
@@ -788,11 +898,12 @@ function buildDetailsTab(data) {
             ? t("dash.detail.looks_fine_count", "looks fine")
             : t("dash.detail.look_fine_count", "look fine")) +
         "</small></div></div>";
-    if (flagged.length > 0) {
+    if (needCount > 0) {
         html +=
             '<div class="d-heading">' +
                 escapeHtml(t("dash.detail.needs_a_look", "Needs a look")) +
                 '</div><div class="d-rows">' +
+                patternRows.join("") +
                 flagged.map((s) => signalRow(s, false)).join("") +
                 "</div>";
     }
@@ -988,28 +1099,9 @@ function buildPresence(results) {
         none +
         "</div>");
 }
-// ---- Report tab ------------------------------------------------------
-function buildReports(reports) {
-    return ('<div class="d-rows">' +
-        reports
-            .map((r) => detailRow({
-            mark: mark("flag"),
-            title: translateReportReason(r.report_type),
-            value: t("dash.detail.submitted", "Submitted") +
-                " " +
-                formatDate(r.reported_at) +
-                (r.by_you
-                    ? " · " + t("dash.detail.reported_by_you", "by you")
-                    : r.by_name || r.by_email
-                        ? " · " + t("dash.detail.reported_by", "by {who}").replace("{who}", (r.by_name || r.by_email))
-                        : ""),
-        }))
-            .join("") +
-        "</div>");
-}
 // ---- Free plan: the rest is on paid plans -------------------------
 // The server sends a Free plan only the score and the top reasons. The
-// Details tab and the PDF are for Team and Enterprise. "See plans"
+// details and the PDF are for Team and Enterprise. "See plans"
 // opens the plans in Settings.
 let currentFullResult = true;
 function detailUnlockCard(title, text) {
@@ -1036,6 +1128,7 @@ function renderDetailBody(data) {
     document.getElementById("detail-title").textContent =
         data.listing_title || t("dash.detail.untitled_listing", "Untitled listing");
     renderWatchButton(data);
+    renderReportButton(!!data.reported);
     // A teammate's scan: "Scanned by ali@company.com · 2026-11-12".
     const byEl = document.getElementById("detail-scanned-by");
     if (byEl) {
@@ -1072,8 +1165,11 @@ function renderDetailBody(data) {
         }
     }
     document.getElementById("detail-verdict").innerHTML = buildScoreCard(data);
+    // Paid plans: no "What we found" - every problem, risk patterns
+    // first, is in "Needs a look" further down. Free plans only get
+    // their top 3 reasons, so they see them here.
     document.getElementById("detail-findings").innerHTML =
-        buildFindings(data) +
+        (currentFullResult ? "" : buildFindings(data)) +
             (currentFullResult
                 ? ""
                 : detailUnlockCard(t("dash.detail.full_report_title", "See the full report"), t("dash.detail.full_report_text", "All {total} checks with their reasons, outside records, online presence and the PDF report are on the Team and Enterprise plans.").replace("{total}", String(total))));
@@ -1086,24 +1182,12 @@ function renderDetailBody(data) {
     locationEl.classList.toggle("hidden", !hasValue(seller.location));
     document.getElementById("detail-facts").innerHTML = buildFacts(data);
     document.getElementById("detail-visits").innerHTML = buildVisits(seller.monthly_activity);
-    document.getElementById("detail-tab-content-intel").innerHTML =
-        currentFullResult
-            ? buildDetailsTab(data)
-            : detailUnlockCard(t("dash.detail.details_locked_title", "Details are on the Team and Enterprise plans"), t("dash.detail.details_locked_text", 'See all {total} checks with their reasons, outside records (registers, sanctions, trade shows, website history), online presence, scam warnings and the "Before you pay" checklist.').replace("{total}", String(total)));
-    const filedBlock = document.getElementById("detail-report-filed");
-    const emptyBlock = document.getElementById("detail-report-empty");
-    const reports = data.reports || [];
-    filedBlock.innerHTML = reports.length > 0 ? buildReports(reports) : "";
-    filedBlock.classList.toggle("hidden", reports.length === 0);
-    emptyBlock.classList.toggle("hidden", reports.length > 0);
-    // In a team the tab shows everyone's reports, so the empty text says so.
-    const emptyText = emptyBlock.querySelector("[data-i18n='dash.detail.no_report_desc']");
-    if (emptyText) {
-        emptyText.textContent = data.team_reports
-            ? t("dash.detail.no_report_team", "No one in your team has reported this seller.")
-            : t("dash.detail.no_report_desc", "You have not reported this seller.");
-    }
-    switchDetailTab("risk");
+    // Everything on one page under the score and the supplier (no
+    // tabs: the dashboard has room). Free: only the "See the full
+    // report" card under the findings.
+    document.getElementById("detail-details").innerHTML = currentFullResult
+        ? buildDetailsTab(data)
+        : "";
 }
 // Rows that open and "Show more" / "Show less", for every list on the
 // result page.
@@ -1271,6 +1355,118 @@ async function downloadEvidencePdf() {
     }
 }
 document.getElementById("detail-download-pdf")?.addEventListener("click", downloadEvidencePdf);
+// ---- Report as scam (backend handlers/fraud_reports.rs) -------------
+// For a person who forgot to report the seller from the extension. The
+// same report as the extension's: one per person per seller, shown in
+// My Reports, and every saved scan of the seller gets its new score.
+// Free plans can report too.
+const REPORT_FLAG = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 22V4"/><path d="M4 4h12l-2 4 2 4H4"/></svg>';
+function renderReportButton(reported) {
+    const btn = document.getElementById("detail-report");
+    if (!btn)
+        return;
+    const open = "bg-surface border-coral/40 text-coral hover:bg-coral/10";
+    const done = "bg-coral/10 border-coral/20 text-coral cursor-default";
+    btn.classList.remove("hidden", ...open.split(" "), ...done.split(" "));
+    btn.classList.add("inline-flex", ...(reported ? done : open).split(" "));
+    btn.disabled = reported;
+    const text = reported
+        ? t("dash.detail.reported_btn", "Reported by you")
+        : t("dash.detail.report_btn", "Report as scam");
+    btn.title = text;
+    btn.innerHTML = REPORT_FLAG + '<span class="hidden sm:inline">' + escapeHtml(text) + "</span>";
+    closeReportBox();
+}
+function closeReportBox() {
+    const box = document.getElementById("detail-report-box");
+    if (!box)
+        return;
+    box.classList.add("hidden");
+    box.innerHTML = "";
+}
+function openReportBox() {
+    const box = document.getElementById("detail-report-box");
+    if (!box)
+        return;
+    if (!box.classList.contains("hidden")) {
+        closeReportBox();
+        return;
+    }
+    box.innerHTML =
+        '<div class="bg-surface border border-coral/30 rounded-2xl p-4">' +
+            '<div class="text-[13.5px] font-bold mb-1">' +
+            escapeHtml(t("dash.detail.report_title", "Report this seller as a scam")) +
+            '</div><div class="text-[12px] text-muted mb-3">' +
+            escapeHtml(t("dash.detail.report_text", "Your report warns other Safely users about this seller. Your team sees it's you; others only see the number of reports.")) +
+            '</div><div class="flex flex-col gap-2">' +
+            Object.keys(REPORT_REASON_TRANSLATIONS)
+                .map((reason, i) => '<label class="flex items-center gap-2 text-[13px]"><input type="radio" name="detail-report-reason" value="' +
+                reason +
+                '"' +
+                (i === 0 ? " checked" : "") +
+                " /> " +
+                escapeHtml(translateReportReason(reason)) +
+                "</label>")
+                .join("") +
+            '</div><textarea id="detail-report-note" rows="3" maxlength="2000" class="mt-3 w-full p-3 rounded-lg border border-line bg-surface text-[13px] outline-none focus:border-ink" placeholder="' +
+            escapeHtml(t("dash.detail.report_note", "What happened? (optional)")) +
+            '"></textarea><div class="flex gap-2 mt-3"><button type="button" data-detail-report-send class="px-3.5 py-2 rounded-lg bg-coral text-white text-[12.5px] font-bold hover:opacity-90 transition">' +
+            escapeHtml(t("dash.detail.report_send", "Send report")) +
+            '</button><button type="button" data-detail-report-close class="px-3.5 py-2 rounded-lg bg-surface2 border border-line text-[12.5px] font-bold hover:bg-surface3 transition">' +
+            escapeHtml(t("dash.common.cancel", "Cancel")) +
+            "</button></div></div>";
+    box.classList.remove("hidden");
+}
+async function sendReport(button) {
+    if (!currentAnalysisId)
+        return;
+    const picked = document.querySelector('input[name="detail-report-reason"]:checked');
+    const note = document.getElementById("detail-report-note")?.value || "";
+    button.disabled = true;
+    try {
+        const res = await fetch(API_BASE + "/history/" + currentAnalysisId + "/report", {
+            method: "POST",
+            headers: { ...window.safelyAuth.authHeader(), "Content-Type": "application/json" },
+            body: JSON.stringify({ report_type: picked ? picked.value : "scam", description: note }),
+        });
+        if (res.status === 409) {
+            // Already reported this seller (from the extension or another listing).
+            renderReportButton(true);
+            showToast(t("dash.detail.report_already", "You have already reported this seller."));
+            return;
+        }
+        if (!res.ok)
+            throw new Error("failed");
+        renderReportButton(true);
+        showToast(t("dash.detail.report_done", "Report sent. It's in My Reports."));
+        // The score changes with a report: show the new one, and the new row
+        // in My Reports.
+        const id = currentAnalysisId;
+        if (id)
+            openDetail(id);
+        const htmx = window.htmx;
+        if (htmx && typeof htmx.ajax === "function" && document.getElementById("report-rows")) {
+            htmx.ajax("GET", API_BASE + "/reports/html", { target: "#report-rows", swap: "innerHTML" });
+        }
+    }
+    catch (e) {
+        showToast(t("dash.detail.report_failed", "Could not send the report. Please try again."));
+    }
+    finally {
+        button.disabled = false;
+    }
+}
+document.getElementById("detail-report")?.addEventListener("click", openReportBox);
+document.getElementById("detail-report-box")?.addEventListener("click", (e) => {
+    const target = e.target;
+    const send = target.closest("[data-detail-report-send]");
+    if (send) {
+        sendReport(send);
+        return;
+    }
+    if (target.closest("[data-detail-report-close]"))
+        closeReportBox();
+});
 function escapeHtml(str) {
     const div = document.createElement("div");
     div.textContent = str;
@@ -1293,17 +1489,6 @@ function parseChecklistSignal(sub) {
         return [name, present === "true"];
     });
     return { realSub, checklist };
-}
-function switchDetailTab(tab) {
-    ["risk", "intel", "report"].forEach((name) => {
-        const content = document.getElementById("detail-tab-content-" + name);
-        if (content)
-            content.classList.toggle("hidden", name !== tab);
-    });
-    document.querySelectorAll(".detail-tab-btn").forEach((btn) => {
-        const active = btn.dataset.detailTab === tab;
-        btn.classList.toggle("is-active", active);
-    });
 }
 function closeDetailPanel() {
     const panel = document.getElementById("detail-view");

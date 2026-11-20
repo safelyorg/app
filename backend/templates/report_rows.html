@@ -1,13 +1,19 @@
 {% if items | length == 0 %}
-<tr><td colspan="4" class="px-4 py-14 text-center text-muted text-[13px]">You have not filed any reports yet.</td></tr>
+<tr><td colspan="5" class="px-4 py-14 text-center text-muted text-[13px]">You have not filed any reports yet.</td></tr>
 {% else %}
 {% for item in items %}
 <tr data-report="true" class="border-b border-line last:border-b-0">
     <td class="hidden sm:table-cell px-4 py-3.5 text-muted num text-[12px]">{{ item.reported_at_formatted }}</td>
-    <td class="px-4 py-3.5 font-semibold">{{ item.report_type }}</td>
-    <td class="hidden sm:table-cell px-4 py-3.5 text-muted capitalize">{{ item.platform }}</td>
+    <td class="px-4 py-3.5 font-semibold" data-report-reason="{{ item.report_type }}">{{ item.report_label }}</td>
+    <td class="hidden sm:table-cell px-4 py-3.5 text-muted capitalize">{% if item.platform == "vendor" %}Vendor form{% else %}{{ item.platform }}{% endif %}</td>
     <td class="px-4 py-3.5 truncate">
-        {% if item.listing_url %}<a href="{{ item.listing_url }}" target="_blank" rel="noopener noreferrer" class="hover:underline hover:text-brand">{{ item.seller_name | default(value="Unknown seller") }} &#8599;</a>{% else %}{{ item.seller_name | default(value="Unknown seller") }}{% endif %}
+        {% if item.platform == "vendor" %}<span data-report-kind="vendor" class="inline-block mr-2 px-2 py-0.5 rounded-full bg-[#ffd86a] text-[#17171a] text-[10.5px] font-bold align-middle">Vendor</span>{% elif item.platform == "website" %}<span data-report-kind="website" class="inline-block mr-2 px-2 py-0.5 rounded-full bg-surface2 text-muted text-[10.5px] font-bold align-middle">Website</span>{% else %}<span data-report-kind="marketplace" class="inline-block mr-2 px-2 py-0.5 rounded-full bg-surface2 text-muted text-[10.5px] font-bold align-middle">Marketplace</span>{% endif %}
+        {#- The name opens the seller inside Safely: the vendor page, or the saved scan in History. -#}
+        {% if item.platform == "vendor" and item.listing_url %}<a href="{{ item.listing_url }}" data-report-open="vendor" class="hover:underline hover:text-brand">{{ item.seller_name | default(value="Unknown seller") }} &rarr;</a>{% elif item.history_url %}<a href="{{ item.history_url }}" data-report-open="history" class="hover:underline hover:text-brand">{{ item.seller_name | default(value="Unknown seller") }} &rarr;</a>{% else %}{{ item.seller_name | default(value="Unknown seller") }}{% endif %}
+    </td>
+    {#- Its own column: the page outside Safely - the vendor's website (if given), the marketplace listing, or the shop. -#}
+    <td class="hidden sm:table-cell px-4 py-3.5 whitespace-nowrap">
+        {% if item.platform == "vendor" %}{% if item.website %}<a href="{{ item.website }}" target="_blank" rel="noopener noreferrer" data-report-link="website" class="text-[12.5px] font-semibold text-muted hover:text-brand hover:underline">Website &#8599;</a>{% else %}<span class="text-muted">&mdash;</span>{% endif %}{% elif item.listing_url %}<a href="{{ item.listing_url }}" target="_blank" rel="noopener noreferrer" data-report-link="{% if item.platform == "website" %}website{% else %}listing{% endif %}" class="text-[12.5px] font-semibold text-muted hover:text-brand hover:underline">{% if item.platform == "website" %}Website{% else %}<span class="capitalize">{{ item.platform }}</span>{% endif %} &#8599;</a>{% else %}<span class="text-muted">&mdash;</span>{% endif %}
     </td>
 </tr>
 {% endfor %}

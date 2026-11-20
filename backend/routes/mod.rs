@@ -10,3 +10,4 @@ pub mod reviews;
 pub mod subscribe;
 pub mod tool_api;
 pub mod tools;
+pub mod vendors;

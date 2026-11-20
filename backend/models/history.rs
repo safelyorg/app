@@ -28,6 +28,11 @@ pub struct ReportItem {
     pub seller_name: Option<String>,
     pub seller_id: Uuid,
     pub listing_url: Option<String>,
+    /// The newest saved scan of this seller the person may open (their
+    /// own, or their team's), for the "open in History" link.
+    pub scan_id: Option<Uuid>,
+    /// A vendor report: the website the vendor (or the buyer) gave.
+    pub vendor_website: Option<String>,
 }
 
 #[derive(Debug, FromRow)]

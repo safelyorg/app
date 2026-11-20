@@ -1,3 +1,6 @@
+use crate::models::analysis::Signal;
+use crate::services::features::analysis::score_parts;
+use crate::services::features::fraud_reports::already_reported;
 use crate::services::features::results::{sees_full_results, trim_to_free};
 use crate::services::features::team_history::{
     HistoryWho, email_of, history_choices, scan_owner_for_viewer, team_history, team_reports,
@@ -65,9 +68,46 @@ pub struct HistoryHtmlQuery {
 struct ReportRow {
     reported_at_formatted: String,
     report_type: ReportTypes,
+    /// The reason in words ("No delivery"); the dashboard translates it.
+    report_label: &'static str,
     platform: String,
     seller_name: Option<String>,
     listing_url: Option<String>,
+    /// The saved scan on the History page (/dashboard/<platform>/<id>).
+    history_url: Option<String>,
+    /// A vendor's own website (https only, checked).
+    website: Option<String>,
+}
+
+/// A report's reason in words, for My Reports: the same words as the
+/// dashboard's report box (detail_view.ts REPORT_REASON_TRANSLATIONS),
+/// which also translates them.
+fn report_label(kind: &ReportTypes) -> &'static str {
+    match kind {
+        ReportTypes::Scam => "Something else looked like a scam",
+        ReportTypes::FakeItem => "Goods were fake or not as described",
+        ReportTypes::NoDelivery => "Took payment and never shipped",
+        ReportTypes::WrongItem => "Sent the wrong goods",
+        ReportTypes::Counterfeit => "Counterfeit goods",
+        ReportTypes::NonResponsive => "Stopped replying after payment",
+    }
+}
+
+/// A website someone typed ("acme.com", "http://acme.com/x") as a safe
+/// link, or None when it is not a real http(s) address.
+fn website_link(raw: &str) -> Option<String> {
+    let raw = raw.trim();
+    if raw.is_empty() {
+        return None;
+    }
+    let with_scheme = if raw.contains("://") {
+        raw.to_string()
+    } else {
+        format!("https://{raw}")
+    };
+    let url = reqwest::Url::parse(&with_scheme).ok()?;
+    let host = url.host_str()?;
+    (matches!(url.scheme(), "http" | "https") && host.contains('.')).then(|| url.to_string())
 }
 
 /// GET /api/v1/history
@@ -232,6 +272,11 @@ pub async fn get_history_item(
 
     match detail {
         Some(mut d) => {
+            // "What adds to the score", from the English checks (before
+            // they are translated or trimmed for the Free plan).
+            let parts = serde_json::from_value::<Vec<Signal>>(d.signals.clone())
+                .map(|signals| score_parts(&signals, d.fraud_report_count, d.platform == "website"))
+                .unwrap_or(Value::Null);
             if language != "en" {
                 let risk_factors_value = d
                     .risk_factors
@@ -267,6 +312,9 @@ pub async fn get_history_item(
                 value["social_candidates"] = social;
             }
             value["full_result"] = Value::Bool(full);
+            // "What adds to the score" names every check that added
+            // points, so the Free plan gets only the score bar.
+            value["score_parts"] = if full { parts } else { Value::Null };
             // In a team: everyone's reports about this seller, with who
             // made them (team_history.rs). Otherwise their own, as before.
             if let Some(seller_id) = value["seller"]["id"]
@@ -277,6 +325,15 @@ pub async fn get_history_item(
                 value["reported"] = Value::Bool(list.iter().any(|r| r["by_you"] == true));
                 value["reports"] = Value::Array(list);
                 value["team_reports"] = Value::Bool(true);
+            }
+            // "Report as scam" button: one report per person per seller,
+            // so "reported" is about the seller, not only this listing.
+            if let Some(seller_id) = value["seller"]["id"]
+                .as_str()
+                .and_then(|s| Uuid::parse_str(s).ok())
+                && let Ok(done) = already_reported(&pool, user_id, seller_id).await
+            {
+                value["reported"] = Value::Bool(done);
             }
             // "Watch this supplier" button state (watch.rs).
             value["watching"] = Value::Bool(is_watched(&pool, user_id, id).await);
@@ -368,7 +425,13 @@ pub async fn get_reports_html(
         .into_iter()
         .map(|item| ReportRow {
             reported_at_formatted: item.reported_at.format("%Y-%m-%d").to_string(),
+            report_label: report_label(&item.report_type),
             report_type: item.report_type,
+            history_url: item
+                .scan_id
+                .filter(|_| item.platform != "vendor")
+                .map(|id| format!("/dashboard/{}/{}", item.platform.to_lowercase(), id)),
+            website: item.vendor_website.as_deref().and_then(website_link),
             platform: item.platform,
             seller_name: item.seller_name,
             listing_url: item.listing_url,
@@ -649,4 +712,25 @@ pub async fn disconnect_google(
     let _ = set_login_method(&pool, user_id, "email").await;
 
     Ok(Json(json!({ "success": true, "signed_in_with": "email" })))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::website_link;
+
+    #[test]
+    fn a_typed_website_becomes_a_safe_link() {
+        assert_eq!(
+            website_link("acme.com").as_deref(),
+            Some("https://acme.com/")
+        );
+        assert_eq!(
+            website_link(" http://www.acme.com/about ").as_deref(),
+            Some("http://www.acme.com/about")
+        );
+        assert_eq!(website_link(""), None);
+        assert_eq!(website_link("javascript:alert(1)"), None);
+        assert_eq!(website_link("ftp://acme.com"), None);
+        assert_eq!(website_link("not a site"), None);
+    }
 }

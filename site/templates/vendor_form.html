@@ -1,0 +1,625 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="referrer" content="no-referrer">
+  <title>Supplier form · Safely</title>
+  <link rel="icon" href="/favicon.ico">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <!--
+    The vendor's form (backend/services/features/vendors.rs). One page
+    for every link: the link's secret is the last part of the address
+    (/v/<secret>). The vendor sees only this form, never the result.
+  -->
+  <style>
+    :root {
+      --bg: #f4f4f4; --card: #ffffff; --ink: #161616; --muted: #6b6b6b; --line: #e4e4e4;
+      --soft: #f6f6f6; --yellow: #ffd86a; --good-bg: #d7f7e6; --good: #0b6b3a; --bad: #c2341f; --bad-bg: #fde8e4;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--ink); font-family: Inter, Arial, Helvetica, sans-serif; -webkit-font-smoothing: antialiased; }
+    .wrap { max-width: 760px; margin: 0 auto; padding: 40px 16px 48px; }
+    .who { display: flex; align-items: center; gap: 14px; margin-bottom: 26px; }
+    .badge { width: 54px; height: 54px; border-radius: 14px; background: var(--yellow); display: grid; place-items: center; font-weight: 800; font-size: 20px; flex-shrink: 0; }
+    .who small { display: block; color: var(--muted); font-size: 14px; }
+    .who strong { display: block; font-size: 20px; margin-top: 2px; }
+    .card { background: var(--card); border: 1px solid var(--line); border-radius: 22px; padding: 34px 34px 30px; }
+    h1 { margin: 0; font-size: 27px; letter-spacing: -0.3px; }
+    .intro { margin: 10px 0 0; color: var(--muted); font-size: 16px; line-height: 1.6; }
+    .bars { display: flex; gap: 8px; margin-top: 26px; }
+    .bars span { flex: 1; height: 6px; border-radius: 9px; background: var(--line); }
+    .bars span.on { background: var(--ink); }
+    .step-name { margin-top: 10px; color: var(--muted); font-size: 13px; font-weight: 600; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 16px; margin-top: 10px; }
+    .field { margin-top: 20px; }
+    .full { grid-column: 1 / -1; }
+    label { display: block; font-weight: 600; font-size: 14.5px; margin-bottom: 9px; }
+    label em { font-style: normal; font-weight: 400; color: var(--muted); }
+    input { width: 100%; height: 52px; border: 1px solid var(--line); border-radius: 13px; padding: 0 17px; font: inherit; font-size: 16px; color: var(--ink); background: #fff; outline: none; transition: border-color .15s; }
+    input:focus { border-color: var(--ink); }
+    input[readonly] { background: var(--soft); color: var(--muted); }
+    .hint { margin: 7px 0 0; color: var(--muted); font-size: 12.5px; line-height: 1.5; }
+    .row { display: flex; gap: 10px; }
+    .row input { flex: 1; }
+    .btn { height: 52px; padding: 0 26px; border-radius: 13px; border: 1px solid var(--line); background: #fff; color: var(--ink); font: inherit; font-weight: 700; font-size: 15px; cursor: pointer; white-space: nowrap; }
+    .btn.dark { background: var(--ink); border-color: var(--ink); color: #fff; }
+    .btn:disabled { opacity: .5; cursor: default; }
+    .pill { height: 52px; padding: 0 18px; border-radius: 13px; background: var(--good-bg); color: var(--good); font-weight: 700; font-size: 14.5px; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+    .actions { display: flex; justify-content: space-between; gap: 12px; margin-top: 30px; }
+    .note { margin-top: 22px; padding: 14px 16px; border-radius: 13px; background: #fff7dc; border: 1px solid #f5e2a6; font-size: 14px; line-height: 1.55; }
+    .error { margin-top: 18px; padding: 12px 15px; border-radius: 12px; background: var(--bad-bg); color: var(--bad); font-size: 14px; font-weight: 600; display: none; }
+    .review { margin-top: 22px; border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
+    .review div { display: flex; justify-content: space-between; gap: 16px; padding: 12px 16px; font-size: 14px; border-bottom: 1px solid var(--line); }
+    .review div:last-child { border-bottom: 0; }
+    .review span { color: var(--muted); }
+    .review b { text-align: right; word-break: break-word; }
+    .center { text-align: center; padding: 18px 0 8px; }
+    .big-icon { width: 64px; height: 64px; border-radius: 50%; margin: 0 auto 18px; display: grid; place-items: center; font-size: 30px; background: var(--good-bg); color: var(--good); }
+    .big-icon.grey { background: var(--soft); color: var(--muted); }
+    .foot { display: flex; justify-content: space-between; gap: 12px; margin-top: 18px; color: var(--muted); font-size: 13.5px; flex-wrap: wrap; }
+    .foot button { background: none; border: 0; padding: 0; font: inherit; color: var(--muted); cursor: pointer; }
+    .foot button.on { color: var(--ink); font-weight: 700; }
+    .saved { color: var(--muted); font-size: 12.5px; align-self: center; }
+    .hidden { display: none !important; }
+    .doc-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 10px 0; border-top: 1px solid var(--line); font-size: 14px; }
+    .doc-row > span:first-child { flex: 1; min-width: 200px; }
+    .btn.small { height: 38px; padding: 0 16px; font-size: 13.5px; display: inline-flex; align-items: center; }
+    .doc-done { color: var(--good); font-weight: 700; font-size: 13px; }
+    @media (max-width: 600px) {
+      .card { padding: 24px 18px 22px; border-radius: 18px; }
+      .grid { grid-template-columns: 1fr; }
+      h1 { font-size: 23px; }
+      .row { flex-direction: column; }
+      .btn, .pill { width: 100%; justify-content: center; }
+      .actions { flex-direction: column-reverse; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="who hidden" id="who">
+      <div class="badge" id="badge">S</div>
+      <div><small data-t="requested_by">Supplier check requested by</small><strong id="buyer"></strong></div>
+    </div>
+
+    <div class="card" id="card">
+      <div class="center" id="loading"><p class="intro" data-t="loading">Loading…</p></div>
+
+      <!-- The form -->
+      <div id="form" class="hidden">
+        <h1 id="title" data-t="title">Quick supplier check</h1>
+        <p class="intro" id="intro"></p>
+        <div class="note hidden" id="ask-note"></div>
+        <div class="bars" id="bars"><span></span><span></span><span></span></div>
+        <div class="step-name" id="step-name"></div>
+
+        <!-- Step 1: company -->
+        <div class="grid" data-step="1">
+          <div class="field full" data-field="company_name">
+            <label for="f-company_name" data-t="company_name">Legal company name</label>
+            <input id="f-company_name" autocomplete="organization" maxlength="200">
+          </div>
+          <div class="field" data-field="country">
+            <label for="f-country" data-t="country">Country</label>
+            <input id="f-country" autocomplete="country-name" maxlength="200">
+          </div>
+          <div class="field" data-field="company_number">
+            <label for="f-company_number" data-t="company_number">Registration or tax number</label>
+            <input id="f-company_number" maxlength="200">
+            <p class="hint" data-t="company_number_hint">CNPJ, EIN, VAT, company register number…</p>
+          </div>
+          <div class="field" data-field="phone">
+            <label for="f-phone" data-t="phone">Phone</label>
+            <input id="f-phone" type="tel" autocomplete="tel" maxlength="200">
+          </div>
+          <div class="field" data-field="website">
+            <label for="f-website"><span data-t="website">Website</span> <em data-t="if_any">(if any)</em></label>
+            <input id="f-website" autocomplete="url" maxlength="200" placeholder="company.com">
+          </div>
+          <div class="field full" data-field="address">
+            <label for="f-address"><span data-t="address">Company address</span> <em data-t="optional">(optional)</em></label>
+            <input id="f-address" autocomplete="street-address" maxlength="200">
+          </div>
+        </div>
+
+        <!-- Step 2: email -->
+        <div data-step="2">
+          <div class="field" data-field="email">
+            <label for="f-email" data-t="email">Work email</label>
+            <div class="row">
+              <input id="f-email" type="email" autocomplete="email" maxlength="200">
+              <button class="btn" type="button" id="send-code" data-t="send_code">Send code</button>
+              <span class="pill hidden" id="confirmed">✓ <span data-t="confirmed">Code confirmed</span></span>
+            </div>
+            <p class="hint" data-t="email_hint">We send a 6-digit code to this address, to be sure it is yours.</p>
+          </div>
+          <div class="field hidden" id="code-box">
+            <label for="f-code" data-t="code">Code from the email</label>
+            <div class="row">
+              <input id="f-code" inputmode="numeric" autocomplete="one-time-code" maxlength="7" placeholder="123456">
+              <button class="btn dark" type="button" id="confirm-code" data-t="confirm">Confirm</button>
+            </div>
+            <p class="hint" id="code-hint"></p>
+          </div>
+        </div>
+
+        <!-- Step 3: bank -->
+        <div data-step="3">
+          <div class="field" data-field="bank_holder">
+            <label for="f-bank_holder" data-t="bank_holder">Name on the bank account</label>
+            <input id="f-bank_holder" maxlength="200">
+            <p class="hint" data-t="bank_hint">Exactly as your bank writes it. We never ask for card numbers or passwords.</p>
+          </div>
+          <div class="grid" style="margin-top:0">
+            <div class="field" data-field="bank_account">
+              <label for="f-bank_account"><span data-t="bank_account">Account number or IBAN</span> <em data-t="optional">(optional)</em></label>
+              <input id="f-bank_account" maxlength="200" autocomplete="off">
+            </div>
+            <div class="field" data-field="bank_code">
+              <label for="f-bank_code"><span data-t="bank_code">SWIFT/BIC or routing number</span> <em data-t="optional">(optional)</em></label>
+              <input id="f-bank_code" maxlength="200" autocomplete="off">
+            </div>
+          </div>
+          <div class="field docs hidden" id="docs">
+            <label><span data-t="docs">Documents</span> <em data-t="optional">(optional)</em></label>
+            <p class="hint" style="margin:0 0 10px" data-t="docs_hint">PDF, JPG or PNG, up to 5 MB each. Only the company that asked can see them.</p>
+            <div class="doc-row">
+              <span data-t="doc_registration">Company registration or business licence</span>
+              <label class="btn small"><input type="file" data-doc="registration" accept=".pdf,.jpg,.jpeg,.png,.webp" hidden><span data-t="upload">Upload</span></label>
+              <span class="doc-done" data-doc-done="registration"></span>
+            </div>
+            <div class="doc-row">
+              <span data-t="doc_bank">Bank letter or statement header (with the account name)</span>
+              <label class="btn small"><input type="file" data-doc="bank_letter" accept=".pdf,.jpg,.jpeg,.png,.webp" hidden><span data-t="upload">Upload</span></label>
+              <span class="doc-done" data-doc-done="bank_letter"></span>
+            </div>
+          </div>
+          <div class="review" id="review"></div>
+        </div>
+
+        <div class="error" id="error"></div>
+
+        <div class="actions">
+          <button class="btn" type="button" id="back" data-t="back">Back</button>
+          <span class="saved" id="saved"></span>
+          <button class="btn dark" type="button" id="next"></button>
+        </div>
+      </div>
+
+      <!-- Sent -->
+      <div id="done" class="hidden center">
+        <div class="big-icon">✓</div>
+        <h1 data-t="done_title">Thank you!</h1>
+        <p class="intro" id="done-text"></p>
+      </div>
+
+      <!-- Closed link -->
+      <div id="closed" class="hidden center">
+        <div class="big-icon grey">⌛</div>
+        <h1 data-t="closed_title">This link no longer works</h1>
+        <p class="intro" data-t="closed_text">It was canceled, replaced by a newer link, or it is too old. Please ask the company that sent it for a new link.</p>
+      </div>
+    </div>
+
+    <div class="foot">
+      <span id="privacy">🔒 <span data-t="privacy_plain">Your details go only to the company that asked. Checked by Safely.</span></span>
+      <span><button type="button" data-lang="en">English</button> · <button type="button" data-lang="pt">Português</button></span>
+    </div>
+  </div>
+
+<script>
+(function () {
+  "use strict";
+
+  var TEXT = {
+    en: {
+      requested_by: "Supplier check requested by",
+      loading: "Loading…",
+      title: "Quick supplier check",
+      title_fix: "Please update a few answers",
+      intro: "{buyer} asks all new suppliers to confirm a few details before the first order. It takes about 3 minutes.",
+      intro_fix: "{buyer} asked you to update only the answers below.",
+      their_note: "Their note",
+      step: "Step {n} of {total}",
+      step_1: "Company", step_2: "Email", step_3: "Bank details",
+      company_name: "Legal company name", country: "Country", company_number: "Registration or tax number",
+      company_number_hint: "CNPJ, EIN, VAT, company register number…",
+      phone: "Phone", website: "Website", if_any: "(if any)",
+      email: "Work email", send_code: "Send code", send_again: "Send again", confirmed: "Code confirmed",
+      email_hint: "We send a 6-digit code to this address, to be sure it is yours.",
+      code: "Code from the email", confirm: "Confirm",
+      code_sent: "We sent a code to {email}. It works for 15 minutes.",
+      bank_holder: "Name on the bank account",
+      address: "Company address", optional: "(optional)",
+      bank_account: "Account number or IBAN", bank_code: "SWIFT/BIC or routing number",
+      docs: "Documents", docs_hint: "PDF, JPG or PNG, up to 5 MB each. Only the company that asked can see them.",
+      doc_registration: "Company registration or business licence",
+      doc_bank: "Bank letter or statement header (with the account name)",
+      upload: "Upload", replace: "Replace", uploading: "Uploading…", uploaded: "Uploaded",
+      err_bad_file: "Please upload a PDF, JPG or PNG file of up to 5 MB.",
+      bank_hint: "Exactly as your bank writes it. We never ask for card numbers or passwords.",
+      back: "Back", next_email: "Next: email →", next_bank: "Next: bank details →", send: "Send the form", send_fix: "Send the changes",
+      saved: "Saved",
+      done_title: "Thank you!",
+      done_text: "Your answers were sent to {buyer}. You can close this page. They will contact you if they need anything else.",
+      closed_title: "This link no longer works",
+      closed_text: "It was canceled, replaced by a newer link, or it is too old. Please ask the company that sent it for a new link.",
+      privacy: "Your details go only to {buyer}. Checked by Safely.",
+      privacy_plain: "Your details go only to the company that asked. Checked by Safely.",
+      err_missing: "Please fill in: {list}.",
+      err_email_first: "Please confirm your email with the code first.",
+      err_bad_email: "This email address does not look right.",
+      err_code_wrong: "That code is not right. Please check the email and try again.",
+      err_code_expired: "That code is too old. Please send a new one.",
+      err_code_too_many_tries: "Too many tries. Please send a new code.",
+      err_code_wait: "Please wait a minute before asking for a new code.",
+      err_other: "Something went wrong. Please try again in a moment."
+    },
+    pt: {
+      requested_by: "Verificação de fornecedor pedida por",
+      loading: "Carregando…",
+      title: "Verificação rápida de fornecedor",
+      title_fix: "Atualize algumas respostas",
+      intro: "{buyer} pede a todos os novos fornecedores que confirmem alguns dados antes do primeiro pedido. Leva cerca de 3 minutos.",
+      intro_fix: "{buyer} pediu que você atualize só as respostas abaixo.",
+      their_note: "Recado",
+      step: "Etapa {n} de {total}",
+      step_1: "Empresa", step_2: "E-mail", step_3: "Dados bancários",
+      company_name: "Razão social", country: "País", company_number: "Número de registro ou fiscal",
+      company_number_hint: "CNPJ, EIN, VAT, número de registro da empresa…",
+      phone: "Telefone", website: "Site", if_any: "(se tiver)",
+      email: "E-mail de trabalho", send_code: "Enviar código", send_again: "Enviar de novo", confirmed: "Código confirmado",
+      email_hint: "Enviamos um código de 6 dígitos para este e-mail, para confirmar que ele é seu.",
+      code: "Código do e-mail", confirm: "Confirmar",
+      code_sent: "Enviamos um código para {email}. Ele funciona por 15 minutos.",
+      bank_holder: "Nome do titular da conta bancária",
+      address: "Endereço da empresa", optional: "(opcional)",
+      bank_account: "Número da conta ou IBAN", bank_code: "SWIFT/BIC ou código do banco",
+      docs: "Documentos", docs_hint: "PDF, JPG ou PNG, até 5 MB cada. Só a empresa que pediu pode ver.",
+      doc_registration: "Cartão CNPJ, contrato social ou licença da empresa",
+      doc_bank: "Carta do banco ou cabeçalho do extrato (com o nome do titular)",
+      upload: "Enviar", replace: "Trocar", uploading: "Enviando…", uploaded: "Enviado",
+      err_bad_file: "Envie um arquivo PDF, JPG ou PNG de até 5 MB.",
+      bank_hint: "Exatamente como o banco escreve. Nunca pedimos números de cartão ou senhas.",
+      back: "Voltar", next_email: "Próximo: e-mail →", next_bank: "Próximo: dados bancários →", send: "Enviar o formulário", send_fix: "Enviar as mudanças",
+      saved: "Salvo",
+      done_title: "Obrigado!",
+      done_text: "Suas respostas foram enviadas para {buyer}. Você já pode fechar esta página. Eles vão falar com você se precisarem de mais alguma coisa.",
+      closed_title: "Este link não funciona mais",
+      closed_text: "Ele foi cancelado, trocado por um link mais novo ou é antigo demais. Peça um novo link para a empresa que enviou.",
+      privacy: "Seus dados vão só para {buyer}. Verificado pelo Safely.",
+      privacy_plain: "Seus dados vão só para a empresa que pediu. Verificado pelo Safely.",
+      err_missing: "Preencha: {list}.",
+      err_email_first: "Confirme o seu e-mail com o código primeiro.",
+      err_bad_email: "Este e-mail não parece certo.",
+      err_code_wrong: "Este código não está certo. Confira o e-mail e tente de novo.",
+      err_code_expired: "Este código é antigo demais. Envie um novo.",
+      err_code_too_many_tries: "Tentativas demais. Envie um novo código.",
+      err_code_wait: "Espere um minuto antes de pedir um novo código.",
+      err_other: "Algo deu errado. Tente de novo em um instante."
+    }
+  };
+
+  var FIELD_STEP = { company_name: 1, country: 1, company_number: 1, phone: 1, website: 1, address: 1, email: 2, bank_holder: 3, bank_account: 3, bank_code: 3 };
+  var token = (location.pathname.split("/").filter(Boolean)[1] || "").trim();
+  var api = "/api/v1/vendor-form/" + encodeURIComponent(token);
+  var lang = "en";
+  var data = null;        // GET answer
+  var step = 1;
+  var steps = [1, 2, 3];  // the steps shown (fewer when only some answers are asked)
+  var confirmedEmail = null;
+  var saveTimer = null;
+
+  function $(id) { return document.getElementById(id); }
+  function t(key) { return (TEXT[lang] && TEXT[lang][key]) || TEXT.en[key] || key; }
+  function fill(text, values) {
+    return text.replace(/\{(\w+)\}/g, function (_, k) { return values[k] != null ? values[k] : ""; });
+  }
+  function show(id, on) { $(id).classList.toggle("hidden", !on); }
+
+  function setLanguage(next) {
+    lang = next === "pt" ? "pt" : "en";
+    document.documentElement.lang = lang === "pt" ? "pt-BR" : "en";
+    try { localStorage.setItem("safely_vendor_lang", lang); } catch (e) {}
+    document.querySelectorAll("[data-t]").forEach(function (el) { el.textContent = t(el.getAttribute("data-t")); });
+    document.querySelectorAll("[data-lang]").forEach(function (b) { b.classList.toggle("on", b.getAttribute("data-lang") === lang); });
+    if (data) render();
+  }
+
+  function editable(field) { return data && data.editable.indexOf(field) !== -1; }
+  function isFix() { return data && data.editable.length < data.fields.length; }
+
+  function answers() {
+    var out = {};
+    data.editable.forEach(function (f) {
+      var el = $("f-" + f);
+      if (el) out[f] = el.value.trim();
+    });
+    return out;
+  }
+
+  function error(text) {
+    $("error").textContent = text || "";
+    $("error").style.display = text ? "block" : "none";
+  }
+
+  function errorFor(code) {
+    var key = "err_" + code;
+    return TEXT.en[key] ? t(key) : t("err_other");
+  }
+
+  async function call(path, body) {
+    var res = await fetch(api + path, {
+      method: body === undefined ? "GET" : "POST",
+      headers: body === undefined ? {} : { "Content-Type": "application/json" },
+      body: body === undefined ? undefined : JSON.stringify(body)
+    });
+    var json = {};
+    try { json = await res.json(); } catch (e) {}
+    if (!res.ok) { var err = new Error(json.error || "error"); err.status = res.status; err.code = json.error; throw err; }
+    return json;
+  }
+
+  function render() {
+    var buyer = data.buyer_company;
+    $("buyer").textContent = buyer;
+    $("badge").textContent = (buyer.trim()[0] || "S").toUpperCase();
+    $("privacy").lastChild.textContent = fill(t("privacy"), { buyer: buyer });
+    show("who", true);
+    show("loading", false);
+    if (data.done) {
+      show("form", false); show("closed", false); show("done", true);
+      $("done-text").textContent = fill(t("done_text"), { buyer: buyer });
+      return;
+    }
+    show("form", true);
+    $("title").textContent = isFix() ? t("title_fix") : t("title");
+    $("intro").textContent = fill(isFix() ? t("intro_fix") : t("intro"), { buyer: buyer });
+    if (data.ask_note) {
+      $("ask-note").textContent = t("their_note") + ": “" + data.ask_note + "”";
+      show("ask-note", true);
+    }
+    steps = [1, 2, 3].filter(function (s) {
+      return data.editable.some(function (f) { return FIELD_STEP[f] === s; });
+    });
+    if (steps.indexOf(step) === -1) step = steps[0];
+    document.querySelectorAll("[data-field]").forEach(function (el) {
+      el.classList.toggle("hidden", !editable(el.getAttribute("data-field")));
+    });
+    document.querySelectorAll("[data-step]").forEach(function (el) {
+      el.classList.toggle("hidden", Number(el.getAttribute("data-step")) !== step);
+    });
+    var bars = $("bars").children;
+    for (var i = 0; i < bars.length; i++) {
+      bars[i].classList.toggle("hidden", i >= steps.length);
+      bars[i].classList.toggle("on", i <= steps.indexOf(step));
+    }
+    $("bars").classList.toggle("hidden", steps.length < 2);
+    $("step-name").textContent = steps.length < 2 ? "" :
+      fill(t("step"), { n: steps.indexOf(step) + 1, total: steps.length }) + " · " + t("step_" + step);
+    show("back", steps.indexOf(step) > 0);
+    var last = steps.indexOf(step) === steps.length - 1;
+    var nextStep = steps[steps.indexOf(step) + 1];
+    $("next").textContent = last ? (isFix() ? t("send_fix") : t("send")) : (nextStep === 2 ? t("next_email") : t("next_bank"));
+    renderEmail();
+    if (last) renderReview();
+    // Files: on the full form only (a "please fix" link opens just the
+    // answers asked for).
+    show("docs", !isFix() && step === 3);
+    renderDocs();
+  }
+
+  function renderDocs() {
+    var have = {};
+    (data.documents || []).forEach(function (d) { have[d.kind] = d.file_name; });
+    document.querySelectorAll("[data-doc-done]").forEach(function (el) {
+      var name = have[el.getAttribute("data-doc-done")];
+      el.textContent = name ? "✓ " + t("uploaded") + ": " + name : "";
+    });
+    document.querySelectorAll("input[data-doc]").forEach(function (input) {
+      var label = input.parentNode.querySelector("span");
+      if (label) label.textContent = have[input.getAttribute("data-doc")] ? t("replace") : t("upload");
+    });
+  }
+
+  async function uploadDoc(input) {
+    var file = input.files && input.files[0];
+    if (!file) return;
+    error("");
+    var kind = input.getAttribute("data-doc");
+    if (file.size > 5 * 1024 * 1024) { error(t("err_bad_file")); input.value = ""; return; }
+    var done = document.querySelector('[data-doc-done="' + kind + '"]');
+    if (done) done.textContent = t("uploading");
+    var form = new FormData();
+    form.append("file", file, file.name);
+    try {
+      var res = await fetch(api + "/document?kind=" + encodeURIComponent(kind), { method: "POST", body: form });
+      var json = {};
+      try { json = await res.json(); } catch (e) {}
+      if (!res.ok) {
+        if (res.status === 410) return closed();
+        error(json.error === "bad_file" ? t("err_bad_file") : t("err_other"));
+        renderDocs();
+        return;
+      }
+      data.documents = (data.documents || []).filter(function (d) { return d.kind !== kind; });
+      data.documents.push({ kind: kind, file_name: json.file_name || file.name });
+      renderDocs();
+    } catch (e) {
+      error(t("err_other"));
+      renderDocs();
+    } finally {
+      input.value = "";
+    }
+  }
+
+  function renderEmail() {
+    var typed = $("f-email").value.trim().toLowerCase();
+    var ok = confirmedEmail && typed === confirmedEmail.toLowerCase();
+    show("confirmed", !!ok);
+    show("send-code", !ok);
+    if (ok) show("code-box", false);
+  }
+
+  function renderReview() {
+    var labels = { company_name: "company_name", country: "country", company_number: "company_number", phone: "phone", website: "website", address: "address", email: "email" };
+    var values = answers();
+    var html = "";
+    Object.keys(labels).forEach(function (f) {
+      if (!editable(f) || !values[f]) return;
+      var row = document.createElement("div");
+      var a = document.createElement("span"); a.textContent = t(labels[f]);
+      var b = document.createElement("b"); b.textContent = values[f];
+      row.appendChild(a); row.appendChild(b);
+      html += row.outerHTML;
+    });
+    $("review").innerHTML = html;
+    show("review", html !== "");
+  }
+
+  function missingIn(s) {
+    var values = answers();
+    return data.editable.filter(function (f) {
+      return FIELD_STEP[f] === s && data.optional.indexOf(f) === -1 && !values[f];
+    });
+  }
+
+  function saveSoon() {
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(function () {
+      call("/draft", { answers: answers() })
+        .then(function () { $("saved").textContent = "✓ " + t("saved"); })
+        .catch(function () {});
+    }, 800);
+  }
+
+  async function next() {
+    error("");
+    var missing = missingIn(step);
+    if (missing.length) {
+      error(fill(t("err_missing"), { list: missing.map(t).join(", ") }));
+      return;
+    }
+    if (step === 2 && editable("email")) {
+      var typed = $("f-email").value.trim().toLowerCase();
+      if (!confirmedEmail || typed !== confirmedEmail.toLowerCase()) { error(t("err_email_first")); return; }
+    }
+    var last = steps.indexOf(step) === steps.length - 1;
+    if (!last) {
+      step = steps[steps.indexOf(step) + 1];
+      render();
+      window.scrollTo(0, 0);
+      return;
+    }
+    // Every step must be complete before sending.
+    for (var i = 0; i < steps.length; i++) {
+      var m = missingIn(steps[i]);
+      if (m.length) { step = steps[i]; render(); error(fill(t("err_missing"), { list: m.map(t).join(", ") })); return; }
+    }
+    $("next").disabled = true;
+    try {
+      await call("/submit", { answers: answers() });
+      data.done = true;
+      render();
+      window.scrollTo(0, 0);
+    } catch (e) {
+      if (e.code === "email_not_confirmed") { step = 2; render(); }
+      if (e.status === 410) return closed();
+      error(e.code === "answers_missing" ? fill(t("err_missing"), { list: "" }) : errorFor(e.code));
+    } finally {
+      $("next").disabled = false;
+    }
+  }
+
+  async function sendCode() {
+    error("");
+    var email = $("f-email").value.trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { error(t("err_bad_email")); return; }
+    $("send-code").disabled = true;
+    try {
+      await call("/send-code", { email: email });
+      show("code-box", true);
+      $("code-hint").textContent = fill(t("code_sent"), { email: email });
+      $("send-code").textContent = t("send_again");
+      $("f-code").focus();
+    } catch (e) {
+      if (e.status === 410) return closed();
+      error(errorFor(e.code));
+    } finally {
+      setTimeout(function () { $("send-code").disabled = false; }, 2000);
+    }
+  }
+
+  async function confirmCode() {
+    error("");
+    $("confirm-code").disabled = true;
+    try {
+      var res = await call("/confirm-code", { code: $("f-code").value });
+      confirmedEmail = res.confirmed;
+      $("f-email").value = res.confirmed;
+      $("f-code").value = "";
+      renderEmail();
+    } catch (e) {
+      if (e.status === 410) return closed();
+      error(errorFor(e.code));
+    } finally {
+      $("confirm-code").disabled = false;
+    }
+  }
+
+  function closed() {
+    show("loading", false); show("form", false); show("done", false); show("closed", true);
+  }
+
+  document.querySelectorAll("[data-lang]").forEach(function (b) {
+    b.addEventListener("click", function () { setLanguage(b.getAttribute("data-lang")); });
+  });
+  document.querySelectorAll("input[id^='f-']").forEach(function (el) {
+    if (el.id === "f-code") return;
+    el.addEventListener("input", function () {
+      $("saved").textContent = "";
+      if (el.id === "f-email") renderEmail();
+      saveSoon();
+    });
+  });
+  $("f-code").addEventListener("keydown", function (e) { if (e.key === "Enter") confirmCode(); });
+  $("next").addEventListener("click", next);
+  $("back").addEventListener("click", function () {
+    error("");
+    step = steps[Math.max(0, steps.indexOf(step) - 1)];
+    render();
+  });
+  $("send-code").addEventListener("click", sendCode);
+  document.querySelectorAll("input[data-doc]").forEach(function (input) {
+    input.addEventListener("change", function () { uploadDoc(input); });
+  });
+  $("confirm-code").addEventListener("click", confirmCode);
+
+  var saved = null;
+  try { saved = localStorage.getItem("safely_vendor_lang"); } catch (e) {}
+  setLanguage(saved || "en");
+
+  if (!token) { closed(); return; }
+  call("")
+    .then(function (res) {
+      data = res;
+      if (!saved) setLanguage(res.language);
+      Object.keys(res.answers || {}).forEach(function (f) {
+        var el = $("f-" + f);
+        if (el) el.value = res.answers[f];
+      });
+      if (!$("f-email").value && res.suggested_email && editable("email")) $("f-email").value = res.suggested_email;
+      confirmedEmail = res.email_confirmed || null;
+      render();
+    })
+    .catch(function (e) {
+      if (e.status === 410 || e.status === 404) closed();
+      else { $("loading").innerHTML = ""; var p = document.createElement("p"); p.className = "intro"; p.textContent = t("err_other"); $("loading").appendChild(p); }
+    });
+})();
+</script>
+</body>
+</html>

@@ -27,4 +27,7 @@ pub mod team_history;
 pub mod templates;
 pub mod tools;
 pub mod translation;
+pub mod vendor_checks;
+pub mod vendor_pdf;
+pub mod vendors;
 pub mod watch;

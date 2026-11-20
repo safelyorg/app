@@ -25,6 +25,15 @@
             }
         </script>
         <link rel="stylesheet" href="/dashboard/css/dashboard.css" />
+        <style>
+            /* The Vendors page (vendors.ts), shown like the other pages. */
+            #panel-vendors { display: none; }
+            body:has(#view-vendors:checked) #panel-vendors { display: block; }
+            body:has(#view-vendors:checked) label[for="view-vendors"] {
+                color: rgb(var(--c-ink));
+                background: rgb(var(--c-surface2));
+            }
+        </style>
         <script src="https://cdn.tailwindcss.com"></script>
         <script src="https://cdn.jsdelivr.net/npm/htmx.org@2.0.10/dist/htmx.js" integrity="sha384-Q+Dky3iHVJOr6wUjQ4ulh6uQ76an/t+ak1+PjMVaxRjbZamFLAG+u9InkfjbsEQf" crossorigin="anonymous"></script>
         <script>
@@ -85,6 +94,7 @@
         />
         <input type="radio" name="view" id="view-reports" class="hidden" />
         <input type="radio" name="view" id="view-watch" class="hidden" />
+        <input type="radio" name="view" id="view-vendors" class="hidden" />
         <input type="radio" name="view" id="view-settings" class="hidden" />
         <input
             type="radio"
@@ -216,6 +226,16 @@
                         ></span>
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z" /><circle cx="12" cy="12" r="3" /></svg>
                         <span data-i18n="dash.nav.watch">Watched suppliers</span>
+                    </label>
+                    <label
+                        for="view-vendors"
+                        class="relative flex items-center gap-3 pl-4 pr-3 py-2.5 rounded-lg text-[13px] font-semibold text-muted hover:text-ink hover:bg-surface2 cursor-pointer transition"
+                    >
+                        <span
+                            class="nav-accent absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-full bg-brand opacity-0 transition"
+                        ></span>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M16 11l2 2 4-4" /></svg>
+                        <span data-i18n="dash.nav.vendors">Vendors</span>
                     </label>
                 </nav>
 
@@ -475,6 +495,10 @@
                                         Platform
                                     </th>
                                     <th class="px-4 py-3" data-i18n="dash.reports.seller">Seller</th>
+                                    <!-- The page outside Safely: the listing, the shop or the vendor's website -->
+                                    <th class="hidden sm:table-cell px-4 py-3" data-i18n="dash.reports.original">
+                                        Original page
+                                    </th>
                                 </tr>
                             </thead>
                             <tbody
@@ -498,6 +522,20 @@
                     <h1 class="text-[22px] font-bold tracking-tight" data-i18n="dash.watch.title">Watched suppliers</h1>
                     <p id="watch-desc" class="text-[13px] text-muted mt-1"></p>
                     <div id="watch-body" class="mt-5">
+                        <div class="text-center text-muted text-sm py-16" data-i18n="dash.common.loading">Loading...</div>
+                    </div>
+                </div>
+            </main>
+
+            <!-- VENDORS PANEL (vendors.ts) -->
+            <main
+                id="panel-vendors"
+                class="flex-1 overflow-y-auto p-5 md:p-9 pt-20 md:pt-9"
+            >
+                <div class="w-full max-w-5xl mx-auto">
+                    <h1 class="text-[22px] font-bold tracking-tight" data-i18n="dash.vendors.title">Vendors</h1>
+                    <p class="text-[13px] text-muted mt-1" data-i18n="dash.vendors.desc">Send new vendors a short form. Safely checks their answers, and only your team sees the result.</p>
+                    <div id="vendors-body" class="mt-5">
                         <div class="text-center text-muted text-sm py-16" data-i18n="dash.common.loading">Loading...</div>
                     </div>
                 </div>
@@ -1056,6 +1094,13 @@
                             type="button"
                             class="hidden items-center gap-1.5 px-3 py-1.5 rounded-lg bg-ink text-bg border border-ink text-[12px] font-bold hover:opacity-90 transition flex-shrink-0"
                         ></button>
+                        <!-- Report as scam (detail_view.ts), for a person who did
+                             not report the seller from the extension. -->
+                        <button
+                            id="detail-report"
+                            type="button"
+                            class="hidden items-center gap-1.5 px-3 py-1.5 rounded-lg border text-[12px] font-bold transition flex-shrink-0"
+                        ></button>
                         <button
                             id="detail-download-pdf"
                             class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-surface2 border border-line text-[12px] font-bold hover:bg-surface3 transition flex-shrink-0"
@@ -1080,6 +1125,9 @@
                     <!-- A teammate's scan: who made it (detail_view.ts) -->
                     <div id="detail-scanned-by" class="hidden -mt-2 mb-5"></div>
 
+                    <!-- The report box, opened by "Report as scam" (detail_view.ts) -->
+                    <div id="detail-report-box" class="hidden -mt-1 mb-5"></div>
+
                     <div
                         id="detail-loading"
                         class="text-center text-muted text-sm py-20"
@@ -1089,36 +1137,13 @@
                     </div>
 
                     <div id="detail-body" class="hidden">
-                        <div class="flex gap-0.5 mb-6 bg-surface2 rounded-xl p-1 max-w-sm">
-                            <button
-                                data-detail-tab="risk"
-                                class="detail-tab-btn flex-1 text-center py-2 rounded-lg text-[13px] font-semibold text-muted cursor-pointer transition"
-                                data-i18n="dash.detail.tab_risk"
-                            >
-                                Risk
-                            </button>
-                            <button
-                                data-detail-tab="intel"
-                                class="detail-tab-btn flex-1 text-center py-2 rounded-lg text-[13px] font-semibold text-muted cursor-pointer transition"
-                                data-i18n="dash.detail.tab_intel"
-                            >
-                                Details
-                            </button>
-                            <button
-                                data-detail-tab="report"
-                                class="detail-tab-btn flex-1 text-center py-2 rounded-lg text-[13px] font-semibold text-muted cursor-pointer transition"
-                                data-i18n="dash.detail.tab_report"
-                            >
-                                Report
-                            </button>
-                        </div>
-
-                        <!-- RISK TAB: score card and findings on the left,
-                             the supplier on the right (one column on phones).
+                        <!-- One page, no tabs (like the Vendors page): the score
+                             and what we found on the left, the supplier on the
+                             right (one column on phones), then all the details.
                              Filled by detail_view.ts. -->
                         <div
-                            id="detail-tab-content-risk"
-                            class="detail-tab-content grid grid-cols-1 lg:grid-cols-2 gap-6 items-start"
+                            id="detail-summary"
+                            class="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start"
                         >
                             <div>
                                 <div id="detail-verdict"></div>
@@ -1135,33 +1160,8 @@
                             </div>
                         </div>
 
-                        <!-- DETAILS TAB (filled by detail_view.ts) -->
-                        <div
-                            id="detail-tab-content-intel"
-                            class="detail-tab-content hidden max-w-3xl"
-                        ></div>
-
-                        <!-- REPORT TAB -->
-                        <div
-                            id="detail-tab-content-report"
-                            class="detail-tab-content hidden max-w-3xl"
-                        >
-                            <div id="detail-report-filed" class="hidden"></div>
-                            <div
-                                id="detail-report-empty"
-                                class="hidden text-center py-16"
-                            >
-                                <div class="text-[15px] font-bold mb-1.5" data-i18n="dash.detail.no_report">
-                                    No report filed
-                                </div>
-                                <div
-                                    class="text-[13px] text-muted max-w-xs mx-auto"
-                                    data-i18n="dash.detail.no_report_desc"
-                                >
-                                    You have not reported this seller.
-                                </div>
-                            </div>
-                        </div>
+                        <!-- All the details (filled by detail_view.ts) -->
+                        <div id="detail-details" class="mt-6"></div>
                     </div>
                 </div>
             </div>
@@ -1224,6 +1224,7 @@
         <script src="/dashboard/js/detail_view.js"></script>
         <script src="/dashboard/js/team_history.js"></script>
         <script src="/dashboard/js/watch.js"></script>
+        <script src="/dashboard/js/vendors.js"></script>
         <script src="/dashboard/js/reviews.js"></script>
         <script src="/dashboard/js/init.js"></script>
     </body>

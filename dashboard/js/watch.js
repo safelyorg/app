@@ -61,6 +61,9 @@ function watchAddedBy(item) {
     return '<span title="' + watchEscape(item.added_by || "") + '">' + watchEscape(who) + "</span>";
 }
 function watchPlatformName(item) {
+    // Added from a vendor's form (Vendors page), not from a marketplace.
+    if (item.platform === "vendor")
+        return t("dash.watch.platform_vendor", "Vendor form");
     return item.platform_name || item.platform;
 }
 function watchCard(big, label, hot = false) {

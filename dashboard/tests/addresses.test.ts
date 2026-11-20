@@ -35,8 +35,7 @@ const RESULT = {
 const DETAIL_IDS = [
   "detail-loading", "detail-body", "detail-title", "detail-listing-link-text", "detail-verdict",
   "detail-findings", "detail-seller-name", "detail-seller-location", "detail-facts", "detail-visits",
-  "detail-tab-content-risk", "detail-tab-content-intel", "detail-tab-content-report",
-  "detail-report-filed", "detail-report-empty",
+  "detail-summary", "detail-details",
 ];
 
 const checked = () => (document.querySelector('input[name="view"]:checked') as HTMLInputElement).id;

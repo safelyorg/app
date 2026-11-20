@@ -4,10 +4,17 @@ use crate::common::{
     auth_headers_for, cleanup_test_seller_chain, cleanup_test_seller_with_reports,
     cleanup_test_user, create_test_user, test_pool,
 };
-use axum::{Json, extract::State, http::HeaderMap};
+use axum::{
+    Json,
+    extract::{Path, State},
+    http::HeaderMap,
+};
+use backend::services::features::history::get_user_reports;
 use backend::{
     errors::fraud_reports::FraudReportError,
-    handlers::fraud_reports::{create_fraud_report, risk_level_for},
+    handlers::fraud_reports::{
+        HistoryReportRequest, create_fraud_report, report_from_history, risk_level_for,
+    },
     models::analysis::Signal,
     models::fraud_reports::{FraudReportsRequest, ReportTypes},
     services::{
@@ -537,4 +544,93 @@ fn saved_signals_can_be_read_back() {
     let back: Vec<Signal> = serde_json::from_value(stored).expect("from json");
     assert_eq!(back[0].value, "Reported 2 times");
     assert_eq!(back[0].signal_type, "bad");
+}
+
+/// "Report as scam" on the dashboard's result page: reports the scan's
+/// seller (same rules as the extension), once per person, and only for
+/// a scan the person may open.
+#[tokio::test]
+async fn the_dashboard_reports_the_seller_of_a_saved_scan() {
+    let pool = test_pool().await;
+    let email = "report_from_history_test@example.com";
+    let other_email = "report_from_history_other_test@example.com";
+    let (user, _) = create_test_user(&pool, email).await;
+    let (other, _) = create_test_user(&pool, other_email).await;
+    let headers = auth_headers_for(&pool, user.id).await;
+    let other_headers = auth_headers_for(&pool, other.id).await;
+
+    let platform = "thomasnet";
+    let platform_id = "report_from_history_001";
+    cleanup_report_test(&pool, platform, platform_id).await;
+    let (seller_id, listing_id) = insert_seller_and_listing(&pool, platform, platform_id).await;
+    let clean = [fraud_report_history(0)];
+    let scan = insert_scan(
+        &pool,
+        listing_id,
+        user.id,
+        expected_supplier_score(0),
+        &clean,
+    )
+    .await;
+    let request = || HistoryReportRequest {
+        report_type: ReportTypes::NoDelivery,
+        description: Some("  Paid, nothing shipped  ".to_string()),
+    };
+
+    // Someone else's scan: not found, nothing saved.
+    match report_from_history(
+        State(pool.clone()),
+        other_headers,
+        Path(scan),
+        Json(request()),
+    )
+    .await
+    {
+        Err(FraudReportError::NotFound(_)) => {}
+        other => panic!("expected NotFound, got {:?}", other.map(|j| j.0)),
+    }
+
+    let result = report_from_history(
+        State(pool.clone()),
+        headers.clone(),
+        Path(scan),
+        Json(request()),
+    )
+    .await
+    .expect("expected the report to be saved")
+    .0;
+    assert_eq!(result["success"], json!(true));
+    assert_eq!(result["risk_score"], json!(expected_supplier_score(1)));
+    let (description, url): (Option<String>, Option<String>) = query_as(
+        "SELECT description, listing_url FROM fraud_reports WHERE seller_id = $1 AND user_id = $2",
+    )
+    .bind(seller_id)
+    .bind(user.id)
+    .fetch_one(&pool)
+    .await
+    .expect("expected the report row");
+    assert_eq!(description.as_deref(), Some("Paid, nothing shipped"));
+    assert_eq!(
+        url,
+        Some(format!("https://{}.com/item/{}", platform, platform_id))
+    );
+    let (_, _, history) = read_scan(&pool, scan).await;
+    assert_eq!(history, "Reported once");
+    // My Reports links the report to this saved scan (History page).
+    let mine = get_user_reports(&pool, user.id).await.unwrap();
+    assert_eq!(mine.len(), 1);
+    assert_eq!(mine[0].scan_id, Some(scan));
+    // Another person's My Reports stays empty.
+    let others = get_user_reports(&pool, other.id).await.unwrap();
+    assert!(others.is_empty());
+
+    // Once per person.
+    match report_from_history(State(pool.clone()), headers, Path(scan), Json(request())).await {
+        Err(FraudReportError::AlreadyReported) => {}
+        other => panic!("expected AlreadyReported, got {:?}", other.map(|j| j.0)),
+    }
+
+    cleanup_report_test(&pool, platform, platform_id).await;
+    cleanup_test_user(&pool, email).await;
+    cleanup_test_user(&pool, other_email).await;
 }

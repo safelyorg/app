@@ -41,6 +41,7 @@ const DASHBOARD_PAGES: [string, string][] = [
   ["view-history", "/dashboard/"],
   ["view-reports", "/reports"],
   ["view-watch", "/watch"],
+  ["view-vendors", "/vendors"],
   ["view-settings", "/settings"],
 ];
 
@@ -71,6 +72,12 @@ function resultIdFromAddress(path: string): string | null {
   return match ? match[1] : null;
 }
 
+// The vendor id in a vendor's address (/vendors/<id>), or null.
+function vendorIdFromAddress(path: string): string | null {
+  const match = path.match(/^\/vendors\/([0-9a-fA-F-]{36})\/?$/);
+  return match ? match[1] : null;
+}
+
 // The radio button of the page in the address ("view-settings"). A
 // result belongs to History, and so does any other address.
 function dashboardViewFromAddress(path: string): string {
@@ -78,6 +85,7 @@ function dashboardViewFromAddress(path: string): string {
   if (clean === "/reports") return "view-reports";
   if (clean === "/settings") return "view-settings";
   if (clean === "/watch") return "view-watch";
+  if (clean === "/vendors" || vendorIdFromAddress(clean)) return "view-vendors";
   return "view-history";
 }
 
@@ -118,6 +126,9 @@ function dashboardViewFromAddress(path: string): string {
       } else {
         closeDetailPanel();
       }
+      // Pages with their own addresses inside (Vendors: /vendors/<id>)
+      // follow the new address too.
+      document.dispatchEvent(new Event("safely:address-changed"));
     } finally {
       dashboardFollowingAddress = false;
     }

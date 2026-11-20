@@ -12,4 +12,5 @@ pub mod reviews;
 pub mod subscribe;
 pub mod team;
 pub mod tools;
+pub mod vendors;
 pub mod watch;

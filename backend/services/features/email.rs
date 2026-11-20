@@ -540,3 +540,77 @@ pub async fn send_team_plan_ending_email(
     }
     Ok(())
 }
+
+/// The words of one vendor-check email (templates/vendor_email.html),
+/// already in the reader's language (services/features/vendors.rs).
+/// Empty `code` / `button_url`: that part is left out.
+#[derive(Debug, Clone, Default, serde::Serialize)]
+pub struct VendorEmailText {
+    pub subject: String,
+    pub preheader: String,
+    pub title: String,
+    pub subtitle: String,
+    pub lines: Vec<String>,
+    pub code: String,
+    pub button_text: String,
+    pub button_url: String,
+    pub small_note: String,
+    pub footer_note: String,
+}
+
+/// Renders a vendor-check email (the vendor's invite, reminder, email
+/// code and "please fix" link, and the buyer's "result ready").
+pub fn render_vendor_email(text: &VendorEmailText, logo_url: &str) -> Result<String, AuthError> {
+    let mut context =
+        Context::from_serialize(text).map_err(|e| AuthError::InternalServerError(e.to_string()))?;
+    context.insert("logo_url", logo_url);
+    get_tera()
+        .render("vendor_email.html", &context)
+        .map_err(|e| AuthError::InternalServerError(e.to_string()))
+}
+
+/// Sends a vendor-check email. `reply_to`: the buyer's address on the
+/// vendor's emails, so a vendor's answer goes to the buyer, not Safely.
+pub async fn send_vendor_email(
+    to_email: &str,
+    text: &VendorEmailText,
+    reply_to: Option<&str>,
+) -> Result<(), AuthError> {
+    let api_key = var("RESEND_API_KEY").map_err(|_| {
+        AuthError::InternalServerError("RESEND_API_KEY needs to be setup".to_string())
+    })?;
+    let base_url = var("PUBLIC_BASE_URL").map_err(|_| {
+        AuthError::InternalServerError("PUBLIC_BASE_URL needs to be configured".to_string())
+    })?;
+    let from_address =
+        var("RESEND_FROM_EMAIL").unwrap_or_else(|_| "onboarding@resend.dev".to_string());
+    let html_body = render_vendor_email(text, &format!("{}/images/white_logo.png", base_url))?;
+
+    let mut body = json!({
+        "from": format!("Safely <{}>", from_address),
+        "to": [to_email],
+        "subject": text.subject,
+        "html": html_body,
+    });
+    if let Some(reply_to) = reply_to.filter(|r| r.contains('@')) {
+        body["reply_to"] = json!(reply_to);
+    }
+
+    let response = Client::new()
+        .post("https://api.resend.com/emails")
+        .bearer_auth(api_key)
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| AuthError::InternalServerError(e.to_string()))?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let text = response.text().await.unwrap_or_default();
+        return Err(AuthError::InternalServerError(format!(
+            "Resend error ({}): {}",
+            status, text
+        )));
+    }
+    Ok(())
+}

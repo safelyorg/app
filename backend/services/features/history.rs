@@ -4,6 +4,7 @@ use crate::models::history::{
 use crate::models::sellers::{Sellers, SellersResponse};
 use crate::services::features::fraud_reports::{build_network_summary, count_fraud_reports};
 use crate::services::features::listings::get_monthly_visit_activity;
+use crate::services::features::team_history::team_of;
 use sqlx::{Error, Pool, Postgres, query_as};
 use uuid::Uuid;
 
@@ -158,10 +159,16 @@ pub async fn get_history_detail(
 /// specific listing - it shows this person's entire reporting history
 /// at once, joined with each seller's name so the list is readable
 /// without needing a separate lookup.
+///
+/// Each report also gets the newest saved scan of that seller the
+/// person may open (same rule as team_history::scan_owner_for_viewer:
+/// their own scans, or their team's), preferring a scan of the reported
+/// listing, and for a vendor report the website the vendor gave.
 pub async fn get_user_reports(
     pool: &Pool<Postgres>,
     user_id: Uuid,
 ) -> Result<Vec<ReportItem>, Error> {
+    let team = team_of(pool, user_id).await;
     sqlx::query_as::<_, ReportItem>(
         "
         SELECT
@@ -171,7 +178,25 @@ pub async fn get_user_reports(
             fr.platform,
             s.name AS seller_name,
             s.id AS seller_id,
-            fr.listing_url
+            fr.listing_url,
+            (
+                SELECT a.id FROM analysis a
+                JOIN listings l ON l.id = a.listing_id
+                WHERE l.seller_id = s.id
+                  AND (a.user_id = $1
+                       OR ($2::uuid IS NOT NULL
+                           AND (a.team_owner_id = $2
+                                OR (a.team_owner_id IS NULL AND a.user_id = $2))))
+                ORDER BY (l.listing_url = fr.listing_url) DESC, a.created_at DESC
+                LIMIT 1
+            ) AS scan_id,
+            (
+                SELECT COALESCE(NULLIF(vc.answers->>'website', ''), NULLIF(vc.known->>'website', ''))
+                FROM vendor_checks vc
+                WHERE fr.platform = 'vendor' AND vc.seller_id = s.id
+                ORDER BY vc.updated_at DESC
+                LIMIT 1
+            ) AS vendor_website
         FROM fraud_reports fr
         JOIN sellers s ON fr.seller_id = s.id
         WHERE fr.user_id = $1
@@ -180,6 +205,7 @@ pub async fn get_user_reports(
         ",
     )
     .bind(user_id)
+    .bind(team)
     .fetch_all(pool)
     .await
 }

@@ -783,12 +783,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
   }
 
-  document.querySelectorAll<HTMLElement>(".detail-tab-btn").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      switchDetailTab(btn.dataset.detailTab as string);
-    });
-  });
-
   const searchBox = document.getElementById("search-box") as HTMLInputElement | null;
   if (searchBox) {
     searchBox.addEventListener("input", (e: Event) => {

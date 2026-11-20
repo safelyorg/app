@@ -43,7 +43,7 @@ use crate::{
 };
 use axum::{Json, http::HeaderMap};
 use chrono::{Datelike, NaiveDate};
-use serde_json::{Value, to_value};
+use serde_json::{Value, json, to_value};
 use sqlx::{Error, Pool, Postgres, query_as};
 use std::{
     collections::HashMap,
@@ -679,6 +679,95 @@ pub fn b2b_score_from_signals(signals: &[Signal], fraud_count: i64) -> i16 {
     risk_score.min(100)
 }
 
+/// "What adds to the score" on the dashboard's result page: the same
+/// rules as b2b_score_from_signals / website_score_from_signals, one
+/// line per thing that adds points, then the minimum scores (risk
+/// patterns, reports, too little information). Worked out again from
+/// the saved checks, so it uses today's rules: "total" can differ from
+/// the score saved with an older scan.
+///
+/// {"items": [{"label", "value", "points"}], "notes": {"count", "points",
+///  "labels"}, "reports": {"count", "points"}, "minimums": [{"kind",
+///  "score", "labels"}], "total"}
+pub fn score_parts(signals: &[Signal], fraud_count: i64, website: bool) -> Value {
+    let warning_of = |s: &Signal| -> i16 {
+        if s.signal_type != "caution" {
+            return 0;
+        }
+        if s.category == OUTSIDE_RECORDS {
+            standards::database_warning_points(&s.label, &s.value)
+        } else if website {
+            standards::websites().warning_points(&s.label, &s.value)
+        } else {
+            standards::b2b().warning_points(&s.label, &s.value)
+        }
+    };
+    let scoring = if website {
+        &standards::websites().scoring
+    } else {
+        &standards::b2b().scoring
+    };
+    let mut items: Vec<(String, String, i16)> = signals
+        .iter()
+        .map(|s| (s.label.clone(), s.value.clone(), warning_of(s)))
+        .filter(|(_, _, points)| *points > 0)
+        .collect();
+    items.sort_by_key(|i| std::cmp::Reverse(i.2));
+    let notes: Vec<&Signal> = signals
+        .iter()
+        .filter(|s| s.signal_type == "info" && s.category != OUTSIDE_RECORDS)
+        .collect();
+    let note_points = (notes.len() as i16 * scoring.info_points_each).min(scoring.info_points_max);
+    let warnings: i16 = items.iter().map(|i| i.2).sum();
+    let base = (warnings + note_points).min(100) + report_points(fraud_count);
+
+    // Minimum scores. Each risk pattern names the checks it comes from.
+    let factors: Vec<_> = derive_risk_factors(signals)
+        .into_iter()
+        .filter(|f| f.name != NETWORK_REPORTS_FACTOR)
+        .collect();
+    let labels_of = |severity: &str| -> Vec<Value> {
+        factors
+            .iter()
+            .filter(|f| f.severity == severity)
+            .map(|f| json!({ "name": f.name, "signals": f.contributing_signals }))
+            .collect()
+    };
+    let serious = labels_of("hard");
+    let pattern = labels_of("compound");
+    let mut minimums: Vec<Value> = Vec::new();
+    let mut floor: i16 = 0;
+    if !serious.is_empty() {
+        let score = 67 + (serious.len() as i16 - 1) * 10;
+        floor = floor.max(score);
+        minimums.push(json!({ "kind": "serious", "score": score.min(100), "labels": serious }));
+    } else if !pattern.is_empty() {
+        let score = (45 + (pattern.len() as i16 - 1) * 10).min(66);
+        floor = floor.max(score);
+        minimums.push(json!({ "kind": "pattern", "score": score, "labels": pattern }));
+    }
+    let reports_floor = report_floor(fraud_count);
+    if reports_floor > 0 {
+        floor = floor.max(reports_floor);
+        minimums.push(json!({ "kind": "reports", "score": reports_floor, "labels": [] }));
+    }
+    if not_enough_information_factor(signals).is_some() {
+        floor = floor.max(scoring.not_enough_information_floor);
+        minimums.push(json!({ "kind": "not_enough", "score": scoring.not_enough_information_floor, "labels": [] }));
+    }
+    json!({
+        "items": items.iter().map(|(label, value, points)| json!({ "label": label, "value": value, "points": points })).collect::<Vec<_>>(),
+        "notes": {
+            "count": notes.len(),
+            "points": note_points,
+            "labels": notes.iter().map(|s| s.label.clone()).collect::<Vec<_>>(),
+        },
+        "reports": { "count": fraud_count.max(0), "points": report_points(fraud_count) },
+        "minimums": minimums,
+        "total": base.max(floor).min(100),
+    })
+}
+
 /// B2B risk score: warnings give the base score, and any "Serious"
 /// risk factor lifts it to at least the High band (67), +10 for each
 /// extra one. A "Pattern match" (compound) factor, e.g. full prepayment
@@ -1120,6 +1209,67 @@ mod b2b_score_tests {
             75,
             "a higher warning score is kept"
         );
+    }
+
+    /// The dashboard's "What adds to the score" must add up to the real
+    /// score, for every kind of scan.
+    #[test]
+    fn score_parts_add_up_to_the_score() {
+        use super::{b2b_score_from_signals, score_parts};
+        use crate::services::sources::websites::website_score_from_signals;
+        let cases: Vec<(Vec<Signal>, i64)> = vec![
+            (vec![sig("Price analysis", "normal", "good")], 0),
+            (
+                vec![
+                    sig("Price analysis", "suspiciously low", "caution"),
+                    sig("Listing detail", "Vague", "caution"),
+                    sig("Image authenticity", "not verified", "info"),
+                ],
+                0,
+            ),
+            (
+                (0..5)
+                    .map(|_| sig("Image authenticity", "not verified", "info"))
+                    .collect(),
+                1,
+            ),
+            (vec![sig("Domain check", "Suspicious", "bad")], 3),
+            (
+                vec![
+                    sig("Account age", "Not provided", "caution"),
+                    sig("Contact info", "Not confirmed", "caution"),
+                    sig("Platform verification", "Unverified", "caution"),
+                ],
+                2,
+            ),
+        ];
+        for (signals, reports) in cases {
+            let parts = score_parts(&signals, reports, false);
+            assert_eq!(
+                parts["total"],
+                b2b_score_from_signals(&signals, reports),
+                "{signals:?}"
+            );
+            let parts = score_parts(&signals, reports, true);
+            assert_eq!(
+                parts["total"],
+                website_score_from_signals(&signals, reports),
+                "{signals:?}"
+            );
+        }
+        // Each warning is its own line with its points; notes are one line.
+        let parts = score_parts(
+            &[
+                sig("Price analysis", "suspiciously low", "caution"),
+                sig("Image authenticity", "not verified", "info"),
+            ],
+            0,
+            false,
+        );
+        assert_eq!(parts["items"][0]["label"], "Price analysis");
+        assert_eq!(parts["items"][0]["points"], 25);
+        assert_eq!(parts["notes"]["count"], 1);
+        assert_eq!(parts["notes"]["points"], 5);
     }
 }
 

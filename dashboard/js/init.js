@@ -752,11 +752,6 @@ document.addEventListener("DOMContentLoaded", async () => {
                 uploadAvatar(file);
         });
     }
-    document.querySelectorAll(".detail-tab-btn").forEach((btn) => {
-        btn.addEventListener("click", () => {
-            switchDetailTab(btn.dataset.detailTab);
-        });
-    });
     const searchBox = document.getElementById("search-box");
     if (searchBox) {
         searchBox.addEventListener("input", (e) => {

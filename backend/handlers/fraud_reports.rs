@@ -1,4 +1,6 @@
 use crate::models::analysis::{RiskLevel, Signal};
+use crate::models::fraud_reports::ReportTypes;
+use crate::models::sellers::Sellers;
 use crate::services::features::analysis::b2b_score_from_signals;
 use crate::services::features::auth::extract_user_id;
 use crate::services::features::fraud_reports::{
@@ -7,11 +9,17 @@ use crate::services::features::fraud_reports::{
 use crate::services::features::network_memory::fraud_report_history;
 use crate::services::features::risk_factors::{derive_risk_factors, not_enough_information_factor};
 use crate::services::features::sellers::find_seller;
+use crate::services::features::team_history::scan_owner_for_viewer;
 use crate::services::sources::websites::website_score_from_signals;
 use crate::{errors::fraud_reports::FraudReportError, models::fraud_reports::FraudReportsRequest};
-use axum::{Json, extract::State, http::HeaderMap};
+use axum::{
+    Json,
+    extract::{Path, State},
+    http::HeaderMap,
+};
+use serde::Deserialize;
 use serde_json::{Value, from_value, json, to_value};
-use sqlx::{Pool, Postgres, query, query_as};
+use sqlx::{Pool, Postgres, query, query_as, query_scalar};
 use uuid::Uuid;
 
 /// The platform's stored name ("thomasnet", "b2bmap") from what the
@@ -220,7 +228,32 @@ pub async fn create_fraud_report(
             FraudReportError::NotFound("Seller not found".to_string())
         })?;
 
-    let reported = already_reported(&pool, user_id, seller.id)
+    file_report(
+        &pool,
+        user_id,
+        &seller,
+        &request.report_type,
+        request.description.as_deref(),
+        request.listing_url.as_deref(),
+    )
+    .await
+    .map(Json)
+}
+
+/// Saves one person's scam report on a seller and updates the seller's
+/// saved scans. Used by the extension (create_fraud_report) and by the
+/// dashboard's result page (report_from_history), so both work the same.
+async fn file_report(
+    pool: &Pool<Postgres>,
+    user_id: Uuid,
+    seller: &Sellers,
+    report_type: &ReportTypes,
+    description: Option<&str>,
+    listing_url: Option<&str>,
+) -> Result<Value, FraudReportError> {
+    let platform = &seller.platform;
+    let platform_id = &seller.platform_id;
+    let reported = already_reported(pool, user_id, seller.id)
         .await
         .map_err(|e| FraudReportError::InternalError(e.to_string()))?;
     if reported {
@@ -237,13 +270,13 @@ pub async fn create_fraud_report(
     )
     .bind(id)
     .bind(seller.id)
-    .bind(&platform)
+    .bind(platform)
     .bind(platform_id)
-    .bind(&request.report_type)
-    .bind(&request.description)
-    .bind(&request.listing_url)
+    .bind(report_type)
+    .bind(description)
+    .bind(listing_url)
     .bind(user_id)
-    .execute(&pool)
+    .execute(pool)
     .await
     .map_err(|e| match e.as_database_error() {
         // Two reports from the same person arrived at once and the
@@ -254,23 +287,90 @@ pub async fn create_fraud_report(
 
     query("UPDATE sellers SET verification = 'reported' WHERE id = $1")
         .bind(seller.id)
-        .execute(&pool)
+        .execute(pool)
         .await
         .map_err(|e| FraudReportError::InternalError(e.to_string()))?;
 
-    let total_reports = count_fraud_reports(&pool, seller.id)
+    let total_reports = count_fraud_reports(pool, seller.id)
         .await
         .map_err(|e| FraudReportError::InternalError(e.to_string()))?;
-    let latest = refresh_seller_scans(&pool, seller.id, user_id, total_reports).await?;
+    let latest = refresh_seller_scans(pool, seller.id, user_id, total_reports).await?;
 
-    Ok(Json(match latest {
+    Ok(match latest {
         Some((risk_score, risk_level)) => json!({
             "success": true,
             "risk_score": risk_score,
             "risk_level": risk_level,
         }),
         None => json!({ "success": true, "risk_score": null, "risk_level": null }),
-    }))
+    })
+}
+
+/// What the dashboard sends to report the seller of a saved scan.
+#[derive(Debug, Deserialize)]
+pub struct HistoryReportRequest {
+    pub report_type: ReportTypes,
+    #[serde(default)]
+    pub description: Option<String>,
+}
+
+/// POST /api/v1/history/{id}/report
+///
+/// "Report as scam" on the dashboard's result page, for a person who did
+/// not report the seller from the extension. The scan must be theirs or
+/// a teammate's (team_history.rs). Same rules as the extension: one
+/// report per person per seller (409), and every saved scan of the
+/// seller gets its new score.
+pub async fn report_from_history(
+    State(pool): State<Pool<Postgres>>,
+    headers: HeaderMap,
+    Path(id): Path<Uuid>,
+    Json(request): Json<HistoryReportRequest>,
+) -> Result<Json<Value>, FraudReportError> {
+    let user_id = extract_user_id(&headers, &pool)
+        .await
+        .map_err(|_| FraudReportError::InternalError("Failed to verify session".to_string()))?
+        .ok_or(FraudReportError::Unauthorized)?;
+    let allowed = scan_owner_for_viewer(&pool, id, user_id)
+        .await
+        .map_err(|e| FraudReportError::InternalError(e.to_string()))?;
+    if allowed.is_none() {
+        return Err(FraudReportError::NotFound("Scan not found".to_string()));
+    }
+    // The scan's listing gives the seller and the listing's address.
+    let seller: Sellers = query_as(
+        "SELECT s.* FROM analysis a
+         JOIN listings l ON l.id = a.listing_id
+         JOIN sellers s ON s.id = l.seller_id
+         WHERE a.id = $1",
+    )
+    .bind(id)
+    .fetch_optional(&pool)
+    .await
+    .map_err(|e| FraudReportError::InternalError(e.to_string()))?
+    .ok_or_else(|| FraudReportError::NotFound("Seller not found".to_string()))?;
+    let listing_url: Option<String> = query_scalar(
+        "SELECT l.listing_url FROM analysis a JOIN listings l ON l.id = a.listing_id WHERE a.id = $1",
+    )
+    .bind(id)
+    .fetch_optional(&pool)
+    .await
+    .map_err(|e| FraudReportError::InternalError(e.to_string()))?;
+    let description = request
+        .description
+        .as_deref()
+        .map(str::trim)
+        .filter(|d| !d.is_empty());
+    file_report(
+        &pool,
+        user_id,
+        &seller,
+        &request.report_type,
+        description,
+        listing_url.as_deref(),
+    )
+    .await
+    .map(Json)
 }
 
 #[cfg(test)]

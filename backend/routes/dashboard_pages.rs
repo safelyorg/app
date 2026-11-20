@@ -5,6 +5,9 @@
 //! - /dashboard/                          History
 //! - /reports                             My Reports
 //! - /settings                            Settings
+//! - /watch                               Watched suppliers
+//! - /vendors                             Vendor checks
+//! - /vendors/<vendor check id>           one vendor
 //! - /dashboard/<platform>/<scan id>      one scan's result
 //!   (/dashboard/alibaba/0193..., /dashboard/website/0193...)
 //!
@@ -39,6 +42,7 @@ pub fn dashboard_pages_routes<S: Clone + Send + Sync + 'static>() -> Router<S> {
         .route_service("/reports", ServeFile::new(DASHBOARD_PAGE))
         .route_service("/settings", ServeFile::new(DASHBOARD_PAGE))
         .route_service("/watch", ServeFile::new(DASHBOARD_PAGE))
+        .route_service("/vendors", ServeFile::new(DASHBOARD_PAGE))
         // With a "/" at the end, the page's files would be looked for
         // under /settings/, so those go to the address without it.
         .route(
@@ -50,7 +54,28 @@ pub fn dashboard_pages_routes<S: Clone + Send + Sync + 'static>() -> Router<S> {
             get(|| async { Redirect::permanent("/settings") }),
         )
         .route("/watch/", get(|| async { Redirect::permanent("/watch") }))
+        .route(
+            "/vendors/",
+            get(|| async { Redirect::permanent("/vendors") }),
+        )
+        .route("/vendors/{id}", get(vendor_address))
         .route("/dashboard/{*path}", get(dashboard_address))
+}
+
+/// One vendor (/vendors/<vendor check id>): the dashboard page, which
+/// opens the vendor itself (dashboard/ts/vendors.ts). Anything else
+/// after /vendors/ is "page not found".
+pub async fn vendor_address(Path(id): Path<String>) -> Response {
+    if Uuid::parse_str(id.trim_end_matches('/')).is_err() {
+        return match tokio::fs::read_to_string(NOT_FOUND_FILE).await {
+            Ok(html) => (StatusCode::NOT_FOUND, Html(html)).into_response(),
+            Err(_) => StatusCode::NOT_FOUND.into_response(),
+        };
+    }
+    match tokio::fs::read_to_string(DASHBOARD_PAGE).await {
+        Ok(html) => Html(html).into_response(),
+        Err(_) => StatusCode::NOT_FOUND.into_response(),
+    }
 }
 
 /// Any address under /dashboard/. One scan's result
@@ -91,7 +116,16 @@ pub fn is_result_address(path: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::is_result_address;
+    use super::{is_result_address, vendor_address};
+    use axum::extract::Path;
+
+    #[tokio::test]
+    async fn a_vendor_address_needs_a_vendor_check_id() {
+        let ok = vendor_address(Path("0193f2a1-0000-7000-8000-000000000001".into())).await;
+        assert_eq!(ok.status(), axum::http::StatusCode::OK);
+        let bad = vendor_address(Path("not-a-vendor".into())).await;
+        assert_eq!(bad.status(), axum::http::StatusCode::NOT_FOUND);
+    }
 
     #[test]
     fn a_result_address_is_a_platform_then_a_scan_id() {

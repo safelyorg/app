@@ -96,6 +96,8 @@ function watchAddedBy(item: WatchItem): string {
 }
 
 function watchPlatformName(item: WatchItem): string {
+  // Added from a vendor's form (Vendors page), not from a marketplace.
+  if (item.platform === "vendor") return t("dash.watch.platform_vendor", "Vendor form");
   return item.platform_name || item.platform;
 }
 

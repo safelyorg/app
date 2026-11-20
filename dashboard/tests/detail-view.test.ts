@@ -16,7 +16,6 @@ const buildFacts = (d: any) => global("buildFacts")(d);
 const buildVisits = (m: any) => global("buildVisits")(m);
 const buildDetailsTab = (d: any) => global("buildDetailsTab")(d);
 const buildPresence = (r: any) => global("buildPresence")(r);
-const buildReports = (r: any) => global("buildReports")(r);
 const listingLinkLabel = (p: any) => global("listingLinkLabel")(p);
 
 function html(markup: string): HTMLElement {
@@ -301,11 +300,129 @@ describe("result page - online presence", () => {
   });
 });
 
-describe("result page - your reports", () => {
-  it("lists each report with its reason and date", () => {
-    const list = html(buildReports([{ report_type: "no_delivery", reported_at: "2026-10-20T08:00:00Z" }]));
-    expect(list.textContent).toContain("Took payment and never shipped");
-    expect(list.textContent).toContain("Submitted 2026-10-20");
+describe("result page - what adds to the score", () => {
+  const card = (parts: any, score = 15) =>
+    html(
+      global("buildScoreCard")({
+        risk_score: score,
+        risk_level: "low",
+        signals: [{ label: "Domain check", value: "Verified", type: "good", sub: "" }],
+        risk_factors: [],
+        score_parts: parts,
+      }),
+    );
+
+  it("shows each line with its points, the notes and the minimum scores", () => {
+    const el = card(
+      {
+        items: [{ label: "Price analysis", value: "suspiciously low", points: 25 }],
+        notes: { count: 3, points: 15, labels: ["Image authenticity", "Contact info", "Account age"] },
+        reports: { count: 0, points: 0 },
+        minimums: [{ kind: "pattern", score: 45, labels: [{ name: "x", signals: ["Account age", "Advance payment request"] }] }],
+        total: 45,
+      },
+      45,
+    );
+    const lines = Array.from(el.querySelectorAll(".vd-point")).map((p) => p.textContent);
+    expect(lines[0]).toBe("Price analysis+25");
+    expect(lines[1]).toContain("3 not confirmed: Image authenticity");
+    expect(lines[1]).toContain("+15");
+    expect(lines[2]).toContain("Pattern match: Account age + Advance payment request");
+    expect(lines[2]).toContain("at least 45");
+    expect(el.textContent).toContain("Low 0–33");
+  });
+
+  it("Free plan: only the bar, and a note that the rest is on paid plans", () => {
+    const parts = { items: [{ label: "Price analysis", value: "low", points: 25 }], notes: { count: 0, points: 0, labels: [] }, reports: { count: 0, points: 0 }, minimums: [], total: 30 };
+    const free = html(global("buildScoreParts")({ full_result: false, score_parts: parts }, 30, "low"));
+    expect(free.textContent).toContain("Low 0–33");
+    expect(free.textContent).toContain("on the Team and Enterprise plans");
+    expect(free.textContent).not.toContain("Price analysis");
+    const paid = html(global("buildScoreParts")({ full_result: true, score_parts: parts }, 30, "low"));
+    expect(paid.textContent).toContain("Price analysis");
+  });
+
+  it("says so when today's rules give another total", () => {
+    const el = card({ items: [], notes: { count: 0, points: 0, labels: [] }, reports: { count: 0, points: 0 }, minimums: [], total: 0 });
+    expect(el.textContent).toContain("Nothing added to the score.");
+    expect(el.textContent).toContain("today these add up to 0");
+  });
+});
+
+describe("result page - risk patterns in Needs a look", () => {
+  it("puts the risk patterns first in Needs a look, with their reason", () => {
+    const tab = html(
+      buildDetailsTab(
+        scan({
+          signals: [signal("Phone", "Missing", "caution")],
+          risk_factors: [
+            {
+              name: "new_company_no_contact",
+              severity: "compound",
+              description: "A new company with no contact details.",
+              contributing_signals: ["Account age", "Contact info"],
+            },
+            { name: "not_enough_information", severity: "soft", description: "", contributing_signals: [] },
+          ],
+        }),
+      ),
+    );
+    const titles = Array.from(tab.querySelectorAll(".d-rows")[0].querySelectorAll(".d-title")).map((t) => t.textContent);
+    expect(titles[0]).toContain("Account age + Contact info");
+    expect(titles[0]).toContain("Pattern match");
+    expect(tab.textContent).toContain("A new company with no contact details.");
+    expect(titles.length).toBe(2);
+    // The count is of checks only, like the score card.
+    expect(tab.querySelector(".d-count b")?.textContent).toBe("1");
+  });
+
+  it("does not repeat a check that a one-check factor is made from", () => {
+    const tab = html(
+      buildDetailsTab(
+        scan({
+          signals: [signal("Contact info", "Not confirmed", "caution")],
+          risk_factors: [
+            { name: "contact_info", severity: "soft", description: "No contact.", contributing_signals: ["Contact info"] },
+          ],
+        }),
+      ),
+    );
+    const titles = Array.from(tab.querySelectorAll(".d-rows")[0].querySelectorAll(".d-title")).map((t) => t.textContent);
+    expect(titles.length).toBe(1);
+    expect(titles[0]).toContain("Not confirmed");
+  });
+});
+
+describe("result page - report as scam", () => {
+  it("has a Report as scam button next to PDF, and a box with the reasons", async () => {
+    const page = await readText("index.html");
+    expect(page.indexOf('id="detail-report"')).toBeLessThan(page.indexOf('id="detail-download-pdf"'));
+    const host = document.createElement("div");
+    host.innerHTML = '<button id="detail-report"></button><div id="detail-report-box" class="hidden"></div>';
+    document.body.appendChild(host);
+    global("renderReportButton")(false);
+    const btn = document.getElementById("detail-report") as HTMLButtonElement;
+    expect(btn.textContent).toBe("Report as scam");
+    expect(btn.disabled).toBe(false);
+    global("openReportBox")();
+    expect(document.querySelectorAll('input[name="detail-report-reason"]').length).toBe(5);
+    expect(document.querySelector("[data-detail-report-close]")?.textContent).toBe("Cancel");
+    // Already reported: the button says so and can't be pressed.
+    global("renderReportButton")(true);
+    expect(btn.textContent).toBe("Reported by you");
+    expect(btn.disabled).toBe(true);
+    expect(document.getElementById("detail-report-box")?.classList.contains("hidden")).toBe(true);
+    host.remove();
+  });
+});
+
+describe("result page - one page, no tabs", () => {
+  it("has no Risk / Details / Report tabs: the summary and the details are on one page", async () => {
+    const page = await readText("index.html");
+    expect(page).not.toContain("data-detail-tab");
+    expect(page).not.toContain("detail-tab-content");
+    expect(page).not.toContain("detail-report-filed");
+    expect(page.indexOf('id="detail-summary"')).toBeLessThan(page.indexOf('id="detail-details"'));
   });
 });
 

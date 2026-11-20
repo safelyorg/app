@@ -593,3 +593,140 @@ button.d-row-head:hover {
     width: 12px;
     height: 12px;
 }
+
+/* ============================================================
+   Vendors page (vendors.ts): the score card also shows where the
+   score sits (Low / Caution / High) and what added to it.
+   ============================================================ */
+.vd-verdict {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0;
+}
+.vd-verdict-top {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+}
+.verdict-level.is-high {
+    color: #ff8a7d;
+}
+.vd-scale {
+    margin-top: 20px;
+}
+.vd-scale-track {
+    position: relative;
+    display: flex;
+    gap: 3px;
+    height: 6px;
+}
+.vd-scale-track i {
+    border-radius: 3px;
+    opacity: 0.55;
+}
+.vd-scale-track .vd-z-low {
+    width: 20%;
+    background: #71717a;
+}
+.vd-scale-track .vd-z-caution {
+    width: 30%;
+    background: rgb(var(--c-amber));
+}
+.vd-scale-track .vd-z-high {
+    width: 50%;
+    background: #ff6b5b;
+}
+.vd-scale-track b {
+    position: absolute;
+    top: 50%;
+    width: 14px;
+    height: 14px;
+    margin-left: -7px;
+    border-radius: 50%;
+    background: #ffffff;
+    border: 3px solid var(--card);
+    transform: translateY(-50%);
+}
+.vd-scale-labels {
+    display: flex;
+    margin-top: 8px;
+    font-size: 11.5px;
+    color: #71717a;
+}
+.vd-zone:nth-child(1) {
+    width: 20%;
+}
+.vd-zone:nth-child(2) {
+    width: 30%;
+}
+.vd-zone.is-on {
+    color: #ffffff;
+    font-weight: 600;
+}
+.vd-points {
+    margin-top: 18px;
+    padding-top: 16px;
+    border-top: 1px solid var(--card-track);
+}
+.vd-points-title {
+    margin-bottom: 8px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #a1a1aa;
+}
+.vd-point {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 5px 0;
+    font-size: 13px;
+    color: #e4e4e7;
+}
+.vd-point span {
+    flex: 1;
+    min-width: 0;
+}
+.vd-point b {
+    font-variant-numeric: tabular-nums;
+    font-weight: 700;
+    color: #ffffff;
+}
+.vd-point.is-none {
+    color: #a1a1aa;
+    font-size: 12.5px;
+}
+.vd-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+.vd-dot.is-bad {
+    background: #ff6b5b;
+}
+.vd-dot.is-caution {
+    background: rgb(var(--c-amber));
+}
+
+/* A scan's score bar: Low 0-33, Caution 34-66, High 67-100. */
+.vd-scale-track.is-scan .vd-z-low {
+    width: 34%;
+}
+.vd-scale-track.is-scan .vd-z-caution {
+    width: 33%;
+}
+.vd-scale-track.is-scan .vd-z-high {
+    width: 33%;
+}
+.vd-scale-labels.is-scan .vd-zone:nth-child(1) {
+    width: 34%;
+}
+.vd-scale-labels.is-scan .vd-zone:nth-child(2) {
+    width: 33%;
+}
+.vd-dot.is-note {
+    background: #71717a;
+}
+.vd-points-sub {
+    margin-top: 12px;
+}
