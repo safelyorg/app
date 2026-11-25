@@ -1,10 +1,30 @@
 "use strict";
 let settingsLoaded = false;
+// The /me request already on its way. Opening Settings and "pageshow" can
+// both ask at once; this makes the second one wait for the first instead
+// of loading everything twice.
+let settingsLoading = null;
 async function loadSettingsData() {
+    if (settingsLoaded)
+        return;
+    if (settingsLoading)
+        return settingsLoading;
+    settingsLoading = fetchSettingsData();
+    try {
+        await settingsLoading;
+    }
+    finally {
+        settingsLoading = null;
+    }
+}
+async function fetchSettingsData() {
     const loading = document.getElementById("settings-loading");
     const body = document.getElementById("settings-body");
     if (!loading || !body)
         return;
+    // The Team card (team.ts) loads at the same time as /me, not after it.
+    // The History dropdown already loaded its list (team_history.ts).
+    loadTeam(false);
     try {
         const res = await fetch(API_BASE + "/me", {
             headers: window.safelyAuth.authHeader(),
@@ -36,8 +56,6 @@ async function loadSettingsData() {
         loading.classList.add("hidden");
         body.classList.remove("hidden");
         settingsLoaded = true;
-        // The Team card (team.ts).
-        loadTeam();
     }
     catch (e) {
         console.error("Safely: failed to load settings", e);

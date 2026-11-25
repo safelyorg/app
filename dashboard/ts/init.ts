@@ -190,7 +190,9 @@ document.addEventListener("DOMContentLoaded", async () => {
       console.error("Safely: failed to load product IDs", e);
     }
   }
-  await loadProductIds();
+  // Only "Continue" needs these, so the rest of the page doesn't wait for
+  // them: the plan card loads at the same time.
+  let productIdsReady = loadProductIds();
 
   // ============================================================
   // Plan & Billing - inline expanding section
@@ -564,6 +566,12 @@ document.addEventListener("DOMContentLoaded", async () => {
       const plan = selectedPlanName;
       const interval = selectedInterval;
       const label = planLabel(plan, interval);
+      await productIdsReady;
+      if (!Object.keys(productIds).length) {
+        // The first try failed (network): try once more.
+        productIdsReady = loadProductIds();
+        await productIdsReady;
+      }
       const productId = productIdFor(plan, interval);
       if (!productId) {
         showToast(label + " " + t("dash.toast.not_available", "isn't available yet - check back soon."));

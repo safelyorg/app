@@ -521,12 +521,15 @@ function buildSeatControls(data: any): HTMLElement {
   return wrap;
 }
 
-async function loadTeam(): Promise<void> {
+// refreshHistory: false only for the first load of Settings, when the
+// History dropdown has just loaded its list itself. After a change here
+// (invite, remove, leave, seats) it is reloaded.
+async function loadTeam(refreshHistory = true): Promise<void> {
   const box = document.getElementById("team-body");
   if (!box) return;
   // The History dropdown follows the team (team_history.ts).
   const reloadHistory = (window as any).safelyReloadHistoryChoices;
-  if (typeof reloadHistory === "function") reloadHistory();
+  if (refreshHistory && typeof reloadHistory === "function") reloadHistory();
   try {
     const res = await fetch(API_BASE + "/team", { headers: teamHeaders(false) });
     if (res.status === 401) return;
